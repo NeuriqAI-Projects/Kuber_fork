@@ -1252,6 +1252,7 @@ export async function fetchCampaigns(token: string): Promise<Campaign[]> {
 export async function fetchCampaignSteps(token: string, campaignId: string): Promise<{
   steps: Array<CampaignStepInput & { id: string }>;
   followup_instruction?: string | null;
+  followups_ai_enabled?: boolean;
 }> {
   return apiFetch(`/api/v1/campaigns/${campaignId}/steps`, {}, token);
 }
@@ -1263,6 +1264,8 @@ export async function saveCampaignSteps(
   /** Campaign-wide follow-up guidance. Omit to leave whatever is stored
    *  untouched — the Options tab has no such box and must not blank it. */
   followupInstruction?: string | null,
+  /** Omit to leave the campaign's AI follow-up switch untouched. */
+  followupsAiEnabled?: boolean,
 ): Promise<{
   updated: boolean;
   /** False when the change is held back until the follow-ups it makes due have
@@ -1277,6 +1280,7 @@ export async function saveCampaignSteps(
     body: JSON.stringify({
       steps,
       ...(followupInstruction !== undefined ? { followup_instruction: followupInstruction } : {}),
+      ...(followupsAiEnabled !== undefined ? { followups_ai_enabled: followupsAiEnabled } : {}),
     }),
   }, token);
 }
