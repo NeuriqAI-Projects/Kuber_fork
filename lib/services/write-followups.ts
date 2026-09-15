@@ -38,6 +38,9 @@ const TIME_BUDGET_MS = 40_000;
  *  one. */
 const ATTEMPTS_BEFORE_TEMPLATE = 2;
 
+/** Shown on a follow-up that is the step's default text by the campaign's choice. */
+export const AI_OFF_REASON = "AI follow-ups are switched off for this campaign, so this step's default text was used.";
+
 
 
 export type WriteFollowupsResult = {
@@ -73,7 +76,7 @@ export async function writeDueFollowups(
   const campaignIds = [...new Set(targets.map((t) => t.campaignId))];
   const { data: campaigns } = await db
     .from("campaigns")
-    .select("id, name, human_in_loop, ai_prompt_context, company_id, followup_instruction")
+    .select("id, name, human_in_loop, ai_prompt_context, company_id, followup_instruction, followups_ai_enabled")
     .in("id", campaignIds);
   const campaignById = new Map((campaigns ?? []).map((c) => [c.id as string, c]));
 
@@ -118,6 +121,7 @@ async function writeOne(
     id: string; name: string; human_in_loop: boolean;
     ai_prompt_context: string | null; company_id: string;
     followup_instruction?: string | null;
+    followups_ai_enabled?: boolean | null;
   },
 ): Promise<{ pushed: boolean; templated: boolean } | null> {
   // The same shape fetchDraftTargets returns, so generateOneDraft needs no
@@ -136,6 +140,14 @@ async function writeOne(
     .maybeSingle();
 
   if (!cl) return null;
+
+  // AI follow-ups switched off for this campaign: the step's default text with
+  // the name and company filled in, and no model call at all. Checked before the
+  // key check so an AI-off campaign never depends on credits.
+  if (campaign.followups_ai_enabled === false) {
+    const templated = await writeTemplateFallback(db, target, undefined, 0, AI_OFF_REASON);
+    return templated ? { pushed: templated.pushed, templated: true } : null;
+  }
 
   // No key with credit anywhere: skip the model entirely and lay the safety net
   // now. Trying anyway would spend two rejected calls per lead to learn what the
@@ -238,17 +250,25 @@ async function writeTemplateFallback(
   target: FollowupTarget,
   rawError: string | undefined,
   attempts: number,
+  /** Set when the template is the choice, not a failure (AI switched off). */
+  reasonMessage?: string,
 ): Promise<{ pushed: boolean } | null> {
   const reason = classifyFallback(rawError);
 
   const { data: lead } = await db
-    .from("leads").select("first_name").eq("id", target.leadId).maybeSingle();
+    .from("leads").select("first_name, last_name, organizations(name)").eq("id", target.leadId).maybeSingle();
+  const org = lead?.organizations as { name?: string | null } | { name?: string | null }[] | null | undefined;
 
   // Same resolver the no-data path uses, so the two reasons a follow-up cannot
   // be personalised now produce the SAME text — this campaign's own wording for
   // this step, else the Settings default, else the built-in.
   const template = await resolveFollowupTemplate(db, target.campaignId, target.stepOrder);
-  const body = renderFollowupFallback(template, (lead?.first_name as string | null) ?? "");
+  const body = renderFollowupFallback(
+    template,
+    (lead?.first_name as string | null) ?? "",
+    (Array.isArray(org) ? org[0] : org)?.name,
+    lead?.last_name as string | null,
+  );
 
   const { error } = await db.from("email_drafts").insert({
     campaign_id: target.campaignId,
@@ -262,7 +282,7 @@ async function writeTemplateFallback(
     status: "approved",
     source: "template",
     attempts,
-    fallback_reason: reason.message,
+    fallback_reason: reasonMessage ?? reason.message,
     version: 1,
   });
   if (error) return null;
@@ -306,6 +326,9 @@ export async function upgradeTemplateFollowups(
     .from("campaigns")
     .select("id, name, human_in_loop, ai_prompt_context, company_id, followup_instruction")
     .eq("is_deleted", false)
+    // A template in an AI-off campaign is the choice, not a placeholder to replace.
+    // Switching AI back on makes its unsent templates upgradeable again.
+    .eq("followups_ai_enabled", true)
     .in("status", ["active", "processing"]);
   if (opts.companyId) campaignQuery = campaignQuery.eq("company_id", opts.companyId);
   const { data: campaigns } = await campaignQuery;
@@ -328,9 +351,12 @@ export async function upgradeTemplateFollowups(
 
   const { data: templates } = await db
     .from("email_drafts")
-    .select("id, campaign_id, lead_id, step_number, attempts")
+    .select("id, campaign_id, lead_id, step_number, attempts, status")
     .in("campaign_id", campaignIds)
     .eq("source", "template")
+    // Only live, unsent templates. A superseded one (rejected) was picked up again
+    // and again, and one already marked sent reaches nobody if rewritten.
+    .not("status", "in", "(rejected,failed,sent)")
     .lt("attempts", MAX_TOTAL_ATTEMPTS)
     .limit(opts.limit ?? 50);
 
@@ -395,31 +421,39 @@ export async function upgradeTemplateFollowups(
     result.found++;
 
     const cdb = createScopedClient(campaign.company_id as string);
+    const now = () => new Date().toISOString();
+    // RETIRE THE TEMPLATE FIRST, RESTORE IT IF THE REWRITE FAILS.
+    //
+    // uq_email_drafts_campaign_lead_step allows one live draft per (campaign,
+    // lead, step), and the template IS that draft. This used to write the new one
+    // while the template was still live, so the insert hit the index, was
+    // reported as "another worker is already drafting", and no model was ever
+    // called: 964 client templates, 9 ever upgraded (checked 15 Sep 2026).
+    // Marked rejected rather than deleted so the history still shows a template
+    // was in place. On failure it goes back exactly as it was - a lead must never
+    // be left with no follow-up text.
+    await cdb.from("email_drafts").update({ status: "rejected", updated_at: now() }).eq("id", t.id);
     try {
-      const written = await writeOne(cdb, {
-        campaignId: t.campaign_id as string,
-        campaignLeadId: cl.id as string,
-        leadId: t.lead_id as string,
-        stepOrder: t.step_number as number,
-        dueAt: new Date().toISOString(),
-        instantlyLeadId: (cl.instantly_lead_id as string | null) ?? null,
-        priorAttempts: (t.attempts as number) ?? 0,
-      }, campaign);
-
-      if (written && !written.templated) {
-        // The new AI draft supersedes the placeholder. Marked rejected rather
-        // than deleted so the history still shows a template was in place.
-        await cdb.from("email_drafts")
-          .update({ status: "rejected", updated_at: new Date().toISOString() })
-          .eq("id", t.id);
-        result.upgraded++;
-      } else {
-        await cdb.from("email_drafts")
-          .update({ attempts: ((t.attempts as number) ?? 0) + 1 })
-          .eq("id", t.id);
-        result.failed++;
-      }
+      const instruction = await resolveStandingFollowupInstruction(cdb, t.campaign_id as string, t.step_number as number);
+      const { data: target } = await cdb.from("campaign_leads").select(`
+          id, lead_id,
+          attachment_path, attachment_name, attachment_mime, attachment_size, attachment_url,
+          leads!lead_id!inner(
+            id, first_name, last_name, email, title, headline, seniority, city, country, assigned_to,
+            organizations(name, domain, website, industry, employees, city, country, company_description, sells_to, keywords)
+          )`).eq("id", cl.id).maybeSingle();
+      const r = target
+        ? await generateOneDraft(cdb, target as Parameters<typeof generateOneDraft>[1], t.campaign_id as string,
+            campaign.company_id as string, false, campaign.name as string, undefined, instruction,
+            (campaign.ai_prompt_context as string | null) ?? undefined, undefined, t.step_number as number)
+        : null;
+      if (!r?.ok) throw new Error(r && "reason" in r ? r.reason : "lead not found");
+      if (cl.instantly_lead_id) await syncApprovedDraftToInstantly(cdb, t.lead_id as string, t.campaign_id as string);
+      result.upgraded++;
     } catch {
+      await cdb.from("email_drafts")
+        .update({ status: t.status, attempts: ((t.attempts as number) ?? 0) + 1, updated_at: now() })
+        .eq("id", t.id);
       result.failed++;
     }
   }

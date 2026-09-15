@@ -92,6 +92,8 @@ export const CampaignStepsSchema = z.object({
   steps: z.array(CampaignStepInput).min(1).max(10),
   /** Applied to every follow-up in the campaign. */
   followup_instruction: z.string().trim().max(1000).nullable().optional(),
+  /** false = follow-ups are each step's default text, never AI-written. */
+  followups_ai_enabled: z.boolean().optional(),
 });
 
 export const SendCampaignSchema = z.object({

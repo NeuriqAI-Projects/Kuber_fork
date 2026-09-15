@@ -24,6 +24,7 @@ import { Pill } from "@/components/ui/pill";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { AppCheckbox } from "@/components/ui/app-checkbox";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { LEAD_TEMPLATE_VARS } from "@/components/ui/template-var-textarea";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
@@ -890,6 +891,8 @@ export function CampaignDetail({
   const [seqFallbackRegenerating, setSeqFallbackRegenerating] = useState<number | null>(null);
   /** Campaign-wide follow-up guidance, and the per-step boxes above. */
   const [seqCampaignInstruction, setSeqCampaignInstruction] = useState("");
+  /** Off = every follow-up is its step's default text; no AI call. */
+  const [seqFollowupsAi, setSeqFollowupsAi] = useState(true);
   /** Which follow-up is being hand-edited, and its working copy. */
   const [seqEditingDraftId, setSeqEditingDraftId] = useState<string | null>(null);
   const [seqEditBody, setSeqEditBody] = useState("");
@@ -1277,9 +1280,10 @@ export function CampaignDetail({
       const { data: { session } } = await supabase.auth.getSession();
       if (!session || cancelled) return;
       try {
-        const { steps, followup_instruction } = await fetchCampaignSteps(session.access_token, campaign.id);
+        const { steps, followup_instruction, followups_ai_enabled } = await fetchCampaignSteps(session.access_token, campaign.id);
         if (!cancelled) {
           setSeqCampaignInstruction(followup_instruction ?? "");
+          setSeqFollowupsAi(followups_ai_enabled ?? true);
           const mapped = steps.map((s) => ({ step_order: s.step_order, subject: s.subject, body: s.body, delay: s.delay, delay_unit: s.delay_unit }));
           setCampaignSteps(mapped);
           const followUps = mapped.filter((s) => s.step_order > 1);
@@ -1934,7 +1938,7 @@ export function CampaignDetail({
             }
           : st);
       const res = await saveCampaignSteps(
-        session.access_token, campaign.id, rebuilt, seqCampaignInstruction.trim() || null,
+        session.access_token, campaign.id, rebuilt, seqCampaignInstruction.trim() || null, seqFollowupsAi,
       );
       const { steps } = await fetchCampaignSteps(session.access_token, campaign.id);
       setCampaignSteps(steps);
@@ -5111,6 +5115,29 @@ export function CampaignDetail({
                     <InfoTooltip text={`Timing and instructions for all ${campaignLeads.length} leads in this campaign — not just the one you're viewing.`} />
                   </div>
 
+                  {/* One switch for the whole campaign. Off: each follow-up is
+                      its step's default text with the name and company filled
+                      in, so follow-ups cost no AI credits. Takes effect on
+                      follow-ups not yet written; turning it back on lets unsent
+                      default-text ones be rewritten by the AI. */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="seq-followups-ai" className="text-sm font-medium">Write follow-ups with AI</Label>
+                      <p className="text-[11px] text-muted-foreground">
+                        {seqFollowupsAi
+                          ? "Each follow-up is personalised for the lead. Uses AI credits."
+                          : "Each follow-up uses its step's text below, with the name and company filled in. No AI credits."}
+                      </p>
+                    </div>
+                    <Switch
+                      id="seq-followups-ai"
+                      checked={seqFollowupsAi}
+                      disabled={!canEditSettings}
+                      onCheckedChange={setSeqFollowupsAi}
+                    />
+                  </div>
+
+                  {seqFollowupsAi && (
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-1.5">
                       <Label className="eyebrow">Applies to every follow-up</Label>
@@ -5124,6 +5151,7 @@ export function CampaignDetail({
                       className="text-sm min-h-16"
                     />
                   </div>
+                  )}
                   {seqStepEdits.map((st, idx) => (
                     <div key={idx} className="rounded-lg border border-border bg-field px-3 py-2 space-y-2">
                       <div className="flex items-center gap-2">
@@ -5172,7 +5200,7 @@ export function CampaignDetail({
                           the box is a promise the system cannot keep — and
                           typing into it and pressing Save changes nothing, with
                           nothing on screen to say why. */}
-                      {(() => {
+                      {seqFollowupsAi && (() => {
                         const stepOrder = idx + 2;
                         const stillToWrite = seqLive.filter((cl) =>
                           !hasReceivedFollowupStep(cl, stepOrder)
@@ -5209,8 +5237,10 @@ export function CampaignDetail({
                           from the instruction above, which only guides the AI. */}
                       <div className="space-y-1.5 pt-2 border-t border-border">
                         <div className="flex items-center gap-1.5">
-                          <Label className="eyebrow">If it can&apos;t be personalised</Label>
-                          <InfoTooltip text="Sent when the lead has no company details, or the AI cannot write. Leave empty to use the company default from Settings." />
+                          <Label className="eyebrow">{seqFollowupsAi ? "If it can't be personalised" : `Follow-up ${idx + 1} text`}</Label>
+                          <InfoTooltip text={seqFollowupsAi
+                            ? "Sent when the lead has no company details, or the AI cannot write. Leave empty to use the company default from Settings."
+                            : "Sent to every lead for this step, with {{first_name}} and {{company}} filled in. Leave empty to use the company default from Settings."} />
                         </div>
                         <RichTextEditor
                           value={st.fallback_body ?? ""}

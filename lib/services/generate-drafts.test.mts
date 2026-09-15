@@ -1,7 +1,16 @@
 // npx tsx --test lib/services/generate-drafts.test.mts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stripTrailingSignOff, earlierEmailsBlock, tidyName } from "./generate-drafts.ts";
+import { stripTrailingSignOff, earlierEmailsBlock, tidyName, productsForFollowup } from "./generate-drafts.ts";
+
+test("a follow-up sees only the products the earlier emails named", () => {
+  const lib = [{ name: "White Masterbatch" }, { name: "COLOR MASTERBATCH" }, { name: "Additive Masterbatch" }];
+  const names = (e: string) => productsForFollowup(lib, [{ step: 1, body: e }]).map((p) => p.name);
+  assert.deepEqual(names("Our **White Masterbatch** suits your film."), ["White Masterbatch"]);
+  assert.deepEqual(names("That is where **colour masterbatch** matters."), ["COLOR MASTERBATCH"]);
+  assert.deepEqual(names("Masterbatch may well not be relevant to you."), []);
+  assert.deepEqual(productsForFollowup(lib, []), []);
+});
 
 test("tidies a name typed in one case, leaves deliberate spelling (issue 13)", () => {
   assert.equal(tidyName("heena"), "Heena");

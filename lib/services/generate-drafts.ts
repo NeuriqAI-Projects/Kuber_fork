@@ -600,6 +600,23 @@ export function earlierEmailsBlock(earlier: EarlierEmail[]): string {
   ].join("\n");
 }
 
+/**
+ * The library products a follow-up is allowed to see: only those the earlier
+ * emails already named.
+ *
+ * A follow-up may mention at most one product, yet it was handed all five full
+ * descriptions every time - about 1,400 of the ~4,100 tokens it reads, paid 5
+ * times per lead (measured 15 Sep 2026). An opening that pitched nothing ("this
+ * may not be relevant to you") gets no descriptions. The product NAMES still
+ * reach it through the client-context line, so a follow-up there can still name
+ * one product - it just cannot quote specs the opening never used.
+ */
+export function productsForFollowup<T extends { name: string }>(products: T[], earlier: EarlierEmail[]): T[] {
+  const norm = (s: string) => s.toLowerCase().replace(/colour/g, "color");
+  const text = norm(earlier.map((e) => e.body).join("\n"));
+  return products.filter((p) => text.includes(norm(p.name)));
+}
+
 // Bug fix (found while testing the enrichment pipeline): fetchDraftTargets'
 // retry cap and countPendingDrafts' "stop retrying, exhausted" check both
 // work by counting existing `email_drafts` rows with status='failed' for a
@@ -883,6 +900,8 @@ export async function generateOneDraft(
       getProductOfferings(db),
       getCompanyContext(db),
     ]);
+    const earlier = stepNumber > 1 ? await loadEarlierEmails(db, campaignId, lead.id, stepNumber) : [];
+    const promptProducts = stepNumber > 1 ? productsForFollowup(products, earlier) : products;
     // Style, structure and precedence all live in the system prompt now; code
     // only supplies the data it is written against (sender, products) and the
     // per-campaign context. Revision mode prefixes hard edit rules so an
@@ -908,11 +927,11 @@ export async function generateOneDraft(
       ? revisionRulesFor(revisionIntent)
         + (revisionIntent === "local" ? baseSystemPrompt : "")
         + buildCompanyBlock(companyContext)
-        + buildProductReferenceBlock(products)
+        + buildProductReferenceBlock(promptProducts)
         + buildAuthoritativeInstruction(revisionInstruction)
       : baseSystemPrompt
         + buildCompanyBlock(companyContext)
-        + buildProductReferenceBlock(products);
+        + buildProductReferenceBlock(promptProducts);
 
     // One textarea carries both "what to change" and, often, a whole example
     // email. Separating them is what stops the example's prospect being copied.
@@ -933,7 +952,7 @@ export async function generateOneDraft(
           aiPromptContext ?? campaign?.ai_prompt_context ?? undefined,
         )
       : buildUserPrompt(lead, campaignName, customInstruction, aiPromptContext, stepNumber, effectiveAttachmentName)
-        + (stepNumber > 1 ? earlierEmailsBlock(await loadEarlierEmails(db, campaignId, lead.id, stepNumber)) : "");
+        + earlierEmailsBlock(earlier);
 
     const { json } = await complete<DraftLLMOutput | RevisionDraftLLMOutput>({
       system: systemPrompt,

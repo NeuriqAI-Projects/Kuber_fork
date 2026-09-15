@@ -39,6 +39,15 @@ assert.equal(
 // Empty/missing first name still reads as a sentence, not "Hi ,".
 assert.equal(renderFollowupFallback("Hi {{first_name}},", ""), "Hi there,");
 
+// Company and last name are filled too - an AI-off campaign sends this text to everyone.
+assert.equal(
+  renderFollowupFallback("Hi {{name}}, any update from {{ Company }}, {{first_name}} {{last_name}}?", "Ben", "Acme Films", "Ray"),
+  "Hi Ben, any update from Acme Films, Ben Ray?",
+);
+assert.equal(renderFollowupFallback("Is {{company}} still sourcing?", "Ben", null), "Is your company still sourcing?");
+// A stored name with a trailing space must not produce "Hi Devyansh ,".
+assert.equal(renderFollowupFallback("Hi {{first_name}},", "Devyansh "), "Hi Devyansh,");
+
 // ── getFollowupFallbackTemplate: company default when unset ──────────────────
 
 // A minimal fake matching only the .from().select().eq().maybeSingle() chain

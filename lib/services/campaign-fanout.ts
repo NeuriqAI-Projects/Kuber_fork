@@ -208,7 +208,7 @@ export async function sendCampaign(
       .from("campaign_leads")
       .select(`
         id, lead_id,
-        leads:lead_id!inner ( email, first_name, last_name, country, time_zone, assigned_to )
+        leads:lead_id!inner ( email, first_name, last_name, country, time_zone, assigned_to, organizations ( name ) )
       `)
       .eq("campaign_id", campaignId)
       .eq("crm_status", "approved")
@@ -412,7 +412,8 @@ export async function sendCampaign(
           for (let si = 1; si < steps.length; si++) {
             const key = `customBody${si + 1}`;
             if (!vars[key]) {
-              vars[key] = renderFollowupFallback(followupFallbackTemplate, firstName);
+              const org = (lead as { organizations?: { name?: string | null } | { name?: string | null }[] | null } | undefined)?.organizations;
+              vars[key] = renderFollowupFallback(followupFallbackTemplate, firstName, (Array.isArray(org) ? org[0] : org)?.name, lead?.last_name);
             }
           }
           return {

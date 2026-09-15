@@ -45,10 +45,16 @@ export async function getFollowupFallbackTemplate(db: SupabaseClient): Promise<s
   return data?.value?.trim() || DEFAULT_FOLLOWUP_FALLBACK_BODY;
 }
 
-/** Fills {{first_name}} — the only placeholder this template supports, since a
- *  follow-up fallback has no company/product context to personalize with. */
-export function renderFollowupFallback(template: string, firstName: string): string {
-  return template.replace(/\{\{\s*first_name\s*\}\}/gi, firstName || "there");
+/** Fills {{first_name}} / {{name}} / {{last_name}} / {{company}} - the same
+ *  placeholders fillFollowupTemplate accepts. Only {{first_name}} used to be
+ *  filled here, so a default text using {{company}} reached the prospect as the
+ *  literal "{{company}}". That mattered little while this text was only a
+ *  safety net; with AI follow-ups switched off it is every follow-up. */
+export function renderFollowupFallback(template: string, firstName: string, company?: string | null, lastName?: string | null): string {
+  return template
+    .replace(/\{\{\s*(first_name|name)\s*\}\}/gi, firstName?.trim() || "there")
+    .replace(/\{\{\s*last_name\s*\}\}/gi, lastName?.trim() ?? "")
+    .replace(/\{\{\s*company\s*\}\}/gi, company?.trim() || "your company");
 }
 
 export async function getClientContext(db: SupabaseClient): Promise<ClientContext> {

@@ -23,11 +23,12 @@ export async function GET(
     .order("step_order");
 
   const { data: campaign } = await db
-    .from("campaigns").select("followup_instruction").eq("id", id).maybeSingle();
+    .from("campaigns").select("followup_instruction, followups_ai_enabled").eq("id", id).maybeSingle();
 
   return ok({
     steps: data ?? [],
     followup_instruction: (campaign?.followup_instruction as string | null) ?? null,
+    followups_ai_enabled: (campaign?.followups_ai_enabled as boolean | null) ?? true,
   });
 }
 
@@ -53,9 +54,13 @@ export async function PUT(
   // Campaign-wide follow-up guidance. Optional: a caller that omits it (the
   // Options tab, which has no such box) must not blank what someone typed in
   // the Sequences tab.
-  if (parsed.data.followup_instruction !== undefined) {
+  if (parsed.data.followup_instruction !== undefined || parsed.data.followups_ai_enabled !== undefined) {
     await db.from("campaigns")
-      .update({ followup_instruction: parsed.data.followup_instruction || null, updated_at: new Date().toISOString() })
+      .update({
+        ...(parsed.data.followup_instruction !== undefined ? { followup_instruction: parsed.data.followup_instruction || null } : {}),
+        ...(parsed.data.followups_ai_enabled !== undefined ? { followups_ai_enabled: parsed.data.followups_ai_enabled } : {}),
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", id);
   }
 
