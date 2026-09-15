@@ -1,3 +1,5 @@
+import { isProviderOutage } from "./provider-errors";
+
 /**
  * Enrichment failures that retrying can never fix.
  *
@@ -33,3 +35,38 @@ export const TERMINAL_ENRICHMENT_STATUSES = [
 
 /** PostgREST `not.in` list form, e.g. `("NO_DOMAIN","NO_EMAILED_LEADS")`. */
 export const TERMINAL_STATUS_LIST = `(${TERMINAL_ENRICHMENT_STATUSES.map((s) => `"${s}"`).join(",")})`;
+
+/**
+ * The status an LLM extraction failure gets.
+ *
+ * An AI key that is missing, empty or rate-limited is OUR problem, exactly like a
+ * missing Firecrawl key, so it gets the same no-strike status and is requeued.
+ * Before 16 Sep 2026 it counted against the company: 106 organisations were
+ * written off with "No LLM provider configured" and never read by any model.
+ * Reusing SCRAPE_PROVIDER_UNAVAILABLE (rather than a new status) is deliberate -
+ * markFailed, "Retry all" and the recovery watchdog already treat it correctly.
+ */
+export function llmFailureStatus(errorMessage: string): "SCRAPE_PROVIDER_UNAVAILABLE" | "LLM_EXTRACTION_FAILED" {
+  return isProviderOutage(errorMessage) ? "SCRAPE_PROVIDER_UNAVAILABLE" : "LLM_EXTRACTION_FAILED";
+}
+
+/** How long an org may sit queued, with nothing stopping it, before it is
+ *  concluded as ENRICHMENT_NEVER_RAN. */
+export const ABANDONED_QUEUE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Whether the "queued for over 24h" write-off may run.
+ *
+ * That rule exists for a crashed worker chain. But the credit gate ALSO leaves
+ * orgs queued - on purpose - while a provider is out of money, and the write-off
+ * could not tell the two apart. When credits came back after a multi-day outage,
+ * the first batch wrote off every org that had waited over a day instead of
+ * enriching it: 2,030 client organisations, Sep 2026.
+ *
+ * So the clock only counts time with no credit wait: if the gate skipped a batch
+ * within the window, the queue was held, not abandoned.
+ */
+export function mayConcludeAbandonedQueue(lastCreditWaitAt: string | null, now = Date.now()): boolean {
+  if (!lastCreditWaitAt) return true;
+  return now - new Date(lastCreditWaitAt).getTime() > ABANDONED_QUEUE_MS;
+}

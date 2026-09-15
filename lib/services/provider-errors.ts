@@ -43,6 +43,9 @@ export function isProviderOutage(message: string): boolean {
     // "not configured". 58 of the 60 draft failures on 7 Aug 2026 said exactly
     // this, and without this line none of them was recognised as an outage.
     m.includes("no llm provider configured") ||
+    // Anthropic's wording for an empty balance (400, not 402): "Your credit
+    // balance is too low to access the Anthropic API". Seen 15 Sep 2026.
+    m.includes("credit balance") ||
     m.includes("insufficient_quota") ||
     m.includes("credit_balance_exhausted") ||
     m.includes("no credits remaining") ||

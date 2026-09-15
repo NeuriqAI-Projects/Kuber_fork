@@ -26,6 +26,9 @@ assert.equal(
 assert.equal(isProviderOutage('OpenAI 429: {"error": {"message": "You have no credits remaining. Add credits to continue using the API"}}'), true);
 assert.equal(isProviderOutage('OpenRouter 402: {"error":{"message":"This request requires more credits, or fewer max_tokens."}}'), true);
 
+// LIVE 15 Sep 2026 — Anthropic reports an empty balance as a 400 with this text.
+assert.equal(isProviderOutage("Claude (Anthropic direct): 400 Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."), true);
+
 // A genuinely lead-specific failure must still count against the lead, or the
 // 3-strike cap stops protecting anything.
 assert.equal(isProviderOutage("Draft shape mismatch — subject: Required"), false);

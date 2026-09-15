@@ -15,7 +15,7 @@ import {
 import { resolveModel } from "@/lib/services/provider-keys";
 import { PROVIDER_META, resolveLlmTierOrder, type LlmProviderId } from "@/lib/services/providers/registry";
 import { safeSecretEqual } from "@/lib/auth/secret";
-import { TERMINAL_ENRICHMENT_STATUSES } from "@/lib/services/enrichment-status";
+import { TERMINAL_ENRICHMENT_STATUSES, llmFailureStatus, mayConcludeAbandonedQueue, ABANDONED_QUEUE_MS } from "@/lib/services/enrichment-status";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const LLM_CREDIT_CHECKS: Record<LlmProviderId, (db: SupabaseClient, scope: string) => Promise<CreditCheck>> = {
@@ -661,7 +661,8 @@ Rules:
       duration_ms: Date.now() - llmStart,
       error: errMsg,
     });
-    await markFailed(db, org.id, "LLM_EXTRACTION_FAILED", errMsg);
+    // Our AI key being empty or missing is not the company's failure - no strike.
+    await markFailed(db, org.id, llmFailureStatus(errMsg), errMsg);
   }
 }
 
@@ -769,17 +770,23 @@ export async function POST(req: NextRequest) {
 
   // ── Watchdog: orgs sitting in 'queued' for over 24h were dropped by a dead
   // worker chain. Conclude them so their leads become Input Required instead
-  // of showing "New" forever ("New" = pipeline in flight).
-  await db.from("organizations")
-    .update({
-      enrichment_stage: "failed",
-      enrichment_status: "ENRICHMENT_NEVER_RAN",
-      last_error: "Enrichment never ran — queued for over 24h",
-      enrichment_done_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("enrichment_stage", "queued")
-    .lt("updated_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+  // of showing "New" forever ("New" = pipeline in flight). Not while the credit
+  // gate above has been holding the queue - see mayConcludeAbandonedQueue.
+  const { data: lastWait } = await db.from("enrichment_logs")
+    .select("created_at").eq("event", "SKIPPED_LOW_CREDITS")
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (mayConcludeAbandonedQueue((lastWait?.created_at as string | undefined) ?? null)) {
+    await db.from("organizations")
+      .update({
+        enrichment_stage: "failed",
+        enrichment_status: "ENRICHMENT_NEVER_RAN",
+        last_error: "Enrichment never ran — queued for over 24h",
+        enrichment_done_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("enrichment_stage", "queued")
+      .lt("updated_at", new Date(Date.now() - ABANDONED_QUEUE_MS).toISOString());
+  }
 
   let processed = 0;
   let succeeded = 0;
