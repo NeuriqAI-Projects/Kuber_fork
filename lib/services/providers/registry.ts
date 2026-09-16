@@ -323,6 +323,21 @@ async function callAnthropic(secret: string, model: string, opts: CompletionOpts
     messages: [{ role: "user", content: opts.user }],
   };
 
+  // MAKE THE SHAPE THE ONLY WAY OUT.
+  //
+  // Claude answers a hard lead by thinking out loud first - "I need to determine
+  // the fit tier for GROUPE ARTHES..." - and the reply then contains no JSON at
+  // all. 8 of the client's 14 draft failures on 15 Sep 2026 were exactly that,
+  // each a paid call that produced nothing. Asking for a tool call gives the
+  // answer nowhere to go but a structured object. (Assistant prefill, the other
+  // usual trick, is rejected outright by this model.)
+  body.tools = [{
+    name: "emit_result",
+    description: "Return the requested JSON object. Every field named in the instructions goes in here.",
+    input_schema: { type: "object", additionalProperties: true },
+  }];
+  body.tool_choice = { type: "tool", name: "emit_result" };
+
   if (thinkingModel) {
     // Drafting is a rule-following task, not a research one, so the reasoning
     // (and the bill) should stay short — but not so short the model gives up.
@@ -353,15 +368,18 @@ async function callAnthropic(secret: string, model: string, opts: CompletionOpts
   });
   if (!res.ok) throwHttpError("Anthropic", res.status, await res.text());
   const data = await res.json() as {
-    content?: Array<{ type: string; text?: string }>;
+    content?: Array<{ type: string; text?: string; input?: object }>;
     usage?: {
       input_tokens?: number; output_tokens?: number;
       cache_creation_input_tokens?: number; cache_read_input_tokens?: number;
     };
   };
+  // The tool call carries the object already parsed; the text branch stays as the
+  // fallback for a model or version that ignores tool_choice.
+  const toolInput = (data.content ?? []).find((b) => b.type === "tool_use")?.input;
   const text = (data.content ?? []).filter((b) => b.type === "text").map((b) => b.text ?? "").join("");
   return {
-    json: await parseJsonResponse(text),
+    json: toolInput && Object.keys(toolInput).length > 0 ? toolInput : await parseJsonResponse(text),
     usage: {
       inputTokens: data.usage?.input_tokens ?? 0,
       outputTokens: data.usage?.output_tokens ?? 0,
