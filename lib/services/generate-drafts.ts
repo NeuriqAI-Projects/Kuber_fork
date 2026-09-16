@@ -121,7 +121,10 @@ export function looksLikeRefusal(bodyText: string): boolean {
 const DraftSchema = z.object({
   subject: z.string(),
   body: z.string(),
-  product_match: z.string(),
+  /** Optional on purpose: it only decides which product name gets bolded, and a
+   *  model that omits it has still written a perfectly good email. Requiring it
+   *  threw away 4 finished client emails on 15 Sep 2026. */
+  product_match: z.string().optional().default(""),
 });
 
 const RevisionDraftSchema = DraftSchema.extend({
