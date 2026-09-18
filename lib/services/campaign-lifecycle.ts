@@ -116,3 +116,48 @@ export async function holdSending(
   }).eq("id", campaignId);
   return result;
 }
+
+/**
+ * Let sending go again once the follow-up rewrite that held it has finished.
+ *
+ * "Hold and regenerate" held sending and started the job, and nothing released
+ * it afterwards: the person had to remember to press Resume, and one campaign
+ * sat held for three days because nobody did. The hold was taken for the
+ * rewrite, so the rewrite finishing is what should end it.
+ *
+ * Nothing records "this hold was taken for that job", so it is inferred: the
+ * same person held sending within the fifteen minutes before starting the job.
+ * A hold by someone else, or an older one, is a deliberate stop and stays put.
+ *
+ * The no-auto-expiry rule on holdSending still stands. This is not a timer; it
+ * fires only when the job is done, and a lead the rewrite failed on keeps its
+ * previous text, which was already going out before the hold.
+ *
+ * ponytail: inferred from timestamps. A resume_sending_on_complete column on
+ * draft_regeneration_jobs would make it explicit, once DDL can be applied.
+ */
+export async function resumeIfHeldForJob(
+  db: Db,
+  job: { campaign_id: string; requested_by: string | null; created_at: string },
+): Promise<boolean> {
+  const { data: c } = await db
+    .from("campaigns")
+    .select("sending_held_at, sending_held_by")
+    .eq("id", job.campaign_id)
+    .maybeSingle();
+  if (!holdWasForJob(c ?? null, job)) return false;
+  await resumeCampaign(db, job.campaign_id);
+  return true;
+}
+
+export const HOLD_FOR_JOB_WINDOW_MS = 15 * 60 * 1000;
+
+/** The decision behind resumeIfHeldForJob, kept pure so it can be checked. */
+export function holdWasForJob(
+  hold: { sending_held_at: string | null; sending_held_by: string | null } | null,
+  job: { requested_by: string | null; created_at: string },
+): boolean {
+  if (!hold?.sending_held_at || !job.requested_by || hold.sending_held_by !== job.requested_by) return false;
+  const gap = Date.parse(job.created_at) - Date.parse(hold.sending_held_at);
+  return gap >= 0 && gap <= HOLD_FOR_JOB_WINDOW_MS;
+}

@@ -1328,16 +1328,21 @@ export function CampaignDetail({
         await loadData();
         if (job && !job.active) {
           const done = job.status === "completed";
+          // The run releases the hold it was started under; say so, or the
+          // amber banner and the toast contradict each other.
+          const resumed = done && sendingHeld && !job.sending_held;
+          if (resumed) setHeldAt(null);
+          const tail = resumed ? " — sending resumed" : "";
           if (done && job.failed > 0) {
-            toast.warning(`Regenerated ${job.succeeded} draft${job.succeeded !== 1 ? "s" : ""}; ${job.failed} failed`);
+            toast.warning(`Regenerated ${job.succeeded} draft${job.succeeded !== 1 ? "s" : ""}; ${job.failed} failed${tail}`);
           } else if (done) {
-            toast.success(`${job.succeeded} draft${job.succeeded !== 1 ? "s" : ""} regenerated`);
+            toast.success(`${job.succeeded} draft${job.succeeded !== 1 ? "s" : ""} regenerated${tail}`);
           }
         }
       })();
     }, 3000);
     return () => clearInterval(interval);
-  }, [regenJob?.active, loadRegenJob, loadData]);
+  }, [regenJob?.active, loadRegenJob, loadData, sendingHeld]);
 
   const selected = campaignLeads.find((cl) => cl.id === selectedId) ?? null;
 

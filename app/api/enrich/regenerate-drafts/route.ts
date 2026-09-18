@@ -6,6 +6,7 @@ import { safeSecretEqual } from "@/lib/auth/secret";
 import { regenerateOneDraft } from "@/lib/services/regenerate-draft";
 import { countPendingItems, bulkRegeneratableStatuses } from "@/lib/services/regeneration-jobs";
 import { BatchBudget } from "@/lib/services/batch-budget";
+import { resumeIfHeldForJob } from "@/lib/services/campaign-lifecycle";
 
 export const maxDuration = 55;
 
@@ -77,7 +78,7 @@ export async function POST(req: NextRequest) {
 
   const { data: job } = await db
     .from("draft_regeneration_jobs")
-    .select("id, campaign_id, status, custom_instruction, requested_by, succeeded, failed, company_id, step_number")
+    .select("id, campaign_id, status, custom_instruction, requested_by, succeeded, failed, company_id, step_number, created_at")
     .eq("id", jobId)
     .maybeSingle();
 
@@ -201,6 +202,13 @@ export async function POST(req: NextRequest) {
     });
   } else if (remaining === 0) {
     await finishJob(cdb, jobId);
+    // The hold this run needed is released by the run itself. See
+    // resumeIfHeldForJob for why, and for what it deliberately leaves held.
+    await resumeIfHeldForJob(cdb, {
+      campaign_id: job.campaign_id as string,
+      requested_by: (job.requested_by as string | null) ?? null,
+      created_at: job.created_at as string,
+    }).catch(() => { /* the banner's Resume button is the fallback */ });
   }
 
   return Response.json({ processed: items.length, succeeded, failed, remaining });
