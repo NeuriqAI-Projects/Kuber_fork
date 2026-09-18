@@ -171,6 +171,11 @@ export async function GET(
     by_status: {
       draft: eligible.filter((t) => t.draft_status === "draft").length,
       failed: eligible.filter((t) => t.draft_status === "failed").length,
+      // Follow-ups are auto-approved, so on a follow-up step nearly every
+      // eligible draft is 'approved'. Leaving it out of this tally made the
+      // confirm dialog read "Regenerate 0 drafts" and disable its button on a
+      // run the server had 96 targets for.
+      approved: eligible.filter((t) => t.draft_status === "approved").length,
     },
     skipped,
   });

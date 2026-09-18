@@ -939,7 +939,7 @@ export async function previewRegeneration(
   campaignId: string,
   campaignLeadIds?: string[],
   stepNumber?: number,
-): Promise<{ eligible: number; by_status: { draft: number; failed: number }; skipped: RegenerationSkipped }> {
+): Promise<{ eligible: number; by_status: { draft: number; failed: number; approved: number }; skipped: RegenerationSkipped }> {
   const qs = new URLSearchParams();
   if (campaignLeadIds?.length) qs.set("campaign_lead_ids", campaignLeadIds.join(","));
   if (stepNumber && stepNumber > 1) qs.set("step_number", String(stepNumber));
