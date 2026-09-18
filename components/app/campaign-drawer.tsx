@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatChatDate, startsNewChatDay } from "@/lib/chat-format";
 import { emailPreview, splitQuotedBody } from "@/lib/email-display";
-import { convertResidualMarkdownInHtml } from "@/lib/utils/email-html";
+import { convertResidualMarkdownInHtml, hasVisibleText } from "@/lib/utils/email-html";
 import { Avatar } from "@/components/leads/lead-ui";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1947,7 +1947,12 @@ export function CampaignDetail({
           ? {
               ...st,
               ai_instruction: seqStepEdits[st.step_order - 2]?.ai_instruction ?? null,
-              fallback_body: seqStepEdits[st.step_order - 2]?.fallback_body ?? null,
+              // An emptied rich-text box is "<p></p>", not "". Sent as-is it
+              // stores a non-empty string that beats the company default and
+              // resolves to a follow-up with no body, so blank goes back as NULL.
+              fallback_body: hasVisibleText(seqStepEdits[st.step_order - 2]?.fallback_body)
+                ? seqStepEdits[st.step_order - 2]!.fallback_body!
+                : null,
             }
           : st);
       const res = await saveCampaignSteps(
@@ -5264,7 +5269,7 @@ export function CampaignDetail({
                           placeholder="Leave empty for the company default"
                         />
                         <div className="flex items-center justify-between gap-2 flex-wrap">
-                          {!st.fallback_body?.trim() && (
+                          {!hasVisibleText(st.fallback_body) && (
                             <p className="text-[10px] text-muted-foreground">Using the company default</p>
                           )}
                           {canEditSettings && (

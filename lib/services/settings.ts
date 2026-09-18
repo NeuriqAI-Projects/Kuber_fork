@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DRAFT_JSON_SUFFIX, MANDATORY_FORMATTING_RULES } from "@/lib/services/llm";
+import { hasVisibleText } from "@/lib/utils/email-html";
 
 // Settings live in two layers (planning.md Phase 1):
 //   • `settings`       — company-wide defaults, editable by managers only.
@@ -42,7 +43,9 @@ export async function getFollowupFallbackTemplate(db: SupabaseClient): Promise<s
     .eq("key", "followup_fallback_body")
     .maybeSingle();
 
-  return data?.value?.trim() || DEFAULT_FOLLOWUP_FALLBACK_BODY;
+  // hasVisibleText: a Settings box emptied in the rich-text editor stores
+  // "<p></p>", which || treats as set and would send a blank follow-up.
+  return hasVisibleText(data?.value) ? (data!.value as string).trim() : DEFAULT_FOLLOWUP_FALLBACK_BODY;
 }
 
 /**
