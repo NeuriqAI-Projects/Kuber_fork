@@ -28,11 +28,15 @@ export async function GET(
   if (!job) return ok({ job: null });
 
   const processed = job.succeeded + job.failed;
+  // A finished run may have released the hold it needed (resumeIfHeldForJob).
+  // The drawer polls this, so it is where the banner learns that.
+  const { data: c } = await db.from("campaigns").select("sending_held_at").eq("id", id).maybeSingle();
   return ok({
     job: {
       ...job,
       processed,
       active: job.status === "queued" || job.status === "running",
+      sending_held: !!c?.sending_held_at,
     },
   });
 }

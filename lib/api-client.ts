@@ -928,6 +928,9 @@ export type RegenerationJobStatus = {
   failed: number;
   processed: number;
   active: boolean;
+  /** Whether sending is still held on the campaign - a finished run releases
+   *  the hold it was started under, and the banner needs to know. */
+  sending_held: boolean;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
