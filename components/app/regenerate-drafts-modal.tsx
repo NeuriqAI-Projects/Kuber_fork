@@ -11,12 +11,19 @@ import type { RegenerationSkipped } from "@/lib/api-client";
 const INSTRUCTION_MAX_LENGTH = 4000;
 
 interface RegenerateDraftsModalProps {
-  /** Eligible drafts split by current state — what will actually be rewritten. */
-  counts: { draft: number; failed: number };
+  /** Eligible drafts split by current state — what will actually be rewritten.
+   *  `approved` matters on follow-up steps, where every written follow-up is. */
+  counts: { draft: number; failed: number; approved: number };
   /** What the run will leave alone, and why. */
   skipped: RegenerationSkipped;
   /** True when the user ticked specific leads rather than targeting the whole campaign. */
   isSubset: boolean;
+  /** 1 for the opening email, 2+ for a follow-up step. */
+  stepNumber: number;
+  /** The campaign has AI follow-ups switched off, so this run replaces each
+   *  follow-up with the step's own text and asks the model nothing — the
+   *  instruction box would be a lie. */
+  aiOff: boolean;
   submitting?: boolean;
   onConfirm: (instruction: string) => void;
   onCancel: () => void;
@@ -33,12 +40,15 @@ function RegenerateDraftsModalInner({
   counts,
   skipped,
   isSubset,
+  stepNumber,
+  aiOff,
   submitting,
   onConfirm,
   onCancel,
 }: RegenerateDraftsModalProps) {
   const [instruction, setInstruction] = useState("");
-  const total = counts.draft + counts.failed;
+  const total = counts.draft + counts.failed + counts.approved;
+  const verb = aiOff ? "Replace" : "Regenerate";
 
   const protectedRows = [
     { n: skipped.certified, label: "certified" },
@@ -64,10 +74,12 @@ function RegenerateDraftsModalInner({
         <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-border shrink-0">
           <div className="min-w-0">
             <h2 className="font-display text-base font-semibold">
-              Regenerate <span className="font-mono tabular-nums">{total}</span> draft{total !== 1 ? "s" : ""}
+              {verb} <span className="font-mono tabular-nums">{total}</span> {stepNumber > 1 ? "follow-up" : "draft"}{total !== 1 ? "s" : ""}
             </h2>
             <p className="text-xs text-muted-foreground mt-2">
-              With an instruction, each draft is edited from its current wording. Without one, each gets a fresh AI rewrite. Prior versions stay in history.
+              {aiOff
+                ? `AI follow-ups are switched off for this campaign. Each of these will be replaced with the Follow-up ${stepNumber - 1} text from the Sequences tab, or the company default where that box is empty, with the name and company filled in. No AI credits are used. Prior versions stay in history.`
+                : "With an instruction, each draft is edited from its current wording. Without one, each gets a fresh AI rewrite. Prior versions stay in history."}
             </p>
           </div>
           <Button
@@ -99,6 +111,7 @@ function RegenerateDraftsModalInner({
           </div>
         )}
 
+        {!aiOff && (
         <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4">
           <div className="flex items-baseline justify-between gap-2">
             <Label className="text-sm font-medium">Instruction (optional)</Label>
@@ -121,6 +134,7 @@ function RegenerateDraftsModalInner({
             Applied to every draft in this run only — the campaign&apos;s saved AI context is unchanged.
           </p>
         </div>
+        )}
 
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-border shrink-0">
           <p className="text-[11px] text-muted-foreground">
@@ -130,9 +144,9 @@ function RegenerateDraftsModalInner({
             <Button variant="outline" size="sm" onClick={onCancel} disabled={submitting}>
               Cancel
             </Button>
-            <Button size="sm" className="gap-1.5" onClick={() => onConfirm(instruction.trim())} disabled={submitting || total === 0}>
+            <Button size="sm" className="gap-1.5" onClick={() => onConfirm(aiOff ? "" : instruction.trim())} disabled={submitting || total === 0}>
               {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}
-              Regenerate {total}
+              {verb} {total}
             </Button>
           </div>
         </div>

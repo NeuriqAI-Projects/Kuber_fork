@@ -780,7 +780,7 @@ export function CampaignDetail({
   const historyPanelRef = useRef<HTMLDivElement>(null);
   // Bulk regeneration: the confirm modal's server-resolved preview, the live job, and submit state.
   const [bulkRegenPreview, setBulkRegenPreview] = useState<{
-    counts: { draft: number; failed: number };
+    counts: { draft: number; failed: number; approved: number };
     skipped: RegenerationSkipped;
     isSubset: boolean;
     campaignLeadIds?: string[];
@@ -5491,6 +5491,8 @@ export function CampaignDetail({
           counts={bulkRegenPreview.counts}
           skipped={bulkRegenPreview.skipped}
           isSubset={bulkRegenPreview.isSubset}
+          stepNumber={bulkRegenPreview.stepNumber ?? 1}
+          aiOff={(bulkRegenPreview.stepNumber ?? 1) > 1 && !seqFollowupsAi}
           submitting={bulkRegenSubmitting}
           onConfirm={(instruction) => void submitBulkRegenerate(instruction)}
           onCancel={() => setBulkRegenPreview(null)}
