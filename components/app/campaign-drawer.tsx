@@ -64,6 +64,7 @@ import {
   regenerateCampaignDrafts,
   fetchRegenerationJob,
   cancelRegenerationJob,
+  kickRegenerationJob,
   replaceBouncedLead,
   type CampaignReplyThread,
   type CampaignComment,
@@ -1322,10 +1323,22 @@ export function CampaignDetail({
   // drafts are on screen.
   useEffect(() => {
     if (!regenJob?.active) return;
+    let lastKick = 0;
     const interval = setInterval(() => {
       void (async () => {
         const job = await loadRegenJob();
         await loadData();
+        // The worker's batch chain dies after ~5 hops on the platform. While
+        // someone is watching, a job quiet for a minute gets a fresh kick from
+        // here (see regeneration-job/kick) rather than waiting on the watchdog.
+        if (job?.active) {
+          const quietMs = Date.now() - Date.parse(job.heartbeat_at ?? job.started_at ?? job.created_at);
+          if (quietMs > 60_000 && Date.now() - lastKick > 60_000) {
+            lastKick = Date.now();
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) void kickRegenerationJob(session.access_token, campaign.id).catch(() => {});
+          }
+        }
         if (job && !job.active) {
           const done = job.status === "completed";
           // The run releases the hold it was started under; say so, or the

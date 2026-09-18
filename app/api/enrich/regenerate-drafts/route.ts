@@ -57,10 +57,10 @@ async function resolveDraftId(
 // invocation. The job self-chains, so a small batch costs nothing but an extra
 // round trip.
 // The budget below is the time guard, not this number: an AI run still stops
-// after ~5 calls and releases the rest. Raised from 5 because a switched-off
-// campaign replaces text in ~2s a lead, and at 5 a lead a 96-lead run was 20
-// hand-offs — see the note on the hand-off in POST.
-const BATCH_SIZE = 20;
+// after ~5 calls and releases the rest. Raised from 5 because the platform
+// drops a self-chain after five hops (see runBatch), so a switched-off
+// campaign has to get through its leads in very few batches.
+const BATCH_SIZE = 60;
 
 /**
  * Batch worker for bulk draft regeneration.
@@ -164,23 +164,29 @@ async function runBatch(db: ReturnType<typeof createAdminClient>, jobId: string,
 
   const stepNumber = (job.step_number as number | null) ?? 1;
 
+  // THE PLATFORM ALLOWS ABOUT FIVE SELF-CALLS IN A ROW, THEN DROPS THE NEXT.
+  // Measured four times on 18 Sep 2026, with two different hand-off designs:
+  // five batches, then silence, every time. So a run has to fit in five
+  // batches or wait for something else to kick it. With AI switched off a
+  // lead is ~3s of database round trips, one at a time - four at a time is
+  // the same work in a quarter of the wall clock, and 100 leads becomes two
+  // batches. AI runs stay one at a time: the budget's slowest-call logic and
+  // the providers' rate limits both assume it.
+  const { data: camp } = await cdb.from("campaigns").select("followups_ai_enabled").eq("id", job.campaign_id as string).maybeSingle();
+  const aiOff = stepNumber > 1 && camp?.followups_ai_enabled === false;
+  const concurrency = aiOff ? 4 : 1;
+
   // BATCH_SIZE alone is not a time guard: five calls at the observed 10.5s
   // worst case is 52s against a 55s ceiling, with nothing left for the
   // self-chain. Claimed items that go unprocessed are released below.
   const budget = new BatchBudget();
   const unprocessed: string[] = [];
-  for (const item of items) {
-    // Out of runway. Every item from here on was already claimed as 'running'
-    // above, so it has to go back to 'pending' or the job stalls holding rows
-    // nothing will ever pick up.
-    if (!budget.hasRoomForAnother()) { unprocessed.push(item.id as string); continue; }
+  const runOne = async (item: { id: string; campaign_lead_id: string; lead_id: string }) => {
     const draftId = await resolveDraftId(cdb, job.campaign_id as string, item, stepNumber);
-
     if (!draftId) {
       await markItem(cdb, item.id, "skipped", "Lead no longer has a draft for this step");
-      continue;
+      return;
     }
-
     const result = await budget.run(() => regenerateOneDraft(cdb, draftId, {
       userId: job.requested_by ?? undefined,
       customInstruction: job.custom_instruction ?? undefined,
@@ -190,7 +196,6 @@ async function runBatch(db: ReturnType<typeof createAdminClient>, jobId: string,
       // widen this to include 'approved' — see bulkRegeneratableStatuses.
       allowedStatuses: bulkRegeneratableStatuses(stepNumber),
     }));
-
     if (result.ok) {
       await markItem(cdb, item.id, "done", null);
       succeeded++;
@@ -200,6 +205,16 @@ async function runBatch(db: ReturnType<typeof createAdminClient>, jobId: string,
       await markItem(cdb, item.id, "failed", result.reason);
       failed++;
     }
+  };
+  for (let i = 0; i < items.length; i += concurrency) {
+    // Out of runway. Every item from here on was already claimed as 'running'
+    // above, so it has to go back to 'pending' or the job stalls holding rows
+    // nothing will ever pick up.
+    if (!budget.hasRoomForAnother()) {
+      for (const it of items.slice(i)) unprocessed.push(it.id as string);
+      break;
+    }
+    await Promise.all(items.slice(i, i + concurrency).map((it) => runOne(it as { id: string; campaign_lead_id: string; lead_id: string })));
   }
 
   if (unprocessed.length > 0) {
