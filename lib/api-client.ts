@@ -915,7 +915,7 @@ export async function bulkApproveDrafts(token: string, draftIds: string[]): Prom
   }, token);
 }
 
-export type RegenerationSkipped = { certified: number; sent: number; no_draft: number; other: number };
+export type RegenerationSkipped = { certified: number; sent: number; no_draft: number; customized: number; other: number };
 
 export type RegenerationJobStatus = {
   id: string;

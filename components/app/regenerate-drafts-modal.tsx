@@ -51,9 +51,10 @@ function RegenerateDraftsModalInner({
   const verb = aiOff ? "Replace" : "Regenerate";
 
   const protectedRows = [
-    { n: skipped.certified, label: "certified" },
-    { n: skipped.sent,      label: "sent" },
-    { n: skipped.no_draft,  label: "no draft" },
+    { n: skipped.certified,  label: "certified" },
+    { n: skipped.sent,       label: "sent" },
+    { n: skipped.customized, label: "customized for that lead" },
+    { n: skipped.no_draft,   label: "no draft" },
   ].filter((r) => r.n > 0);
 
   const scopeNotes = [

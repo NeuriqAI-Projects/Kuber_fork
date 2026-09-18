@@ -55,6 +55,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       subject: parsed.data.subject,
       body: parsed.data.body,
       status: "approved",
+      // A human is editing this lead's copy directly — mark it protected so a
+      // campaign-wide "Rewrite follow-up N for N leads" run leaves it alone.
+      source: "manual",
       approved_at: now,
       updated_at: now,
     }).eq("id", existing.id);
@@ -76,6 +79,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         subject: parsed.data.subject,
         body: parsed.data.body,
         status: "approved",
+        // Same reasoning as the update branch above: a manual write is a
+        // human-authored override for this one lead.
+        source: "manual",
         approved_at: now,
         created_at: now,
       })
