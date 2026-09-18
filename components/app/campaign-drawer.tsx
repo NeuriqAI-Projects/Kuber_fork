@@ -855,7 +855,7 @@ export function CampaignDetail({
   /** Right panel shows either that lead's own email, or the shared template.
    *  Both are needed: the template still carries the delay and the writing
    *  instructions, and losing it would make a step uneditable. */
-  const [seqPane, setSeqPane] = useState<"lead" | "template">("lead");
+  const [seqPane, setSeqPane] = useState<"lead" | "template">("template");
   // Opens on ALL, not on a filtered subset. Defaulting to "due" showed 86 of
   // 100 leads and made the other 14 — the replied and the bounced — look like
   // they had vanished from the campaign. They stay in the list, labelled.
@@ -2854,18 +2854,23 @@ export function CampaignDetail({
    *  tell how many they actually got, and a silent template looks identical to
    *  a real one. */
   const seqQuality = (() => {
-    let ai = 0, template = 0;
+    let ai = 0, template = 0, manual = 0;
     const reasons = new Map<string, number>();
     for (const cl of seqLive) {
       const d = (cl.all_drafts ?? []).find((x) => x.step_number === seqStepOrder);
       if (!d?.body) continue;
-      if (d.source === "template") {
+      if (d.source === "manual") {
+        // Edited by hand for this one lead — no longer following the
+        // campaign default, so it belongs in its own bucket rather than
+        // being counted as an AI-written follow-up.
+        manual++;
+      } else if (d.source === "template") {
         template++;
         const why = d.fallback_reason ?? "Reason not recorded";
         reasons.set(why, (reasons.get(why) ?? 0) + 1);
       } else ai++;
     }
-    return { ai, template, reasons: [...reasons.entries()].sort((a, b) => b[1] - a[1]) };
+    return { ai, template, manual, reasons: [...reasons.entries()].sort((a, b) => b[1] - a[1]) };
   })();
 
   const seqActiveLeadRow =
@@ -4249,6 +4254,7 @@ export function CampaignDetail({
                         value={editBody}
                         onChange={setEditBody}
                         disabled={isPreviewingHistory || selected.email_drafts.status === "approved"}
+                        templateVars={LEAD_TEMPLATE_VARS}
                         minHeight={360}
                       />
                     </div>
@@ -4611,12 +4617,27 @@ export function CampaignDetail({
 
       {/* ── Sequences ─────────────────────────────────────────────────────── */}
       {viewTab === "sequences" && (
-        <div className="flex flex-1 min-h-0">
-          {/* Left: the leads, laid out exactly like Outbox.
-              This tab used to lead with the STEPS, so answering "what is this
-              lead getting?" meant visiting every step in turn. The lead is the
-              subject people actually have in mind, so it is the subject here —
-              and matching Outbox leaves one layout to learn instead of two. */}
+        <div className="flex flex-col flex-1 min-h-0">
+          {/* Campaign vs Lead sits right under the main tab bar, above
+              everything else in this tab — so it reads as switching the whole
+              screen, not as a control buried inside one pane's content. */}
+          <div className="shrink-0 border-b border-border px-6 pt-3 pb-3 flex items-center justify-start">
+            <SegmentedTabs
+              size="md"
+              value={seqPane}
+              onValueChange={(v) => setSeqPane(v as "lead" | "template")}
+              options={[
+                { value: "template", label: "Campaign" },
+                { value: "lead", label: "Lead" },
+              ]}
+            />
+          </div>
+          <div className="flex flex-1 min-h-0">
+          {/* Left: the leads, laid out exactly like Outbox. Campaign pane has
+              nothing to do with any one lead, so the list is not just muted
+              there — it is not rendered at all, and the right pane takes the
+              full width instead. */}
+          {seqPane === "lead" && (
           <div className="w-[266px] h-full shrink-0 border-r border-border flex flex-col">
             <div className="border-b border-border shrink-0">
               <div className="px-3 pt-2 pb-2 space-y-2">
@@ -4645,9 +4666,9 @@ export function CampaignDetail({
               {/* How this step was written. The client bought a personalised
                   email per company; without this number a template is
                   indistinguishable from the real thing. */}
-              {(seqQuality.ai > 0 || seqQuality.template > 0) && (
+              {(seqQuality.ai > 0 || seqQuality.template > 0 || seqQuality.manual > 0) && (
                 <div className="px-3 pb-2 space-y-1">
-                  <div className="flex items-center gap-1.5 text-[11px]">
+                  <div className="flex items-center gap-1.5 text-[11px] flex-wrap">
                     <span className="font-mono tabular-nums font-semibold">{seqQuality.ai}</span>
                     <span className="text-muted-foreground">personalised</span>
                     {seqQuality.template > 0 && (
@@ -4655,6 +4676,13 @@ export function CampaignDetail({
                         <span className="text-muted-foreground">·</span>
                         <span className="font-mono tabular-nums font-semibold text-amber-600">{seqQuality.template}</span>
                         <span className="text-muted-foreground">template</span>
+                      </>
+                    )}
+                    {seqQuality.manual > 0 && (
+                      <>
+                        <span className="text-muted-foreground">·</span>
+                        <span className="font-mono tabular-nums font-semibold text-primary">{seqQuality.manual}</span>
+                        <span className="text-muted-foreground">customized</span>
                       </>
                     )}
                   </div>
@@ -4733,41 +4761,30 @@ export function CampaignDetail({
               })}
             </div>
           </div>
+          )}
 
-          {/* Right: everything this ONE lead is getting, step by step. */}
-          <div className="flex-1 min-w-0 overflow-y-auto p-6">
+          {/* Right: everything this ONE lead is getting, step by step — full
+              width in the Campaign pane, since there is no lead list beside it. */}
+          <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-6">
             <div className="max-w-2xl mx-auto space-y-4">
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                {/* The lead's name/title only matters as orientation for the
-                    Steps pane ("whose page am I on"), since that pane is
-                    campaign-wide, not about this one person — see the note
-                    below. On the "lead" pane the same identity is the Lead
-                    card just underneath, so showing it twice here would be
-                    redundant. */}
-                {seqPane === "template" && (
-                  <div className="min-w-0">
-                    <p className="font-display text-sm font-semibold truncate">
-                      {seqActiveLeadRow
-                        ? [seqActiveLeadRow.cl.leads?.first_name, seqActiveLeadRow.cl.leads?.last_name].filter(Boolean).join(" ") || "Lead"
-                        : "No lead selected"}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {seqActiveLeadRow?.cl.leads?.title ? `${seqActiveLeadRow.cl.leads.title} · ` : ""}
-                      {seqActiveLeadRow?.cl.leads?.company_name ?? ""}
-                    </p>
-                  </div>
-                )}
-                <SegmentedTabs
-                  size="sm"
-                  value={seqPane}
-                  onValueChange={(v) => setSeqPane(v as "lead" | "template")}
-                  options={[
-                    { value: "lead", label: "This lead" },
-                    { value: "template", label: "Steps" },
-                  ]}
-                  className={seqPane === "lead" ? "ml-auto" : undefined}
-                />
-              </div>
+              {/* Campaign pane shows nothing lead-specific at all — no name,
+                  no title, no company — since everything below it is shared
+                  by every lead in the campaign, not the one selected on the
+                  left. The Lead pane's identity lives on the Lead card just
+                  underneath instead. */}
+              {seqPane === "lead" && (
+                <div className="min-w-0">
+                  <p className="font-display text-sm font-semibold truncate">
+                    {seqActiveLeadRow
+                      ? [seqActiveLeadRow.cl.leads?.first_name, seqActiveLeadRow.cl.leads?.last_name].filter(Boolean).join(" ") || "Lead"
+                      : "No lead selected"}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {seqActiveLeadRow?.cl.leads?.title ? `${seqActiveLeadRow.cl.leads.title} · ` : ""}
+                    {seqActiveLeadRow?.cl.leads?.company_name ?? ""}
+                  </p>
+                </div>
+              )}
 
               {seqPane === "lead" ? (
                 !seqActiveLeadRow ? (
@@ -4923,7 +4940,9 @@ export function CampaignDetail({
                             <Pill shape="sm" className="bg-emerald-500/15 text-emerald-600 border-transparent">Sent</Pill>
                           )}
                           {row.written && (
-                            row.isTemplate
+                            row.draft?.source === "manual"
+                              ? <Pill shape="sm" className="bg-primary/15 text-primary border-transparent">Customized for this lead</Pill>
+                              : row.isTemplate
                               ? <Pill shape="sm" className="bg-amber-500/15 text-amber-600 border-transparent">Template</Pill>
                               : <Pill shape="sm" className="bg-primary/15 text-primary border-transparent">AI written</Pill>
                           )}
@@ -4937,7 +4956,7 @@ export function CampaignDetail({
 
                         {row.written ? (
                           seqEditingDraftId === row.draft?.id ? (
-                            <RichTextEditor value={seqEditBody} onChange={setSeqEditBody} />
+                            <RichTextEditor value={seqEditBody} onChange={setSeqEditBody} templateVars={LEAD_TEMPLATE_VARS} />
                           ) : (
                             <div
                               className="text-sm leading-relaxed [&_p]:mb-2"
@@ -5310,7 +5329,7 @@ export function CampaignDetail({
                     </div>
                   ))}
                   {canEditSettings && (
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2.5 flex-wrap">
                       {seqStepEdits.length < 8 && (
                         <Button
                           type="button"
@@ -5337,7 +5356,11 @@ export function CampaignDetail({
                         // and did another.
                         const n = seqLive.filter((cl) => {
                           const d = (cl.all_drafts ?? []).find((x) => x.step_number === st.step_order);
-                          return !!d?.body && !hasReceivedFollowupStep(cl, st.step_order);
+                          return !!d?.body && d.source !== "manual" && !hasReceivedFollowupStep(cl, st.step_order);
+                        }).length;
+                        const customized = seqLive.filter((cl) => {
+                          const d = (cl.all_drafts ?? []).find((x) => x.step_number === st.step_order);
+                          return !!d?.body && d.source === "manual" && !hasReceivedFollowupStep(cl, st.step_order);
                         }).length;
                         if (n === 0) return null;
                         return (
@@ -5347,7 +5370,7 @@ export function CampaignDetail({
                             variant="outline"
                             size="sm"
                             disabled={bulkRegenOpening}
-                            title={`Rewrites this step for the ${n} lead${n === 1 ? "" : "s"} whose follow-up is written but not yet sent. Sent ones are never touched.`}
+                            title={`Rewrites this step for the ${n} lead${n === 1 ? "" : "s"} whose follow-up is written but not yet sent. Sent ones are never touched.${customized > 0 ? ` ${customized} customized for that lead ${customized === 1 ? "is" : "are"} left alone.` : ""}`}
                             onClick={() => void openBulkRegenerate(undefined, st.step_order)}
                             className="h-7 gap-1.5 px-3 text-xs text-muted-foreground hover:text-foreground [&_svg]:size-3"
                           >
@@ -5371,6 +5394,7 @@ export function CampaignDetail({
                 </div>
               )}
             </div>
+          </div>
           </div>
         </div>
       )}

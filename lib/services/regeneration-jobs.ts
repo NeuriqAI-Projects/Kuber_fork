@@ -12,7 +12,7 @@ export type RegenerationTarget = {
 export type RegenerationTargets = {
   eligible: RegenerationTarget[];
   /** Why the rest were left out — shown in the confirm modal so the user knows what is protected. */
-  skipped: { certified: number; sent: number; no_draft: number; other: number };
+  skipped: { certified: number; sent: number; no_draft: number; customized: number; other: number };
 };
 
 export type RegenerationJob = {
@@ -33,7 +33,7 @@ const JOB_COLUMNS =
   "id, campaign_id, status, step_number, custom_instruction, total, succeeded, failed, created_at, started_at, finished_at, heartbeat_at";
 
 type LeadRef = { id: string; assigned_to: string | null } | { id: string; assigned_to: string | null }[] | null;
-export type DraftRef = { id: string; status: string; step_number: number } | { id: string; status: string; step_number: number }[] | null;
+export type DraftRef = { id: string; status: string; step_number: number; source?: string | null } | { id: string; status: string; step_number: number; source?: string | null }[] | null;
 
 function unwrap<T>(raw: T | T[] | null): T | null {
   if (!raw) return null;
@@ -94,7 +94,7 @@ export async function resolveRegenerationTargets(
     .select(`
       id, lead_id,
       leads!lead_id!inner(id, assigned_to),
-      email_drafts(id, status, step_number)
+      email_drafts(id, status, step_number, source)
     `)
     .eq("campaign_id", campaignId)
     .eq("leads.is_deleted", false);
@@ -108,7 +108,7 @@ export async function resolveRegenerationTargets(
   const followupDrafts = stepNumber > 1
     ? (await db
         .from("email_drafts")
-        .select("id, lead_id, status, step_number")
+        .select("id, lead_id, status, step_number, source")
         .eq("campaign_id", campaignId)
         .eq("step_number", stepNumber)
         .not("status", "in", "(rejected,failed)")
@@ -119,7 +119,7 @@ export async function resolveRegenerationTargets(
   const requested = opts.campaignLeadIds?.length ? new Set(opts.campaignLeadIds) : null;
 
   const eligible: RegenerationTarget[] = [];
-  const skipped = { certified: 0, sent: 0, no_draft: 0, other: 0 };
+  const skipped = { certified: 0, sent: 0, no_draft: 0, customized: 0, other: 0 };
 
   for (const row of rows ?? []) {
     const lead = unwrap(row.leads as LeadRef);
@@ -141,6 +141,14 @@ export async function resolveRegenerationTargets(
       : draftsForStep(row.email_drafts as DraftRef, stepNumber);
     if (!draft) {
       skipped.no_draft++;
+      continue;
+    }
+
+    // A human edited this lead's copy directly (see followup-save/route.ts) —
+    // the campaign default no longer applies to them until they revert it, so
+    // a campaign-wide bulk run must never overwrite it.
+    if (draft.source === "manual") {
+      skipped.customized++;
       continue;
     }
 
