@@ -30,7 +30,7 @@ export type RegenerationJob = {
 };
 
 const JOB_COLUMNS =
-  "id, campaign_id, status, step_number, custom_instruction, total, succeeded, failed, created_at, started_at, finished_at";
+  "id, campaign_id, status, step_number, custom_instruction, total, succeeded, failed, created_at, started_at, finished_at, heartbeat_at";
 
 type LeadRef = { id: string; assigned_to: string | null } | { id: string; assigned_to: string | null }[] | null;
 export type DraftRef = { id: string; status: string; step_number: number } | { id: string; status: string; step_number: number }[] | null;

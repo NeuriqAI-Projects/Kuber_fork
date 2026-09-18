@@ -934,6 +934,10 @@ export type RegenerationJobStatus = {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  /** Stamped at the start and end of every batch. A live job whose heartbeat
+   *  is a minute old has lost its chain (the platform drops a self-chain after
+   *  five hops) and needs a kick from outside. */
+  heartbeat_at: string | null;
 };
 
 /** What a bulk regeneration would touch, and what it would leave alone. */
@@ -968,6 +972,12 @@ export async function regenerateCampaignDrafts(
 
 export async function fetchRegenerationJob(token: string, campaignId: string): Promise<{ job: RegenerationJobStatus | null }> {
   return apiFetch(`/api/v1/campaigns/${campaignId}/regeneration-job`, {}, token);
+}
+
+/** Re-kick a bulk regeneration whose batch chain has gone quiet. Safe to call
+ *  freely: the server only acts on a job with no heartbeat for a minute. */
+export async function kickRegenerationJob(token: string, campaignId: string): Promise<{ kicked: boolean }> {
+  return apiFetch(`/api/v1/campaigns/${campaignId}/regeneration-job/kick`, { method: "POST" }, token);
 }
 
 export async function cancelRegenerationJob(token: string, campaignId: string): Promise<{ job_id: string; cancelled: boolean; remaining: number }> {
