@@ -7,6 +7,7 @@
  */
 import { strict as assert } from "assert";
 import { getFollowupFallbackTemplate, renderFollowupFallback } from "./settings";
+import { hasVisibleText } from "../utils/email-html";
 
 // ── renderFollowupFallback: placeholder substitution ──────────────────────────
 
@@ -91,3 +92,17 @@ void (async function testDefaults() {
 
   console.log("settings: all follow-up fallback checks passed");
 })();
+
+// ── hasVisibleText: an emptied editor box must read as "not set" ──────────────
+// "<p></p>" is truthy, so .trim() checks treated an empty box as real text; in
+// the follow-up ladder that beat the company default and produced a blank email.
+assert.equal(hasVisibleText("<p></p>"), false);
+assert.equal(hasVisibleText("<p><br></p>"), false);
+assert.equal(hasVisibleText("<p>&nbsp;</p>"), false);
+assert.equal(hasVisibleText("   "), false);
+assert.equal(hasVisibleText(null), false);
+assert.equal(hasVisibleText(undefined), false);
+assert.equal(hasVisibleText("<p>Hi {{first_name}}</p>"), true);
+assert.equal(hasVisibleText("<p><strong>Masterbatches</strong></p>"), true);
+
+console.log("settings: hasVisibleText checks passed");

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getFollowupFallbackTemplate } from "@/lib/services/settings";
+import { hasVisibleText } from "@/lib/utils/email-html";
 
 /**
  * The text a follow-up falls back to when it cannot be personalised.
@@ -79,12 +80,16 @@ export async function resolveFollowupTemplate(
         .eq("step_order", stepOrder)
         .maybeSingle();
 
+      // hasVisibleText, not .trim(): an emptied editor box stores "<p></p>",
+      // which is truthy, so a blank box used to win this rung and resolve to an
+      // email with no body at all — the opposite of the "Leave empty for the
+      // company default" the UI promises.
       const perStep = (data?.fallback_body as string | null)?.trim();
-      if (perStep) return perStep;
+      if (perStep && hasVisibleText(perStep)) return perStep;
     }
 
     const fromSettings = (await getFollowupFallbackTemplate(db))?.trim();
-    if (fromSettings) return fromSettings;
+    if (fromSettings && hasVisibleText(fromSettings)) return fromSettings;
   } catch {
     // fall through — see the note above
   }

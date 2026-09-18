@@ -75,6 +75,21 @@ export function plainToHtml(plain: string): string {
 }
 
 /** HTML -> markdown-ish plain text. The exact inverse of plainToHtml. */
+/**
+ * Does this HTML carry any text a reader would see?
+ *
+ * An emptied rich-text box does not store "" — it stores "<p></p>", which is a
+ * non-empty string and therefore passed every `?.trim()` truthiness check we
+ * had. In the follow-up fallback ladder that meant an empty box BEAT the
+ * company default it was supposed to fall through to, and the step resolved to
+ * an email with no body (PACKAGING GROUP 1 step 3, caught 18 Sep before
+ * anything sent). Anywhere a blank box must mean "not set", ask this, not
+ * `.trim()`.
+ */
+export function hasVisibleText(html: string | null | undefined): boolean {
+  return htmlToPlainText(html ?? "").replace(/\s/g, "") !== "";
+}
+
 export function htmlToPlainText(html: string): string {
   return html
     .replace(/<br\s*\/?>/gi, "\n")
