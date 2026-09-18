@@ -28,6 +28,11 @@ import { getFollowupFallbackTemplate } from "@/lib/services/settings";
  * has to be good enough that most campaigns never touch them.
  */
 
+/** Shown on a follow-up that is the step's default text by the campaign's choice
+ *  rather than because anything failed. Lives here so both the writer and the
+ *  Regenerate path can say the same thing. */
+export const AI_OFF_REASON = "AI follow-ups are switched off for this campaign, so this step's default text was used.";
+
 /** Last resort, used only when neither the campaign nor Settings has text.
  *  Deliberately says nothing a specific company would have to own. */
 export const BUILT_IN_FOLLOWUP_FALLBACK =

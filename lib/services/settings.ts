@@ -45,15 +45,34 @@ export async function getFollowupFallbackTemplate(db: SupabaseClient): Promise<s
   return data?.value?.trim() || DEFAULT_FOLLOWUP_FALLBACK_BODY;
 }
 
+/**
+ * "heena" -> "Heena", "RAJESH KUMAR" -> "Rajesh Kumar".
+ *
+ * Names reached the email exactly as Apollo stored them, so a lowercase one went
+ * out as "Dear heena Mehta," (Dev E2E, 10 Sep 2026), and 408 of the client's
+ * 7,614 leads are stored in capitals. Only a name typed in ONE case is touched:
+ * mixed case ("McDonald", "LI Shi") is somebody's deliberate spelling.
+ *
+ * Lives here, not in generate-drafts.ts where it started, because the template
+ * path below needs it too and generate-drafts already imports this file.
+ */
+export function tidyName(name: string | null): string | null {
+  const t = name?.trim();
+  if (!t || (t !== t.toLowerCase() && t !== t.toUpperCase())) return name;
+  return t.toLowerCase().replace(/(^|[\s'-])([^\s'-])/g, (_m, sep: string, ch: string) => sep + ch.toUpperCase());
+}
+
 /** Fills {{first_name}} / {{name}} / {{last_name}} / {{company}} - the same
  *  placeholders fillFollowupTemplate accepts. Only {{first_name}} used to be
  *  filled here, so a default text using {{company}} reached the prospect as the
  *  literal "{{company}}". That mattered little while this text was only a
- *  safety net; with AI follow-ups switched off it is every follow-up. */
+ *  safety net; with AI follow-ups switched off it is every follow-up — which is
+ *  also why the name is tidied here: the AI path fixed "heena" on its way into
+ *  the prompt, so only the template path still sent "Hi heena". */
 export function renderFollowupFallback(template: string, firstName: string, company?: string | null, lastName?: string | null): string {
   return template
-    .replace(/\{\{\s*(first_name|name)\s*\}\}/gi, firstName?.trim() || "there")
-    .replace(/\{\{\s*last_name\s*\}\}/gi, lastName?.trim() ?? "")
+    .replace(/\{\{\s*(first_name|name)\s*\}\}/gi, tidyName(firstName ?? null)?.trim() || "there")
+    .replace(/\{\{\s*last_name\s*\}\}/gi, tidyName(lastName ?? null)?.trim() ?? "")
     .replace(/\{\{\s*company\s*\}\}/gi, company?.trim() || "your company");
 }
 

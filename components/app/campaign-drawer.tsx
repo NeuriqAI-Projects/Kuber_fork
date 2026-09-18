@@ -1284,7 +1284,15 @@ export function CampaignDetail({
         if (!cancelled) {
           setSeqCampaignInstruction(followup_instruction ?? "");
           setSeqFollowupsAi(followups_ai_enabled ?? true);
-          const mapped = steps.map((s) => ({ step_order: s.step_order, subject: s.subject, body: s.body, delay: s.delay, delay_unit: s.delay_unit }));
+          // ai_instruction and fallback_body ride along deliberately. Dropping
+          // them here left both boxes EMPTY on every fresh load while the text
+          // sat safely in the database - and worse, a Save from that screen
+          // wrote the empty box back over it (client campaign, 18 Sep 2026).
+          const mapped = steps.map((s) => ({
+            step_order: s.step_order, subject: s.subject, body: s.body,
+            delay: s.delay, delay_unit: s.delay_unit,
+            ai_instruction: s.ai_instruction ?? null, fallback_body: s.fallback_body ?? null,
+          }));
           setCampaignSteps(mapped);
           const followUps = mapped.filter((s) => s.step_order > 1);
           if (followUps.length > 0) {
@@ -1377,7 +1385,12 @@ export function CampaignDetail({
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
         const { steps } = await fetchCampaignSteps(session.access_token, campaign.id);
-        setCampaignSteps(steps.map((s) => ({ step_order: s.step_order, subject: s.subject, body: s.body, delay: s.delay, delay_unit: s.delay_unit })));
+        // Same as the loader above: keep the per-step instruction and default text.
+        setCampaignSteps(steps.map((s) => ({
+          step_order: s.step_order, subject: s.subject, body: s.body,
+          delay: s.delay, delay_unit: s.delay_unit,
+          ai_instruction: s.ai_instruction ?? null, fallback_body: s.fallback_body ?? null,
+        })));
       } catch { setCampaignSteps([]); }
     }
     void loadCampaignSteps();

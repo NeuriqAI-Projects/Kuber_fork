@@ -3,6 +3,9 @@ import { generateOneDraft } from "@/lib/services/generate-drafts";
 import { syncApprovedDraftToInstantly } from "@/lib/services/draft-sync";
 import { getInstantlyLeadSentStepIndex } from "@/lib/services/instantly";
 import { resolveStandingFollowupInstruction, mergeInstructions } from "@/lib/services/followup-instruction";
+import { resolveFollowupTemplate, AI_OFF_REASON } from "@/lib/services/followup-template";
+import { renderFollowupFallback } from "@/lib/services/settings";
+import { logLeadEvent } from "@/lib/services/lead-events";
 
 /** Draft statuses a regeneration may start from. Anything else (sent, generating) is refused. */
 export const REGENERATABLE_STATUSES = ["draft", "failed", "rejected", "approved"] as const;
@@ -87,7 +90,7 @@ export async function regenerateOneDraft(
 
   const { data: campaign } = await db
     .from("campaigns")
-    .select("id, name, human_in_loop, ai_prompt_context, company_id")
+    .select("id, name, human_in_loop, ai_prompt_context, company_id, followups_ai_enabled")
     .eq("id", oldDraft.campaign_id)
     .maybeSingle();
 
@@ -185,6 +188,57 @@ export async function regenerateOneDraft(
   if (insertErr || !newDraftRow) {
     await revertOldDraft();
     return { ok: false, code: "INTERNAL", reason: insertErr?.message ?? "Failed to create draft row" };
+  }
+
+  // AI FOLLOW-UPS SWITCHED OFF: REGENERATE MEANS "PUT MY TEXT BACK", NOT "ASK THE MODEL".
+  //
+  // The switch used to govern only the scheduled writer, so Regenerate still
+  // called the model — on a campaign with the switch off, one "Regenerate all"
+  // was 96 paid calls producing exactly the emails the client had turned off.
+  // Now it writes this step's own text (or the company default when that box is
+  // empty), fills in the name and company, and spends nothing.
+  if (stepNumber > 1 && campaign.followups_ai_enabled === false) {
+    const lead = (Array.isArray(cl.leads) ? cl.leads[0] : cl.leads) as Record<string, unknown> | null;
+    const org = lead?.organizations as { name?: string | null } | { name?: string | null }[] | null | undefined;
+    const template = await resolveFollowupTemplate(db, oldDraft.campaign_id, stepNumber);
+    const body = renderFollowupFallback(
+      template,
+      (lead?.first_name as string | null) ?? "",
+      (Array.isArray(org) ? org[0] : org)?.name,
+      lead?.last_name as string | null,
+    );
+    const now = new Date().toISOString();
+    const { error: fillErr } = await db.from("email_drafts").update({
+      subject: "",                 // a follow-up threads as a reply
+      body,
+      status: "approved",          // follow-ups are not certified by a human
+      source: "template",
+      fallback_reason: AI_OFF_REASON,
+      approved_at: now,
+      reviewed_by: opts.userId ?? null,
+      updated_at: now,
+    }).eq("id", newDraftRow.id);
+
+    if (fillErr) {
+      await db.from("email_drafts").delete().eq("id", newDraftRow.id);
+      await revertOldDraft();
+      return { ok: false, code: "INTERNAL", reason: fillErr.message };
+    }
+
+    // Instantly holds its own copy of this text, so the push is what the lead
+    // actually receives — same as the scheduled writer does.
+    if (cl.instantly_lead_id) {
+      await syncApprovedDraftToInstantly(db, oldDraft.lead_id as string, oldDraft.campaign_id as string).catch(() => {});
+    }
+    await logLeadEvent(db, oldDraft.lead_id as string, "draft_created",
+      `Follow-up replaced with this step's default text (step ${stepNumber})`, {
+        actorId: opts.userId ?? null,
+        metadata: { campaign_id: oldDraft.campaign_id, draft_id: newDraftRow.id, step: stepNumber, ai_off: true },
+      });
+
+    const { data: filled } = await db.from("email_drafts")
+      .select("id, subject, body, status, version").eq("id", newDraftRow.id).single();
+    return { ok: true, draft: filled as DraftVersionRow };
   }
 
   // The campaign's and this step's standing guidance. Regenerating without it

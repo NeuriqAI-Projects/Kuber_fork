@@ -3,6 +3,8 @@ import { requireAuth } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { FollowUpRegenerateSchema } from "@/lib/validators/drafts";
 import { regenerateFollowUpText } from "@/lib/services/followup-regenerate";
+import { resolveFollowupTemplate, AI_OFF_REASON } from "@/lib/services/followup-template";
+import { renderFollowupFallback } from "@/lib/services/settings";
 import { assertCampaignAccess } from "@/lib/auth/scope";
 import { logLeadEvent } from "@/lib/services/lead-events";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -25,25 +27,44 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { data: cl } = await db
     .from("campaign_leads")
-    .select("id, lead_id, campaign_id, leads!lead_id(first_name)")
+    .select("id, lead_id, campaign_id, leads!lead_id(first_name, last_name, organizations(name))")
     .eq("id", parsed.data.campaign_lead_id)
     .eq("campaign_id", id)
     .maybeSingle();
 
   if (!cl) return fail(404, "NOT_FOUND", "Campaign lead not found");
 
-  const leadRow = Array.isArray(cl.leads) ? cl.leads[0] : cl.leads;
+  const leadRow = (Array.isArray(cl.leads) ? cl.leads[0] : cl.leads) as Record<string, unknown> | null;
+
+  // With AI follow-ups switched off, Rewrite means "put this step's text back",
+  // not "ask the model" — otherwise the button quietly spends credits on a
+  // campaign the client deliberately took off AI.
+  const { data: campaign } = await db
+    .from("campaigns").select("followups_ai_enabled").eq("id", id).maybeSingle();
+  const aiOff = campaign?.followups_ai_enabled === false;
 
   let rewritten: { body: string };
-  try {
-    rewritten = await regenerateFollowUpText({
-      leadFirstName: leadRow?.first_name ?? null,
-      currentBody: parsed.data.body,
-      instruction: parsed.data.instruction ?? "Rewrite this follow-up.",
-      companyId: user.companyId ?? "any",
-    });
-  } catch (e) {
-    return fail(502, "GENERATION_FAILED", (e as Error).message);
+  if (aiOff) {
+    const org = leadRow?.organizations as { name?: string | null } | { name?: string | null }[] | null | undefined;
+    rewritten = {
+      body: renderFollowupFallback(
+        await resolveFollowupTemplate(db, id, parsed.data.step_number),
+        (leadRow?.first_name as string | null) ?? "",
+        (Array.isArray(org) ? org[0] : org)?.name,
+        leadRow?.last_name as string | null,
+      ),
+    };
+  } else {
+    try {
+      rewritten = await regenerateFollowUpText({
+        leadFirstName: (leadRow?.first_name as string | null) ?? null,
+        currentBody: parsed.data.body,
+        instruction: parsed.data.instruction ?? "Rewrite this follow-up.",
+        companyId: user.companyId ?? "any",
+      });
+    } catch (e) {
+      return fail(502, "GENERATION_FAILED", (e as Error).message);
+    }
   }
 
   const { data: existing } = await db
@@ -80,6 +101,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       subject: "", // follow-ups always thread as a reply
       body: rewritten.body,
       status: "draft",
+      // Labelled for what it is, so the Sequences quality count stays honest:
+      // this one was not written by the AI.
+      ...(aiOff ? { source: "template", fallback_reason: AI_OFF_REASON } : {}),
       version: (existing?.version ?? 0) + 1,
       parent_draft_id: existing?.id ?? null,
       created_at: now,
