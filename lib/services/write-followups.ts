@@ -6,7 +6,7 @@ import { findFollowupsToWrite, MAX_TOTAL_ATTEMPTS, type FollowupTarget } from "@
 import { generateOneDraft, logLlmRecovered } from "@/lib/services/generate-drafts";
 import { syncApprovedDraftToInstantly } from "@/lib/services/draft-sync";
 import { renderFollowupFallback } from "@/lib/services/settings";
-import { resolveFollowupTemplate } from "@/lib/services/followup-template";
+import { resolveFollowupTemplate, AI_OFF_REASON } from "@/lib/services/followup-template";
 import { classifyFallback } from "@/lib/services/fallback-reason";
 import { resolveStandingFollowupInstruction } from "@/lib/services/followup-instruction";
 import { hasUsableLlmKey } from "@/lib/services/provider-keys";
@@ -38,8 +38,8 @@ const TIME_BUDGET_MS = 40_000;
  *  one. */
 const ATTEMPTS_BEFORE_TEMPLATE = 2;
 
-/** Shown on a follow-up that is the step's default text by the campaign's choice. */
-export const AI_OFF_REASON = "AI follow-ups are switched off for this campaign, so this step's default text was used.";
+/** Re-exported so existing importers of this module are unchanged. */
+export { AI_OFF_REASON };
 
 
 

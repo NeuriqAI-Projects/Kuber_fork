@@ -47,6 +47,15 @@ assert.equal(
 assert.equal(renderFollowupFallback("Is {{company}} still sourcing?", "Ben", null), "Is your company still sourcing?");
 // A stored name with a trailing space must not produce "Hi Devyansh ,".
 assert.equal(renderFollowupFallback("Hi {{first_name}},", "Devyansh "), "Hi Devyansh,");
+// The AI path tidies the name before the prompt sees it; the template path has
+// to do the same, or a switched-off campaign sends "Hi heena," (Dev, 18 Sep).
+assert.equal(renderFollowupFallback("Hi {{first_name}},", "heena"), "Hi Heena,");
+assert.equal(
+  renderFollowupFallback("Hi {{first_name}} {{last_name}},", "RAJESH", null, "KUMAR"),
+  "Hi Rajesh Kumar,",
+);
+// Deliberate mixed-case spellings stay untouched.
+assert.equal(renderFollowupFallback("Hi {{first_name}},", "McDonald"), "Hi McDonald,");
 
 // ── getFollowupFallbackTemplate: company default when unset ──────────────────
 

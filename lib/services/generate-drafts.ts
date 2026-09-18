@@ -8,6 +8,7 @@ import {
   getProductOfferings,
   getCompanyContext,
   getGenericTemplate,
+  tidyName,
 } from "@/lib/services/settings";
 import { logLeadEvent } from "@/lib/services/lead-events";
 import { splitInstruction, customerProducts } from "@/lib/services/revision-input";
@@ -176,19 +177,9 @@ function unwrapOrg(raw: OrgData | OrgData[] | null | undefined): OrgData | null 
   return Array.isArray(raw) ? (raw[0] ?? null) : raw;
 }
 
-/**
- * "heena" -> "Heena", "RAJESH KUMAR" -> "Rajesh Kumar".
- *
- * Names reached the email exactly as Apollo stored them, so a lowercase one went
- * out as "Dear heena Mehta," (Dev E2E, 10 Sep 2026), and 408 of the client's
- * 7,614 leads are stored in capitals. Only a name typed in ONE case is touched:
- * mixed case ("McDonald", "LI Shi") is somebody's deliberate spelling.
- */
-export function tidyName(name: string | null): string | null {
-  const t = name?.trim();
-  if (!t || (t !== t.toLowerCase() && t !== t.toUpperCase())) return name;
-  return t.toLowerCase().replace(/(^|[\s'-])([^\s'-])/g, (_m, sep: string, ch: string) => sep + ch.toUpperCase());
-}
+/** Lives in settings.ts so the template path can tidy names too; re-exported
+ *  here because this is where it started and the tests import it from here. */
+export { tidyName };
 
 /** The one place a draft gets its lead, so the tidied name reaches the prompt,
  *  the greeting fallback and the template alike. */
