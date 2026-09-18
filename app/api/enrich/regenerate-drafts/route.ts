@@ -56,7 +56,11 @@ async function resolveDraftId(
 // for one of them, so five sequential calls is the safe ceiling for a 55s
 // invocation. The job self-chains, so a small batch costs nothing but an extra
 // round trip.
-const BATCH_SIZE = 5;
+// The budget below is the time guard, not this number: an AI run still stops
+// after ~5 calls and releases the rest. Raised from 5 because a switched-off
+// campaign replaces text in ~2s a lead, and at 5 a lead a 96-lead run was 20
+// hand-offs — see the note on the hand-off in POST.
+const BATCH_SIZE = 20;
 
 /**
  * Batch worker for bulk draft regeneration.
@@ -71,27 +75,59 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({})) as { job_id?: string };
-  const jobId = body.job_id;
-  if (!jobId) return Response.json({ error: "job_id required" }, { status: 400 });
-
   const db = createAdminClient();
 
+  // No job_id: the once-a-minute pump (pg_cron 'regeneration-pump'). Pick up
+  // whichever live job has gone quiet. The batch-to-batch self-chain below
+  // dies on production every few batches — measured 18 Sep 2026: 20 items,
+  // stall; kick; 20 more, stall — and the watchdog only looks every ten
+  // minutes at jobs five minutes stale, so a 96-lead run crawled for the best
+  // part of an hour. A heartbeat under a minute old means a chain is still
+  // moving and is left alone.
+  let jobId = body.job_id;
+  if (!jobId) {
+    const quietBefore = new Date(Date.now() - 60_000).toISOString();
+    const { data: quiet } = await db
+      .from("draft_regeneration_jobs")
+      .select("id")
+      .in("status", ["queued", "running"])
+      .or(`heartbeat_at.is.null,heartbeat_at.lt.${quietBefore}`)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (!quiet) return Response.json({ processed: 0, status: "idle" });
+    jobId = quiet.id as string;
+  }
+
+  // REPLY NOW, WORK AFTER. Each batch used to run inside the request and only
+  // then kick the next one — and wait for that whole batch to finish before
+  // exiting, so every link in the chain sat waiting on the next. On production
+  // the chain died after exactly five links, three runs out of three on
+  // 18 Sep 2026, and a 96-lead run crawled for an hour on watchdog revivals.
+  // Now the request returns at once and the batch runs in after(); the kick to
+  // the next batch returns in under a second the same way, so no link waits.
+  const baseUrl = internalAppBaseUrl(req);
+  const id = jobId;
+  after(() => runBatch(db, id, baseUrl));
+  return Response.json({ accepted: true, job_id: id }, { status: 202 });
+}
+
+/** One batch of one job, then the kick for the next. Runs after the response. */
+async function runBatch(db: ReturnType<typeof createAdminClient>, jobId: string, baseUrl: string) {
   const { data: job } = await db
     .from("draft_regeneration_jobs")
     .select("id, campaign_id, status, custom_instruction, requested_by, succeeded, failed, company_id, step_number, created_at")
     .eq("id", jobId)
     .maybeSingle();
 
-  if (!job) return Response.json({ error: "Job not found" }, { status: 404 });
+  if (!job) return;
 
   // Internal trigger (shared secret, no user session): the job row supplies the
   // company, and everything below writes through a client scoped to it.
   const cdb = createScopedClient(job.company_id as string);
 
   // Cancelled between batches — stop without touching anything further.
-  if (job.status === "cancelled" || job.status === "completed" || job.status === "failed") {
-    return Response.json({ processed: 0, status: job.status });
-  }
+  if (job.status === "cancelled" || job.status === "completed" || job.status === "failed") return;
 
   const now = new Date().toISOString();
   if (job.status === "queued") {
@@ -112,13 +148,16 @@ export async function POST(req: NextRequest) {
 
   if (!items || items.length === 0) {
     await finishJob(cdb, jobId);
-    return Response.json({ processed: 0, status: "no_more_pending" });
+    return;
   }
 
   await cdb
     .from("draft_regeneration_job_items")
     .update({ status: "running", updated_at: new Date().toISOString() })
     .in("id", items.map((i) => i.id));
+  // Heartbeat at claim time too, so the once-a-minute pump never sees a batch
+  // that is mid-flight as "quiet" and starts a second one on the same job.
+  await cdb.from("draft_regeneration_jobs").update({ heartbeat_at: new Date().toISOString() }).eq("id", jobId);
 
   let succeeded = 0;
   let failed = 0;
@@ -182,24 +221,19 @@ export async function POST(req: NextRequest) {
   }).eq("id", jobId);
 
   // Cancellation lands while a batch is in flight; honour it before chaining.
-  if (fresh?.status === "cancelled") {
-    return Response.json({ processed: items.length, succeeded, failed, status: "cancelled" });
-  }
+  if (fresh?.status === "cancelled") return;
 
   const remaining = await countPendingItems(cdb, jobId);
 
   if (remaining > 0 && process.env.INTERNAL_SECRET) {
-    const baseUrl = internalAppBaseUrl(req);
-    const secret = process.env.INTERNAL_SECRET;
-    // after() keeps the lambda alive until the next kickoff leaves the machine,
-    // so a long run doesn't silently stop halfway.
-    after(async () => {
-      await fetch(`${baseUrl}/api/enrich/regenerate-drafts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-internal-secret": secret },
-        body: JSON.stringify({ job_id: jobId }),
-      }).catch(() => {});
-    });
+    // The next batch answers 202 as soon as it has the job id, so this wait is
+    // under a second, not a whole batch. Awaited so the kick leaves the machine
+    // before this invocation ends.
+    await fetch(`${baseUrl}/api/enrich/regenerate-drafts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-internal-secret": process.env.INTERNAL_SECRET },
+      body: JSON.stringify({ job_id: jobId }),
+    }).catch(() => {});
   } else if (remaining === 0) {
     await finishJob(cdb, jobId);
     // The hold this run needed is released by the run itself. See
@@ -211,7 +245,6 @@ export async function POST(req: NextRequest) {
     }).catch(() => { /* the banner's Resume button is the fallback */ });
   }
 
-  return Response.json({ processed: items.length, succeeded, failed, remaining });
 }
 
 async function markItem(
