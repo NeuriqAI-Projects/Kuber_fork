@@ -209,7 +209,7 @@ export function RichTextEditor({
           it was clipping the {{token}} chip tooltips below, which sit right at
           the toolbar's edge. Rounding is done per-piece instead. */}
       <div className={cn(
-        "flex items-center gap-0.5 rounded-t-md border-b border-border bg-secondary/30 px-2 py-1 flex-wrap",
+        "flex items-center gap-0.5 rounded-t-md border-b border-border bg-secondary px-2 py-1 flex-wrap",
         disabled && "opacity-50 pointer-events-none",
       )}>
         <span className="eyebrow inline-flex h-7 items-center gap-1.5 px-1 mr-0.5">

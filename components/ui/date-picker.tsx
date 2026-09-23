@@ -65,7 +65,7 @@ export function DatePicker({
           }}
         />
         {showQuickActions && (
-          <div className="flex items-center justify-between border-t border-border bg-secondary/30 px-2 py-1.5">
+          <div className="flex items-center justify-between border-t border-border bg-secondary px-2 py-1.5">
             <Button
               type="button"
               variant="ghost"

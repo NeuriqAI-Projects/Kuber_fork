@@ -220,8 +220,8 @@ export function ModelLabView() {
           <>
             {/* Controls */}
             <div className="rounded-lg border border-border bg-secondary p-4">
-              <div className="flex flex-wrap items-end gap-4">
-                <div className="min-w-[210px] flex-1">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+                <div className="min-w-0">
                   <Label className="text-xs">Lead</Label>
                   <Select value={leadId} onValueChange={setLeadId}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
@@ -234,7 +234,7 @@ export function ModelLabView() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="w-[160px]">
+                <div className="min-w-0">
                   <Label className="text-xs">Step</Label>
                   <Select value={step} onValueChange={setStep}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
@@ -243,7 +243,7 @@ export function ModelLabView() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="w-[210px]">
+                <div className="min-w-0">
                   <Label className="text-xs">Prompt set</Label>
                   <Select value={promptSetId} onValueChange={setPromptSetId}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
@@ -253,11 +253,14 @@ export function ModelLabView() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex items-center gap-2 pb-2">
-                  <Switch id="lab-blind" checked={blind} onCheckedChange={setBlind} />
-                  <Label htmlFor="lab-blind" className="text-xs" title="Hides which model wrote which email until you have picked">
-                    Blind
-                  </Label>
+                <div className="flex items-end gap-3 pb-0.5">
+                  <div className="flex items-center gap-2">
+                    <Switch id="lab-blind" checked={blind} onCheckedChange={setBlind} />
+                    <Label htmlFor="lab-blind" className="text-xs">
+                      Blind
+                      <span className="block text-[11px] font-normal text-muted-foreground">names hidden</span>
+                    </Label>
+                  </div>
                 </div>
                 <Button onClick={() => void generate()} disabled={running || picked.length === 0} className="gap-1.5">
                   {running ? <Loader2 className="size-4 animate-spin" /> : <FlaskConical className="size-4" />}
@@ -265,7 +268,9 @@ export function ModelLabView() {
                 </Button>
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
+              <div className="mt-4 border-t border-border pt-3">
+                <Label className="text-xs">Models in this comparison</Label>
+                <div className="mt-2 grid grid-cols-1 gap-x-5 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
                 {models.map((m) => {
                   const on = picked.includes(m);
                   return (
@@ -276,11 +281,14 @@ export function ModelLabView() {
                     </button>
                   );
                 })}
+                </div>
               </div>
 
+              {/* The description the models are given. Clamped by line count,
+                  not by character count — slicing at 220 cut it mid-word. */}
               {selectedLead && (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  {org(selectedLead)?.company_description?.slice(0, 220) ?? "No company description."}
+                <p className="mt-3 line-clamp-2 text-xs text-muted-foreground">
+                  {org(selectedLead)?.company_description ?? "No company description."}
                 </p>
               )}
             </div>
@@ -451,9 +459,9 @@ function EmailCard({
         </span>
       </div>
 
-      <div className="h-[340px] flex-1 overflow-y-auto px-3.5 py-3 text-sm leading-6">
+      <div className={`flex-1 overflow-y-auto px-3.5 py-3 text-sm leading-6 ${email.error ? "" : "h-[340px]"}`}>
         {email.error ? (
-          <p className="text-destructive">Failed: {email.error}</p>
+          <p className="text-xs text-destructive">{email.error}</p>
         ) : (
           <>
             {email.subject && (

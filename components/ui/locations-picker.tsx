@@ -50,7 +50,7 @@ export function LocationsGrid({
   return (
     <>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary/40">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary">
         <p className="eyebrow">
           {selected.length > 0 ? `${selected.length} of ${ALL_LOCATION_KEYS.length} selected` : "Select countries by region"}
         </p>
@@ -111,7 +111,7 @@ export function LocationsGrid({
                             onClick={() => toggleCountry(country)}
                             className={cn(
                               "w-full h-auto justify-start gap-2 rounded px-2 py-1 text-left font-normal",
-                              checked ? "bg-primary/10 hover:bg-primary/10" : "hover:bg-secondary/60",
+                              checked ? "bg-primary/10 hover:bg-primary/10" : "hover:bg-secondary",
                             )}
                           >
                             <AppCheckbox size="sm" checked={checked} />
@@ -228,7 +228,7 @@ export function LocationsPicker({
             <LocationsGrid selected={selected} onChangeSelected={onChangeSelected} />
 
             {/* Footer */}
-            <div className="border-t border-border px-4 py-2.5 flex items-center justify-end bg-secondary/30">
+            <div className="border-t border-border px-4 py-2.5 flex items-center justify-end bg-secondary">
               <Button type="button" variant="link" size="sm" onClick={() => setOpen(false)} className="h-auto p-0 text-xs">
                 Done
               </Button>
