@@ -1802,6 +1802,16 @@ export async function runModelLab(token: string, body: {
   return apiFetch("/api/v1/model-lab/generate", { method: "POST", body: JSON.stringify(body) }, token);
 }
 
+/** The last run for this lead + step + prompt set, so a reload does not look
+ *  like the run never happened. */
+export async function fetchModelLabRun(token: string, params: {
+  leadId: string; stepNumber: number; promptSetId?: string | null;
+}): Promise<{ run_group: string | null; emails: LabEmail[]; votes: { best?: string; worst?: string } }> {
+  const qs = new URLSearchParams({ lead_id: params.leadId, step_number: String(params.stepNumber) });
+  if (params.promptSetId) qs.set("prompt_set_id", params.promptSetId);
+  return apiFetch(`/api/v1/model-lab/generate?${qs}`, {}, token);
+}
+
 export async function voteModelLab(
   token: string, body: { run_group: string; email_id: string; verdict: "best" | "worst" },
 ): Promise<{ recorded: boolean }> {

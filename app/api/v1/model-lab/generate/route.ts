@@ -54,3 +54,48 @@ export async function POST(req: NextRequest) {
     return fail(500, "INTERNAL", (e as Error).message);
   }
 }
+
+/**
+ * The most recent run for this lead + step + prompt set, with this person's
+ * votes on it.
+ *
+ * Without this the screen lost everything on reload: the emails were safely in
+ * model_lab_emails, but Compare held them only in React state, so a refresh
+ * looked exactly like the run had never happened and invited paying for it
+ * twice.
+ */
+export async function GET(req: NextRequest) {
+  let user: Awaited<ReturnType<typeof requireAuth>>;
+  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  if (user.role !== "manager") return fail(403, "FORBIDDEN", "Managers only");
+
+  const url = new URL(req.url);
+  const leadId = url.searchParams.get("lead_id");
+  const stepNumber = Number(url.searchParams.get("step_number") ?? 1) || 1;
+  const promptSetId = url.searchParams.get("prompt_set_id");
+  if (!leadId) return fail(400, "VALIDATION_ERROR", "lead_id required");
+
+  const db = dbForUser(user);
+  let q = db.from("model_lab_emails")
+    .select("id, run_group, model, label, subject, body, duration_ms, cost_usd, error, created_at")
+    .eq("lead_id", leadId).eq("step_number", stepNumber)
+    .order("created_at", { ascending: false }).limit(20);
+  q = promptSetId ? q.eq("prompt_set_id", promptSetId) : q.is("prompt_set_id", null);
+
+  const { data: rows } = await q;
+  if (!rows?.length) return ok({ run_group: null, emails: [], votes: {} });
+
+  // limit(20) may straddle two runs; keep only the newest one's rows.
+  const runGroup = rows[0].run_group as string;
+  const emails = rows.filter((r) => r.run_group === runGroup)
+    .sort((a, b) => String(a.label ?? "").localeCompare(String(b.label ?? "")));
+
+  const { data: votes } = await db.from("model_lab_votes")
+    .select("email_id, verdict").eq("run_group", runGroup).eq("voted_by", user.id);
+
+  return ok({
+    run_group: runGroup,
+    emails,
+    votes: Object.fromEntries((votes ?? []).map((v) => [v.verdict as string, v.email_id as string])),
+  });
+}

@@ -290,9 +290,17 @@ async function recordDraftFailure(
   campaignId: string,
   stepNumber: number,
   err: unknown,
+  /**
+   * A Model Lab attempt. Its failure is an experiment not working, not the
+   * client's drafting being down, so it must not raise the app-wide banner:
+   * the lab deliberately calls models the workspace may have no key for, and
+   * seven of those in a row lit "no LLM provider has credits" across every
+   * screen while Claude was writing real emails perfectly (23 Sep 2026).
+   */
+  isLab = false,
 ): Promise<void> {
   const message = (err as Error).message ?? "Unknown error";
-  const outage = isProviderOutage(message);
+  const outage = isProviderOutage(message) && !isLab;
   const now = new Date().toISOString();
 
   await db.from("email_drafts").update({
@@ -900,7 +908,7 @@ export async function generateOneDraft(
       // Mark only the draft row failed — campaign_leads.draft_id stays NULL so
       // the auto-generator retries this lead on the next batch instead of
       // skipping it forever (planning.md Phase 6.5).
-      await recordDraftFailure(db, activeDraftId, lead.id, campaignId, stepNumber, err);
+      await recordDraftFailure(db, activeDraftId, lead.id, campaignId, stepNumber, err, !!labOverride);
       return { ok: false, reason: (err as Error).message };
     }
   }
@@ -1203,7 +1211,7 @@ export async function generateOneDraft(
     // the auto-generator retries this lead on the next batch instead of
     // skipping it forever (planning.md Phase 6.5). fetchDraftTargets caps
     // retries at 3 failed versions per lead/step.
-    await recordDraftFailure(db, activeDraftId, lead.id, campaignId, stepNumber, err);
+    await recordDraftFailure(db, activeDraftId, lead.id, campaignId, stepNumber, err, !!labOverride);
     return { ok: false, reason: (err as Error).message };
   }
 }
