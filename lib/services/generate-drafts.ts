@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { plainToHtml, htmlToPlainText } from "@/lib/utils/email-html";
 import { complete } from "@/lib/services/llm";
+import type { ProviderId } from "@/lib/services/providers/types";
 import {
   resolveDraftSystemPrompt,
   resolveCampaignSignature,
@@ -649,6 +650,15 @@ async function recordUnattemptedFailure(db: SupabaseClient, target: CampaignLead
 }
 
 /** Generate one draft for a campaign lead. Returns draft id on success. */
+/** Model Lab's per-call overrides. See the `labOverride` parameter below. */
+export type LabOverride = {
+  model?: string;
+  provider?: ProviderId;
+  /** `undefined` = use what is saved; `null` or "" = deliberately none. */
+  template?: string | null;
+  prompt?: string | null;
+};
+
 export async function generateOneDraft(
   db: SupabaseClient,
   target: CampaignLeadTarget,
@@ -671,6 +681,13 @@ export async function generateOneDraft(
    * the model edits that email instead of writing a new one from lead data.
    */
   previousDraft?: PreviousDraftContent | null,
+  /**
+   * Model Lab: write this draft with a named model and an unsaved template /
+   * prompt, instead of whatever the company has configured and saved. Left
+   * undefined by every production caller, and nothing about their path changes.
+   * See CompletionOpts.model and resolveDraftSystemPrompt's `override`.
+   */
+  labOverride?: LabOverride | null,
 ): Promise<
   | { ok: true; draftId: string; status: string }
   /** `skipped` means another worker already did this one — not a fault, and the
@@ -890,7 +907,9 @@ export async function generateOneDraft(
 
   try {
     const [baseSystemPrompt, products, companyContext] = await Promise.all([
-      resolveDraftSystemPrompt(db, promptOwnerId, stepNumber),
+      resolveDraftSystemPrompt(db, promptOwnerId, stepNumber, labOverride
+        ? { template: labOverride.template, prompt: labOverride.prompt }
+        : undefined),
       getProductOfferings(db),
       getCompanyContext(db),
     ]);
@@ -959,6 +978,7 @@ export async function generateOneDraft(
       // differ. An instruction-led revision stays at the low default: "remove
       // the last paragraph" wants precision, not imagination.
       ...(isPlainRegeneration ? { temperature: 0.8 } : {}),
+      ...(labOverride?.model ? { model: labOverride.model, provider: labOverride.provider ?? "openrouter" } : {}),
     }, companyId, {
       // stepNumber 1 is the opening email; anything above is a follow-up. Split
       // here so the bill can answer "what did follow-ups cost" on its own.

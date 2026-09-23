@@ -1760,3 +1760,66 @@ export async function syncUnibox(token: string): Promise<{ ingested: number; pag
 export async function fetchUniboxUnread(token: string) {
   return apiFetch<{ unread: number }>("/api/v1/unibox/unread-count", {}, token);
 }
+
+// ── Model Lab ────────────────────────────────────────────────────────────────
+
+export type LabBenchLead = {
+  id: string; first_name: string | null; last_name: string | null;
+  title: string | null; country: string | null;
+  organizations: { name: string | null; industry: string | null; company_description: string | null }
+    | { name: string | null; industry: string | null; company_description: string | null }[] | null;
+};
+export type LabPromptSet = {
+  id: string; name: string; scope: "personal" | "company";
+  template: string | null; prompt: string | null;
+};
+export type LabEmail = {
+  id: string; model: string; label: string | null;
+  subject: string | null; body: string | null;
+  duration_ms: number | null; cost_usd: number | null; error: string | null;
+};
+export type LabScoreRow = {
+  prompt_set_id: string | null; prompt_set_name: string; model: string;
+  best: number; worst: number; runs: number; avg_ms: number | null; avg_cost: number | null;
+};
+
+export async function fetchModelLab(token: string): Promise<{
+  bench: LabBenchLead[]; models: string[]; prompt_sets: LabPromptSet[]; scoreboard: LabScoreRow[];
+}> {
+  return apiFetch("/api/v1/model-lab", {}, token);
+}
+
+export async function saveModelLabBench(
+  token: string, body: { lead_ids?: string[]; models?: string[] },
+): Promise<{ updated: boolean }> {
+  return apiFetch("/api/v1/model-lab", { method: "PUT", body: JSON.stringify(body) }, token);
+}
+
+export async function runModelLab(token: string, body: {
+  lead_id: string; step_number: number; models: string[];
+  prompt_set_id?: string | null; template?: string | null; prompt?: string | null;
+}): Promise<{ run_group: string; emails: LabEmail[] }> {
+  return apiFetch("/api/v1/model-lab/generate", { method: "POST", body: JSON.stringify(body) }, token);
+}
+
+export async function voteModelLab(
+  token: string, body: { run_group: string; email_id: string; verdict: "best" | "worst" },
+): Promise<{ recorded: boolean }> {
+  return apiFetch("/api/v1/model-lab/vote", { method: "POST", body: JSON.stringify(body) }, token);
+}
+
+export async function clearModelLabVote(
+  token: string, runGroup: string, verdict: "best" | "worst",
+): Promise<{ cleared: boolean }> {
+  return apiFetch(`/api/v1/model-lab/vote?run_group=${runGroup}&verdict=${verdict}`, { method: "DELETE" }, token);
+}
+
+export async function saveLabPromptSet(
+  token: string, body: { id?: string; name: string; scope: "personal" | "company"; template?: string | null; prompt?: string | null },
+): Promise<{ prompt_set: LabPromptSet }> {
+  return apiFetch("/api/v1/model-lab/prompt-sets", { method: "POST", body: JSON.stringify(body) }, token);
+}
+
+export async function deleteLabPromptSet(token: string, id: string): Promise<{ deleted: string }> {
+  return apiFetch(`/api/v1/model-lab/prompt-sets?id=${id}`, { method: "DELETE" }, token);
+}

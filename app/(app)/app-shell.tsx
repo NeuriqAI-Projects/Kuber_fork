@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import {
-  LayoutDashboard, Users, Megaphone, Settings, Inbox,
+  LayoutDashboard, Users, Megaphone, Settings, Inbox, FlaskConical,
   Menu, Bug,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -42,6 +42,9 @@ const NAV_ITEMS = [
   { href: "/leads",     label: "Leads",      icon: Users,           exact: false, managerOnly: false },
   { href: "/campaigns", label: "Campaigns",  icon: Megaphone,       exact: false, managerOnly: false },
   { href: "/unibox",    label: "Unibox",     icon: Inbox,           exact: false, managerOnly: false },
+  // Managers only: the lab spends on model calls and decides what writes to
+  // customers. It never sends anything — see lib/services/model-lab.ts.
+  { href: "/model-lab", label: "Model Lab",  icon: FlaskConical,    exact: false, managerOnly: true  },
   { href: "/settings",  label: "Settings",   icon: Settings,        exact: false, managerOnly: false },
 ] as const;
 
