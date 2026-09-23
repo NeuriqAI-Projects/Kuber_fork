@@ -10,7 +10,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let user: Awaited<ReturnType<typeof requireAuth>>;
   try { user = await requireAuth(req); } catch (r) { return r as Response; }
 
-  await params; // campaign id validated by auth + client context
+  const { id } = await params;
   const body = await req.json().catch(() => null);
   const parsed = FollowUpStepTemplateRegenerateSchema.safeParse(body);
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
@@ -20,6 +20,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       currentBody: parsed.data.body,
       instruction: parsed.data.instruction ?? "Rewrite this follow-up.",
       companyId: user.companyId ?? "any",
+      campaignId: id,
     });
     return ok({ body: rewritten.body });
   } catch (e) {

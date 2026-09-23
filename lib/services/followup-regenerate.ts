@@ -20,6 +20,9 @@ export async function regenerateFollowUpText(opts: {
   instruction: string;
   /** Whose LLM key pays for this. See complete(). */
   companyId: string;
+  /** So this spend shows up under the campaign's cost, not campaign_id NULL. */
+  campaignId?: string | null;
+  leadId?: string | null;
 }): Promise<{ body: string }> {
   const system = [
     "You rewrite short cold-email follow-up nudges.",
@@ -40,7 +43,11 @@ export async function regenerateFollowUpText(opts: {
     `Instruction: ${opts.instruction}`,
   ].join("\n");
 
-  const { json } = await complete<{ body: string }>({ system, user }, opts.companyId, { purpose: "followup" });
+  const { json } = await complete<{ body: string }>({ system, user }, opts.companyId, {
+    purpose: "followup",
+    campaignId: opts.campaignId,
+    leadId: opts.leadId,
+  });
   const validated = FollowUpRewriteSchema.safeParse(json);
   if (!validated.success) throw new Error("Follow-up rewrite shape mismatch");
 
@@ -56,6 +63,8 @@ export async function regenerateFollowUpTemplateText(opts: {
   instruction: string;
   /** Whose LLM key pays for this. See complete(). */
   companyId: string;
+  /** So this spend shows up under the campaign's cost, not campaign_id NULL. */
+  campaignId?: string | null;
 }): Promise<{ body: string }> {
   const system = [
     "You rewrite short cold-email follow-up nudges as campaign templates.",
@@ -76,7 +85,10 @@ export async function regenerateFollowUpTemplateText(opts: {
     `Instruction: ${opts.instruction}`,
   ].join("\n");
 
-  const { json } = await complete<{ body: string }>({ system, user }, opts.companyId, { purpose: "followup" });
+  const { json } = await complete<{ body: string }>({ system, user }, opts.companyId, {
+    purpose: "followup",
+    campaignId: opts.campaignId,
+  });
   const validated = FollowUpRewriteSchema.safeParse(json);
   if (!validated.success) throw new Error("Follow-up template rewrite shape mismatch");
 

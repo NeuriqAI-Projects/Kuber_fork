@@ -61,6 +61,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         currentBody: parsed.data.body,
         instruction: parsed.data.instruction ?? "Rewrite this follow-up.",
         companyId: user.companyId ?? "any",
+        campaignId: id,
+        leadId: cl.lead_id,
       });
     } catch (e) {
       return fail(502, "GENERATION_FAILED", (e as Error).message);

@@ -5,11 +5,12 @@ import {
   Megaphone, Users, Send, MessageSquare, Clock, Gauge, ArrowUp,
   Globe, Calendar, ExternalLink, Loader2, CheckCircle2, RotateCcw, RefreshCw, Check, Save, History, ChevronDown, ArrowLeft,
   List, LayoutGrid, BarChart2, Flame, Snowflake, ThumbsDown, Layers, Paperclip, X, Sparkles, Pencil, Reply, AlertTriangle,
-  Building2, MapPin, ReplyAll, CornerDownRight, UserPlus, ArrowRight, PauseCircle, PlayCircle,
+  Building2, MapPin, ReplyAll, CornerDownRight, UserPlus, ArrowRight, PauseCircle, PlayCircle, DollarSign,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, formatUsd } from "@/lib/utils";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { formatChatDate, startsNewChatDay } from "@/lib/chat-format";
 import { emailPreview, splitQuotedBody } from "@/lib/email-display";
 import { convertResidualMarkdownInHtml, hasVisibleText } from "@/lib/utils/email-html";
@@ -42,6 +43,8 @@ import {
   restoreDraftVersion,
   reopenDraft,
   fetchCampaignReport,
+  fetchCampaignLlmCost,
+  type CampaignLlmCost,
   retryFailedDrafts,
   fetchCampaignReplies,
   syncCampaignReplies,
@@ -818,6 +821,8 @@ export function CampaignDetail({
   const [viewTab, setViewTab] = useState<CampaignViewTab>("analytics");
   const [report, setReport] = useState<CampaignReportData | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+  const [llmCost, setLlmCost] = useState<CampaignLlmCost | null>(null);
+  const [llmCostLoading, setLlmCostLoading] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [retryingAll, setRetryingAll] = useState(false);
   const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
@@ -1270,6 +1275,25 @@ export function CampaignDetail({
     })();
     return () => { cancelled = true; };
   }, [viewTab, campaign.id, campaignLeads.length, progress?.sent, progress?.failed]);
+
+  useEffect(() => {
+    if (viewTab !== "analytics") return;
+    let cancelled = false;
+    setLlmCostLoading(true);
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || cancelled) return;
+      try {
+        const data = await fetchCampaignLlmCost(session.access_token, campaign.id);
+        if (!cancelled) setLlmCost(data);
+      } catch {
+        if (!cancelled) setLlmCost(null);
+      } finally {
+        if (!cancelled) setLlmCostLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [viewTab, campaign.id]);
 
   // Loaded eagerly (not gated to the Sequences tab) because the Leads/Outbox
   // "Follow-up due/sent" filters and the Analytics step-performance panel both
@@ -3187,6 +3211,93 @@ export function CampaignDetail({
                     tone={accent === "red" ? "red" : accent === "sky" ? "sky" : "neutral"}
                   />
                 ))}
+              </div>
+
+              {/* Cost. LLM/model spend only — Apollo reveal credits and
+                  Firecrawl scrapes are not attributed per-campaign anywhere in
+                  the data model yet (both are spent at the organization level,
+                  before a lead is ever attached to a campaign), so they are
+                  deliberately not shown here rather than guessed at. */}
+              <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <p className="eyebrow">Cost</p>
+                  {llmCost && (
+                    <InfoTooltip text={`AI/model spend only, tracked since ${format(new Date(llmCost.trackingStartedAt), "d MMM yyyy")}. Apollo lead credits and Firecrawl enrichment cost aren't attributed per campaign yet.`} />
+                  )}
+                </div>
+
+                {llmCostLoading ? (
+                  <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" /> Loading…
+                  </div>
+                ) : !llmCost || llmCost.totalCalls === 0 ? (
+                  <p className="py-4 text-sm text-muted-foreground">No AI calls recorded for this campaign yet.</p>
+                ) : (
+                  <div className="mt-2 space-y-3">
+                    <div className="flex items-end gap-2">
+                      <DollarSign className="size-5 text-primary shrink-0 mb-0.5" />
+                      <p className="font-display text-2xl font-semibold tabular-nums">
+                        {formatUsd(llmCost.totalCostUsd)}
+                      </p>
+                      {!llmCost.hasKnownCost && (
+                        <span className="text-xs text-muted-foreground mb-1">— no priced calls yet</span>
+                      )}
+                      {llmCost.hasKnownCost && llmCost.unknownCostCalls > 0 && (
+                        <span className="text-xs text-amber-600 mb-1">
+                          + {llmCost.unknownCostCalls} call{llmCost.unknownCostCalls === 1 ? "" : "s"} with an unpriced model, not counted
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Every dollar as rate × count = subtotal, one row per kind
+                        of call, so the total is something you can check by hand
+                        rather than a single number you have to take on faith. */}
+                    <div className="rounded-lg border border-border overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="hover:bg-transparent">
+                            <TableHead className="h-8 px-3 text-[10px]">Purpose</TableHead>
+                            <TableHead className="h-8 px-3 text-[10px] text-right">Calls</TableHead>
+                            <TableHead className="h-8 px-3 text-[10px] text-right">Cost / call</TableHead>
+                            <TableHead className="h-8 px-3 text-[10px] text-right">Subtotal</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {llmCost.purposes.map((p) => (
+                            <TableRow key={p.purpose} className="hover:bg-transparent">
+                              <TableCell className="py-2 px-3 text-xs">{p.label}</TableCell>
+                              <TableCell className="py-2 px-3 text-xs text-right font-mono tabular-nums text-muted-foreground">
+                                {p.calls}
+                              </TableCell>
+                              <TableCell className="py-2 px-3 text-xs text-right font-mono tabular-nums text-muted-foreground">
+                                {p.calls > 0 ? formatUsd(p.costUsd / p.calls) : "—"}
+                              </TableCell>
+                              <TableCell className="py-2 px-3 text-xs text-right font-mono tabular-nums font-medium">
+                                {formatUsd(p.costUsd)}{p.hasUnknownCost && <span className="text-amber-600">*</span>}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                          <TableRow className="hover:bg-transparent border-t-2 border-border bg-secondary/30">
+                            <TableCell className="py-2 px-3 text-xs font-semibold">Total</TableCell>
+                            <TableCell className="py-2 px-3 text-xs text-right font-mono tabular-nums font-semibold">
+                              {llmCost.totalCalls}
+                            </TableCell>
+                            <TableCell className="py-2 px-3" />
+                            <TableCell className="py-2 px-3 text-xs text-right font-mono tabular-nums font-semibold">
+                              {formatUsd(llmCost.totalCostUsd)}
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    <p className="text-[11px] text-muted-foreground">
+                      {llmCost.totalCalls} call{llmCost.totalCalls === 1 ? "" : "s"}
+                      {llmCost.failedCalls > 0 ? ` · ${llmCost.failedCalls} failed` : ""}
+                      {" · "}tracked since {format(new Date(llmCost.trackingStartedAt), "d MMM yyyy")}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Chart grid */}
