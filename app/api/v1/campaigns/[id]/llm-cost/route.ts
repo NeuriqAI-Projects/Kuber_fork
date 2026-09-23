@@ -8,7 +8,10 @@ import { dbForUser } from "@/lib/supabase/scoped";
 // A campaign created before that date will show a partial or zero total, not
 // because nothing was spent, but because nothing was recorded yet. The UI
 // surfaces this date so that isn't read as "this campaign cost nothing".
-export const LLM_COST_TRACKING_STARTED_AT = "2026-08-30T00:00:00Z";
+// Not exported: a route file may only export HTTP handlers and Next's own
+// config keys, and anything else fails `next build` with an unhelpful
+// "does not satisfy the constraint" type error.
+const LLM_COST_TRACKING_STARTED_AT = "2026-08-30T00:00:00Z";
 
 const PURPOSE_LABELS: Record<string, string> = {
   draft: "Opening drafts",
