@@ -193,7 +193,14 @@ export async function runLabComparison(
       );
 
       if (!result.ok) {
-        return { ...row, duration_ms: Date.now() - started, error: result.reason.slice(0, 400) };
+        // Every candidate is an OpenRouter model, so a workspace with no live
+        // OpenRouter key fails all of them identically. Say that, rather than
+        // repeating the generator's "No LLM provider configured" seven times
+        // and leaving someone hunting a problem with their Claude billing.
+        const reason = /no llm provider|not configured|no usable/i.test(result.reason)
+          ? "This workspace has no working OpenRouter key. Model Lab needs one: Settings > Keys > add an OpenRouter key. Your normal email drafting is unaffected."
+          : result.reason.slice(0, 400);
+        return { ...row, duration_ms: Date.now() - started, error: reason };
       }
 
       // Read the draft, then take it out of the campaign entirely. The lab owns
