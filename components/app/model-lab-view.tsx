@@ -60,6 +60,9 @@ export function ModelLabView() {
   const [template, setTemplate] = useState("");
   const [prompt, setPrompt] = useState("");
   const [savingSet, setSavingSet] = useState(false);
+  /** Set while an existing prompt set is open in the boxes below, so Save
+   *  updates that one instead of quietly creating a near-duplicate. */
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -141,18 +144,36 @@ export function ModelLabView() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
       const { prompt_set } = await saveLabPromptSet(session.access_token, {
+        ...(editingId ? { id: editingId } : {}),
         name: setName.trim(), scope: "personal",
         template: template.trim() || null, prompt: prompt.trim() || null,
       });
-      setPromptSets((p) => [...p, prompt_set]);
+      setPromptSets((p) => (editingId
+        ? p.map((x) => (x.id === prompt_set.id ? prompt_set : x))
+        : [...p, prompt_set]));
       setPromptSetId(prompt_set.id);
-      setSetName(""); setTemplate(""); setPrompt("");
-      toast.success(`Saved "${prompt_set.name}" — pick it in Compare to try it`);
+      newPromptSet();
+      toast.success(editingId
+        ? `Updated "${prompt_set.name}"`
+        : `Saved "${prompt_set.name}" — pick it in Compare to try it`);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
       setSavingSet(false);
     }
+  }
+
+  /** Open a saved set in the boxes: the only way to read what is in one, and
+   *  the reason the list below is clickable rather than a plain read-only row. */
+  function openPromptSet(p: LabPromptSet) {
+    setEditingId(p.id);
+    setSetName(p.name);
+    setTemplate(p.template ?? "");
+    setPrompt(p.prompt ?? "");
+  }
+
+  function newPromptSet() {
+    setEditingId(null); setSetName(""); setTemplate(""); setPrompt("");
   }
 
   const selectedLead = bench.find((l) => l.id === leadId) ?? null;
@@ -297,13 +318,23 @@ export function ModelLabView() {
 
         {mode === "prompts" && (
           <div className="max-w-3xl space-y-5">
-            <div>
-              <p className="eyebrow">Writing style</p>
-              <h2 className="font-display text-base font-semibold">A prompt set to try</h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                The same two boxes as Settings → AI &amp; Outreach. Saving here never changes
-                Settings — pick the set in Compare to write with it.
-              </p>
+            <div className="flex items-start gap-3">
+              <div className="min-w-0">
+                <p className="eyebrow">Writing style</p>
+                <h2 className="font-display text-base font-semibold">
+                  {editingId ? setName || "Prompt set" : "A prompt set to try"}
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {editingId
+                    ? "Editing a saved set. Changes here never touch Settings."
+                    : "The same two boxes as Settings → AI & Outreach. Saving here never changes Settings — pick the set in Compare to write with it."}
+                </p>
+              </div>
+              {editingId && (
+                <Button size="sm" variant="outline" className="ml-auto shrink-0" onClick={newPromptSet}>
+                  New prompt set
+                </Button>
+              )}
             </div>
 
             <div>
@@ -332,19 +363,32 @@ export function ModelLabView() {
             </div>
 
             <Button onClick={() => void savePromptSet()} disabled={savingSet} className="gap-1.5">
-              {savingSet && <Loader2 className="size-4 animate-spin" />} Save prompt set
+              {savingSet && <Loader2 className="size-4 animate-spin" />}
+              {editingId ? "Save changes" : "Save prompt set"}
             </Button>
 
             {promptSets.length > 0 && (
-              <div className="rounded-lg border border-border bg-field dark:bg-card">
-                {promptSets.map((p) => (
-                  <div key={p.id} className="flex items-center gap-3 border-b border-border px-4 py-2.5 last:border-0">
-                    <span className="text-sm font-medium">{p.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {p.template ? "template" : "no template"} · {p.prompt ? "prompt" : "no prompt"}
-                    </span>
-                  </div>
-                ))}
+              <div>
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Saved sets — click one to read or edit it.
+                </p>
+                <div className="rounded-lg border border-border bg-field dark:bg-card">
+                  {promptSets.map((p) => (
+                    <button key={p.id} type="button" onClick={() => openPromptSet(p)}
+                      className={`flex w-full items-center gap-3 border-b border-border px-4 py-2.5 text-left last:border-0 hover:bg-secondary/40 ${
+                        editingId === p.id ? "bg-primary/10" : ""}`}>
+                      <span className="text-sm font-medium">{p.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {p.template ? `${p.template.length} char template` : "no template"}
+                        {" · "}
+                        {p.prompt ? `${p.prompt.length} char prompt` : "no prompt"}
+                      </span>
+                      <span className="ml-auto text-xs text-primary">
+                        {editingId === p.id ? "Open" : "View"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
