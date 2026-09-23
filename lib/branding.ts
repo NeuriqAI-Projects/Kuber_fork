@@ -136,13 +136,18 @@ function buildLightPalette(c: ColorDefinition): Palette {
     // all — raised by the client's team on 23 Sep 2026 as "the background and
     // the normal colour are the same, the separation is not visible".
     //
-    // 58% gives 2.70:1, close to the 3:1 WCAG asks for a non-text UI boundary.
+    // 54%, chosen against the WEAKEST of the six themes rather than an average:
+    // the same lightness reads differently per hue, so at 58% green measured
+    // 2.40:1 while purple measured 3.18:1. At 54% monochrome/blue/purple/orange/
+    // rose all clear the 3:1 WCAG floor for a non-text boundary and green sits
+    // just under at 2.67:1 — the whole app is legible instead of five themes
+    // being fine and one not.
+    //
     // This is NOT a fifth colour: it is a lightness step of the same shade, the
-    // same latitude muted-foreground already uses on black (see the note above).
-    // One number — raise it toward 66% for a softer line, drop toward 54% to
-    // meet 3:1 exactly.
-    "--border":               `hsl(${h} ${s}% 58%)`,
-    "--input":                `hsl(${h} ${s}% 58%)`,
+    // latitude muted-foreground already takes on black (see the note above).
+    // One number — raise it toward 66% for a softer line.
+    "--border":               `hsl(${h} ${s}% 54%)`,
+    "--input":                `hsl(${h} ${s}% 54%)`,
   };
 }
 
