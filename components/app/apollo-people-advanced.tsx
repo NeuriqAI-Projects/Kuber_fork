@@ -289,7 +289,7 @@ function PrimaryFilterPicker({
 
         {open && (
           <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary/40">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary">
               <p className="eyebrow">
                 {selectedCount > 0
                   ? `${selectedCount} of ${options.length} selected`
@@ -326,7 +326,7 @@ function PrimaryFilterPicker({
                 onClick={() => (allSelected ? clearAll() : selectAll())}
                 className={cn(
                   "w-full h-auto justify-start gap-2 rounded px-2 py-1.5 mb-1 font-normal",
-                  allSelected ? "bg-primary/10 hover:bg-primary/10" : "hover:bg-secondary/60",
+                  allSelected ? "bg-primary/10 hover:bg-primary/10" : "hover:bg-secondary",
                 )}
               >
                 <AppCheckbox size="sm" checked={allSelected ? true : someSelected ? "indeterminate" : false} />
@@ -343,7 +343,7 @@ function PrimaryFilterPicker({
                     key={opt}
                     className={cn(
                       "w-full flex items-center gap-2 px-2 py-1 rounded transition-colors",
-                      checked ? "bg-primary/10" : "hover:bg-secondary/60",
+                      checked ? "bg-primary/10" : "hover:bg-secondary",
                     )}
                   >
                     <Button
@@ -377,7 +377,7 @@ function PrimaryFilterPicker({
               })}
             </div>
 
-            <div className="border-t border-border px-4 py-3 bg-secondary/30">
+            <div className="border-t border-border px-4 py-3 bg-secondary">
               <p className="eyebrow mb-2">Add custom</p>
               <div className="flex items-center gap-2">
                 <Input
@@ -403,7 +403,7 @@ function PrimaryFilterPicker({
               </div>
             </div>
 
-            <div className="border-t border-border px-4 py-2.5 flex items-center justify-end bg-secondary/30">
+            <div className="border-t border-border px-4 py-2.5 flex items-center justify-end bg-secondary">
               <Button type="button" variant="link" size="sm" onClick={() => setOpen(false)} className="h-auto p-0 text-xs">
                 Done
               </Button>

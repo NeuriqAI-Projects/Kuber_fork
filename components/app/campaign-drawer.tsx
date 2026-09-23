@@ -601,7 +601,7 @@ function OutboxMessageRow({
         tabIndex={0}
         onClick={onToggle}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
-        className="w-full flex items-center gap-3 px-4 py-2.5 text-left font-normal border-b border-border/60 last:border-b-0 hover:bg-secondary/40 cursor-pointer transition-colors"
+        className="w-full flex items-center gap-3 px-4 py-2.5 text-left font-normal border-b border-border/60 last:border-b-0 hover:bg-secondary cursor-pointer transition-colors"
       >
         <Avatar name={senderName} size="sm" />
         <span className="shrink-0 max-w-[160px] truncate text-sm font-medium text-foreground/90">
@@ -655,7 +655,7 @@ function OutboxMessageRow({
         type="button"
         variant="ghost"
         onClick={onToggle}
-        className="h-auto w-full justify-start items-start gap-3 px-4 py-3 text-left font-normal rounded-none hover:bg-secondary/30"
+        className="h-auto w-full justify-start items-start gap-3 px-4 py-3 text-left font-normal rounded-none hover:bg-secondary"
       >
         <Avatar name={senderName} size="sm" />
         <div className="flex-1 min-w-0">
@@ -3277,7 +3277,7 @@ export function CampaignDetail({
                               </TableCell>
                             </TableRow>
                           ))}
-                          <TableRow className="hover:bg-transparent border-t-2 border-border bg-secondary/30">
+                          <TableRow className="hover:bg-transparent border-t-2 border-border bg-secondary">
                             <TableCell className="py-2 px-3 text-xs font-semibold">Total</TableCell>
                             <TableCell className="py-2 px-3 text-xs text-right font-mono tabular-nums font-semibold">
                               {llmCost.totalCalls}
@@ -3583,7 +3583,7 @@ export function CampaignDetail({
 
           {leadsViewMode === "kanban" ? (
             /* ── Kanban view ── */
-            <div className="flex flex-col flex-1 min-h-0 bg-card/30">
+            <div className="flex flex-col flex-1 min-h-0 bg-card">
               <CampaignKanban
                 leads={filteredLeads}
                 selectedId={selectedId}
@@ -3595,10 +3595,10 @@ export function CampaignDetail({
             </div>
           ) : (
           /* Table */
-          <div className="flex-1 min-h-0 overflow-y-auto bg-secondary/20 px-6 py-4">
+          <div className="flex-1 min-h-0 overflow-y-auto bg-secondary px-6 py-4">
               {loading ? (
                 <div className="rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden animate-pulse">
-                  <div className="flex items-center gap-4 px-4 py-3 border-b border-border bg-secondary/30">
+                  <div className="flex items-center gap-4 px-4 py-3 border-b border-border bg-secondary">
                     <div className="size-4 rounded bg-secondary" />
                     <div className="h-3 w-24 bg-secondary rounded" />
                     <div className="h-3 w-32 bg-secondary rounded" />
@@ -3609,7 +3609,7 @@ export function CampaignDetail({
                       <div className="size-4 rounded bg-secondary" />
                       <div className="size-8 rounded-full bg-secondary" />
                       <div className="h-3.5 w-28 bg-secondary rounded" />
-                      <div className="h-3 w-36 bg-secondary/60 rounded" />
+                      <div className="h-3 w-36 bg-secondary rounded" />
                       <div className="h-5 w-16 bg-secondary rounded-full ml-auto" />
                     </div>
                   ))}
@@ -3619,7 +3619,7 @@ export function CampaignDetail({
               ) : (
                 <div className="block w-full rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-x-auto overflow-y-hidden">
                 <table className="w-full text-sm border-collapse">
-                  <thead className="sticky top-0 z-10 bg-secondary/60 backdrop-blur-sm">
+                  <thead className="sticky top-0 z-10 bg-secondary backdrop-blur-sm">
                     <tr className="border-b border-border">
                       <th className="w-8 px-6 py-2.5 text-left eyebrow border-r border-border">#</th>
                       <th className="px-6 py-2.5 text-left eyebrow border-r border-border">Name</th>
@@ -3637,7 +3637,7 @@ export function CampaignDetail({
                         <tr
                           key={cl.id}
                           onClick={() => handleOpenInOutbox(cl.id)}
-                          className="group cursor-pointer transition-colors hover:bg-secondary/40"
+                          className="group cursor-pointer transition-colors hover:bg-secondary"
                         >
                           <td className="w-8 px-6 py-3 font-mono text-xs text-muted-foreground tabular-nums border-r border-border">{index + 1}</td>
                           <td className="px-6 py-3 border-r border-border">
@@ -4048,7 +4048,7 @@ export function CampaignDetail({
           </div>
 
           {/* Right: unified thread view */}
-          <div className="flex-1 overflow-y-auto bg-secondary/10">
+          <div className="flex-1 overflow-y-auto bg-secondary">
             {!selected ? (
               <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
                 Select a lead to view their outbox
@@ -4061,7 +4061,7 @@ export function CampaignDetail({
                     <button
                       type="button"
                       onClick={() => setDrawerLead(campaignLeadToDrawerLead(selected))}
-                      className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="shrink-0 rounded-full"
                       title="Open lead details"
                       aria-label="Open lead details"
                     >
@@ -4071,7 +4071,7 @@ export function CampaignDetail({
                       <button
                         type="button"
                         onClick={() => setDrawerLead(campaignLeadToDrawerLead(selected))}
-                        className="block w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                        className="block w-full min-w-0 text-left rounded-sm"
                         title="Open lead details"
                       >
                         <p className="eyebrow text-muted-foreground">Lead</p>
@@ -4097,7 +4097,7 @@ export function CampaignDetail({
                     <button
                       type="button"
                       onClick={() => setDrawerLead(campaignLeadToDrawerLead(selected))}
-                      className="flex shrink-0 flex-col items-end gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                      className="flex shrink-0 flex-col items-end gap-1 rounded-sm"
                       title="Open lead details"
                     >
                       {(selected.email_drafts || getDraftActivity(selected)) && (
@@ -4170,7 +4170,7 @@ export function CampaignDetail({
                           <button
                             type="button"
                             onClick={() => setDrawerOrgId(org.org_id!)}
-                            className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground"
                             title="Open organization details"
                             aria-label="Open organization details"
                           >
@@ -4180,7 +4180,7 @@ export function CampaignDetail({
                             <button
                               type="button"
                               onClick={() => setDrawerOrgId(org.org_id!)}
-                              className="block w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                              className="block w-full min-w-0 text-left rounded-sm"
                               title="Open organization details"
                             >
                               <p className="eyebrow text-muted-foreground">Organization</p>
@@ -4230,7 +4230,7 @@ export function CampaignDetail({
                     otherwise a contact nobody imported just appears in a
                     running campaign with no explanation. */}
                 {selectedOriginal && (
-                  <div className="max-w-2xl mx-auto w-full flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-secondary/30 px-3 py-2 text-xs text-muted-foreground">
+                  <div className="max-w-2xl mx-auto w-full flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground">
                     <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-foreground/70">
                       Replacement for
                     </span>
@@ -4314,7 +4314,7 @@ export function CampaignDetail({
                 )}
 
                 {isReplacedBounce && bouncedThreadOpen && (
-                  <div className="max-w-2xl mx-auto w-full flex items-center justify-between gap-3 rounded-lg border border-border bg-secondary/30 px-3 py-2">
+                  <div className="max-w-2xl mx-auto w-full flex items-center justify-between gap-3 rounded-lg border border-border bg-secondary px-3 py-2">
                     <p className="text-xs text-muted-foreground">
                       This email bounced and was never read — kept only as a record.
                     </p>
@@ -4372,6 +4372,7 @@ export function CampaignDetail({
 
                     {/* Attachment (delivered as a hosted download link — Instantly cannot send real attachments) */}
                     <div className="flex items-center gap-2 flex-wrap">
+                      {/* eslint-disable-next-line no-restricted-syntax -- hidden file picker, never rendered; the visible control is the Button beside it */}
                       <input
                         ref={attachInputRef}
                         type="file"
@@ -4380,7 +4381,7 @@ export function CampaignDetail({
                         onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleLeadAttachmentUpload(f); }}
                       />
                       {selected.attachment?.effective ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-border bg-secondary/50 text-foreground max-w-full">
+                        <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-border bg-secondary text-foreground max-w-full">
                           <Paperclip className="size-3 shrink-0" />
                           {selected.attachment.effective.url ? (
                             <a href={selected.attachment.effective.url} target="_blank" rel="noopener" className="truncate underline underline-offset-2 hover:text-primary">
@@ -4487,7 +4488,7 @@ export function CampaignDetail({
 
                     {/* Version history */}
                     {historyOpen && versions.length > 1 && (
-                      <div ref={historyPanelRef} className="enter space-y-2 rounded-lg border border-border bg-secondary/30 p-3">
+                      <div ref={historyPanelRef} className="enter space-y-2 rounded-lg border border-border bg-secondary p-3">
                         <div className="flex flex-wrap gap-2">
                           {versions.map((v) => (
                             <Button
@@ -4500,7 +4501,7 @@ export function CampaignDetail({
                                 "font-mono text-xs h-auto px-2.5 py-1.5",
                                 (previewVersionId === v.id || (!previewVersionId && v.id === selected.email_drafts?.id))
                                   ? "border-primary bg-primary/10 text-primary hover:bg-primary/10"
-                                  : "border-border bg-secondary/30 text-muted-foreground hover:border-muted-foreground",
+                                  : "border-border bg-secondary text-muted-foreground hover:border-muted-foreground",
                               )}
                             >
                               v{v.version} · {format(new Date(v.created_at), versionsSpanOneDay ? "HH:mm" : "MMM d, HH:mm")}
@@ -4910,7 +4911,7 @@ export function CampaignDetail({
                     <button
                       type="button"
                       onClick={() => setDrawerLead(campaignLeadToDrawerLead(seqActiveLeadRow.cl))}
-                      className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="shrink-0 rounded-full"
                       title="Open lead details"
                       aria-label="Open lead details"
                     >
@@ -4920,7 +4921,7 @@ export function CampaignDetail({
                       <button
                         type="button"
                         onClick={() => setDrawerLead(campaignLeadToDrawerLead(seqActiveLeadRow.cl))}
-                        className="block w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                        className="block w-full min-w-0 text-left rounded-sm"
                         title="Open lead details"
                       >
                         <p className="eyebrow text-muted-foreground">Lead</p>
@@ -4947,7 +4948,7 @@ export function CampaignDetail({
                       <button
                         type="button"
                         onClick={() => setDrawerLead(campaignLeadToDrawerLead(seqActiveLeadRow.cl))}
-                        className="shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                        className="shrink-0 rounded-sm"
                         title="Open lead details"
                       >
                         <DraftStatusBadge
@@ -4971,7 +4972,7 @@ export function CampaignDetail({
                         <button
                           type="button"
                           onClick={() => setDrawerOrgId(org.org_id!)}
-                          className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground"
                           title="Open organization details"
                           aria-label="Open organization details"
                         >
@@ -4981,7 +4982,7 @@ export function CampaignDetail({
                           <button
                             type="button"
                             onClick={() => setDrawerOrgId(org.org_id!)}
-                            className="block w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                            className="block w-full min-w-0 text-left rounded-sm"
                             title="Open organization details"
                           >
                             <p className="eyebrow text-muted-foreground">Organization</p>
@@ -5197,7 +5198,7 @@ export function CampaignDetail({
                         {/* Regenerating is cheap enough that people do it a few
                             times and then decide the second attempt was best. */}
                         {seqHistoryOpen === row.draft?.id && (
-                          <div className="enter space-y-2 rounded-lg border border-border bg-secondary/30 p-3">
+                          <div className="enter space-y-2 rounded-lg border border-border bg-secondary p-3">
                             {seqHistoryLoading ? (
                               <p className="text-xs text-muted-foreground flex items-center gap-2">
                                 <Loader2 className="size-3 animate-spin" /> Loading versions…
@@ -5223,7 +5224,7 @@ export function CampaignDetail({
                                           "font-mono text-xs h-auto px-2.5 py-1.5",
                                           isShown
                                             ? "border-primary bg-primary/10 text-primary hover:bg-primary/10"
-                                            : "border-border bg-secondary/30 text-muted-foreground hover:border-muted-foreground",
+                                            : "border-border bg-secondary text-muted-foreground hover:border-muted-foreground",
                                         )}
                                       >
                                         v{v.version} · {format(new Date(v.created_at), seqVersionsSpanOneDay ? "HH:mm" : "MMM d, HH:mm")}
@@ -5276,7 +5277,7 @@ export function CampaignDetail({
                   {/* Said plainly, because the pane sits under a lead's name and
                       everything in it is campaign-wide. Editing here changes the
                       schedule for everyone, not for the person on screen. */}
-                  <div className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary/30 px-3 py-2">
+                  <div className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-2">
                     <p className="text-xs font-medium truncate">{campaign.name}</p>
                     <InfoTooltip text={`Timing and instructions for all ${campaignLeads.length} leads in this campaign — not just the one you're viewing.`} />
                   </div>
@@ -5526,7 +5527,7 @@ export function CampaignDetail({
 
       {/* ── Discussion ────────────────────────────────────────────────────── */}
       {viewTab === "discussion" && (
-        <div className="flex-1 min-h-0 flex flex-col bg-secondary/20">
+        <div className="flex-1 min-h-0 flex flex-col bg-secondary">
           <div className="flex-1 overflow-y-auto">
             <div className="w-full max-w-3xl mx-auto px-6 py-6">
               {loadingComments ? (
@@ -5598,7 +5599,7 @@ export function CampaignDetail({
                 maxLength={2000}
                 rows={3}
                 placeholder="Write a message to the campaign team…"
-                className="min-h-[76px] resize-none border-0 bg-transparent text-sm shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0 px-4 pt-3"
+                className="min-h-[76px] resize-none border-0 bg-transparent text-sm shadow-none outline-none px-4 pt-3"
               />
               <div className="flex items-center justify-between gap-2 px-4 pb-3">
                 <span className="text-[10px] text-muted-foreground">

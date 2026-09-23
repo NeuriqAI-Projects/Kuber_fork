@@ -382,7 +382,7 @@ export function CreateCampaignModal({
             />
           </div>
 
-          <div className="rounded-lg border border-border bg-secondary/30 shadow-sm overflow-hidden">
+          <div className="rounded-lg border border-border bg-secondary shadow-sm overflow-hidden">
             <div className="flex items-center justify-between gap-4 px-5 py-4">
               <div className="flex items-start gap-2">
                 <div>
@@ -398,7 +398,7 @@ export function CreateCampaignModal({
 
           {/* ── Step 3: Schedule ─────────────────────────────────────────── */}
           {step === 2 && (
-          <div className="rounded-lg border border-border bg-secondary/30 shadow-sm overflow-hidden divide-y divide-border">
+          <div className="rounded-lg border border-border bg-secondary shadow-sm overflow-hidden divide-y divide-border">
               <div className="flex items-center justify-between gap-4 px-5 py-4">
                 <div className="flex items-center gap-2.5">
                   <Clock className="size-4 text-muted-foreground shrink-0" />
@@ -486,7 +486,7 @@ export function CreateCampaignModal({
 
           {/* ── Step 4: Follow-ups ───────────────────────────────────────── */}
           {step === 3 && (
-          <div className="rounded-lg border border-border bg-secondary/30 shadow-sm overflow-hidden">
+          <div className="rounded-lg border border-border bg-secondary shadow-sm overflow-hidden">
             <div className="px-5 py-4 space-y-3">
               <div className="flex items-center gap-2.5">
                 <Clock className="size-4 text-muted-foreground shrink-0" />
@@ -497,7 +497,7 @@ export function CreateCampaignModal({
               </div>
               <div className="space-y-2">
                 {followupSteps.map((fu, idx) => (
-                  <div key={idx} className="flex items-center gap-2 rounded-lg border border-border bg-secondary/50 px-3 py-2">
+                  <div key={idx} className="flex items-center gap-2 rounded-lg border border-border bg-secondary px-3 py-2">
                     <span className="text-xs text-muted-foreground shrink-0 w-24">Follow-up {idx + 1} after</span>
                     <Input
                       type="number"
@@ -508,7 +508,7 @@ export function CreateCampaignModal({
                         const v = Math.max(1, Math.min(365, Number(e.target.value) || 1));
                         setFollowupSteps((prev) => prev.map((s, i) => (i === idx ? { ...s, delay: v } : s)));
                       }}
-                      className="h-7 w-14 rounded-md border border-border bg-field px-1 py-0 text-center text-sm font-mono font-medium tabular-nums focus-visible:ring-1 focus-visible:ring-offset-0"
+                      className="h-7 w-14 rounded-md border border-border bg-field px-1 py-0 text-center text-sm font-mono font-medium tabular-nums"
                     />
                     <Select
                       value={fu.delay_unit}
@@ -576,7 +576,7 @@ export function CreateCampaignModal({
 
           {/* ── Step 5: Attachment ───────────────────────────────────────── */}
           {step === 4 && (<>
-          <div className="rounded-xl border border-border bg-secondary/30 p-4 space-y-3">
+          <div className="rounded-xl border border-border bg-secondary p-4 space-y-3">
             <div className="flex items-start gap-2">
               <Paperclip className="size-4 text-muted-foreground mt-0.5" />
               <div>
@@ -589,6 +589,7 @@ export function CreateCampaignModal({
 
             {!attachment ? (
               <>
+                {/* eslint-disable-next-line no-restricted-syntax -- hidden file picker; the visible control is the Button beside it */}
                 <input
                   ref={fileInputRef} type="file" className="hidden"
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
@@ -605,7 +606,7 @@ export function CreateCampaignModal({
               </>
             ) : (
               <div className="space-y-2">
-                <div className="flex items-center justify-between rounded-lg border border-border bg-secondary/30 p-2.5">
+                <div className="flex items-center justify-between rounded-lg border border-border bg-secondary p-2.5">
                   <div className="flex items-center gap-2 min-w-0">
                     <FileText className="size-4 text-muted-foreground shrink-0" />
                     <span className="text-sm truncate">{attachment.attachment_name}</span>
@@ -637,7 +638,7 @@ export function CreateCampaignModal({
           {error && <p className="text-xs text-destructive">{error}</p>}
         </div>
 
-        <div className="border-t border-border bg-card/30 px-6 py-4 flex items-center justify-between">
+        <div className="border-t border-border bg-card px-6 py-4 flex items-center justify-between">
           <Button type="button" variant="outline" onClick={goBack} disabled={step === 0}>
             Back
           </Button>

@@ -110,7 +110,7 @@ export function CampaignsClient({ initialCampaigns }: { initialCampaigns: Campai
           show "No draft" on every row with no explanation anywhere. */}
       <ServiceHealthBanner />
 
-      <div className="flex items-center gap-3 flex-wrap rounded-lg bg-secondary/30 p-2">
+      <div className="flex items-center gap-3 flex-wrap rounded-lg bg-secondary p-2">
         <SearchInput
           value={search}
           onChange={setSearch}
@@ -163,7 +163,7 @@ export function CampaignsClient({ initialCampaigns }: { initialCampaigns: Campai
               <Card
                 key={c.id}
                 swatch="left"
-                className="enter relative group/card flex flex-col p-5 transition-all hover:bg-secondary/30 hover:border-border/80 hover:shadow-sm"
+                className="enter relative group/card flex flex-col p-5 transition-all hover:bg-secondary hover:border-border/80 hover:shadow-sm"
               >
                 <div className="absolute right-3 top-3 flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 transition-all z-10">
                   {c.status === "Live" && (
@@ -221,7 +221,7 @@ export function CampaignsClient({ initialCampaigns }: { initialCampaigns: Campai
                       "text-[11px] px-1.5 py-0.5 rounded border",
                       c.humanInLoop
                         ? "text-blue-400 bg-blue-500/10 border-blue-500/20"
-                        : "text-muted-foreground bg-secondary/50 border-border",
+                        : "text-muted-foreground bg-secondary border-border",
                     )}>
                       {c.humanInLoop ? "Human review" : "Auto-send"}
                     </span>

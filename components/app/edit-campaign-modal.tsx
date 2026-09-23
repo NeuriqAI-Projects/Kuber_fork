@@ -206,7 +206,7 @@ export function EditCampaignForm({
           <div className="size-5 rounded bg-secondary shrink-0" />
           <div className="flex-1 space-y-1.5">
             <div className="h-3.5 w-32 bg-secondary rounded" />
-            <div className="h-2.5 w-20 bg-secondary/60 rounded" />
+            <div className="h-2.5 w-20 bg-secondary rounded" />
           </div>
         </div>
       ))}
@@ -231,7 +231,7 @@ export function EditCampaignForm({
           ) : null}
           <div
             className={cn(
-              "flex items-center rounded-lg border border-border bg-secondary/50",
+              "flex items-center rounded-lg border border-border bg-secondary",
               isPage ? "w-fit gap-1.5 px-2 py-1.5" : "w-full flex-1 min-w-0 gap-1.5 px-3 py-2",
             )}
           >
@@ -248,7 +248,7 @@ export function EditCampaignForm({
                 const v = Math.max(1, Math.min(365, Number(e.target.value) || 1));
                 setFollowupSteps((prev) => prev.map((s, i) => i === idx ? { ...s, delay: v } : s));
               }}
-              className="h-7 w-14 rounded-md border border-border bg-field px-1 py-0 text-center text-sm font-mono font-medium tabular-nums focus-visible:ring-1 focus-visible:ring-offset-0"
+              className="h-7 w-14 rounded-md border border-border bg-field px-1 py-0 text-center text-sm font-mono font-medium tabular-nums"
             />
             <Select
               value={step.delay_unit}
@@ -456,7 +456,7 @@ export function EditCampaignForm({
         />
       </div>
 
-      <div className="rounded-lg border border-border bg-secondary/30 shadow-sm overflow-hidden">
+      <div className="rounded-lg border border-border bg-secondary shadow-sm overflow-hidden">
         <div className="grid grid-cols-1 sm:grid-cols-2 divide-y divide-border sm:divide-y-0">
 
           {/* Daily limit */}

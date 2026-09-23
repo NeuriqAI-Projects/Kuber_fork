@@ -97,7 +97,7 @@ function RegenerateDraftsModalInner({
 
         {/* Scope summary — only shown when there's nuance beyond the header's total */}
         {(scopeNotes.length > 0 || protectedRows.length > 0) && (
-          <div className="px-6 py-3 border-b border-border bg-secondary/20 shrink-0 space-y-1">
+          <div className="px-6 py-3 border-b border-border bg-secondary shrink-0 space-y-1">
             {scopeNotes.length > 0 && (
               <p className="text-xs text-muted-foreground">
                 {scopeNotes.join(" — ").replace(/^./, (c) => c.toUpperCase())}.

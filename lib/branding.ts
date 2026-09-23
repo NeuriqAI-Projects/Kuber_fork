@@ -127,10 +127,22 @@ function buildLightPalette(c: ColorDefinition): Palette {
     "--primary":              mono ? black : `hsl(${h} ${c.accentSat}% ${c.accentLight}%)`,
     "--primary-foreground":   mono ? "hsl(0 0% 98%)" : white,
     "--ring":                 mono ? black : `hsl(${h} ${c.accentSat}% ${c.accentLight}%)`,
-    // Border/input line — same shade hue, one step darker so it stays visible
-    // against both the white card and the shade background.
-    "--border":               `hsl(${h} ${s}% 88%)`,
-    "--input":                `hsl(${h} ${s}% 88%)`,
+    // BORDER — the only thing separating anything in light mode, so it carries
+    // the whole visual hierarchy.
+    //
+    // It was 88%, which is 1.18:1 against the 95% page: drawn, but under any
+    // real viewing condition invisible. With page, card, panel and popover all
+    // sharing one grey (above), that left the UI with NO visible boundaries at
+    // all — raised by the client's team on 23 Sep 2026 as "the background and
+    // the normal colour are the same, the separation is not visible".
+    //
+    // 58% gives 2.70:1, close to the 3:1 WCAG asks for a non-text UI boundary.
+    // This is NOT a fifth colour: it is a lightness step of the same shade, the
+    // same latitude muted-foreground already uses on black (see the note above).
+    // One number — raise it toward 66% for a softer line, drop toward 54% to
+    // meet 3:1 exactly.
+    "--border":               `hsl(${h} ${s}% 58%)`,
+    "--input":                `hsl(${h} ${s}% 58%)`,
   };
 }
 

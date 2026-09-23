@@ -8,6 +8,10 @@ import {
   type LabBenchLead, type LabEmail, type LabPromptSet, type LabScoreRow,
 } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { PageShell } from "@/components/ui/page-shell";
+import { SegmentedTabs } from "@/components/ui/segmented-tabs";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ServiceHealthBanner } from "@/components/app/service-health-banner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -27,6 +31,11 @@ const STEPS = [
   { value: "2", label: "Follow-up 1" },
   { value: "3", label: "Follow-up 2" },
 ];
+
+/** Roughly what one comparison costs, from the September measurements: the
+ *  candidates average about a fifth of a cent per email. Shown before the
+ *  button is pressed, never after. */
+const estimatedCents = (models: number) => `${Math.max(1, Math.round(models * 0.2))}¢`;
 
 const org = (l: LabBenchLead) => (Array.isArray(l.organizations) ? l.organizations[0] : l.organizations);
 const leadName = (l: LabBenchLead) => [l.first_name, l.last_name].filter(Boolean).join(" ") || "—";
@@ -178,46 +187,39 @@ export function ModelLabView() {
 
   const selectedLead = bench.find((l) => l.id === leadId) ?? null;
 
-  if (loading) {
-    return <div className="p-6 text-sm text-muted-foreground">Loading the lab…</div>;
-  }
+  if (loading) return <ModelLabSkeleton />;
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="shrink-0 border-b border-border px-6 py-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <FlaskConical className="size-5 text-primary" />
-          <div className="min-w-0">
-            <h1 className="font-display text-lg font-semibold">Model Lab</h1>
-            <p className="text-xs text-muted-foreground">
-              Read the emails, pick the model. Nothing here is ever sent.
-            </p>
-          </div>
-          <div className="ml-auto flex gap-1">
-            {(["compare", "prompts", "scoreboard"] as Mode[]).map((m) => (
-              <Button key={m} size="sm" variant={mode === m ? "default" : "ghost"}
-                onClick={() => setMode(m)} className="capitalize">
-                {m}
-              </Button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+    <PageShell
+      title="Model Lab"
+      description="Read the emails, pick the model. Nothing here is ever sent."
+      icon={<FlaskConical className="size-5 text-primary" />}
+      banner={<ServiceHealthBanner />}
+      width={mode === "prompts" ? "prose" : "wide"}
+      actions={
+        <SegmentedTabs
+          value={mode}
+          onValueChange={(v) => setMode(v as Mode)}
+          options={[
+            { value: "compare", label: "Compare" },
+            { value: "prompts", label: "Prompts" },
+            { value: "scoreboard", label: "Scoreboard" },
+          ]}
+        />
+      }
+    >
+      <div>
         {bench.length === 0 && (
-          <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
-            No leads on the bench yet. An admin sets them with the
-            <span className="font-mono"> model_lab_bench_leads </span> setting — five enriched
-            leads from your industry, kept fixed so results stay comparable.
-          </div>
+          <EmptyState
+            icon={FlaskConical}
+            message="No leads on the bench yet. Model Lab compares models on the same five enriched leads every time, so results stay comparable between runs."
+          />
         )}
 
         {mode === "compare" && bench.length > 0 && (
           <>
             {/* Controls */}
-            <div className="rounded-lg border border-border bg-secondary/30 p-4">
+            <div className="rounded-lg border border-border bg-secondary p-4">
               <div className="flex flex-wrap items-end gap-4">
                 <div className="min-w-[210px] flex-1">
                   <Label className="text-xs">Lead</Label>
@@ -253,11 +255,13 @@ export function ModelLabView() {
                 </div>
                 <div className="flex items-center gap-2 pb-2">
                   <Switch id="lab-blind" checked={blind} onCheckedChange={setBlind} />
-                  <Label htmlFor="lab-blind" className="text-xs">Blind</Label>
+                  <Label htmlFor="lab-blind" className="text-xs" title="Hides which model wrote which email until you have picked">
+                    Blind
+                  </Label>
                 </div>
                 <Button onClick={() => void generate()} disabled={running || picked.length === 0} className="gap-1.5">
                   {running ? <Loader2 className="size-4 animate-spin" /> : <FlaskConical className="size-4" />}
-                  {running ? "Writing…" : `Generate ${picked.length}`}
+                  {running ? "Writing…" : `Generate ${picked.length} · ~${estimatedCents(picked.length)}`}
                 </Button>
               </div>
 
@@ -280,6 +284,15 @@ export function ModelLabView() {
                 </p>
               )}
             </div>
+
+            {emails.length === 0 && !running && (
+              <div className="mt-5">
+                <EmptyState
+                  icon={FlaskConical}
+                  message="Pick a lead and press Generate. Each model writes the same email, and they arrive side by side with the names hidden."
+                />
+              </div>
+            )}
 
             {/* Results */}
             {emails.length > 0 && (
@@ -317,7 +330,7 @@ export function ModelLabView() {
         )}
 
         {mode === "prompts" && (
-          <div className="max-w-3xl space-y-5">
+          <div className="space-y-5">
             <div className="flex items-start gap-3">
               <div className="min-w-0">
                 <p className="eyebrow">Writing style</p>
@@ -375,7 +388,7 @@ export function ModelLabView() {
                 <div className="rounded-lg border border-border bg-field dark:bg-card">
                   {promptSets.map((p) => (
                     <button key={p.id} type="button" onClick={() => openPromptSet(p)}
-                      className={`flex w-full items-center gap-3 border-b border-border px-4 py-2.5 text-left last:border-0 hover:bg-secondary/40 ${
+                      className={`flex w-full items-center gap-3 border-b border-border px-4 py-2.5 text-left last:border-0 hover:bg-secondary ${
                         editingId === p.id ? "bg-primary/10" : ""}`}>
                       <span className="text-sm font-medium">{p.name}</span>
                       <span className="text-xs text-muted-foreground">
@@ -394,12 +407,24 @@ export function ModelLabView() {
           </div>
         )}
 
-        {mode === "scoreboard" && (
-          <Scoreboard rows={scoreboard} />
-        )}
-      </div>
+        {mode === "scoreboard" && <Scoreboard rows={scoreboard} />}
 
-      {expanded && <ExpandedEmail email={expanded} plain={plain} onClose={() => setExpanded(null)} />}
+        {expanded && <ExpandedEmail email={expanded} plain={plain} onClose={() => setExpanded(null)} />}
+      </div>
+    </PageShell>
+  );
+}
+
+/** Mirrors the shell's own spacing so the page does not jump as it loads. */
+function ModelLabSkeleton() {
+  return (
+    <div className="mx-auto w-full max-w-6xl animate-pulse p-8">
+      <div className="h-28 rounded-lg border border-border bg-secondary" />
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-64 rounded-lg border border-border bg-field dark:bg-card" />
+        ))}
+      </div>
     </div>
   );
 }
@@ -413,20 +438,20 @@ function EmailCard({
 }) {
   const words = email.body ? htmlToPlainText(email.body).split(/\s+/).filter(Boolean).length : 0;
   return (
-    <div className={`flex flex-col overflow-hidden rounded-lg border bg-card ${
-      isBest ? "border-primary" : isWorst ? "border-destructive/60" : "border-border"}`}>
-      <div className="flex items-center gap-2 border-b border-border bg-secondary/30 px-3 py-2">
+    <div className={`flex flex-col overflow-hidden rounded-lg border bg-field shadow-sm dark:bg-card ${
+      isBest ? "border-primary ring-1 ring-primary" : isWorst ? "border-destructive" : "border-border"}`}>
+      <div className="flex items-center gap-2 border-b border-border bg-secondary px-3.5 py-2.5">
         <span className="font-display text-xs font-semibold">
           {blind ? `Email ${email.label}` : email.model}
         </span>
-        <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+        <span className="ml-auto font-mono text-[11px] text-muted-foreground">
           {email.duration_ms != null && `${(email.duration_ms / 1000).toFixed(1)}s`}
           {words > 0 && ` · ${words}w`}
           {email.cost_usd != null && ` · ${formatUsd(Number(email.cost_usd))}`}
         </span>
       </div>
 
-      <div className="max-h-[320px] min-h-[120px] flex-1 overflow-y-auto px-3 py-3 text-xs leading-relaxed">
+      <div className="h-[340px] flex-1 overflow-y-auto px-3.5 py-3 text-sm leading-6">
         {email.error ? (
           <p className="text-destructive">Failed: {email.error}</p>
         ) : (
@@ -448,7 +473,7 @@ function EmailCard({
         )}
       </div>
 
-      <div className="flex items-center gap-2 border-t border-border px-3 py-2">
+      <div className="flex items-center gap-2 border-t border-border px-3.5 py-2.5">
         <Button size="sm" variant={isBest ? "default" : "outline"} className="flex-1 gap-1.5"
           onClick={onBest} disabled={!!email.error}>
           <ThumbsUp className="size-3.5" /> Best
@@ -466,8 +491,17 @@ function EmailCard({
 }
 
 function ExpandedEmail({ email, plain, onClose }: { email: LabEmail; plain: boolean; onClose: () => void }) {
+  // Escape closes it. Without this the only way out was the X, which is not
+  // where anyone's hand goes after reading a long email.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div role="dialog" aria-modal="true" aria-label={`Email from ${email.model}`}
+      className="fixed inset-0 z-200 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
         <div className="flex items-center gap-3 border-b border-border px-5 py-3">
@@ -511,7 +545,7 @@ function Scoreboard({ rows }: { rows: LabScoreRow[] }) {
           <div className="overflow-x-auto rounded-lg border border-border bg-field dark:bg-card">
             <table className="w-full min-w-[560px] text-sm">
               <thead>
-                <tr className="border-b border-border bg-secondary/30 text-xs text-muted-foreground">
+                <tr className="border-b border-border bg-secondary text-xs text-muted-foreground">
                   <th className="px-4 py-2 text-left font-medium">Model</th>
                   <th className="px-4 py-2 text-right font-medium">Best</th>
                   <th className="px-4 py-2 text-right font-medium">Worst</th>

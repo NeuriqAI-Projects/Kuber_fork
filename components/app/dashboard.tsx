@@ -105,7 +105,7 @@ export function DashboardView({
   const totalSent      = campaigns.reduce((a, c) => a + c.delivered, 0);
   const replyRate      = totalSent > 0 ? Math.round((totalReplied / totalSent) * 100) : 0;
 
-  const pulse = (w: string) => <span className={cn("inline-block h-6 rounded bg-secondary/60 animate-pulse", w)} />;
+  const pulse = (w: string) => <span className={cn("inline-block h-6 rounded bg-secondary animate-pulse", w)} />;
 
   return (
     <div className="enter p-8 space-y-6 max-w-7xl mx-auto">

@@ -721,7 +721,7 @@ export function SettingsView() {
           {navItems.map(({ id, label }) => (
             <Button key={id} type="button" variant="ghost" onClick={() => setSection(id)}
               className={cn("h-auto w-full justify-start px-3 py-2.5 rounded-md text-sm font-medium",
-                section === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary/50")}>
+                section === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary")}>
               {label}
             </Button>
           ))}
@@ -734,7 +734,7 @@ export function SettingsView() {
             {PERSONAL_AI_NAV_ITEMS.map(({ id, label, icon: Icon }) => (
               <Button key={id} type="button" variant="ghost" onClick={() => setAiSection(id)}
                 className={cn("h-auto w-full justify-start gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium",
-                  aiSection === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary/50")}>
+                  aiSection === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary")}>
                 <Icon className="size-4 shrink-0" /><span className="truncate">{label}</span>
               </Button>
             ))}
@@ -744,7 +744,7 @@ export function SettingsView() {
                 {COMPANY_AI_NAV_ITEMS.map(({ id, label, icon: Icon }) => (
                   <Button key={id} type="button" variant="ghost" onClick={() => setAiSection(id)}
                     className={cn("h-auto w-full justify-start gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium",
-                      aiSection === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary/50")}>
+                      aiSection === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary")}>
                     <Icon className="size-4 shrink-0" /><span className="truncate">{label}</span>
                   </Button>
                 ))}
@@ -760,7 +760,7 @@ export function SettingsView() {
             {knowledgeNavItems.map(({ id, label, icon: Icon }) => (
               <Button key={id} type="button" variant="ghost" onClick={() => setKnowledgeSection(id)}
                 className={cn("h-auto w-full justify-start gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium",
-                  activeKnowledgeSection === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary/50")}>
+                  activeKnowledgeSection === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary")}>
                 <Icon className="size-4 shrink-0" /><span className="truncate">{label}</span>
               </Button>
             ))}
@@ -774,7 +774,7 @@ export function SettingsView() {
             {KEYS_NAV_ITEMS.map(({ id, label, icon: Icon }) => (
               <Button key={id} type="button" variant="ghost" onClick={() => setKeysSection(id)}
                 className={cn("h-auto w-full justify-start gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium",
-                  keysSection === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary/50")}>
+                  keysSection === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary")}>
                 <Icon className="size-4 shrink-0" /><span className="truncate">{label}</span>
               </Button>
             ))}
@@ -870,7 +870,7 @@ export function SettingsView() {
                         />
                         <MandatoryFormattingNotice />
                         {!myDraftPrompt.trim() && myDefaults.draft_prompt && (
-                          <details className="rounded-md border border-border bg-secondary/20 p-3 text-xs text-muted-foreground">
+                          <details className="rounded-md border border-border bg-secondary p-3 text-xs text-muted-foreground">
                             <summary className="cursor-pointer select-none font-medium text-foreground">View the company default you&apos;re inheriting</summary>
                             <pre className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap font-sans">{myDefaults.draft_prompt}</pre>
                           </details>
@@ -908,7 +908,7 @@ export function SettingsView() {
                         />
                         <MandatoryFormattingNotice />
                         {!myReplyPrompt.trim() && myDefaults.reply_prompt && (
-                          <details className="rounded-md border border-border bg-secondary/20 p-3 text-xs text-muted-foreground">
+                          <details className="rounded-md border border-border bg-secondary p-3 text-xs text-muted-foreground">
                             <summary className="cursor-pointer select-none font-medium text-foreground">View the company default you&apos;re inheriting</summary>
                             <pre className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap font-sans">{myDefaults.reply_prompt}</pre>
                           </details>
@@ -949,7 +949,7 @@ export function SettingsView() {
                           placeholder={"Your Name\nYour Title\nKuber Polyplast\n+91-XXXXXXXXXX"}
                         />
                         {!mySignature.trim() && myDefaults.signature && (
-                          <details className="rounded-md border border-border bg-secondary/20 p-3 text-xs text-muted-foreground">
+                          <details className="rounded-md border border-border bg-secondary p-3 text-xs text-muted-foreground">
                             <summary className="cursor-pointer select-none font-medium text-foreground">View the company default you&apos;re inheriting</summary>
                             <pre className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap font-sans">{myDefaults.signature}</pre>
                           </details>
@@ -1186,7 +1186,7 @@ export function SettingsView() {
                       </p>
 
                       {productOfferings.length === 0 && (
-                        <div className="rounded-md border border-dashed border-border bg-secondary/10 p-10 text-center text-sm text-muted-foreground">
+                        <div className="rounded-md border border-dashed border-border bg-secondary p-10 text-center text-sm text-muted-foreground">
                           No products yet — click &quot;Add product&quot; to get started.
                         </div>
                       )}
@@ -1239,7 +1239,7 @@ export function SettingsView() {
                       </p>
 
                       {industryKeywordGroups.length === 0 && (
-                        <div className="rounded-md border border-dashed border-border bg-secondary/10 p-10 text-center text-sm text-muted-foreground">
+                        <div className="rounded-md border border-dashed border-border bg-secondary p-10 text-center text-sm text-muted-foreground">
                           No groups yet — click &quot;Add group&quot; to get started.
                         </div>
                       )}

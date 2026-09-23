@@ -13,9 +13,9 @@ export default function UniboxLoading() {
               <div className="size-1.5 rounded-full bg-secondary shrink-0" />
               <div className="flex-1 space-y-1.5">
                 <div className="h-3.5 w-32 bg-secondary rounded" />
-                <div className="h-2.5 w-full bg-secondary/60 rounded" />
+                <div className="h-2.5 w-full bg-secondary rounded" />
               </div>
-              <div className="h-2.5 w-10 bg-secondary/50 rounded shrink-0" />
+              <div className="h-2.5 w-10 bg-secondary rounded shrink-0" />
             </div>
           ))}
         </div>
@@ -27,7 +27,7 @@ export default function UniboxLoading() {
           <div className="size-8 rounded-full bg-secondary" />
           <div className="space-y-1.5 flex-1">
             <div className="h-4 w-36 bg-secondary rounded" />
-            <div className="h-3 w-48 bg-secondary/60 rounded" />
+            <div className="h-3 w-48 bg-secondary rounded" />
           </div>
         </div>
         <div className="flex-1 p-6 space-y-5">

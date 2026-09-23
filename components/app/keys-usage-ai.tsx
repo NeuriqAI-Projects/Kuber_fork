@@ -99,7 +99,7 @@ export function AiUsageView() {
         </Button>
       </div>
 
-      <div className="rounded-lg border border-border bg-secondary/30 px-4 py-2.5 text-xs text-muted-foreground flex items-center gap-1.5">
+      <div className="rounded-lg border border-border bg-secondary px-4 py-2.5 text-xs text-muted-foreground flex items-center gap-1.5">
         <ArrowRightLeft className="size-3.5 shrink-0" />
         Try order: <span className="font-medium text-foreground">{primaryLabel}</span> primary, <span className="font-medium text-foreground">{fallbackLabel}</span> fallback — set in Settings › Keys › Credentials.
       </div>

@@ -71,7 +71,7 @@ export function UniboxInstantlyInterestMenu({ interestStatus, onChange, disabled
                 key={o.label}
                 type="button"
                 className={cn(
-                  "w-full text-left px-2 py-1.5 rounded-md text-xs hover:bg-secondary/60 flex items-center gap-2 border-l-2",
+                  "w-full text-left px-2 py-1.5 rounded-md text-xs hover:bg-secondary flex items-center gap-2 border-l-2",
                   selected ? "font-semibold text-primary bg-primary/10 border-primary" : "text-muted-foreground border-transparent",
                 )}
                 onClick={() => {

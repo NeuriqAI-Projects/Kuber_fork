@@ -18,7 +18,7 @@ const rowClass = (active: boolean) =>
     "w-full flex items-center gap-3 px-3.5 py-2 rounded-md text-sm text-left transition-colors border-l-2",
     active
       ? "bg-primary/10 text-primary font-semibold border-primary"
-      : "text-foreground/80 hover:bg-secondary/50 border-transparent",
+      : "text-foreground/80 hover:bg-secondary border-transparent",
   );
 
 const sectionLabelClass = "eyebrow px-4 pb-1.5 pt-4 first:pt-2";

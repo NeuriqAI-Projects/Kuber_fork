@@ -295,7 +295,7 @@ export function TeamView() {
         {showAdd && (
           <form
             onSubmit={handleCreate}
-            className="grid grid-cols-1 sm:grid-cols-2 gap-3 px-5 py-4 border-b border-border bg-secondary/30 enter"
+            className="grid grid-cols-1 sm:grid-cols-2 gap-3 px-5 py-4 border-b border-border bg-secondary enter"
           >
             <p className="eyebrow sm:col-span-2 -mb-1">New user</p>
             <div className="space-y-1.5">
@@ -391,14 +391,14 @@ export function TeamView() {
                   className={cn(
                     "min-w-0 transition-colors",
                     !u.is_active && "opacity-60",
-                    expanded && "bg-secondary/25",
+                    expanded && "bg-secondary",
                   )}
                 >
                   <button
                     type="button"
                     onClick={() => setExpandedId(expanded ? null : u.id)}
                     aria-expanded={expanded}
-                    className="flex w-full items-center gap-3 px-5 py-3.5 text-left hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                    className="flex w-full items-center gap-3 px-5 py-3.5 text-left hover:bg-secondary"
                   >
                     <Avatar name={displayName} size="sm" />
                     <div className="min-w-0 flex-1">
@@ -479,7 +479,7 @@ export function TeamView() {
                               </SelectContent>
                             </Select>
                           ) : (
-                            <span className="inline-flex h-9 w-full items-center px-2.5 rounded-md border border-border bg-secondary/40 font-mono text-xs text-muted-foreground">
+                            <span className="inline-flex h-9 w-full items-center px-2.5 rounded-md border border-border bg-secondary font-mono text-xs text-muted-foreground">
                               {roleLabel(u)}
                             </span>
                           )}
@@ -721,7 +721,7 @@ function HandoverBeforeDeactivateModal({
         )}
 
         {(strategy === "round_robin" || strategy === "territory") && (
-          <div className="rounded-lg border border-border bg-secondary/30 px-3 py-2 text-xs text-muted-foreground space-y-1">
+          <div className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground space-y-1">
             <p>
               Splitting across <span className="text-foreground font-medium">{eligible.length}</span> active, online
               employee{eligible.length !== 1 ? "s" : ""}

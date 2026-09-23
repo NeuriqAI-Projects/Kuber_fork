@@ -69,7 +69,7 @@ function BatchConfirmModalInner({
 
         {/* Lead count */}
         {totalCount !== undefined && (
-          <div className="px-6 py-2.5 border-b border-border shrink-0 flex items-center gap-1.5 bg-secondary/10">
+          <div className="px-6 py-2.5 border-b border-border shrink-0 flex items-center gap-1.5 bg-secondary">
             <Users className="size-3.5 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">
               <span className="font-mono tabular-nums">{totalCount}</span> lead{totalCount !== 1 ? "s" : ""} will be imported
@@ -109,7 +109,7 @@ function BatchConfirmModalInner({
               </thead>
               <tbody className="divide-y divide-border">
                 {leads.map((l, i) => (
-                  <tr key={i} className="hover:bg-secondary/30 transition-colors align-top">
+                  <tr key={i} className="hover:bg-secondary transition-colors align-top">
                     <td className="px-3 py-2.5 font-medium leading-snug wrap-break-word">
                       {[l.firstName, l.lastName].filter(Boolean).join(" ") || "—"}
                     </td>

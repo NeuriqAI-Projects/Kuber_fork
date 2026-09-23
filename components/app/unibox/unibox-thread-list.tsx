@@ -60,7 +60,7 @@ export function UniboxThreadList({
     <div className="w-full h-full flex">
       <div
         className={cn(
-          "shrink-0 border-r border-border bg-card/60 overflow-hidden transition-[width] duration-200",
+          "shrink-0 border-r border-border bg-card overflow-hidden transition-[width] duration-200",
           filtersOpen ? "w-72" : "w-0",
         )}
       >
@@ -82,7 +82,7 @@ export function UniboxThreadList({
         </div>
       </div>
 
-      <div className="flex-1 min-w-0 h-full flex flex-col bg-secondary/30">
+      <div className="flex-1 min-w-0 h-full flex flex-col bg-secondary">
         <div className="px-6 py-3 border-b border-border shrink-0">
           <div className="flex items-center justify-between gap-2 mb-2">
             <p className="eyebrow">
@@ -144,7 +144,7 @@ export function UniboxThreadList({
                       "w-full flex items-center gap-3 px-4 py-3 text-left transition-colors border-l-2",
                       selectedId === t.thread_id
                         ? "swatch-bar bg-primary/5 border-transparent"
-                        : "border-transparent hover:bg-secondary/40",
+                        : "border-transparent hover:bg-secondary",
                     )}
                   >
                     <span

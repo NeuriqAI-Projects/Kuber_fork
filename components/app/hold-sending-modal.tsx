@@ -77,7 +77,7 @@ function HoldSendingModalInner({
           </div>
 
           {sent > 0 && (
-            <div className="rounded-lg border border-border bg-secondary/40 px-3 py-2.5">
+            <div className="rounded-lg border border-border bg-secondary px-3 py-2.5">
               <div className="flex items-baseline gap-2">
                 <span className="font-mono text-sm font-semibold tabular-nums">{sent}</span>
                 <span className="text-xs text-muted-foreground">

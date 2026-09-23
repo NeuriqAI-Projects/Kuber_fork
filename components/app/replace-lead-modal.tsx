@@ -74,7 +74,7 @@ function ReplaceLeadModalInner({ target, submitting, error, onConfirm, onCancel 
           </Button>
         </div>
 
-        <div className="px-6 py-3 border-b border-border bg-secondary/30 shrink-0">
+        <div className="px-6 py-3 border-b border-border bg-secondary shrink-0">
           <p className="text-[11px] text-muted-foreground">
             Company profile is already enriched — no re-research, no waiting.
             {website && (
