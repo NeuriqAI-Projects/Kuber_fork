@@ -15,6 +15,11 @@ import { dbForUser } from "@/lib/supabase/scoped";
 // save). Creates the draft row if none exists yet (a manual write), or
 // updates the existing one in place otherwise — never bumps a new version,
 // since this is editing the same email, not asking the AI to rewrite it.
+//
+// Deliberately never calls the LLM (see complete() in lib/services/llm.ts) —
+// a manual save costs nothing and must not write an llm_usage row, since the
+// campaign Cost table (app/api/v1/campaigns/[id]/llm-cost) sums exactly that
+// table and would otherwise bill a human-written edit as if the AI wrote it.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   let user: Awaited<ReturnType<typeof requireAuth>>;
   try { user = await requireAuth(req); } catch (r) { return r as Response; }
