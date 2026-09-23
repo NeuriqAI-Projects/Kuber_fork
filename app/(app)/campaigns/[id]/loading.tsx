@@ -34,7 +34,7 @@ export default function CampaignDetailLoading() {
       <div className="flex-1 px-6 py-4">
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           {/* Header row */}
-          <div className="flex items-center gap-4 px-4 py-3 border-b border-border bg-secondary/30">
+          <div className="flex items-center gap-4 px-4 py-3 border-b border-border bg-secondary">
             <div className="size-4 rounded bg-secondary" />
             <div className="h-3 w-24 bg-secondary rounded" />
             <div className="h-3 w-32 bg-secondary rounded" />
@@ -46,7 +46,7 @@ export default function CampaignDetailLoading() {
               <div className="size-4 rounded bg-secondary" />
               <div className="size-8 rounded-full bg-secondary" />
               <div className="h-3.5 w-32 bg-secondary rounded" />
-              <div className="h-3 w-40 bg-secondary/60 rounded" />
+              <div className="h-3 w-40 bg-secondary rounded" />
               <div className="h-5 w-16 bg-secondary rounded-full ml-auto" />
             </div>
           ))}

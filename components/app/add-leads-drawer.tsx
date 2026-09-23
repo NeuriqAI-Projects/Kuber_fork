@@ -86,7 +86,7 @@ export function AddLeadsDrawer({
                       "h-auto w-full min-w-0 flex-col items-start gap-1 whitespace-normal rounded-lg px-3 py-2.5 text-left font-normal",
                       active
                         ? "swatch-bar bg-primary/10 text-primary hover:bg-primary/10 hover:text-primary"
-                        : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
+                        : "text-muted-foreground hover:bg-secondary hover:text-foreground",
                     )}
                   >
                     <span className="flex w-full min-w-0 items-center gap-2.5 text-sm font-medium">

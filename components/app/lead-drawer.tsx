@@ -148,6 +148,7 @@ function InlineField({
 
   if (editing) {
     return (
+      /* eslint-disable-next-line no-restricted-syntax -- inline edit-in-place: width tracks the text via size=, which the shared Input does not do */
       <input
         ref={inputRef}
         type={type}
@@ -174,7 +175,7 @@ function InlineField({
       onDoubleClick={() => setEditing(true)}
       title="Double-click to edit"
       className={cn(
-        "rounded px-1 -mx-1 cursor-text hover:bg-secondary/60 transition-colors",
+        "rounded px-1 -mx-1 cursor-text hover:bg-secondary transition-colors",
         variant === "block" ? "block truncate" : "inline-block",
         !value && "text-muted-foreground/50 italic",
         saving && "opacity-60",
@@ -236,6 +237,7 @@ function InlineTextArea({
 
   if (editing) {
     return (
+      /* eslint-disable-next-line no-restricted-syntax -- inline edit-in-place: auto-grows to its content, which the shared Textarea does not do */
       <textarea
         ref={textareaRef}
         value={draft}
@@ -260,7 +262,7 @@ function InlineTextArea({
       onDoubleClick={() => setEditing(true)}
       title="Double-click to edit"
       className={cn(
-        "rounded-lg px-2 py-1.5 -mx-2 -my-1.5 cursor-text hover:bg-secondary/60 transition-colors leading-relaxed",
+        "rounded-lg px-2 py-1.5 -mx-2 -my-1.5 cursor-text hover:bg-secondary transition-colors leading-relaxed",
         !value && "text-muted-foreground/50 italic",
         saving && "opacity-60",
         className,
@@ -299,7 +301,7 @@ function CampaignPills({ campaigns, onOpen }: {
           type="button"
           onClick={() => onOpen(c.id)}
           title={`Open campaign "${c.name}"`}
-          className="group flex items-center justify-between gap-2 rounded-lg border border-border bg-secondary/40 pl-2.5 pr-2 py-1.5 min-w-0 text-left cursor-pointer hover:border-muted-foreground/50 hover:bg-secondary/70 transition-colors"
+          className="group flex items-center justify-between gap-2 rounded-lg border border-border bg-secondary pl-2.5 pr-2 py-1.5 min-w-0 text-left cursor-pointer hover:border-muted-foreground/50 hover:bg-secondary transition-colors"
         >
           <span className="min-w-0">
             <span className="flex items-center gap-1 min-w-0">
@@ -624,7 +626,7 @@ function LeadDrawerSkeleton() {
       </div>
 
       {/* Right rail */}
-      <div className="w-[340px] max-lg:w-[280px] max-sm:hidden shrink-0 border-l border-border bg-secondary/20 flex flex-col min-h-0">
+      <div className="w-[340px] max-lg:w-[280px] max-sm:hidden shrink-0 border-l border-border bg-secondary flex flex-col min-h-0">
         <div className="flex items-center px-3 py-2.5 border-b border-border shrink-0">
           <Bone className="h-7 w-48 rounded-lg" />
           <Bone className="size-7 rounded-lg ml-auto" />
@@ -1012,7 +1014,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
                         onValueChange={(v) => void handleReassign(v === "unassigned" ? null : v)}
                         disabled={reassigning}
                       >
-                        <SelectTrigger className="bg-transparent border-0 shadow-none h-7 px-0 text-sm font-medium hover:text-foreground focus:ring-0 w-auto gap-1.5">
+                        <SelectTrigger className="bg-transparent border-0 shadow-none h-7 px-0 text-sm font-medium hover:text-foreground w-auto gap-1.5">
                           <SelectValue placeholder="Unassigned" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1199,7 +1201,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
                       when it's a billing issue, so this copy stays deliberately
                       vague rather than blaming the website. */}
                   {currentStage === "failed" && (
-                    <div className="flex items-start gap-2 text-xs text-muted-foreground bg-secondary/40 rounded-lg p-3">
+                    <div className="flex items-start gap-2 text-xs text-muted-foreground bg-secondary rounded-lg p-3">
                       <AlertCircle className="size-3.5 shrink-0 mt-0.5 text-amber-400" />
                       <span>
                         Couldn&apos;t build a company profile.
@@ -1236,7 +1238,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
             </div>{/* end left column */}
 
             {/* ── Right: activity / internal discussion rail ── */}
-            <div className="w-[340px] max-lg:w-[280px] max-sm:hidden shrink-0 border-l border-border bg-secondary/20 flex flex-col min-h-0">
+            <div className="w-[340px] max-lg:w-[280px] max-sm:hidden shrink-0 border-l border-border bg-secondary flex flex-col min-h-0">
               <div className="flex items-center pl-3 pr-3 py-2.5 border-b border-border shrink-0">
                 <div className="flex-1">
                   <SegmentedTabs
@@ -1361,7 +1363,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
                         maxLength={2000}
                         rows={3}
                         placeholder="Write a message to the team…"
-                        className="min-h-[72px] resize-none border-0 bg-transparent text-xs shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0 px-3 pt-2.5"
+                        className="min-h-[72px] resize-none border-0 bg-transparent text-xs shadow-none outline-none px-3 pt-2.5"
                       />
                       <div className="flex items-center justify-between gap-2 px-3 pb-2.5">
                         <span className="text-[10px] text-muted-foreground">

@@ -83,7 +83,7 @@ export function BatchNameField({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="e.g. India Plastics Q3…"
-            className={cn("h-8 text-sm", error && "border-destructive focus-visible:ring-destructive")}
+            className={cn("h-8 text-sm", error && "border-destructive")}
           />
           {error && (
             <p className="text-[10px] text-destructive flex items-center gap-1">
@@ -503,7 +503,7 @@ function IndustryKeywordsDropdown({
         {open && (
           <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary/40">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary">
               <p className="eyebrow">
                 {selectedCount > 0 ? `${selectedCount} of ${allKeywordLabels.length} selected` : "Select industry segments"}
               </p>
@@ -558,7 +558,7 @@ function IndustryKeywordsDropdown({
                                   key={kw.id}
                                   className={cn(
                                     "group/kw w-full flex items-center gap-2 px-2 py-1 rounded transition-colors",
-                                    checked ? "bg-primary/10" : "hover:bg-secondary/60",
+                                    checked ? "bg-primary/10" : "hover:bg-secondary",
                                   )}
                                 >
                                   <Button
@@ -629,7 +629,7 @@ function IndustryKeywordsDropdown({
             </div>
 
             {/* Add a keyword to an existing group — saved to Settings immediately */}
-            <div className="border-t border-border px-4 py-3 bg-secondary/20">
+            <div className="border-t border-border px-4 py-3 bg-secondary">
               <div className="flex items-center justify-between mb-2">
                 <p className="eyebrow">Add keyword to a group</p>
                 <a href="/settings?section=knowledge&knowledge=industry-segments" className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2">
@@ -704,7 +704,7 @@ function IndustryKeywordsDropdown({
             </div>
 
             {/* Footer */}
-            <div className="border-t border-border px-4 py-2 flex items-center justify-end bg-secondary/30">
+            <div className="border-t border-border px-4 py-2 flex items-center justify-end bg-secondary">
               <Button
                 type="button"
                 variant="link"
@@ -1338,6 +1338,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
             <Upload className="size-8 text-muted-foreground/50" />
             <p className="font-medium text-sm">Click or drag to upload</p>
             <p className="text-xs text-muted-foreground">.xlsx or .csv · any column layout supported</p>
+            {/* eslint-disable-next-line no-restricted-syntax -- hidden file picker; the visible control is the Button beside it */}
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
           </div>
           {fileError && (
@@ -1350,7 +1351,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
 
       {(stage === "map" || stage === "batch" || stage === "assign") && (
         <form className="space-y-4" onSubmit={handleFormSubmit}>
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-secondary/30 px-4 py-3">
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-secondary px-4 py-3">
             <FileText className="size-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="font-mono text-sm font-medium truncate">{fileName}</p>
@@ -1369,7 +1370,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
                     const mapped = mapping[pf.key];
                     const isName = pf.key === "first_name";
                     return (
-                      <div key={pf.key} className="grid grid-cols-2 items-center gap-3 rounded-lg border border-border bg-card/60 px-3 py-2.5">
+                      <div key={pf.key} className="grid grid-cols-2 items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5">
                         <div>
                           <span className="text-sm">{pf.label}{pf.required && <span className="text-destructive ml-1 text-xs">*</span>}</span>
                           {pf.note && <p className="text-[10px] text-muted-foreground/60 mt-0.5">{pf.note}</p>}
@@ -1456,7 +1457,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
                 onAssignToChange={setAssignTo}
               />
               {employees.length === 0 && (
-                <p className="text-xs text-muted-foreground rounded-lg border border-border bg-secondary/30 px-3 py-2.5">
+                <p className="text-xs text-muted-foreground rounded-lg border border-border bg-secondary px-3 py-2.5">
                   No active employees to assign to — the batch will land in the pool (unassigned).
                 </p>
               )}
@@ -1496,7 +1497,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
           </DialogHeader>
           <div className="flex-1 overflow-auto min-h-0">
             <table className="text-xs border-collapse min-w-max w-full">
-              <thead className="sticky top-0 bg-secondary/80 backdrop-blur-sm z-10">
+              <thead className="sticky top-0 bg-secondary backdrop-blur-sm z-10">
                 <tr>
                   <th className="px-3 py-2 text-left font-mono font-semibold uppercase tracking-wider text-muted-foreground border-b border-border w-10">#</th>
                   {headers.map((h) => (
@@ -1506,7 +1507,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
               </thead>
               <tbody>
                 {rows.map((row, i) => (
-                  <tr key={i} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                  <tr key={i} className="border-b border-border/50 hover:bg-secondary transition-colors">
                     <td className="px-3 py-2 font-mono text-muted-foreground/60 tabular-nums">{i + 1}</td>
                     {headers.map((h) => (
                       <td key={h} className="px-3 py-2 font-mono text-foreground/80 max-w-[200px] truncate whitespace-nowrap" title={String(row[h] ?? "")}>
@@ -1705,7 +1706,7 @@ export function ManualForm({ onImport, prefillOrg, prefillLeads, editMode = fals
         <div className="space-y-4">
           <p className="eyebrow">People</p>
           {leads.map((lead, index) => (
-            <div key={index} className={cn("space-y-3 relative rounded-lg border border-border bg-card/60 p-4", index > 0 && "mt-3")}>
+            <div key={index} className={cn("space-y-3 relative rounded-lg border border-border bg-card p-4", index > 0 && "mt-3")}>
               {leads.length > 1 && (
                 <Button
                   type="button"

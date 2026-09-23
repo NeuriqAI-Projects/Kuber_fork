@@ -386,7 +386,7 @@ export function ApolloUsageView() {
         ) : (
           <div className="rounded-lg border border-border overflow-hidden">
             <table className="w-full text-xs">
-              <thead className="bg-secondary/40 text-muted-foreground">
+              <thead className="bg-secondary text-muted-foreground">
                 <tr>
                   <th className="text-left font-medium px-3 py-2">When</th>
                   <th className="text-left font-medium px-3 py-2">Event</th>

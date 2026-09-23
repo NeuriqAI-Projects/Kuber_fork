@@ -160,7 +160,7 @@ export function EmailSendingView() {
 
           <div className={cn(
             "border-t border-border px-5 py-3.5 flex items-start gap-3",
-            selectionRequired ? "bg-amber-500/5" : selected?.can_send ? "bg-emerald-500/5" : "bg-secondary/20",
+            selectionRequired ? "bg-amber-500/5" : selected?.can_send ? "bg-emerald-500/5" : "bg-secondary",
           )}>
             {selectionRequired ? (
               <TriangleAlert className="size-4 text-amber-500 shrink-0 mt-0.5" />

@@ -167,5 +167,7 @@ export function RouteSkeleton({ href }: { href: string }) {
   if (href.startsWith("/campaigns")) return <CampaignsSkeleton />;
   if (href.startsWith("/unibox")) return <CampaignsSkeleton />;
   if (href.startsWith("/leads")) return <LeadsSkeleton />;
+  // Without this, clicking Model Lab flashed the Dashboard skeleton first.
+  if (href.startsWith("/model-lab")) return <CampaignsSkeleton />;
   return <DashboardSkeleton />;
 }

@@ -60,7 +60,7 @@ export function AddParticipantLeadDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2">
+          <div className="rounded-lg border border-border bg-secondary p-3 space-y-2">
             <Row label="Email" value={email ?? "—"} mono />
             <Row label="Organization" value={organizationName ?? "—"} />
             <Row label="Owner" value={ownerName ?? "Unassigned"} />

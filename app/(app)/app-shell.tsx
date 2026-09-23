@@ -137,7 +137,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <nav className="flex-1 p-2 space-y-1">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-9 bg-secondary/60 rounded-lg" />
+              <div key={i} className="h-9 bg-secondary rounded-lg" />
             ))}
           </nav>
         </aside>
@@ -193,7 +193,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
               onClick={toggleSidebar}
               aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className="shrink-0 size-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary/60 hover:text-foreground transition-colors"
+              className="shrink-0 size-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
             >
               <Menu className="size-4" />
             </button>
@@ -230,7 +230,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                     sidebarCollapsed ? "justify-center px-0 py-2.5" : "gap-2.5 px-3 py-2",
                     active
                       ? "swatch-bar bg-primary/10 text-primary font-semibold"
-                      : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
+                      : "text-muted-foreground hover:bg-secondary hover:text-foreground",
                   )}
                 >
                   <Icon className="size-4 shrink-0" />
@@ -293,7 +293,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
               rel="noopener noreferrer"
               title={sidebarCollapsed ? "Report an issue" : undefined}
               className={cn(
-                "flex items-center rounded-lg text-muted-foreground hover:bg-secondary/50 hover:text-foreground transition-colors",
+                "flex items-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors",
                 sidebarCollapsed ? "size-7 justify-center" : "gap-2 px-1 py-1 text-xs font-medium",
               )}
             >

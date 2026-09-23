@@ -58,7 +58,7 @@ export function ReplyToField({
                 "inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[11px]",
                 locked
                   ? "border-primary/30 bg-primary/10 text-foreground"
-                  : "border-border bg-secondary/30 text-foreground",
+                  : "border-border bg-secondary text-foreground",
               )}
               title={locked ? "Instantly always addresses the message you are replying to. Reply to a different message to change this." : undefined}
             >

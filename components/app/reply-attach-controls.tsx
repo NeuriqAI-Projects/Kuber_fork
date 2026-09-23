@@ -69,6 +69,7 @@ export function ReplyAttachButton({
 
   return (
     <>
+      {/* eslint-disable-next-line no-restricted-syntax -- hidden file picker; the visible control is the Button beside it */}
       <input
         ref={inputRef}
         type="file"

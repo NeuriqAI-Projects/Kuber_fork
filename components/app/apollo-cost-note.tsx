@@ -33,7 +33,7 @@ export function ApolloCostNote({
 }) {
   if (credits <= 0) {
     return (
-      <div className={cn("flex items-start gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5 text-[11px] text-muted-foreground", className)}>
+      <div className={cn("flex items-start gap-2 rounded-lg border border-border bg-secondary px-3 py-2.5 text-[11px] text-muted-foreground", className)}>
         <Coins className="size-3.5 shrink-0 mt-0.5" />
         <p>No credits spent yet — nothing selected.</p>
       </div>

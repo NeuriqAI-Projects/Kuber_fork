@@ -163,7 +163,7 @@ function MessageRow({
         onClick={onToggle}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
         className={cn(
-          "w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-border/60 hover:bg-secondary/40 transition-colors cursor-pointer",
+          "w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-border/60 hover:bg-secondary transition-colors cursor-pointer",
           isUnread && "bg-primary/5",
         )}
       >
@@ -211,7 +211,7 @@ function MessageRow({
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-secondary/30 transition-colors"
+        className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-secondary transition-colors"
       >
         <Avatar name={senderName} size="sm" />
         <div className="flex-1 min-w-0">
@@ -616,7 +616,7 @@ export function UniboxThreadView({
                   its own — unrelated to who can click Reply (see
                   replyTargetFor, which now lets any message be a target). */}
               {children.map((child) => (
-                <div key={child.id} className="border-l-2 border-primary/25 bg-secondary/20 pl-4">
+                <div key={child.id} className="border-l-2 border-primary/25 bg-secondary pl-4">
                   {row(child)}
                 </div>
               ))}

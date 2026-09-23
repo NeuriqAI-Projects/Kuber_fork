@@ -395,7 +395,7 @@ function MultiSelectDropdown<T extends string>({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search or type to add…"
-                className="h-auto flex-1 border-0 bg-transparent px-0 py-0 text-xs shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/60"
+                className="h-auto flex-1 border-0 bg-transparent px-0 py-0 text-xs shadow-none outline-none placeholder:text-muted-foreground/60"
               />
             </div>
           </div>
@@ -413,7 +413,7 @@ function MultiSelectDropdown<T extends string>({
                     onClick={() => toggle(o.value)}
                     className={cn(
                       "w-full h-auto justify-start gap-2.5 rounded-none px-3 py-2 text-sm font-normal",
-                      active && "bg-secondary/60"
+                      active && "bg-secondary"
                     )}
                   >
                     {o.dot && <span className={cn("size-2 rounded-full shrink-0", o.dot)} />}
@@ -1046,7 +1046,7 @@ export default function LeadsPage() {
 
       {/* ── Search + Columns toolbar ── */}
       {(leadsEntityMode === "orgs" || (leadsEntityMode === "individual" && (leadsViewMode === "list" || leadsViewMode === "kanban"))) && (
-        <div className="flex items-center gap-3 px-8 py-3 border-b border-border shrink-0 bg-secondary/30">
+        <div className="flex items-center gap-3 px-8 py-3 border-b border-border shrink-0 bg-secondary">
           <SearchInput
             value={searchQuery}
             onChange={setSearchQuery}
@@ -1189,7 +1189,7 @@ export default function LeadsPage() {
                         <TableRow
                           key={org.id}
                           onClick={() => setSelectedOrgId(org.id)}
-                          className="cursor-pointer border-border border-l-2 border-l-transparent transition-colors hover:border-l-primary hover:bg-secondary/40"
+                          className="cursor-pointer border-border border-l-2 border-l-transparent transition-colors hover:border-l-primary hover:bg-secondary"
                         >
                           <TableCell>
                             <div className="flex items-center gap-2.5">
@@ -1305,8 +1305,8 @@ export default function LeadsPage() {
                         key={lead.id}
                         onClick={() => setSelectedLead(lead)}
                         className={cn(
-                          "cursor-pointer border-border border-l-2 border-l-transparent transition-colors hover:border-l-primary hover:bg-secondary/40",
-                          isChecked && "bg-secondary/30 border-l-primary",
+                          "cursor-pointer border-border border-l-2 border-l-transparent transition-colors hover:border-l-primary hover:bg-secondary",
+                          isChecked && "bg-secondary border-l-primary",
                         )}
                       >
                         <TableCell
@@ -1531,7 +1531,7 @@ export default function LeadsPage() {
 
             {assignStrategy === "manual" && (
               employeesLoading ? (
-                <div className="h-10 rounded-md border border-border bg-secondary/40 animate-pulse" />
+                <div className="h-10 rounded-md border border-border bg-secondary animate-pulse" />
               ) : (
                 <Select value={assignTarget} onValueChange={setAssignTarget}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -1552,7 +1552,7 @@ export default function LeadsPage() {
                   tabIndex={0}
                   onClick={() => setAssignSkipAssigned((v) => !v)}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setAssignSkipAssigned((v) => !v); } }}
-                  className="flex items-start gap-2.5 rounded-lg border border-border p-3 text-xs cursor-pointer hover:bg-secondary/40"
+                  className="flex items-start gap-2.5 rounded-lg border border-border p-3 text-xs cursor-pointer hover:bg-secondary"
                 >
                   <AppCheckbox checked={assignSkipAssigned} className="mt-0.5" />
                   <span>
@@ -1575,7 +1575,7 @@ export default function LeadsPage() {
                 variant="outline"
                 onClick={() => setShowBulkAssign(false)}
                 disabled={bulkAssigning}
-                className="rounded-lg bg-secondary/50"
+                className="rounded-lg bg-secondary"
               >
                 Cancel
               </Button>

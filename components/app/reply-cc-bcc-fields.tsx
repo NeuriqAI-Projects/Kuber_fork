@@ -146,7 +146,7 @@ function EmailChipList({
           {emails.map((email) => (
             <span
               key={email}
-              className="inline-flex max-w-full items-center gap-1 rounded border border-border bg-secondary/30 px-1.5 py-0.5 font-mono text-[11px] text-foreground"
+              className="inline-flex max-w-full items-center gap-1 rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-[11px] text-foreground"
             >
               <span className="truncate">{email}</span>
               <button
@@ -160,6 +160,7 @@ function EmailChipList({
               </button>
             </span>
           ))}
+          {/* eslint-disable-next-line no-restricted-syntax -- bare typing target inside the recipient-chips field; the chips row is the visible control */}
           <input
             type="email"
             value={draft}
@@ -197,7 +198,7 @@ function EmailChipList({
                   aria-selected={i === activeIdx}
                   className={cn(
                     "flex w-full px-2.5 py-1.5 text-left font-mono text-[11px] text-foreground",
-                    i === activeIdx ? "bg-secondary/50" : "hover:bg-secondary/30",
+                    i === activeIdx ? "bg-secondary" : "hover:bg-secondary",
                   )}
                   onMouseDown={(ev) => {
                     ev.preventDefault();
@@ -265,7 +266,7 @@ export function ReplyCcBccFields({
             type="button"
             disabled={disabled}
             onClick={() => setShowCc(true)}
-            className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-secondary/40 hover:text-foreground disabled:opacity-50"
+            className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
           >
             Cc
             <ChevronDown className="size-3 opacity-70" />
@@ -276,7 +277,7 @@ export function ReplyCcBccFields({
             type="button"
             disabled={disabled}
             onClick={() => setShowBcc(true)}
-            className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-secondary/40 hover:text-foreground disabled:opacity-50"
+            className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
           >
             Bcc
             <ChevronDown className="size-3 opacity-70" />

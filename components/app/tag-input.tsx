@@ -103,7 +103,7 @@ export function TagInput({
             onFocus={() => setOpen(true)}
             onKeyDown={handleKeyDown}
             placeholder={pills.length === 0 ? (placeholder ?? "Type to search…") : ""}
-            className="h-auto flex-1 min-w-[120px] border-0 bg-transparent p-0 text-sm shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/50"
+            className="h-auto flex-1 min-w-[120px] border-0 bg-transparent p-0 text-sm shadow-none outline-none placeholder:text-muted-foreground/50"
           />
         )}
       </div>

@@ -269,7 +269,7 @@ export function KeysView() {
           <button
             type="button"
             onClick={() => setAddOpen(true)}
-            className="w-full rounded-xl border border-dashed border-border bg-card/40 px-5 py-8 text-center transition-colors hover:border-primary/50 hover:bg-secondary/30"
+            className="w-full rounded-xl border border-dashed border-border bg-card px-5 py-8 text-center transition-colors hover:border-primary/50 hover:bg-secondary"
           >
             <KeyRound className="size-5 mx-auto text-muted-foreground/50" />
             <p className="mt-2 text-sm font-medium">Add your first LLM provider</p>
@@ -392,7 +392,7 @@ function ProviderRow({
 
       <div className={cn(
         "shrink-0 size-8 rounded-md flex items-center justify-center",
-        hasKeys ? "bg-emerald-500/10 text-emerald-500" : "bg-secondary/60 text-muted-foreground",
+        hasKeys ? "bg-emerald-500/10 text-emerald-500" : "bg-secondary text-muted-foreground",
       )}>
         <KeyRound className="size-4" />
       </div>
@@ -406,7 +406,7 @@ function ProviderRow({
             </Badge>
           )}
           {provider.modelInputMode !== "none" && model && (
-            <span className="shrink-0 font-mono text-[10px] text-muted-foreground bg-secondary/60 rounded px-1.5 py-0.5 truncate max-w-56">
+            <span className="shrink-0 font-mono text-[10px] text-muted-foreground bg-secondary rounded px-1.5 py-0.5 truncate max-w-56">
               {model}
             </span>
           )}
@@ -667,7 +667,7 @@ function ModelField({ provider, value, onChange }: {
           <PopoverTrigger asChild>
             <button
               type="button"
-              className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-field px-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-field px-3 text-left"
             >
               <span className={cn("truncate font-mono text-xs", !value && "text-muted-foreground font-sans")}>
                 {value || "Choose a model"}
@@ -695,7 +695,7 @@ function ModelField({ provider, value, onChange }: {
                   onClick={() => { onChange(m.id); setOpen(false); }}
                   className={cn(
                     "flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left transition-colors hover:bg-accent",
-                    value === m.id && "bg-accent/60",
+                    value === m.id && "bg-accent",
                   )}
                 >
                   <span className="min-w-0">
@@ -1009,7 +1009,7 @@ function ManageProviderModal({ provider, onClose, onChanged }: {
               )}
 
               {showAdd && (
-                <form onSubmit={handleAdd} className="space-y-3 rounded-md border border-border bg-secondary/20 p-3 enter">
+                <form onSubmit={handleAdd} className="space-y-3 rounded-md border border-border bg-secondary p-3 enter">
                   <div className="space-y-1.5">
                     <Label>Label</Label>
                     <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Backup" required />

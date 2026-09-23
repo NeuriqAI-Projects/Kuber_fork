@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/ui/empty-state";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -80,7 +81,7 @@ function Section({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-secondary/30 p-4 space-y-3">
+    <div className="rounded-xl border border-border bg-secondary p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 eyebrow">
           <Icon className="size-3" /> {label}
@@ -262,23 +263,23 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
               {/* Name + domain */}
               <div className="space-y-2">
                 <div className="h-5 w-2/3 bg-secondary rounded" />
-                <div className="h-3 w-1/3 bg-secondary/60 rounded" />
+                <div className="h-3 w-1/3 bg-secondary rounded" />
               </div>
               {/* Enrichment dot row */}
               <div className="flex items-center gap-2">
                 <div className="size-2 rounded-full bg-secondary shrink-0" />
-                <div className="h-3 w-16 bg-secondary/60 rounded" />
+                <div className="h-3 w-16 bg-secondary rounded" />
               </div>
               {/* Field rows */}
               {[70, 50, 60, 80].map((w, i) => (
                 <div key={i} className="space-y-1.5">
-                  <div className="h-2.5 w-16 bg-secondary/60 rounded" />
+                  <div className="h-2.5 w-16 bg-secondary rounded" />
                   <div className="h-8 bg-secondary rounded-lg" style={{ width: `${w}%` }} />
                 </div>
               ))}
               {/* Description block */}
               <div className="space-y-1.5">
-                <div className="h-2.5 w-20 bg-secondary/60 rounded" />
+                <div className="h-2.5 w-20 bg-secondary rounded" />
                 <div className="h-16 bg-secondary rounded-lg" />
               </div>
             </div>
@@ -334,9 +335,9 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
                     <legend className="eyebrow px-1">About</legend>
                     <div className="space-y-1.5">
                       <Label className="text-xs">Description</Label>
-                      <textarea
+                      <Textarea
                         rows={4}
-                        className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground resize-none placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                        className="resize-none"
                         value={form.description}
                         onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                         placeholder="What does this company do?"
@@ -419,7 +420,7 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
                             onClick={() => onLeadClick?.(lead.id)}
                             className={cn(
                               "rounded-lg border border-border bg-card px-3 py-2",
-                              onLeadClick && "cursor-pointer hover:bg-secondary/40 hover:border-primary/30 transition-colors",
+                              onLeadClick && "cursor-pointer hover:bg-secondary hover:border-primary/30 transition-colors",
                             )}
                           >
                             <p className={cn("text-sm font-medium", onLeadClick && "group-hover:text-primary")}>

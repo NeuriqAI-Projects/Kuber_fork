@@ -125,7 +125,7 @@ function CompanyTableSkeleton({ rows = 8 }: { rows?: number }) {
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-field dark:bg-card" aria-busy="true" aria-label="Loading companies">
       <table className="w-full text-xs">
-        <thead className="bg-secondary/30 text-muted-foreground">
+        <thead className="bg-secondary text-muted-foreground">
           <tr>
             <th className="px-3 py-2 text-left font-medium">Company</th>
             <th className="px-3 py-2 text-right font-medium">Founded</th>
@@ -956,7 +956,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
               </p>
 
               {companies.length === 0 ? (
-                <div className="rounded-lg border border-border bg-secondary/30 px-4 py-6 text-center">
+                <div className="rounded-lg border border-border bg-secondary px-4 py-6 text-center">
                   <Building2 className="mx-auto mb-2 size-5 text-muted-foreground" />
                   <p className="text-sm font-medium">No companies matched</p>
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -973,7 +973,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                           response — they only arrive with the paid reveal after
                           import — so showing them here rendered a dash on every row
                           of every search. See CompanyPreview for the full note. */}
-                      <thead className="bg-secondary/30 text-muted-foreground">
+                      <thead className="bg-secondary text-muted-foreground">
                         <tr>
                           <th className="px-3 py-2 text-left font-medium">Company</th>
                           <th className="px-3 py-2 text-right font-medium">Founded</th>
@@ -989,7 +989,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                             <tr
                               className={cn(
                                 "border-t border-border transition-colors cursor-pointer",
-                                open ? "bg-secondary/30" : "hover:bg-secondary/30",
+                                open ? "bg-secondary" : "hover:bg-secondary",
                                 c.already_in_system && "opacity-60",
                               )}
                               title={`View details for ${c.name ?? "company"}`}
@@ -1017,7 +1017,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                               </td>
                             </tr>
                             {open && (
-                              <tr className="border-t border-border bg-secondary/30">
+                              <tr className="border-t border-border bg-secondary">
                                 <td colSpan={3} className="px-3 py-3">
                                   <CompanyPreview
                                     company={c}
@@ -1118,7 +1118,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
           {loadingList === "people" ? (
             <PeopleListSkeleton rows={Math.min(contactPageSize, 8)} />
           ) : contacts.length === 0 ? (
-            <div className="rounded-lg border border-border bg-secondary/30 px-4 py-6 text-center">
+            <div className="rounded-lg border border-border bg-secondary px-4 py-6 text-center">
               <Users className="mx-auto mb-2 size-5 text-muted-foreground" />
               <p className="text-sm font-medium">No contactable people found</p>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -1139,7 +1139,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                       onClick={() => { if (!disabled) togglePick(c.apollo_id); }}
                       className={cn(
                         "flex items-center gap-3 border-b border-border px-3 py-2.5 last:border-b-0",
-                        blocked ? "opacity-50" : "cursor-pointer hover:bg-secondary/30",
+                        blocked ? "opacity-50" : "cursor-pointer hover:bg-secondary",
                       )}
                     >
                       <Avatar name={displayName} size="sm" />
