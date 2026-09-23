@@ -104,8 +104,12 @@ export function PromptEditor({
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
-      <div className="overflow-hidden rounded-md border border-border bg-card">
-        <div className="flex flex-wrap items-center gap-1 border-b border-border bg-secondary/30 px-2 py-1">
+      {/* bg-field, not bg-card: this IS a field — someone types their prompt
+          into it — and in light mode card is the same grey as the page, so the
+          editor dissolved into the panel behind it. Its sibling
+          rich-text-editor.tsx already had this right. */}
+      <div className="overflow-hidden rounded-md border border-border bg-field">
+        <div className="flex flex-wrap items-center gap-1 border-b border-border bg-secondary px-2 py-1">
           <span className="eyebrow inline-flex h-7 items-center gap-1.5 px-1">
             <Type className="size-3" /> Compose
           </span>
@@ -126,7 +130,7 @@ export function PromptEditor({
         <div ref={editorRef} role="textbox" aria-label={label} aria-multiline="true"
           contentEditable suppressContentEditableWarning data-placeholder={placeholder}
           onInput={syncValue} onBlur={syncValue} onKeyDown={handleKeyDown}
-          className="rich-editor min-w-0 bg-card px-4 py-3 text-sm leading-6 text-foreground outline-none"
+          className="rich-editor min-w-0 bg-field px-4 py-3 text-sm leading-6 text-foreground outline-none"
           style={{ minHeight }} />
       </div>
       {helper && <p className="text-xs text-muted-foreground">{helper}</p>}

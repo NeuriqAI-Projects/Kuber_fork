@@ -17,10 +17,10 @@ const Switch = React.forwardRef<
 >(({ className, tone = "default", ...props }, ref) => (
   <SwitchPrimitive.Root
     className={cn(
-      "peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border border-input bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-40 data-[state=unchecked]:bg-muted",
+      "peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border border-input bg-muted transition-colors disabled:cursor-not-allowed disabled:opacity-40 data-[state=unchecked]:bg-muted",
       tone === "success"
-        ? "data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500 focus-visible:ring-emerald-500/40"
-        : "data-[state=checked]:border-primary data-[state=checked]:bg-primary focus-visible:ring-ring",
+        ? "data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500"
+        : "data-[state=checked]:border-primary data-[state=checked]:bg-primary",
       className
     )}
     {...props}

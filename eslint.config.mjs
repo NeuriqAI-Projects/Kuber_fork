@@ -21,9 +21,7 @@ const compat = new FlatCompat({
  * where the shared primitives are built, and the primitive is allowed to
  * contain the raw element it wraps.
  */
-const surfaceRules = {
-  "no-restricted-syntax": [
-    "error",
+const surfaceChecks = [
     {
       selector: "Literal[value=/bg-(secondary|muted|accent|card|popover)\\/[0-9]/]",
       message:
@@ -45,6 +43,13 @@ const surfaceRules = {
       message:
         "Dead class. app/globals.css kills every focus ring and outline with an !important reset, so this never renders. Removing it stops someone 'fixing' the reset to make it work. See CLAUDE.md > No focus ring at all.",
     },
+];
+
+/** Only these are exempt inside components/ui: a shared Input is allowed to
+ *  contain the <input> it wraps. The surface rules above are not exempt
+ *  anywhere — leaving them off components/ui was how 11 ad-hoc fills and a
+ *  prompt editor rendering a field as a panel survived the first sweep. */
+const rawElementChecks = [
     {
       selector: "JSXOpeningElement[name.name='input']",
       message:
@@ -55,14 +60,21 @@ const surfaceRules = {
       message:
         "Raw <textarea>. Use the shared Textarea from components/ui/textarea.tsx. See CLAUDE.md > One shared component per control type.",
     },
-  ],
-};
+];
 
+// Flat config: a later block REPLACES an earlier one's setting for the same
+// rule, it does not merge with it. Listing the two sets separately would have
+// silently switched the surface checks off for every app screen, so the block
+// that needs both spells both out.
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
+    files: ["components/ui/**/*.tsx"],
+    rules: { "no-restricted-syntax": ["error", ...surfaceChecks] },
+  },
+  {
     files: ["app/**/*.tsx", "components/app/**/*.tsx"],
-    rules: surfaceRules,
+    rules: { "no-restricted-syntax": ["error", ...surfaceChecks, ...rawElementChecks] },
   },
 ];
 
