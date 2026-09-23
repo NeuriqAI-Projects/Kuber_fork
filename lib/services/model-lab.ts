@@ -199,9 +199,18 @@ export async function runLabComparison(
       // Read the draft, then take it out of the campaign entirely. The lab owns
       // its own copy; leaving the draft behind would let a later bench change
       // sweep a lab email into something real.
+      //
+      // The pointer has to be cleared first: generateOneDraft repoints
+      // campaign_leads.draft_id at a step-1 draft, and campaign_leads_draft_id_fkey
+      // then refuses the delete. That refusal was swallowed on the first live
+      // run and left one row behind per model per run — hence the explicit
+      // error check below, so a silent regression is impossible.
       const { data: draft } = await db
         .from("email_drafts").select("subject, body").eq("id", result.draftId).maybeSingle();
-      await db.from("email_drafts").delete().eq("id", result.draftId);
+      await db.from("campaign_leads").update({ draft_id: null })
+        .eq("campaign_id", campaignId).eq("lead_id", opts.leadId);
+      const { error: delErr } = await db.from("email_drafts").delete().eq("id", result.draftId);
+      if (delErr) console.error(`model-lab: lab draft ${result.draftId} not removed — ${delErr.message}`);
 
       return {
         ...row,
