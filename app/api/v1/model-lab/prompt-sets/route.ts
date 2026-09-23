@@ -1,11 +1,12 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import { dbId } from "@/lib/validators/id";
 import { requireAuth } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 
 const Schema = z.object({
-  id: z.string().uuid().optional(),
+  id: dbId.optional(),
   name: z.string().trim().min(1).max(80),
   scope: z.enum(["personal", "company"]).default("personal"),
   template: z.string().max(20000).nullable().optional(),

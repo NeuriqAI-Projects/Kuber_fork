@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import { dbId } from "@/lib/validators/id";
 import { requireAuth } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 
 const Schema = z.object({
-  run_group: z.string().uuid(),
-  email_id: z.string().uuid(),
+  run_group: dbId,
+  email_id: dbId,
   verdict: z.enum(["best", "worst"]),
 });
 
