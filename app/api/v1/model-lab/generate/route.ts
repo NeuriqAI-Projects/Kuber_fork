@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import { dbId } from "@/lib/validators/id";
 import { requireAuth } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -8,10 +9,10 @@ import { runLabComparison } from "@/lib/services/model-lab";
 export const maxDuration = 300;
 
 const Schema = z.object({
-  lead_id: z.string().uuid(),
+  lead_id: dbId,
   step_number: z.number().int().min(1).max(6).default(1),
   models: z.array(z.string().min(1)).min(1).max(8),
-  prompt_set_id: z.string().uuid().nullable().optional(),
+  prompt_set_id: dbId.nullable().optional(),
   /** Unsaved wording typed straight into the lab. `null` means "deliberately
    *  blank"; omit the field entirely to use whatever is saved in Settings. */
   template: z.string().nullable().optional(),
