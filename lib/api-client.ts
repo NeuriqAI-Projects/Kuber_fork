@@ -1104,6 +1104,32 @@ export async function fetchCampaignReport(token: string, campaignId: string): Pr
   return apiFetch(`/api/v1/campaigns/${campaignId}/report`, {}, token);
 }
 
+export type CampaignLlmCost = {
+  totalCostUsd: number;
+  /** false when every row so far has an unpriced model — 0 would misread as "free". */
+  hasKnownCost: boolean;
+  totalCalls: number;
+  failedCalls: number;
+  unknownCostCalls: number;
+  totalTokens: number;
+  purposes: Array<{
+    purpose: string;
+    label: string;
+    calls: number;
+    costUsd: number;
+    hasUnknownCost: boolean;
+    tokens: number;
+  }>;
+  /** llm_usage only started recording on this date — see the route's comment. */
+  trackingStartedAt: string;
+};
+
+/** LLM/model spend attributed to this campaign. Apollo and Firecrawl spend are
+ *  not included — neither is attributed per-campaign in the data model yet. */
+export async function fetchCampaignLlmCost(token: string, campaignId: string): Promise<CampaignLlmCost> {
+  return apiFetch(`/api/v1/campaigns/${campaignId}/llm-cost`, {}, token);
+}
+
 export async function fetchSettings(token: string): Promise<Record<string, string>> {
   return apiFetch("/api/v1/settings", {}, token);
 }
