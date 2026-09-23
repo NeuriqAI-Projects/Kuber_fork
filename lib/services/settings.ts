@@ -302,6 +302,14 @@ export async function resolveDraftSystemPrompt(
   db: SupabaseClient,
   ownerId: string | null | undefined,
   stepNumber = 1,
+  /**
+   * Write with THIS template and prompt instead of whatever is saved. Model Lab
+   * only: it tries a wording before anyone commits it to Settings, so the text
+   * has to reach the model without being stored first. An empty string means
+   * "deliberately blank", which is why these are `string | null` and only
+   * `undefined` falls back to the saved value.
+   */
+  override?: { template?: string | null; prompt?: string | null },
 ): Promise<string> {
   // A follow-up is never the template. Reproducing an opening pitch as step 2
   // is a second cold email, which is exactly what the client rejected.
@@ -314,7 +322,9 @@ export async function resolveDraftSystemPrompt(
 ${contextBlock}`;
   }
 
-  const template = await resolveDraftTemplate(db, ownerId);
+  const template = override?.template !== undefined
+    ? (override.template?.trim() || null)
+    : await resolveDraftTemplate(db, ownerId);
 
   // A template is a shape to reproduce, so it gets the template contract and
   // NOT the formatting rules: those force bullet lists and bolding, which
@@ -323,7 +333,9 @@ ${contextBlock}`;
   // non-negotiables) still applies.
   const base = template
     ? buildTemplateSystemPrompt(template)
-    : `${(await resolveDraftPrompt(db, ownerId)).trimEnd()}${MANDATORY_FORMATTING_RULES}`;
+    : `${(override?.prompt !== undefined
+          ? (override.prompt ?? "")
+          : await resolveDraftPrompt(db, ownerId)).trimEnd()}${MANDATORY_FORMATTING_RULES}`;
 
   const withJson =
     /["']subject["']/.test(base) && /["']body["']/.test(base) && /["']product_match["']/.test(base)

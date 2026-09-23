@@ -44,7 +44,9 @@ async function tryProvider<T>(db: SupabaseClient, companyId: string, provider: L
     if (!resolved) break;
 
     try {
-      const model = await resolveModel(db, provider, meta.defaultModel ?? "");
+      // opts.model is the Model Lab naming one model explicitly; everyone
+       // else gets the company's configured model. See CompletionOpts.
+      const model = opts.model ?? await resolveModel(db, provider, meta.defaultModel ?? "");
       const config = await getProviderCallConfig(db, provider);
       const { json, usage } = await call(resolved.secret, model, opts, config);
       if (resolved.keyId) await markKeySucceeded(db, resolved.keyId);
@@ -80,7 +82,12 @@ export async function complete<T = object>(
   meta?: LlmCallMeta,
 ): Promise<LlmResult<T>> {
   const client = createScopedClient(companyId);
-  const tierOrder = await resolveLlmTierOrder(client);
+  // A pinned provider means "this one or nothing": falling through to the next
+  // tier would quietly answer with a different model than the caller asked for,
+  // which in a side-by-side comparison is worse than an error.
+  const tierOrder = opts.provider
+    ? [opts.provider as LlmProviderId]
+    : await resolveLlmTierOrder(client);
   const errors: string[] = [];
 
   for (let i = 0; i < tierOrder.length; i++) {

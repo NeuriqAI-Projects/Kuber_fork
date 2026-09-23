@@ -31,6 +31,18 @@ export interface CompletionOpts {
   // DEFAULT_TEMPERATURE in registry.ts) — callers only set this when a task
   // genuinely wants more variety than rule-following.
   temperature?: number;
+  /**
+   * Run THIS model instead of the company's configured one, on THIS provider
+   * instead of the normal tier order. Model Lab only: it writes the same email
+   * with seven models side by side, and the alternative — rewriting
+   * provider_settings.selected_model before each one — would change what
+   * production writes for as long as the comparison ran.
+   *
+   * Everything else stays normal: the company's own keys, key rotation, usage
+   * logging and cost. Leave unset and nothing about this call changes.
+   */
+  model?: string;
+  provider?: ProviderId;
 }
 
 /**
