@@ -55,15 +55,20 @@ export async function GET(
   const totalCalls = rows?.length ?? 0;
   let totalTokens = 0;
 
-  const byPurpose = new Map<string, { calls: number; costUsd: number; hasUnknownCost: boolean; tokens: number }>();
+  // Grouped by purpose AND model, not purpose alone — a fallback tier means
+  // "Opening drafts" can carry more than one model, and a flat per-purpose row
+  // would hide which one actually did (and cost) the work.
+  const byPurposeModel = new Map<string, { purpose: string; model: string; calls: number; costUsd: number; hasUnknownCost: boolean; tokens: number }>();
 
   for (const row of rows ?? []) {
     const purpose = row.purpose ?? "other";
+    const model = row.model ?? "unknown";
+    const key = `${purpose}::${model}`;
     const tokens = (row.input_tokens ?? 0) + (row.output_tokens ?? 0) + (row.cache_write_tokens ?? 0) + (row.cache_read_tokens ?? 0);
     totalTokens += tokens;
     if (row.error) failedCalls++;
 
-    const bucket = byPurpose.get(purpose) ?? { calls: 0, costUsd: 0, hasUnknownCost: false, tokens: 0 };
+    const bucket = byPurposeModel.get(key) ?? { purpose, model, calls: 0, costUsd: 0, hasUnknownCost: false, tokens: 0 };
     bucket.calls++;
     bucket.tokens += tokens;
 
@@ -75,13 +80,14 @@ export async function GET(
       hasKnownCost = true;
       bucket.costUsd += Number(row.cost_usd);
     }
-    byPurpose.set(purpose, bucket);
+    byPurposeModel.set(key, bucket);
   }
 
-  const purposes = [...byPurpose.entries()]
-    .map(([purpose, v]) => ({
-      purpose,
-      label: PURPOSE_LABELS[purpose] ?? purpose,
+  const purposes = [...byPurposeModel.values()]
+    .map((v) => ({
+      purpose: v.purpose,
+      label: PURPOSE_LABELS[v.purpose] ?? v.purpose,
+      model: v.model,
       calls: v.calls,
       costUsd: v.costUsd,
       hasUnknownCost: v.hasUnknownCost,

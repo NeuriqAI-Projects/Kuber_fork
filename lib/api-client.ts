@@ -1115,6 +1115,9 @@ export type CampaignLlmCost = {
   purposes: Array<{
     purpose: string;
     label: string;
+    /** e.g. "claude-sonnet-4.6" — one row per purpose+model, since a fallback
+     *  tier means a single purpose can be served by more than one model. */
+    model: string;
     calls: number;
     costUsd: number;
     hasUnknownCost: boolean;
