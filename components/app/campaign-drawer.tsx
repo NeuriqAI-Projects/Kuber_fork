@@ -70,6 +70,7 @@ import {
   fetchRegenerationJob,
   cancelRegenerationJob,
   kickRegenerationJob,
+  kickDraftGeneration,
   replaceBouncedLead,
   type CampaignReplyThread,
   type CampaignComment,
@@ -876,6 +877,7 @@ export function CampaignDetail({
   const [outboxNewReplyLoading, setOutboxNewReplyLoading] = useState(false);
   const [syncingReplies, setSyncingReplies] = useState(false);
   const syncHitTimesRef = useRef<number[]>([]);
+  const lastDraftKickRef = useRef(0);
   const SYNC_RATE_LIMIT = 10;
   const SYNC_RATE_WINDOW_MS = 60_000;
   const [leadsSearch, setLeadsSearch] = useState("");
@@ -908,6 +910,7 @@ export function CampaignDetail({
    *  delayed, never lost. */
   const [holdBusy, setHoldBusy] = useState(false);
   const [holdConfirmOpen, setHoldConfirmOpen] = useState(false);
+  const [sendAllWarnOpen, setSendAllWarnOpen] = useState(false);
   /** Set when a bulk follow-up regeneration was refused because sending is live
    *  — drives the "Hold sending, then regenerate" prompt. */
   const [holdRequiredFor, setHoldRequiredFor] = useState<string | null>(null);
@@ -1363,9 +1366,21 @@ export function CampaignDetail({
     if (!progress) return;
     const isGenerating = (progress.generating + progress.pending) > 0;
     if (!isGenerating) return;
-    const interval = setInterval(() => { void loadData(); }, 3000);
+    const interval = setInterval(() => {
+      void loadData();
+      // The worker's batch chain dies after ~5 hops; the watchdog takes 10-20
+      // minutes to notice. While someone is watching, ask once a minute — the
+      // server only restarts generation that has actually stopped. A ref, not
+      // a second interval: this effect re-runs on every 3s progress update.
+      if (Date.now() - lastDraftKickRef.current < 60_000) return;
+      lastDraftKickRef.current = Date.now();
+      void (async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) void kickDraftGeneration(session.access_token, campaign.id).catch(() => {});
+      })();
+    }, 3000);
     return () => clearInterval(interval);
-  }, [progress, loadData]);
+  }, [progress, loadData, campaign.id]);
 
   // A bulk regeneration runs entirely server-side, so the only way to see it
   // advance is to ask. Poll the job and the leads together while one is live;
@@ -1855,7 +1870,16 @@ export function CampaignDetail({
   // now has exactly two homes — "Certify all" in the header for the whole
   // campaign, "Certify (N)" in the toolbar for what you ticked — matching the
   // Regenerate pair beside them.
-  async function handlePrimaryAction() {
+  // Leads the AI is still writing. Send all only sends what is certified, so
+  // pressing it mid-generation used to leave the rest looking forgotten — on
+  // 24 Sep 2026, 11 of 121 leads sat at "No draft" with no explanation.
+  const unwrittenCount = progress ? progress.pending + progress.generating : 0;
+
+  async function handlePrimaryAction(confirmed = false) {
+    if (checkedSendCount === 0 && !confirmed && unwrittenCount > 0) {
+      setSendAllWarnOpen(true);
+      return;
+    }
     if (checkedSendCount > 0) {
       const ids = campaignLeads
         .filter((cl) => checkedIds.has(cl.id) && sendReadyLeads.some((s) => s.id === cl.id))
@@ -5718,6 +5742,21 @@ export function CampaignDetail({
           onConfirm={() => {
             setSeqStepEdits((prev) => prev.filter((_, i) => i !== confirmRemoveStepIdx));
             setConfirmRemoveStepIdx(null);
+          }}
+        />
+      )}
+
+      {sendAllWarnOpen && (
+        <ConfirmDialog
+          open
+          tone="warning"
+          title={`${unwrittenCount} lead${unwrittenCount !== 1 ? "s are" : " is"} still being written`}
+          description={`Send all sends the ${certifiedCount} certified email${certifiedCount !== 1 ? "s" : ""} now. The AI is still writing the opening email for ${unwrittenCount} more — this can take a few minutes. Those will appear in the Outbox as drafts; certify and send them when they're ready.`}
+          confirmLabel={`Send ${certifiedCount} now`}
+          onClose={() => setSendAllWarnOpen(false)}
+          onConfirm={() => {
+            setSendAllWarnOpen(false);
+            void handlePrimaryAction(true);
           }}
         />
       )}

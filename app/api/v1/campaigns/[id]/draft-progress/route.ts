@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { countPendingDrafts } from "@/lib/services/generate-drafts";
 
 type DraftRow = { status: string } | { status: string }[] | null;
 
@@ -80,6 +81,10 @@ export async function GET(
     approved: statusCounts.approved,
     sent: statusCounts.sent,
     failed: statusCounts.failed,
-    pending,
+    // Leads a worker will still write. The loop's count also included leads it
+    // never will (no email, retry cap reached), which kept the drawer polling
+    // forever and would make the Send-all warning cry wolf.
+    // countPendingDrafts includes in-flight rows, which are reported above.
+    pending: Math.min(pending, Math.max(0, (await countPendingDrafts(db, id)) - statusCounts.generating)),
   });
 }

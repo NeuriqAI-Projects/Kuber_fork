@@ -274,10 +274,18 @@ export async function triggerDraftGenerationWatchdog(baseUrl: string, db: Db) {
   // ponytail: examines every non-deleted draft/processing campaign, which is
   // fine at this scale (~50). If that ever runs into thousands, push the
   // "has pending leads" test into the query instead of filtering here.
+  //
+  // 'active' is in the list because Send all does not wait for generation: on
+  // 24 Sep 2026 it was pressed with 11 of 121 leads still unwritten, the
+  // campaign went active, and those 11 sat at "No draft" for good. They are
+  // drafted here like any other pending lead and wait to be certified — a lead
+  // already sent is never picked (countPendingDrafts only counts leads with no
+  // draft in a pre-send status). Paused and finished campaigns stay out: they
+  // must not start spending AI credits on their own.
   const { data: candidates } = await db
     .from("campaigns")
     .select("id, company_id")
-    .in("status", ["draft", "processing"])
+    .in("status", ["draft", "processing", "active"])
     .eq("is_deleted", false)
     .not("draft_generation_started_at", "is", null)
     .lt("draft_generation_started_at", staleBefore)

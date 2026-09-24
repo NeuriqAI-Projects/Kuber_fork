@@ -1335,12 +1335,16 @@ export async function fetchDraftTargets(
  * forever thinking there's work left (pairs with fetchDraftTargets' cap).
  */
 export async function countPendingDrafts(db: SupabaseClient, campaignId: string): Promise<number> {
+  // Same eligibility as fetchDraftTargets, email included. Counting leads with
+  // no email made a campaign "pending" forever: the drawer kept polling, the
+  // Send-all warning fired, and the watchdog kicked a worker that found nothing.
   const { data: pending } = await db
     .from("campaign_leads")
-    .select("lead_id")
+    .select("lead_id, leads!lead_id!inner(email)")
     .eq("campaign_id", campaignId)
     .is("draft_id", null)
-    .in("crm_status", ["new", "enriched", "draft"]);
+    .in("crm_status", ["new", "enriched", "draft"])
+    .not("leads.email", "is", null);
 
   let pendingCount = pending?.length ?? 0;
   if (pendingCount > 0) {
@@ -1365,4 +1369,38 @@ export async function countPendingDrafts(db: SupabaseClient, campaignId: string)
     .eq("status", "generating");
 
   return pendingCount + (generatingCount ?? 0);
+}
+
+/**
+ * True when opening-draft generation has stopped with leads still waiting:
+ * nothing in flight, no step-1 draft written for `quietMs`, work left.
+ *
+ * The worker's batch chain dies after ~5 self-calls on the platform, and the
+ * watchdog only restarts it after ~10-20 minutes. A 121-lead campaign on
+ * 24 Sep 2026 took 1h40m that way. The drawer asks this (via
+ * generate-drafts/kick) so a stall costs about a minute while someone watches.
+ */
+export async function isDraftGenerationStalled(
+  db: SupabaseClient,
+  campaignId: string,
+  quietMs = 60_000,
+): Promise<boolean> {
+  const { count: inFlight } = await db
+    .from("email_drafts")
+    .select("id", { count: "exact", head: true })
+    .eq("campaign_id", campaignId)
+    .eq("status", "generating");
+  if ((inFlight ?? 0) > 0) return false;
+
+  const { data: last } = await db
+    .from("email_drafts")
+    .select("created_at")
+    .eq("campaign_id", campaignId)
+    .eq("step_number", 1)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (last?.created_at && Date.now() - Date.parse(last.created_at as string) < quietMs) return false;
+
+  return (await countPendingDrafts(db, campaignId)) > 0;
 }
