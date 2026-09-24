@@ -1,3 +1,9 @@
+-- NOTE (24 Sep 2026): checked against live data before merging — 673 Anthropic
+-- rows carry a cost and NONE has any cache tokens, because prompt caching is
+-- not switched on. This backfill therefore updates zero rows today. Kept for
+-- when caching is enabled; the cost overstatement it describes is not what
+-- happened to the existing figures.
+--
 -- One-time backfill: recompute cost_usd for existing Anthropic llm_usage rows
 -- using the real cache-token multipliers (cache write 1.25x, cache read 0.1x
 -- of the input rate — Anthropic's published prompt-caching pricing), instead
@@ -64,13 +70,16 @@ update llm_usage
 set cost_usd = round(
   (
     (
-      llm_usage.input_tokens
-      + llm_usage.cache_write_tokens * 1.25
-      + llm_usage.cache_read_tokens * 0.1
+      -- coalesce on every term: the WHERE admits a row with only ONE cache
+      -- column set, and in SQL NULL * 1.25 is NULL, which would have
+      -- overwritten a known cost with nothing for exactly those rows.
+      coalesce(llm_usage.input_tokens, 0)
+      + coalesce(llm_usage.cache_write_tokens, 0) * 1.25
+      + coalesce(llm_usage.cache_read_tokens, 0) * 0.1
     ) / 1000000.0
   ) * matched.input_per_million
   +
-  (llm_usage.output_tokens / 1000000.0) * matched.output_per_million
+  (coalesce(llm_usage.output_tokens, 0) / 1000000.0) * matched.output_per_million
 , 6)
 from matched
 where matched.id = llm_usage.id
