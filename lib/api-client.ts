@@ -895,6 +895,10 @@ export async function triggerDraftGeneration(token: string, campaignId: string):
   return apiFetch(`/api/v1/campaigns/${campaignId}/generate-drafts`, { method: "POST" }, token);
 }
 
+export async function kickDraftGeneration(token: string, campaignId: string): Promise<{ kicked: boolean }> {
+  return apiFetch(`/api/v1/campaigns/${campaignId}/generate-drafts/kick`, { method: "POST" }, token);
+}
+
 export async function fetchDraftProgress(token: string, campaignId: string): Promise<{
   total: number; generating: number; draft: number; approved: number; sent: number; failed: number; pending: number;
 }> {
