@@ -309,13 +309,10 @@ function IndustryKeywordsDropdown({
   const [customInput, setCustomInput] = useState("");
   const [targetGroupId, setTargetGroupId] = useState("");
   const [adding, setAdding] = useState(false);
-  /** Which keyword's Apollo term is being edited inline, and the draft value.
-   *  Editing lives here rather than only in Settings because the moment a
-   *  manager notices a wrong search word is while they are picking keywords —
-   *  sending them to Settings loses the selection they are halfway through. */
-  const [editingKwId, setEditingKwId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState("");
-  const [savingKw, setSavingKw] = useState(false);
+  // The search word used to be editable inline here ("Edit word"). Removed
+  // 24 Sep 2026 at the client's request: one place to change it is Settings >
+  // Industry segments, which already has a proper field per keyword, so a
+  // keyword's search term is never changed by accident mid-import.
   /** Live reachability of the keyword being typed. A term that finds nothing is
    *  otherwise saved into the company's taxonomy and returns zero on every
    *  future import — which is exactly what happened on 2026-09-07, when eleven
@@ -368,29 +365,6 @@ function IndustryKeywordsDropdown({
 
   const allKeywordLabels = groups.flatMap((g) => g.keywords.map((k) => k.label));
 
-  /** Persist a changed Apollo term for one keyword. Same setting Settings >
-   *  Industry Segments writes, so the two screens cannot disagree. */
-  async function saveKeywordQuery(groupId: string, kwId: string) {
-    const query = editDraft.trim();
-    if (!query) { toast.error("The search word cannot be empty."); return; }
-    const updated = groups.map((g) => g.id !== groupId ? g : {
-      ...g,
-      keywords: g.keywords.map((k) => k.id === kwId ? { ...k, query } : k),
-    });
-    setSavingKw(true);
-    try {
-      const token = await getToken();
-      await patchSettings(token, { industry_keyword_groups: JSON.stringify(updated) });
-      onGroupsChange(updated);
-      setEditingKwId(null);
-      toast.success(`Now searching "${query}" for this keyword.`);
-    } catch (e) {
-      toast.error((e as Error).message || "Could not save the search word.");
-    } finally {
-      setSavingKw(false);
-    }
-  }
-
   function toggleKw(label: string) {
     onChange(selected.includes(label) ? selected.filter((s) => s !== label) : [...selected, label]);
   }
@@ -436,12 +410,12 @@ function IndustryKeywordsDropdown({
       onChange([...selected, label]);
       if (query !== label) {
         toast.info(`Added "${label}" — searching "${query}"`, {
-          description: `Apollo finds nothing for "${label}", so the closer term is used. You can change it any time with "Edit word".`,
+          description: `Apollo finds nothing for "${label}", so the closer term is used. You can change it any time in Settings > Industry segments.`,
           duration: 12000,
         });
       } else if (deadTerm) {
         toast.warning(`Added "${label}", but Apollo finds nothing for it`, {
-          description: `This keyword will return no leads until you change its search word. Use "Edit word" to set one.`,
+          description: `This keyword will return no leads until you change its search word. Set one in Settings > Industry segments.`,
           duration: 12000,
         });
       }
@@ -585,37 +559,6 @@ function IndustryKeywordsDropdown({
                                       )}
                                     </span>
                                   </Button>
-                                  {editingKwId === kw.id ? (
-                                    <span className="flex items-center gap-1 shrink-0">
-                                      <Input
-                                        autoFocus
-                                        value={editDraft}
-                                        onChange={(e) => setEditDraft(e.target.value)}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter") { e.preventDefault(); saveKeywordQuery(group.id, kw.id); }
-                                          if (e.key === "Escape") setEditingKwId(null);
-                                        }}
-                                        className="h-6 w-36 text-[11px] font-mono px-1.5"
-                                        placeholder="search word"
-                                      />
-                                      <Button
-                                        type="button" size="sm" variant="ghost" disabled={savingKw}
-                                        onClick={() => saveKeywordQuery(group.id, kw.id)}
-                                        className="h-6 px-1.5 text-[10px]"
-                                      >
-                                        {savingKw ? "…" : "Save"}
-                                      </Button>
-                                    </span>
-                                  ) : (
-                                    <Button
-                                      type="button" size="sm" variant="ghost"
-                                      title="Change the word we search for this keyword"
-                                      onClick={() => { setEditingKwId(kw.id); setEditDraft(kw.query || kw.label); }}
-                                      className="h-6 px-1.5 text-[10px] text-muted-foreground shrink-0 opacity-0 group-hover/kw:opacity-100 focus-visible:opacity-100"
-                                    >
-                                      Edit word
-                                    </Button>
-                                  )}
                                 </div>
                               );
                             })}

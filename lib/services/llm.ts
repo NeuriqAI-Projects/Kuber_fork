@@ -96,7 +96,7 @@ export async function complete<T = object>(
     try {
       const outcome = await tryProvider<T>(client, companyId, provider, opts);
       if (outcome !== null) {
-        const costUsd = costOf(outcome.model, outcome.usage);
+        const costUsd = costOf(outcome.model, outcome.usage, provider);
         await recordUsage(client, {
           companyId, provider, model: outcome.model, tier: i + 1,
           usage: outcome.usage, costUsd, durationMs: Date.now() - startedAt,

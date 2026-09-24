@@ -11,6 +11,8 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn, formatUsd } from "@/lib/utils";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatChatDate, startsNewChatDay } from "@/lib/chat-format";
 import { emailPreview, splitQuotedBody } from "@/lib/email-display";
 import { convertResidualMarkdownInHtml, hasVisibleText } from "@/lib/utils/email-html";
@@ -759,6 +761,26 @@ function OutboxMessageRow({
   );
 }
 
+/** Matches the real panel's shape (title + 140px content area) so the
+ *  Analytics chart grid doesn't jump size once real data replaces it —
+ *  used for all four chart panels so they load and resolve as one row
+ *  instead of popping in one at a time. */
+function AnalyticsChartSkeleton() {
+  return (
+    <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
+      <Skeleton className="h-3 w-24 mb-3" />
+      <div className="h-[140px] flex items-center gap-3">
+        <Skeleton className="size-[110px] rounded-full shrink-0" />
+        <div className="flex-1 space-y-2 min-w-0">
+          <Skeleton className="h-2.5 w-full" />
+          <Skeleton className="h-2.5 w-4/5" />
+          <Skeleton className="h-2.5 w-3/5" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function CampaignDetail({
   campaign,
   onBack,
@@ -823,6 +845,10 @@ export function CampaignDetail({
   const [reportLoading, setReportLoading] = useState(false);
   const [llmCost, setLlmCost] = useState<CampaignLlmCost | null>(null);
   const [llmCostLoading, setLlmCostLoading] = useState(false);
+  // Index into seqStepEdits pending removal, awaiting confirm — a step's text
+  // and timing for every lead in the campaign is real work to lose to a
+  // misclick, so this can no longer fire straight off the button.
+  const [confirmRemoveStepIdx, setConfirmRemoveStepIdx] = useState<number | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [retryingAll, setRetryingAll] = useState(false);
   const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
@@ -2599,6 +2625,13 @@ export function CampaignDetail({
   const PIPELINE_STAGE_NAME_OVERRIDE: Record<string, string> = {
     sent: "No reply yet",
   };
+  // One shared gate for all four chart panels below, instead of each one
+  // deciding its own loading state independently. Before this they popped in
+  // at different moments — Draft Funnel had its own spinner, the two donuts
+  // rendered instantly with a placeholder slice, Replied-vs-delivered
+  // rendered immediately at 0/0 — so the row visibly resolved piece by piece
+  // instead of arriving together.
+  const analyticsChartsReady = !loading && !reportLoading;
   const pipelineData = report && report.stageDistribution.length > 0
     ? report.stageDistribution.map((s) => ({
         name: PIPELINE_STAGE_NAME_OVERRIDE[s.stage] ?? s.label,
@@ -3165,7 +3198,7 @@ export function CampaignDetail({
 
       {/* ── Analytics ─────────────────────────────────────────────────────── */}
       {viewTab === "analytics" && (
-        <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
+        <div className="flex flex-col flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
           {progress && progress.failed > 0 && (
             <div className="px-6 pt-3 pb-2 flex items-center justify-end gap-2">
               <Button
@@ -3219,10 +3252,12 @@ export function CampaignDetail({
                   before a lead is ever attached to a campaign), so they are
                   deliberately not shown here rather than guessed at. */}
               <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-1.5">
                   <p className="eyebrow">Cost</p>
                   {llmCost && (
-                    <InfoTooltip text={`AI/model spend only, tracked since ${format(new Date(llmCost.trackingStartedAt), "d MMM yyyy")}. Apollo lead credits and Firecrawl enrichment cost aren't attributed per campaign yet.`} />
+                    <InfoTooltip
+                      text={`AI/model spend only, tracked since ${format(new Date(llmCost.trackingStartedAt), "d MMM yyyy")}. Apollo lead credits and Firecrawl enrichment cost aren't attributed per campaign yet.`}
+                    />
                   )}
                 </div>
 
@@ -3253,19 +3288,28 @@ export function CampaignDetail({
                         of call, so the total is something you can check by hand
                         rather than a single number you have to take on faith. */}
                     <div className="rounded-lg border border-border overflow-hidden">
-                      <Table>
+                      {/* table-fixed + explicit widths: auto layout lets a
+                          long model id (e.g. a dated snapshot tag) force the
+                          whole table, and with it the Analytics tab, wider
+                          than the drawer — which showed up as the tab itself
+                          scrolling sideways. */}
+                      <Table className="table-fixed">
                         <TableHeader>
                           <TableRow className="hover:bg-transparent">
-                            <TableHead className="h-8 px-3 text-[10px]">Purpose</TableHead>
-                            <TableHead className="h-8 px-3 text-[10px] text-right">Calls</TableHead>
-                            <TableHead className="h-8 px-3 text-[10px] text-right">Cost / call</TableHead>
-                            <TableHead className="h-8 px-3 text-[10px] text-right">Subtotal</TableHead>
+                            <TableHead className="h-8 px-3 text-[10px] w-[28%]">Purpose</TableHead>
+                            <TableHead className="h-8 px-3 text-[10px] w-[32%]">Model</TableHead>
+                            <TableHead className="h-8 px-3 text-[10px] text-right w-[13%]">Calls</TableHead>
+                            <TableHead className="h-8 px-3 text-[10px] text-right w-[13%]">Cost / call</TableHead>
+                            <TableHead className="h-8 px-3 text-[10px] text-right w-[14%]">Subtotal</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {llmCost.purposes.map((p) => (
-                            <TableRow key={p.purpose} className="hover:bg-transparent">
-                              <TableCell className="py-2 px-3 text-xs">{p.label}</TableCell>
+                            <TableRow key={`${p.purpose}::${p.model}`} className="hover:bg-transparent">
+                              <TableCell className="py-2 px-3 text-xs truncate">{p.label}</TableCell>
+                              <TableCell className="py-2 px-3 text-xs font-mono text-muted-foreground truncate" title={p.model}>
+                                {p.model}
+                              </TableCell>
                               <TableCell className="py-2 px-3 text-xs text-right font-mono tabular-nums text-muted-foreground">
                                 {p.calls}
                               </TableCell>
@@ -3277,8 +3321,9 @@ export function CampaignDetail({
                               </TableCell>
                             </TableRow>
                           ))}
-                          <TableRow className="hover:bg-transparent border-t-2 border-border bg-secondary">
+                          <TableRow className="border-t-2 border-border bg-field hover:bg-field dark:bg-card dark:hover:bg-card">
                             <TableCell className="py-2 px-3 text-xs font-semibold">Total</TableCell>
+                            <TableCell className="py-2 px-3" />
                             <TableCell className="py-2 px-3 text-xs text-right font-mono tabular-nums font-semibold">
                               {llmCost.totalCalls}
                             </TableCell>
@@ -3302,6 +3347,14 @@ export function CampaignDetail({
 
               {/* Chart grid */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                {!analyticsChartsReady ? (
+                  <>
+                    <AnalyticsChartSkeleton />
+                    <AnalyticsChartSkeleton />
+                    <AnalyticsChartSkeleton />
+                  </>
+                ) : (
+                <>
                 {/* Pipeline donut + legend */}
                 <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
                   <p className="eyebrow mb-2">Pipeline</p>
@@ -3403,6 +3456,8 @@ export function CampaignDetail({
                     </div>
                   </div>
                 </div>
+                </>
+                )}
               </div>
 
               {/* Follow-up summary tiles — cheap aggregates over the same data
@@ -3420,7 +3475,19 @@ export function CampaignDetail({
 
               {/* Sequence step performance + Replied vs Sent */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-                {stepDeliveryPct.length > 0 && (
+                {!analyticsChartsReady ? (
+                  <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4 lg:col-span-2">
+                    <Skeleton className="h-3 w-40 mb-3" />
+                    <div className="space-y-3">
+                      {[100, 80, 60].map((w, i) => (
+                        <div key={i} className="space-y-1">
+                          <Skeleton className="h-2.5" style={{ width: `${w}%` }} />
+                          <Skeleton className="h-2.5 rounded-full" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : stepDeliveryPct.length > 0 && (
                   <div className="rounded-xl border border-border bg-field dark:bg-card p-4 lg:col-span-2">
                     <div className="flex items-center gap-1.5 mb-1">
                       <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Sequence step performance</p>
@@ -3460,6 +3527,9 @@ export function CampaignDetail({
                 )}
 
                 {/* Replied vs Sent */}
+                {!analyticsChartsReady ? (
+                  <AnalyticsChartSkeleton />
+                ) : (
                 <div className="rounded-xl border border-border bg-field dark:bg-card p-4">
                   <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">Replied vs. delivered</p>
                   <p className="text-[10px] text-muted-foreground mb-2">
@@ -3494,6 +3564,7 @@ export function CampaignDetail({
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
+                )}
               </div>
             </div>
           }
@@ -4878,7 +4949,7 @@ export function CampaignDetail({
           {/* Right: everything this ONE lead is getting, step by step — full
               width in the Campaign pane, since there is no lead list beside it. */}
           <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-6">
-            <div className="max-w-2xl mx-auto space-y-4">
+            <div className={cn("mx-auto space-y-4", seqPane === "template" ? "max-w-5xl" : "max-w-2xl")}>
               {/* Campaign pane shows nothing lead-specific at all — no name,
                   no title, no company — since everything below it is shared
                   by every lead in the campaign, not the one selected on the
@@ -5279,7 +5350,9 @@ export function CampaignDetail({
                       schedule for everyone, not for the person on screen. */}
                   <div className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-2">
                     <p className="text-xs font-medium truncate">{campaign.name}</p>
-                    <InfoTooltip text={`Timing and instructions for all ${campaignLeads.length} leads in this campaign — not just the one you're viewing.`} />
+                    <InfoTooltip
+                      text={`Timing and instructions for all ${campaignLeads.length} leads in this campaign — not just the one you're viewing.`}
+                    />
                   </div>
 
                   {/* One switch for the whole campaign. Off: each follow-up is
@@ -5319,6 +5392,10 @@ export function CampaignDetail({
                     />
                   </div>
                   )}
+                  {/* Two columns once there's room — the Campaign pane has no
+                      lead list beside it, so a single centered column just
+                      left the rest of the drawer empty. */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                   {seqStepEdits.map((st, idx) => (
                     <div key={idx} className="rounded-lg border border-border bg-field px-3 py-2 space-y-2">
                       <div className="flex items-center gap-2">
@@ -5348,11 +5425,13 @@ export function CampaignDetail({
                         <Button
                           type="button"
                           variant="ghost"
-                          size="sm"
-                          onClick={() => setSeqStepEdits((prev) => prev.filter((_, i) => i !== idx))}
-                          className="h-auto p-0 text-xs text-muted-foreground hover:text-destructive hover:bg-transparent shrink-0"
+                          size="icon-sm"
+                          onClick={() => setConfirmRemoveStepIdx(idx)}
+                          title={`Remove follow-up ${idx + 1}`}
+                          aria-label={`Remove follow-up ${idx + 1}`}
+                          className="size-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
                         >
-                          Remove
+                          <X className="size-3.5" />
                         </Button>
                       )}
                       </div>
@@ -5440,6 +5519,7 @@ export function CampaignDetail({
                       </div>
                     </div>
                   ))}
+                  </div>
                   {canEditSettings && (
                     <div className="flex items-center gap-2.5 flex-wrap">
                       {seqStepEdits.length < 8 && (
@@ -5627,6 +5707,20 @@ export function CampaignDetail({
       </div>
 
       {/* ── Shared modals ─────────────────────────────────────────────────── */}
+
+      {confirmRemoveStepIdx !== null && (
+        <ConfirmDialog
+          open
+          title={`Remove follow-up ${confirmRemoveStepIdx + 1}?`}
+          description="This deletes the step's timing and text for the whole campaign — every lead still waiting on it will no longer get it. This can't be undone."
+          confirmLabel="Remove"
+          onClose={() => setConfirmRemoveStepIdx(null)}
+          onConfirm={() => {
+            setSeqStepEdits((prev) => prev.filter((_, i) => i !== confirmRemoveStepIdx));
+            setConfirmRemoveStepIdx(null);
+          }}
+        />
+      )}
 
       {holdConfirmOpen && (
         <HoldSendingModal

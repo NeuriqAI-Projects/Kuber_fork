@@ -130,24 +130,17 @@ function buildLightPalette(c: ColorDefinition): Palette {
     // BORDER — the only thing separating anything in light mode, so it carries
     // the whole visual hierarchy.
     //
-    // It was 88%, which is 1.18:1 against the 95% page: drawn, but under any
-    // real viewing condition invisible. With page, card, panel and popover all
-    // sharing one grey (above), that left the UI with NO visible boundaries at
-    // all — raised by the client's team on 23 Sep 2026 as "the background and
-    // the normal colour are the same, the separation is not visible".
-    //
-    // 54%, chosen against the WEAKEST of the six themes rather than an average:
-    // the same lightness reads differently per hue, so at 58% green measured
-    // 2.40:1 while purple measured 3.18:1. At 54% monochrome/blue/purple/orange/
-    // rose all clear the 3:1 WCAG floor for a non-text boundary and green sits
-    // just under at 2.67:1 — the whole app is legible instead of five themes
-    // being fine and one not.
-    //
-    // This is NOT a fifth colour: it is a lightness step of the same shade, the
-    // latitude muted-foreground already takes on black (see the note above).
-    // One number — raise it toward 66% for a softer line.
-    "--border":               `hsl(${h} ${s}% 54%)`,
-    "--input":                `hsl(${h} ${s}% 54%)`,
+    // Was raised from 88% to 54% on 23 Sep 2026 after the client's team said
+    // "the background and the normal colour are the same, the separation is
+    // not visible" (see git history / commits 2bfa440, cb0b581 for the WCAG
+    // contrast math behind that number if this needs revisiting). Reverted
+    // back to 88% same day at the client's explicit direction — 54% read as a
+    // visible border around every single card/tile on every screen, which
+    // was a worse problem than the one it fixed. If the original complaint
+    // comes back, the fix is a SMALLER step than 54% (e.g. 75-80%), not
+    // re-applying the old value outright.
+    "--border":               `hsl(${h} ${s}% 88%)`,
+    "--input":                `hsl(${h} ${s}% 88%)`,
   };
 }
 

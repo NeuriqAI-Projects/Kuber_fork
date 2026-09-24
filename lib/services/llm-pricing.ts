@@ -65,8 +65,19 @@ function lookup(model: string): Price | null {
  *
  * `usage.costUsd` wins when the provider supplied one — OpenRouter does, and its
  * figure includes routing and margin that a local table cannot know.
+ *
+ * `provider` selects the cache-token multiplier. Anthropic publishes exact
+ * rates for this — cache writes bill at 1.25x the input rate, cache reads at
+ * 0.1x (https://docs.claude.com/en/docs/build-with-claude/prompt-caching) — so
+ * applying them isn't a guess, it's using a known number instead of a wrong
+ * one. Charging cache reads at the full input rate (the old behavior) visibly
+ * overstated cost: a campaign that reuses the same system prompt/product list
+ * across hundreds of calls does almost all of its input through the cache, and
+ * 1x instead of 0.1x on that volume alone can be most of the inflation. Any
+ * other provider still gets the conservative full-rate fold-in, since we don't
+ * have a published multiplier for it — an unknown discount is not applied.
  */
-export function costOf(model: string, usage: TokenUsage): number | null {
+export function costOf(model: string, usage: TokenUsage, provider?: string): number | null {
   if (typeof usage.costUsd === "number") return usage.costUsd;
 
   // An OpenRouter model id is "vendor/model"; price the model part.
@@ -75,11 +86,15 @@ export function costOf(model: string, usage: TokenUsage): number | null {
   if (!price) return null;
 
   const [inPer, outPer] = price;
-  // Cache reads and writes are folded in at their headline input rate for now.
-  // Deliberately not modelled at 0.1x/1.25x yet: guessing a multiplier per
-  // provider would be less honest than a small, known overstatement, and the
-  // raw counts are stored so this can be sharpened without losing history.
-  const input = usage.inputTokens + (usage.cacheWriteTokens ?? 0) + (usage.cacheReadTokens ?? 0);
+  const cacheWrite = usage.cacheWriteTokens ?? 0;
+  const cacheRead = usage.cacheReadTokens ?? 0;
+
+  const cacheWriteMultiplier = provider === "anthropic" ? 1.25 : 1;
+  const cacheReadMultiplier = provider === "anthropic" ? 0.1 : 1;
+
+  const input = usage.inputTokens
+    + cacheWrite * cacheWriteMultiplier
+    + cacheRead * cacheReadMultiplier;
   return (input / 1e6) * inPer + (usage.outputTokens / 1e6) * outPer;
 }
 
