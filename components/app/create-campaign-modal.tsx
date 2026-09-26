@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import type { Lead } from "@/lib/leads";
 import { isCampaignEligible, CAMPAIGN_ACTION_HELP, getMostCommonCountry } from "@/lib/leads";
 import { COUNTRY_TO_TIMEZONE } from "@/lib/constants";
-import { createCampaign, addLeadsToCampaign, triggerDraftGeneration, mapDbCampaign, fetchMySettings, uploadCampaignAttachment, assignCampaign, fetchUsers, type Profile } from "@/lib/api-client";
+import { createCampaign, addLeadsToCampaign, triggerDraftGeneration, checkAiReadiness, applyDefaultDrafts, mapDbCampaign, fetchMySettings, uploadCampaignAttachment, assignCampaign, fetchUsers, type Profile } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-context";
 import { cumulativeDays, dayLabel } from "@/lib/followup-schedule-preview";
@@ -143,6 +143,10 @@ export function CreateCampaignModal({
   ]);
   const followupDays = cumulativeDays(followupSteps);
   const [creating, setCreating] = useState(false);
+  /** Set when the AI check at Create said no credits: the model name, shown in
+   *  the choice panel. null = not checked yet, or the AI is fine. */
+  const [aiDownModel, setAiDownModel] = useState<string | null>(null);
+  const [aiChoice, setAiChoice] = useState<"wait" | "default">("wait");
   const [error, setError] = useState("");
 
   const STEPS = ["Identity", "AI & Review", "Schedule", "Follow-ups", "Attachment"];
@@ -234,6 +238,7 @@ export function CreateCampaignModal({
     setSendDays({ monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: false, sunday: false });
     setFollowupSteps([{ delay: 30, delay_unit: "days" }, { delay: 90, delay_unit: "days" }]);
     setCreating(false); setError("");
+    setAiDownModel(null); setAiChoice("wait");
     setAttachment(null); setUploading(false); setUploadError("");
     setAssignTo("");
     setStep(0);
@@ -252,6 +257,18 @@ export function CreateCampaignModal({
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token ?? "";
+
+      // Say "no AI credits" before the campaign exists, not halfway through
+      // drafting it. Asked once; the second press of Create uses the choice.
+      if (aiDownModel === null) {
+        const ai = await checkAiReadiness(token, name).catch(() => ({ available: true, model: "" }));
+        if (!ai.available) {
+          setAiDownModel(ai.model || "The AI");
+          setCreating(false);
+          return;
+        }
+      }
+      const useDefault = aiDownModel !== null && aiChoice === "default";
 
       const dbCampaign = await createCampaign(token, {
         name,
@@ -306,8 +323,18 @@ export function CreateCampaignModal({
         }
       }
 
-      // fire-and-forget — drafts generate in background, don't block the redirect
-      void triggerDraftGeneration(token, dbCampaign.id);
+      if (useDefault) {
+        // No AI: every lead gets the default email now, ready to certify.
+        for (let i = 0; i < 20; i++) {
+          const r = await applyDefaultDrafts(token, dbCampaign.id);
+          if (r.remaining === 0 || r.written === 0) break;
+        }
+        toast.success("Campaign created with the default email. Certify the drafts to send.");
+      } else {
+        // fire-and-forget — drafts generate in background, don't block the redirect.
+        // With no credits this waits, and starts by itself once they're back.
+        void triggerDraftGeneration(token, dbCampaign.id);
+      }
 
       const campaign = { ...mapDbCampaign({ ...dbCampaign, total_leads: eligibleLeads.length }), assignedTo: owner };
       onCreated(campaign);
@@ -634,6 +661,49 @@ export function CreateCampaignModal({
             Drafts will be generated in the background. Review and certify them from the campaign view.
           </p>
           </>)}
+
+          {aiDownModel !== null && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">AI credits are not available</p>
+                <p className="text-xs text-foreground">{aiDownModel} is out of credits, so personalised emails can&apos;t be written right now. You can still create the campaign.</p>
+              </div>
+              <div className="grid gap-2" role="radiogroup" aria-label="What to do without AI credits">
+                {([
+                  { id: "wait", title: "Wait for credits", help: "Emails are written automatically once credits are topped up." },
+                  { id: "default", title: "Use the default email for everyone", help: "Ready to certify and send now. No AI used." },
+                ] as const).map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={aiChoice === o.id}
+                    onClick={() => setAiChoice(o.id)}
+                    className={cn(
+                      "flex items-start gap-3 text-left rounded-md border-2 px-3 py-2 transition-colors",
+                      aiChoice === o.id
+                        ? "border-amber-500 bg-amber-500/15"
+                        : "border-border bg-field hover:border-muted-foreground/40",
+                    )}
+                  >
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border-2",
+                        aiChoice === o.id ? "border-amber-500" : "border-muted-foreground/60",
+                      )}
+                    >
+                      {aiChoice === o.id && <span className="size-2 rounded-full bg-amber-500" />}
+                    </span>
+                    <span>
+                      <span className="block text-sm font-medium">{o.title}</span>
+                      <span className="block text-xs text-muted-foreground">{o.help}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {error && <p className="text-xs text-destructive">{error}</p>}
         </div>

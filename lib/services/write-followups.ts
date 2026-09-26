@@ -353,6 +353,10 @@ export async function upgradeTemplateFollowups(
     .from("email_drafts")
     .select("id, campaign_id, lead_id, step_number, attempts, status")
     .in("campaign_id", campaignIds)
+    // Follow-ups only. Without this an unsent OPENING email that is a default
+    // (template) draft was "upgraded" too, which would quietly replace a
+    // default email someone chose, or certified, with an AI one.
+    .gt("step_number", 1)
     .eq("source", "template")
     // Only live, unsent templates. A superseded one (rejected) was picked up again
     // and again, and one already marked sent reaches nobody if rewritten.

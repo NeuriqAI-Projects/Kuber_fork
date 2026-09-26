@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { plainToHtml, htmlToPlainText } from "@/lib/utils/email-html";
-import { complete } from "@/lib/services/llm";
+import { complete, draftingProviders, providerLabel } from "@/lib/services/llm";
+import { isMockCampaign, mockAiAvailable, mockDraftCompletion, MOCK_BACKUP, MOCK_PRIMARY } from "@/lib/services/llm-mock";
 import type { ProviderId } from "@/lib/services/providers/types";
 import {
   resolveDraftSystemPrompt,
@@ -276,6 +277,55 @@ export async function logLlmRecovered(
   } catch { /* non-fatal */ }
 }
 
+/**
+ * How many real failures a lead may have before we stop calling the AI.
+ *
+ * Opening emails: 3 tries on the main model, then 1 on the backup, then the
+ * lead gets the default email marked "AI couldn't write this" (agreed
+ * 25 Sep 2026). A broken answer from the main model usually means the backup
+ * will struggle too, so it gets one try, not three. Follow-ups keep 3: they have
+ * their own template safety net.
+ *
+ * Only REAL failures count. Out of credits, a dead key or rate limits are
+ * outages (PROVIDER_UNAVAILABLE) and never use up a lead's tries.
+ */
+const OPENING_MAIN_TRIES = 3;
+const OPENING_MAX_TRIES = OPENING_MAIN_TRIES + 1;
+const FOLLOWUP_MAX_TRIES = 3;
+const maxTriesFor = (stepNumber: number) => (stepNumber === 1 ? OPENING_MAX_TRIES : FOLLOWUP_MAX_TRIES);
+
+/** fallback_reason prefixes on a default (template) opening email. */
+export const AI_FAILED = "AI_FAILED";
+export const AI_UNAVAILABLE = "AI_UNAVAILABLE";
+
+/** Real (non-outage) failures this lead already has for this step. */
+async function countRealFailures(db: SupabaseClient, campaignId: string, leadId: string, stepNumber: number): Promise<number> {
+  const { count } = await db
+    .from("email_drafts")
+    .select("id", { count: "exact", head: true })
+    .eq("campaign_id", campaignId)
+    .eq("lead_id", leadId)
+    .eq("step_number", stepNumber)
+    .eq("status", "failed")
+    .or(`rejection_reason.is.null,rejection_reason.not.like.${PROVIDER_UNAVAILABLE}%`);
+  return count ?? 0;
+}
+
+/**
+ * Can opening emails be written for this campaign right now?
+ *
+ * Asks about the MAIN model only. The backup being healthy is not enough: when
+ * the main model is out of credits, opening emails wait (or the user picks the
+ * default email) rather than the whole campaign silently moving to the backup.
+ */
+export async function canDraftOpenings(
+  db: SupabaseClient,
+  campaign: { id: string; name: string; company_id: string },
+): Promise<boolean> {
+  if (isMockCampaign(campaign.company_id, campaign.name)) return mockAiAvailable(db, campaign.id, campaign.name);
+  return (await draftingProviders(campaign.company_id)).primaryUsable;
+}
+
 /** One place for what happens when a draft attempt throws.
  *
  *  Previously both catch blocks wrote status 'failed' and nothing else:
@@ -309,7 +359,9 @@ async function recordDraftFailure(
     updated_at: now,
   }).eq("id", draftId);
 
-  if (outage) {
+  // The fake AI's "out of credits" is a test scenario, not the workspace's
+  // drafting being down, so it stays out of the app-wide banner.
+  if (outage && !message.endsWith("(mock)")) {
     // db is company-scoped here, so the insert stamps company_id itself.
     await logLlmUnavailable(db, null, message, {
       campaign_id: campaignId, draft_id: draftId, step: stepNumber,
@@ -696,6 +748,12 @@ export async function generateOneDraft(
    * See CompletionOpts.model and resolveDraftSystemPrompt's `override`.
    */
   labOverride?: LabOverride | null,
+  /**
+   * Write the default (template) opening email instead of calling the AI, with
+   * this fallback_reason (AI_FAILED… or AI_UNAVAILABLE…). The lead then shows
+   * as "Default email" and always needs certifying before it can be sent.
+   */
+  forceDefault?: string | null,
 ): Promise<
   | { ok: true; draftId: string; status: string }
   /** `skipped` means another worker already did this one — not a fault, and the
@@ -819,7 +877,35 @@ export async function generateOneDraft(
     !!(previousDraft?.body?.trim() || previousDraft?.subject?.trim()) &&
     previousPlainBody.length > 0;
 
-  if (!hasOrgData && !isRevision) {
+  // ── Which try is this, and on which model (opening emails only) ────────────
+  // Tries 1-3 are pinned to the main model, try 4 to the backup; see
+  // OPENING_MAIN_TRIES. A regeneration someone asked for (existingDraftId) and
+  // Model Lab keep the normal fall-through-the-tiers behaviour.
+  const mock = isMockCampaign(companyId, campaignName);
+  const isAutoOpening = stepNumber === 1 && !labOverride && !existingDraftId && !forceDefault && hasOrgData;
+  let defaultReason: string | null = forceDefault ?? null;
+  let pinProvider: ProviderId | undefined;
+  let attempt = 0;
+  let mainName = "";
+  let backupName = "";
+  if (isAutoOpening) {
+    attempt = (await countRealFailures(db, campaignId, lead.id, 1)) + 1;
+    if (mock) {
+      mainName = MOCK_PRIMARY;
+      backupName = MOCK_BACKUP;
+    } else {
+      const models = await draftingProviders(companyId);
+      mainName = providerLabel(models.primary);
+      backupName = models.backup ? providerLabel(models.backup) : "";
+      pinProvider = (attempt <= OPENING_MAIN_TRIES ? models.primary : models.backup) ?? undefined;
+    }
+    // Main model used up and nothing to fall back on: no fourth call.
+    if (attempt > OPENING_MAIN_TRIES && !backupName) {
+      defaultReason = `${AI_FAILED}: Tried ${OPENING_MAIN_TRIES}× ${mainName}; no backup model is set up.`;
+    }
+  }
+
+  if ((!hasOrgData && !isRevision) || defaultReason) {
     try {
       const template = await getGenericTemplate(db);
       const firstName = lead.first_name?.trim() ?? "";
@@ -874,13 +960,16 @@ export async function generateOneDraft(
       }
       const finalSubject = stepNumber > 1 ? "" : fillTemplate(template.subject, vars);
 
-      const finalStatus = statusForStep(humanInLoop, stepNumber);
+      // A default email standing in for an AI one always waits to be
+      // certified, even in a campaign that normally sends without review.
+      const finalStatus = defaultReason ? "draft" : statusForStep(humanInLoop, stepNumber);
       const now = new Date().toISOString();
 
       await db.from("email_drafts").update({
         subject: finalSubject,
         body: finalBody,
         status: finalStatus,
+        fallback_reason: defaultReason ? defaultReason.slice(0, 500) : null,
         // This branch never set `source`, so a TEMPLATE draft was stored as
         // 'ai' and the Sequences tab's "N personalised / N template" count -
         // the number telling the client how many got the personalisation they
@@ -900,7 +989,7 @@ export async function generateOneDraft(
 
       await logLeadEvent(db, lead.id, "draft_created", draftCreatedDetail(stepNumber, finalStatus), {
         actorId: userId ?? null,
-        metadata: { campaign_id: campaignId, draft_id: activeDraftId, step: stepNumber, status: finalStatus, generic_template: true, ...(bulkJobId ? { bulk_job_id: bulkJobId } : {}) },
+        metadata: { campaign_id: campaignId, draft_id: activeDraftId, step: stepNumber, status: finalStatus, generic_template: true, ...(defaultReason ? { default_reason: defaultReason } : {}), ...(bulkJobId ? { bulk_job_id: bulkJobId } : {}) },
       });
 
       return { ok: true, draftId: activeDraftId, status: finalStatus };
@@ -975,7 +1064,9 @@ export async function generateOneDraft(
       : buildUserPrompt(lead, campaignName, customInstruction, aiPromptContext, stepNumber, effectiveAttachmentName)
         + earlierEmailsBlock(earlier);
 
-    const { json } = await complete<DraftLLMOutput | RevisionDraftLLMOutput>({
+    const { json } = mock
+      ? { json: await mockDraftCompletion(db, campaignId, campaignName, lead) as DraftLLMOutput }
+      : await complete<DraftLLMOutput | RevisionDraftLLMOutput>({
       system: systemPrompt,
       user: userPrompt,
       // Drafting runs at 0.2 so it follows the rules and does not invent facts.
@@ -987,6 +1078,7 @@ export async function generateOneDraft(
       // the last paragraph" wants precision, not imagination.
       ...(isPlainRegeneration ? { temperature: 0.8 } : {}),
       ...(labOverride?.model ? { model: labOverride.model, provider: labOverride.provider ?? "openrouter" } : {}),
+      ...(pinProvider ? { provider: pinProvider } : {}),
     }, companyId, {
       // stepNumber 1 is the opening email; anything above is a follow-up. Split
       // here so the bill can answer "what did follow-ups cost" on its own.
@@ -1210,9 +1302,23 @@ export async function generateOneDraft(
     // Mark only the draft row failed — campaign_leads.draft_id stays NULL so
     // the auto-generator retries this lead on the next batch instead of
     // skipping it forever (planning.md Phase 6.5). fetchDraftTargets caps
-    // retries at 3 failed versions per lead/step.
+    // retries per lead/step (maxTriesFor).
     await recordDraftFailure(db, activeDraftId, lead.id, campaignId, stepNumber, err, !!labOverride);
-    return { ok: false, reason: (err as Error).message };
+    const message = (err as Error).message;
+
+    // That was the last try: the lead gets the default email now instead of
+    // sitting at "No draft" with no explanation. Outages never get here — they
+    // don't use up tries, and the campaign waits for the key instead.
+    const lastTry = attempt >= OPENING_MAX_TRIES || (attempt >= OPENING_MAIN_TRIES && !backupName);
+    if (isAutoOpening && lastTry && !isProviderOutage(message)) {
+      const tried = `${Math.min(attempt, OPENING_MAIN_TRIES)}× ${mainName}${attempt > OPENING_MAIN_TRIES ? ` and 1× ${backupName}` : ""}`;
+      return generateOneDraft(
+        db, target, campaignId, companyId, humanInLoop, campaignName, userId, customInstruction,
+        aiPromptContext, undefined, 1, bulkJobId, null, null,
+        `${AI_FAILED}: Tried ${tried}. Last error: ${message}`,
+      );
+    }
+    return { ok: false, reason: message };
   }
 }
 
@@ -1248,7 +1354,7 @@ export async function fetchDraftTargets(
   for (const d of failedDrafts ?? []) {
     failCount.set(d.lead_id, (failCount.get(d.lead_id) ?? 0) + 1);
   }
-  const overFailCap = (leadId: string) => (failCount.get(leadId) ?? 0) >= 3;
+  const overFailCap = (leadId: string) => (failCount.get(leadId) ?? 0) >= maxTriesFor(stepNumber);
 
   // Capped leads are excluded IN THE QUERY, not just from the rows it returns.
   // Filtering afterwards meant they still occupied the fetch window: every
@@ -1270,7 +1376,7 @@ export async function fetchDraftTargets(
   // runs to five figures, push the cap into a SQL view or an RPC.
   const cappedLeadIds = [
     "00000000-0000-0000-0000-000000000000",
-    ...[...failCount.entries()].filter(([, n]) => n >= 3).map(([id]) => id),
+    ...[...failCount.entries()].filter(([, n]) => n >= maxTriesFor(stepNumber)).map(([id]) => id),
   ];
   const notCapped = `(${cappedLeadIds.join(",")})`;
 
@@ -1359,7 +1465,7 @@ export async function countPendingDrafts(db: SupabaseClient, campaignId: string)
     for (const d of failedDrafts ?? []) {
       failCount.set(d.lead_id, (failCount.get(d.lead_id) ?? 0) + 1);
     }
-    pendingCount = (pending ?? []).filter((p) => (failCount.get(p.lead_id) ?? 0) < 3).length;
+    pendingCount = (pending ?? []).filter((p) => (failCount.get(p.lead_id) ?? 0) < OPENING_MAX_TRIES).length;
   }
 
   const { count: generatingCount } = await db

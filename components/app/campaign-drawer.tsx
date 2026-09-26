@@ -5,7 +5,7 @@ import {
   Megaphone, Users, Send, MessageSquare, Clock, Gauge, ArrowUp,
   Globe, Calendar, ExternalLink, Loader2, CheckCircle2, RotateCcw, RefreshCw, Check, Save, History, ChevronDown, ArrowLeft,
   List, LayoutGrid, BarChart2, Flame, Snowflake, ThumbsDown, Layers, Paperclip, X, Sparkles, Pencil, Reply, AlertTriangle,
-  Building2, MapPin, ReplyAll, CornerDownRight, UserPlus, ArrowRight, PauseCircle, PlayCircle, DollarSign,
+  Building2, MapPin, ReplyAll, CornerDownRight, UserPlus, UserMinus, ArrowRight, PauseCircle, PlayCircle, DollarSign,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -71,6 +71,8 @@ import {
   cancelRegenerationJob,
   kickRegenerationJob,
   kickDraftGeneration,
+  applyDefaultDrafts,
+  removeCampaignLeads,
   replaceBouncedLead,
   type CampaignReplyThread,
   type CampaignComment,
@@ -109,7 +111,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { Lead } from "@/lib/leads";
 import type { CampaignStepInput } from "@/lib/constants";
 import {
-  DRAFT_BADGE_SHORT,
   CAMPAIGN_STATUS_HELP,
   CAMPAIGN_ACTION_HELP,
   type CampaignLeadsSort,
@@ -236,6 +237,8 @@ type CampaignLead = {
   /** Set by Instantly's email_sent webhook — the mail actually went out. NULL
    *  while crm_status='sent' means queued in the drip, not yet delivered. */
   first_sent_at?: string | null;
+  /** Set once the lead has been handed to Instantly. */
+  instantly_lead_id?: string | null;
   /** Highest sequence step delivered so far (step 1 = opening mail, so step N
    *  is follow-up N-1). first_sent_at alone cannot show this — it is stamped
    *  once and never moves as the follow-ups go out. */
@@ -309,6 +312,8 @@ type DraftActivity = "generating" | "regenerating" | null;
 type DraftProgress = {
   total: number; generating: number; draft: number; approved: number;
   sent: number; failed: number; pending: number;
+  /** False while leads are waiting and the main AI model has no credits. */
+  ai_available?: boolean;
 };
 
 const DAY_SHORT: Record<string, string> = {
@@ -480,14 +485,49 @@ function sequenceDisplayStep(stepOrder: number): number {
 }
 
 
-function getSidebarBadge(cl: CampaignLead, isGenerating: boolean): string {
-  const ds = cl.email_drafts?.status;
-  if (ds && DRAFT_BADGE_SHORT[ds]) return DRAFT_BADGE_SHORT[ds];
-  if (cl.crm_status === "new" || cl.crm_status === "enriched") {
-    return isGenerating ? "Pending" : "Pending";
-  }
-  return "—";
+/** The opening email is the default one because the AI kept failing (3 tries on
+ *  the main model, 1 on the backup). See AI_FAILED in generate-drafts.ts. */
+function isAiFailedDefault(cl: CampaignLead): boolean {
+  return cl.email_drafts?.source === "template" && (cl.email_drafts.fallback_reason ?? "").startsWith("AI_FAILED");
 }
+/** The opening email is the default (template) one, for whatever reason. */
+function isDefaultEmail(cl: CampaignLead): boolean {
+  return cl.email_drafts?.source === "template";
+}
+/** The opening email was written by the AI. */
+function isAiWritten(cl: CampaignLead): boolean {
+  return !!cl.email_drafts && cl.email_drafts.source !== "template" && cl.email_drafts.status !== "failed";
+}
+/** A provider or validation error, in words a salesperson can act on. */
+function friendlyAiError(message: string): string {
+  if (/shape mismatch|empty email body|empty subject|refusal|internal marker|json/i.test(message)) return "the AI's answer came back incomplete";
+  if (/credit|quota|billing|balance/i.test(message)) return "the AI is out of credits";
+  if (/429|rate limit|overloaded|busy/i.test(message)) return "the AI was too busy to answer";
+  if (/timeout|timed out|abort/i.test(message)) return "the AI took too long to answer";
+  return "the AI returned an error";
+}
+/** Why the default email is used, in plain words: the stored reason minus its
+ *  tag, with the raw provider error translated. */
+function aiFailedReason(cl: CampaignLead): string {
+  const raw = (cl.email_drafts?.fallback_reason ?? "").replace(/^AI_(FAILED|UNAVAILABLE):\s*/, "").trim();
+  const m = /^(.*?)\s*Last error:\s*([\s\S]*)$/.exec(raw);
+  const text = m ? `${m[1]} Each time, ${friendlyAiError(m[2])}.` : raw;
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+/** Nothing has gone out to this lead yet, so it can still leave the campaign.
+ *  The server re-checks; this only decides which tick boxes are live. */
+function isRemovableLead(cl: CampaignLead): boolean {
+  return ["new", "enriched", "draft", "approved", "failed"].includes(cl.crm_status)
+    && !cl.first_sent_at && !cl.instantly_lead_id && cl.email_drafts?.status !== "sent";
+}
+/** Filters shared by the Outbox and Leads tabs: who wrote the opening email. */
+const AUTHOR_FILTERS = [
+  { id: "ai_written", label: "AI written", test: isAiWritten },
+  { id: "default_email", label: "Default email", test: isDefaultEmail },
+  { id: "ai_failed", label: "AI failed", test: isAiFailedDefault },
+] as const;
+type AuthorFilterId = (typeof AUTHOR_FILTERS)[number]["id"];
+const authorFilter = (id: string) => AUTHOR_FILTERS.find((f) => f.id === id);
 
 type CampaignViewTab = "analytics" | "leads" | "outbox" | "sequences" | "options" | "discussion";
 
@@ -862,7 +902,7 @@ export function CampaignDetail({
   const [replaceError, setReplaceError] = useState("");
   const [threads, setThreads] = useState<CampaignReplyThread[]>([]);
   const [outboxFilter, setOutboxFilter] = useState<
-    "all" | "action" | "certified" | "sending" | "sent" | "replied" | "bounced" | "followup" | "followup_sent"
+    "all" | "action" | "certified" | "sending" | "sent" | "replied" | "bounced" | "followup" | "followup_sent" | AuthorFilterId
   >("all");
   const [outboxExpandOverrides, setOutboxExpandOverrides] = useState<Set<string>>(new Set());
   const [outboxReplyOpen, setOutboxReplyOpen] = useState(false);
@@ -911,6 +951,14 @@ export function CampaignDetail({
   const [holdBusy, setHoldBusy] = useState(false);
   const [holdConfirmOpen, setHoldConfirmOpen] = useState(false);
   const [sendAllWarnOpen, setSendAllWarnOpen] = useState(false);
+  /** Leads waiting for the "Remove from campaign" confirm; null = closed. */
+  const [removeIds, setRemoveIds] = useState<string[] | null>(null);
+  const [removing, setRemoving] = useState(false);
+  /** Tick boxes on the Leads tab (the Outbox keeps its own, checkedIds). */
+  const [leadsCheckedIds, setLeadsCheckedIds] = useState<Set<string>>(new Set());
+  const [usingDefault, setUsingDefault] = useState(false);
+  const [pausedSticky, setPausedSticky] = useState(false);
+  const aiBackPollsRef = useRef(0);
   /** Set when a bulk follow-up regeneration was refused because sending is live
    *  — drives the "Hold sending, then regenerate" prompt. */
   const [holdRequiredFor, setHoldRequiredFor] = useState<string | null>(null);
@@ -1364,6 +1412,13 @@ export function CampaignDetail({
 
   useEffect(() => {
     if (!progress) return;
+    if (progress.pending === 0) { setPausedSticky(false); aiBackPollsRef.current = 0; }
+    else if (progress.ai_available === false) { setPausedSticky(true); aiBackPollsRef.current = 0; }
+    else if (progress.ai_available === true && ++aiBackPollsRef.current >= 2) setPausedSticky(false);
+  }, [progress]);
+
+  useEffect(() => {
+    if (!progress) return;
     const isGenerating = (progress.generating + progress.pending) > 0;
     if (!isGenerating) return;
     const interval = setInterval(() => {
@@ -1520,7 +1575,7 @@ export function CampaignDetail({
     const delivery = deliveryBucket(cl);
     if (delivery !== "not_queued") return deliveryLabel(cl);
     if (cl.email_drafts?.status) return DRAFT_STATUS_LABEL[cl.email_drafts.status] ?? cl.crm_status;
-    if (cl.crm_status === "new" || cl.crm_status === "enriched") return isGenerating ? "Pending" : "No draft";
+    if (cl.crm_status === "new" || cl.crm_status === "enriched") return waitingLabel;
     return cl.crm_status;
   }
 
@@ -1874,6 +1929,57 @@ export function CampaignDetail({
   // pressing it mid-generation used to leave the rest looking forgotten — on
   // 24 Sep 2026, 11 of 121 leads sat at "No draft" with no explanation.
   const unwrittenCount = progress ? progress.pending + progress.generating : 0;
+  /** Drafting stopped because the main AI model has no credits. Sticky: it
+   *  only clears when nothing is waiting, or two polls in a row say the AI is
+   *  back, so one odd poll can't make the bar flash away mid-click. */
+  const draftingPaused = pausedSticky && !!progress && progress.pending > 0;
+  /** What a lead with no email yet is doing, in the same words on every tab. */
+  const waitingLabel = draftingPaused ? "Waiting for credits" : isGenerating ? "Waiting" : "No draft";
+  const aiFailedLeads = campaignLeads.filter(isAiFailedDefault);
+
+  async function handleUseDefault() {
+    setUsingDefault(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      let written = 0;
+      for (let i = 0; i < 20; i++) {
+        const r = await applyDefaultDrafts(session.access_token, campaign.id);
+        written += r.written;
+        if (r.remaining === 0 || r.written === 0) break;
+      }
+      toast.success(`${written} lead${written !== 1 ? "s" : ""} got the default email. Certify them to send.`);
+      await loadData();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setUsingDefault(false);
+    }
+  }
+
+  async function handleRemoveLeads(ids: string[]) {
+    setRemoving(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const r = await removeCampaignLeads(session.access_token, campaign.id, ids);
+      if (r.skipped > 0) {
+        toast.warning(`Removed ${r.removed}. ${r.skipped} were already sent and stayed in the campaign.`);
+      } else {
+        toast.success(`Removed ${r.removed} lead${r.removed !== 1 ? "s" : ""} from this campaign`);
+      }
+      setCheckedIds(new Set());
+      setLeadsCheckedIds(new Set());
+      if (selectedId && ids.includes(selectedId)) setSelectedId(null);
+      await loadData();
+      if (appSession?.access_token) void loadCampaigns(appSession.access_token);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setRemoving(false);
+      setRemoveIds(null);
+    }
+  }
 
   async function handlePrimaryAction(confirmed = false) {
     if (checkedSendCount === 0 && !confirmed && unwrittenCount > 0) {
@@ -1901,7 +2007,10 @@ export function CampaignDetail({
       toast.success("Draft queued for regeneration");
       await loadData();
     } catch (e) {
-      toast.error((e as Error).message);
+      const lead = campaignLeads.find((cl) => cl.id === campaignLeadId);
+      toast.error(lead && isDefaultEmail(lead)
+        ? "The AI still couldn't write this one, so the default email is kept."
+        : `Couldn't rewrite it: ${friendlyAiError((e as Error).message)}. The current email is kept.`);
     } finally {
       setRetryingId(null);
       markRegenerating([campaignLeadId], false);
@@ -2258,7 +2367,7 @@ export function CampaignDetail({
 
   // Applied before the split into list/kanban so BOTH views honour the filter.
   const sortedCampaignLeads = sortCampaignLeads(campaignLeads, leadsSort)
-    .filter((cl) => matchesDeliveryFilter(cl, leadsDelivery, campaignSteps));
+    .filter((cl) => authorFilter(leadsDelivery)?.test(cl) ?? matchesDeliveryFilter(cl, leadsDelivery, campaignSteps));
 
   const filteredLeads = sortedCampaignLeads.filter((cl) => {
     if (!leadsSearch) return true;
@@ -2267,6 +2376,10 @@ export function CampaignDetail({
     const q = leadsSearch.toLowerCase();
     return name.includes(q) || email.includes(q);
   });
+
+  const leadsCheckedRemovable = filteredLeads
+    .filter((cl) => leadsCheckedIds.has(cl.id) && isRemovableLead(cl))
+    .map((cl) => cl.id);
 
   const selectedThread = threads.find((t) => t.campaign_lead_id === selectedId) ?? null;
 
@@ -2725,6 +2838,7 @@ export function CampaignDetail({
     { id: "followup",  label: "Follow-up due" },
     { id: "replied",   label: "Replied" },
     { id: "bounced",   label: "Bounced" },
+    ...AUTHOR_FILTERS.map(({ id, label }) => ({ id, label })),
   ];
 
   function matchesOutboxFilter(
@@ -2732,6 +2846,8 @@ export function CampaignDetail({
     filter: typeof outboxFilter,
   ): boolean {
     if (filter === "all") return true;
+    const byAuthor = authorFilter(filter);
+    if (byAuthor) return byAuthor.test(cl);
     const thread = outboxThreadByLeadId.get(cl.id) ?? null;
     const delivery = deliveryBucket(cl);
     // Delivery filters share the same buckets as the Leads tab so Sent never
@@ -2772,6 +2888,9 @@ export function CampaignDetail({
   });
 
   const outboxCheckedCount = outboxSelectableFilteredLeads.filter((cl) => checkedIds.has(cl.id)).length;
+  const outboxCheckedRemovableIds = outboxSelectableFilteredLeads
+    .filter((cl) => checkedIds.has(cl.id) && isRemovableLead(cl))
+    .map((cl) => cl.id);
   const outboxCheckedDraftIds = outboxSelectableFilteredLeads
     .filter((cl) => checkedIds.has(cl.id) && cl.email_drafts?.status === "draft")
     .map((cl) => cl.email_drafts!.id);
@@ -3158,6 +3277,19 @@ export function CampaignDetail({
 
         {viewTab === "outbox" && (
           <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+            {aiFailedLeads.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 border-destructive/40 text-destructive hover:text-destructive"
+                disabled={bulkRegenOpening || regenJobActive}
+                title="Ask the AI again for every lead that got the default email because the AI failed"
+                onClick={() => void openBulkRegenerate(aiFailedLeads.map((cl) => cl.id))}
+              >
+                <RotateCcw className="size-3.5" />
+                Try AI again ({aiFailedLeads.length})
+              </Button>
+            )}
             {campaignRegenerableCount > 0 && (
               <Button
                 variant="outline"
@@ -3206,6 +3338,31 @@ export function CampaignDetail({
       <div className="shrink-0 px-6 pt-4 empty:hidden">
         <ServiceHealthBanner />
       </div>
+
+      {/* Credits ran out while drafting. Leads waiting do not count as failed;
+          they're written automatically once credits are back. Until then the
+          campaign can send what's ready, or give the rest the default email. */}
+      {draftingPaused && progress && (
+        <div className="shrink-0 px-6 pt-4">
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 flex flex-wrap items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Drafting paused: the AI is out of credits</p>
+              <p className="text-xs text-foreground">
+                {progress.total - progress.pending} of {progress.total} emails written. The other {progress.pending} are written automatically within a minute of the credits being topped up.
+              </p>
+            </div>
+            {certifiedCount > 0 && (
+              <Button size="sm" disabled={sending} onClick={() => void handlePrimaryAction(true)}>
+                Send the {certifiedCount} ready
+              </Button>
+            )}
+            <Button size="sm" variant="outline" disabled={usingDefault} onClick={() => void handleUseDefault()}>
+              {usingDefault ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : null}
+              Use default email for the other {progress.pending}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* ── Section tabs — horizontal, directly under the campaign name ── */}
       <div className="shrink-0 border-b border-border px-6 pt-5 pb-3">
@@ -3613,7 +3770,7 @@ export function CampaignDetail({
                 Leads table pattern. "Not queued" and "Send failed" are left
                 out of the picker entirely (not meaningful filters day-to-day);
                 the remaining buckets only show up once they're non-empty. */}
-            <Select value={leadsDelivery} onValueChange={(v) => setLeadsDelivery(v as DeliveryBucket | "all" | "followup" | "followup_sent")}>
+            <Select value={leadsDelivery} onValueChange={(v) => setLeadsDelivery(v)}>
               <SelectTrigger className="h-8 w-36 gap-2 rounded-md px-3 text-xs shadow-sm">
                 <SelectValue />
               </SelectTrigger>
@@ -3649,6 +3806,12 @@ export function CampaignDetail({
                     )}
                   </Fragment>
                 ))}
+                {/* Who wrote the opening email: find the leads that got the
+                    default email and check them before sending. */}
+                {AUTHOR_FILTERS.map((f) => {
+                  const n = campaignLeads.filter(f.test).length;
+                  return n > 0 ? <SelectItem key={f.id} value={f.id}>{f.label} ({n})</SelectItem> : null;
+                })}
               </SelectContent>
             </Select>
 
@@ -3663,10 +3826,23 @@ export function CampaignDetail({
               ]}
             />
 
+            {leadsCheckedRemovable.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="ml-auto border-destructive/40 text-destructive hover:text-destructive"
+                disabled={removing}
+                onClick={() => setRemoveIds(leadsCheckedRemovable)}
+              >
+                <UserMinus className="size-3.5 mr-1.5" />
+                Remove from campaign ({leadsCheckedRemovable.length})
+              </Button>
+            )}
+
             {/* List/Kanban toggle */}
             <SegmentedTabs
               size="sm"
-              className="ml-auto"
+              className={leadsCheckedRemovable.length > 0 ? undefined : "ml-auto"}
               value={leadsViewMode}
               onValueChange={setLeadsViewMode}
               options={[
@@ -3716,6 +3892,22 @@ export function CampaignDetail({
                 <table className="w-full text-sm border-collapse">
                   <thead className="sticky top-0 z-10 bg-secondary backdrop-blur-sm">
                     <tr className="border-b border-border">
+                      <th className="w-10 pl-4 pr-2 py-2.5 border-r border-border">
+                        {(() => {
+                          const removable = filteredLeads.filter(isRemovableLead);
+                          const all = removable.length > 0 && removable.every((cl) => leadsCheckedIds.has(cl.id));
+                          return (
+                            <button
+                              type="button"
+                              aria-label={all ? "Untick all" : "Tick all leads that can be removed"}
+                              disabled={removable.length === 0}
+                              onClick={() => setLeadsCheckedIds(all ? new Set() : new Set(removable.map((cl) => cl.id)))}
+                            >
+                              <AppCheckbox checked={all} disabled={removable.length === 0} />
+                            </button>
+                          );
+                        })()}
+                      </th>
                       <th className="w-8 px-6 py-2.5 text-left eyebrow border-r border-border">#</th>
                       <th className="px-6 py-2.5 text-left eyebrow border-r border-border">Name</th>
                       <th className="px-6 py-2.5 text-left eyebrow border-r border-border">Email</th>
@@ -3734,6 +3926,21 @@ export function CampaignDetail({
                           onClick={() => handleOpenInOutbox(cl.id)}
                           className="group cursor-pointer transition-colors hover:bg-secondary"
                         >
+                          <td
+                            className="w-10 pl-4 pr-2 py-3 border-r border-border"
+                            title={isRemovableLead(cl) ? undefined : "Already sent. Can't be removed."}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!isRemovableLead(cl)) return;
+                              setLeadsCheckedIds((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(cl.id)) next.delete(cl.id); else next.add(cl.id);
+                                return next;
+                              });
+                            }}
+                          >
+                            <AppCheckbox checked={leadsCheckedIds.has(cl.id)} disabled={!isRemovableLead(cl)} />
+                          </td>
                           <td className="w-8 px-6 py-3 font-mono text-xs text-muted-foreground tabular-nums border-r border-border">{index + 1}</td>
                           <td className="px-6 py-3 border-r border-border">
                             <div className="flex items-center gap-2">
@@ -3768,6 +3975,11 @@ export function CampaignDetail({
                                 } else if (ds === "approved") {
                                   pills.push({ label: "Certified", cls: "bg-primary/15 text-primary border border-primary/30" });
                                 }
+                                if (!activity && isAiFailedDefault(cl)) {
+                                  pills.push({ label: "AI failed", cls: "bg-red-500/15 text-red-500 border border-red-500/30" });
+                                } else if (!activity && isDefaultEmail(cl) && ds !== "sent") {
+                                  pills.push({ label: "Default email", cls: "bg-muted text-muted-foreground border border-border" });
+                                }
 
                                 // Delivery pill — exactly one, straight off the shared
                                 // bucket so this and the filter chips can never disagree.
@@ -3780,7 +3992,7 @@ export function CampaignDetail({
 
                                 // Fallback if nothing matched
                                 if (pills.length === 0) {
-                                  pills.push({ label: "Pending", cls: "bg-muted text-muted-foreground border border-border" });
+                                  pills.push({ label: waitingLabel, cls: "bg-muted text-muted-foreground border border-border" });
                                 }
 
                                 return pills.map(({ label, cls }) => (
@@ -3854,9 +4066,9 @@ export function CampaignDetail({
           <div className="w-[266px] h-full shrink-0 border-r border-border flex flex-col">
             {/* Header */}
             <div className="border-b border-border shrink-0">
-              <div className="px-3 pt-2 flex items-center gap-1.5">
+              <div className="px-3 pt-2 flex flex-wrap items-center gap-1.5">
                 <Select value={outboxFilter} onValueChange={(v) => setOutboxFilter(v as typeof outboxFilter)}>
-                  <SelectTrigger className="h-7 flex-1 min-w-0 gap-1.5 rounded-md border-border px-2 py-0 text-[11px] font-medium text-foreground [&>svg]:size-3 [&>svg]:opacity-70">
+                  <SelectTrigger className="h-7 basis-full min-w-0 gap-1.5 rounded-md border-border px-2 py-0 text-[11px] font-medium text-foreground [&>svg]:size-3 [&>svg]:opacity-70">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -3868,7 +4080,7 @@ export function CampaignDetail({
                   </SelectContent>
                 </Select>
                 <Select value={leadsSort} onValueChange={(v) => setLeadsSort(v as CampaignLeadsSort)}>
-                  <SelectTrigger className="h-7 w-auto shrink-0 gap-1.5 rounded-md border-border px-2 py-0 text-[11px] font-medium text-foreground [&>svg]:size-3 [&>svg]:opacity-70">
+                  <SelectTrigger className="h-7 w-auto shrink-0 ml-auto gap-1.5 rounded-md border-border px-2 py-0 text-[11px] font-medium text-foreground [&>svg]:size-3 [&>svg]:opacity-70">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -3942,7 +4154,7 @@ export function CampaignDetail({
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0">
                   {/* Selection-scoped only. "Regenerate all" lives in the header,
                       so with nothing ticked this button stays out of the way
                       instead of showing the same count twice. */}
@@ -3962,6 +4174,20 @@ export function CampaignDetail({
                         ? <Loader2 className="size-3 animate-spin" />
                         : <RotateCcw className="size-3" />}
                       Regenerate ({outboxCheckedRegenIds.length})
+                    </Button>
+                  )}
+                  {outboxCheckedRemovableIds.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 shrink-0 px-2 text-[11px] border-destructive/40 text-destructive hover:text-destructive"
+                      disabled={removing}
+                      title="Take the ticked leads out of this campaign"
+                      onClick={() => setRemoveIds(outboxCheckedRemovableIds)}
+                    >
+                      <UserMinus className="size-3" />
+                      Remove ({outboxCheckedRemovableIds.length})
                     </Button>
                   )}
                   {outboxCertifyDraftIds.length > 0 && (
@@ -4082,7 +4308,10 @@ export function CampaignDetail({
                   approved:   { label: "Certified",   cls: "bg-green-500/15 text-green-500 border-green-500/25" },
                   sent:       { label: "Sent",        cls: "bg-muted text-muted-foreground border-border" },
                   failed:     { label: "Failed",      cls: "bg-destructive/15 text-destructive border-destructive/25" },
-                  none:       { label: "No draft",    cls: "bg-muted text-muted-foreground border-border" },
+                  none:       {
+                    label: waitingLabel,
+                    cls: "bg-muted text-muted-foreground border-border",
+                  },
                 };
                 // An in-flight row wins over whatever draft_id still resolves to:
                 // during a regeneration that's the superseded ('rejected') version,
@@ -4130,11 +4359,32 @@ export function CampaignDetail({
                       <Avatar name={name} size="sm" />
                       <div className="flex-1 min-w-0">
                         <p className={cn("text-xs font-medium truncate", isActive ? "text-primary" : "text-foreground")}>{name}</p>
-                        <span className={cn("mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold", sc.cls)}>
-                          {activity && <Loader2 className="size-2.5 animate-spin" />}
-                          {sc.label}
+                        <span className="mt-0.5 flex flex-wrap items-center gap-1">
+                          <span className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold", sc.cls)}>
+                            {activity && <Loader2 className="size-2.5 animate-spin" />}
+                            {sc.label}
+                          </span>
+                          {!activity && isAiFailedDefault(cl) && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-semibold bg-destructive/15 text-destructive border-destructive/25">
+                              AI failed
+                            </span>
+                          )}
                         </span>
                       </div>
+                      {!activity && isAiFailedDefault(cl) && cl.email_drafts && status !== "sent" && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          title="Try AI again for this lead"
+                          aria-label="Try AI again for this lead"
+                          disabled={retryingId === cl.id}
+                          className="size-6 shrink-0 border-destructive/40 text-destructive hover:text-destructive"
+                          onClick={(e) => { e.stopPropagation(); void handleRetryOne(cl.email_drafts!.id, cl.id); }}
+                        >
+                          {retryingId === cl.id ? <Loader2 className="size-3 animate-spin" /> : <RotateCcw className="size-3" />}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 );
@@ -4320,6 +4570,37 @@ export function CampaignDetail({
                     </div>
                   )}
                 </div>
+
+                {isDefaultEmail(selected) && selected.email_drafts?.fallback_reason && selected.email_drafts.status !== "sent" && (
+                  isAiFailedDefault(selected) ? (
+                    <div className="rounded-xl border border-destructive/35 bg-destructive/10 px-4 py-3 space-y-2">
+                      <p className="text-sm font-semibold text-destructive">AI couldn&apos;t write this one, so the default email is used</p>
+                      <p className="text-xs text-foreground">{aiFailedReason(selected)} Nothing has been sent. Check the email below, or ask the AI again.</p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          className="gap-1.5"
+                          disabled={retryingId === selected.id}
+                          onClick={() => void handleRetryOne(selected.email_drafts!.id, selected.id)}
+                        >
+                          {retryingId === selected.id ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}
+                          Try AI again
+                        </Button>
+                        {isRemovableLead(selected) && (
+                          <Button size="sm" variant="outline" className="gap-1.5 border-destructive/40 text-destructive hover:text-destructive" onClick={() => setRemoveIds([selected.id])}>
+                            <UserMinus className="size-3.5" />
+                            Remove from campaign
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
+                      <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Default email</p>
+                      <p className="text-xs text-foreground">{aiFailedReason(selected)} Check it before certifying.</p>
+                    </div>
+                  )
+                )}
 
                 {/* A replacement carries its origin wherever it is opened —
                     otherwise a contact nobody imported just appears in a
@@ -4702,7 +4983,16 @@ export function CampaignDetail({
                     ))}
                   </div>
                 ) : (
-                  <EmptyState message="No draft available for this lead." className="max-w-2xl mx-auto" />
+                  <EmptyState
+                    message={!isRemovableLead(selected) || selected.email_drafts
+                      ? "No draft available for this lead."
+                      : draftingPaused
+                        ? "Waiting for AI credits. This email is written automatically once credits are topped up, or use the default email from the bar above."
+                        : isGenerating
+                          ? "The AI is writing this email. It appears here in a moment."
+                          : "No draft available for this lead."}
+                    className="max-w-2xl mx-auto"
+                  />
                 )}
                 </>)}
 
@@ -5746,12 +6036,26 @@ export function CampaignDetail({
         />
       )}
 
+      {removeIds && (
+        <ConfirmDialog
+          open
+          title={`Remove ${removeIds.length} lead${removeIds.length !== 1 ? "s" : ""} from this campaign?`}
+          description="They won't be emailed from this campaign and their unsent drafts are deleted. They stay in your Leads list and can be added to another campaign."
+          confirmLabel={`Remove ${removeIds.length}`}
+          loading={removing}
+          onClose={() => setRemoveIds(null)}
+          onConfirm={() => void handleRemoveLeads(removeIds)}
+        />
+      )}
+
       {sendAllWarnOpen && (
         <ConfirmDialog
           open
           tone="warning"
           title={`${unwrittenCount} lead${unwrittenCount !== 1 ? "s are" : " is"} still being written`}
-          description={`Send all sends the ${certifiedCount} certified email${certifiedCount !== 1 ? "s" : ""} now. The AI is still writing the opening email for ${unwrittenCount} more — this can take a few minutes. Those will appear in the Outbox as drafts; certify and send them when they're ready.`}
+          description={draftingPaused
+            ? `Send all sends the ${certifiedCount} certified email${certifiedCount !== 1 ? "s" : ""} now. ${unwrittenCount} more are waiting because the AI is out of credits; they're written once credits are topped up, or you can give them the default email.`
+            : `Send all sends the ${certifiedCount} certified email${certifiedCount !== 1 ? "s" : ""} now. The AI is still writing the opening email for ${unwrittenCount} more — this can take a few minutes. Those will appear in the Outbox as drafts; certify and send them when they're ready.`}
           confirmLabel={`Send ${certifiedCount} now`}
           onClose={() => setSendAllWarnOpen(false)}
           onConfirm={() => {

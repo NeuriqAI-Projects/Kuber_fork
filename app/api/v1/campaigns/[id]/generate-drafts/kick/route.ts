@@ -4,7 +4,8 @@ import { ok } from "@/lib/api-response";
 import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { internalAppBaseUrl } from "@/lib/internal-url";
-import { isDraftGenerationStalled } from "@/lib/services/generate-drafts";
+import { canDraftOpenings, isDraftGenerationStalled } from "@/lib/services/generate-drafts";
+import { isMockCampaign } from "@/lib/services/llm-mock";
 
 /**
  * Restart opening-draft generation whose batch chain has died.
@@ -29,16 +30,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // one — opening its drawer must not start spending AI credits.
   const { data: campaign } = await db
     .from("campaigns")
-    .select("status, draft_generation_started_at")
+    .select("name, company_id, status, draft_generation_started_at")
     .eq("id", id)
     .eq("is_deleted", false)
     .maybeSingle();
-  if (!campaign?.draft_generation_started_at || !["draft", "processing", "active"].includes(campaign.status as string)) {
+  const mock = isMockCampaign(campaign?.company_id as string, campaign?.name as string);
+  if (!campaign || (!campaign.draft_generation_started_at && !mock) || !["draft", "processing", "active"].includes(campaign.status as string)) {
     return ok({ kicked: false });
   }
 
   const secret = process.env.INTERNAL_SECRET;
   if (!secret || !(await isDraftGenerationStalled(db, id))) return ok({ kicked: false });
+  // Out of credits: nothing to restart until the key works (or the user picks
+  // the default email). Kicking would only record the same outage again.
+  const ref = { id, name: campaign.name as string, company_id: campaign.company_id as string };
+  if (!(await canDraftOpenings(db, ref))) return ok({ kicked: false });
 
   const baseUrl = internalAppBaseUrl(req);
   after(async () => {

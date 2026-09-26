@@ -4,6 +4,7 @@ import { ok, fail } from "@/lib/api-response";
 import { internalAppBaseUrl } from "@/lib/internal-url";
 import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { isMockCampaign } from "@/lib/services/llm-mock";
 
 export async function POST(
   req: NextRequest,
@@ -18,11 +19,12 @@ export async function POST(
 
   const { data: campaign } = await db
     .from("campaigns")
-    .select("id")
+    .select("id, name, company_id")
     .eq("id", id)
     .maybeSingle();
 
   if (!campaign) return fail(404, "NOT_FOUND", "Campaign not found");
+  const mock = isMockCampaign(campaign.company_id as string, campaign.name as string);
 
   const { count: leadCount } = await db
     .from("campaign_leads")
@@ -30,9 +32,13 @@ export async function POST(
     .eq("campaign_id", id);
 
   const now = new Date().toISOString();
+  // A [TEST] campaign skips draft_generation_started_at and AI follow-ups:
+  // production's pump, watchdog and follow-up writer select on those, so fake
+  // leads can never reach a real model from there. Its own worker chain and
+  // the drawer's kick drive it instead (see llm-mock.ts).
   await db.from("campaigns").update({
     status: "processing",
-    draft_generation_started_at: now,
+    ...(mock ? { followups_ai_enabled: false } : { draft_generation_started_at: now }),
     updated_at: now,
   }).eq("id", id);
 

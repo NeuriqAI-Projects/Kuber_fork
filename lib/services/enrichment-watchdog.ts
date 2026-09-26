@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { MAX_ENRICH_ATTEMPTS } from "@/lib/services/enrich-leads";
 import { countPendingDrafts, logLlmUnavailable } from "@/lib/services/generate-drafts";
 import { hasUsableLlmKey, hasUsableServiceKey } from "@/lib/services/provider-keys";
+import { draftingProviders } from "@/lib/services/llm";
 import { checkInstantlyCredits } from "@/lib/services/provider-credits";
 import { listInstantlyWebhooks, resumeInstantlyWebhook } from "@/lib/services/instantly";
 
@@ -245,7 +246,9 @@ export async function triggerDraftGenerationWatchdog(baseUrl: string, db: Db) {
   const hasUsableLlm = async (companyId: string): Promise<boolean> => {
     const cached = companyHasUsableLlm.get(companyId);
     if (cached !== undefined) return cached;
-    const usable = await hasUsableLlmKey(db, companyId);
+    // The MAIN model, not "any key": opening emails wait for it rather than
+    // moving the whole campaign onto the backup (see canDraftOpenings).
+    const usable = (await draftingProviders(companyId)).primaryUsable;
     companyHasUsableLlm.set(companyId, usable);
     return usable;
   };
@@ -284,7 +287,7 @@ export async function triggerDraftGenerationWatchdog(baseUrl: string, db: Db) {
   // must not start spending AI credits on their own.
   const { data: candidates } = await db
     .from("campaigns")
-    .select("id, company_id")
+    .select("id, name, company_id")
     .in("status", ["draft", "processing", "active"])
     .eq("is_deleted", false)
     .not("draft_generation_started_at", "is", null)
