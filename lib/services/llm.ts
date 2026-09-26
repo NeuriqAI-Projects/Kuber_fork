@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createScopedClient } from "@/lib/supabase/scoped";
-import { getActiveKey, getProviderCallConfig, markKeyFailed, markKeySucceeded, resolveModel } from "@/lib/services/provider-keys";
+import { ENV_KEY_VARS, getActiveKey, getProviderCallConfig, markKeyFailed, markKeySucceeded, resolveModel } from "@/lib/services/provider-keys";
 import { costOf, type TokenUsage } from "@/lib/services/llm-pricing";
 import { LLM_CALL_REGISTRY, PROVIDER_META, resolveLlmTierOrder, type LlmProviderId } from "@/lib/services/providers/registry";
 import type { CompletionOpts } from "@/lib/services/providers/types";
@@ -199,3 +199,45 @@ export const DRAFT_JSON_SUFFIX =
   'If a Current subject/body/signature is also provided (REVISION MODE), apply ONLY that instruction — do not rewrite the rest. The signature/footer is editable when asked.\n' +
   '"subject" is the filled subject line for a first email; for a follow-up you may return an empty string (the subject is cleared in code anyway).';
 
+
+/**
+ * Which model writes this company's opening emails, and which one is the backup.
+ *
+ * "Primary" is the first provider in the tier order that the company has a key
+ * for at all — healthy or not. That distinction is the point: when Claude runs
+ * out of credits its key is still configured, so Claude is still the primary and
+ * `primaryUsable` goes false. Opening emails then WAIT for it instead of quietly
+ * switching to the backup (the rule agreed 25 Sep 2026: the backup gets one
+ * try on a lead whose answers keep coming back broken, never a whole campaign).
+ *
+ * `backup` is the next configured provider with a usable key right now, or null.
+ */
+export async function draftingProviders(companyId: string): Promise<{
+  primary: LlmProviderId | null;
+  primaryUsable: boolean;
+  backup: LlmProviderId | null;
+}> {
+  const db = createScopedClient(companyId);
+  const order = await resolveLlmTierOrder(db);
+  const { data: rows } = await db
+    .from("provider_keys")
+    .select("provider")
+    .eq("company_id", companyId)
+    .eq("is_active", true);
+  const hasRow = new Set((rows ?? []).map((r) => r.provider as string));
+  const configured = order.filter((p) => hasRow.has(p) || !!process.env[ENV_KEY_VARS[p]]?.trim());
+
+  const primary = configured[0] ?? null;
+  const usable = async (p: LlmProviderId) => (await getActiveKey(db, p, companyId)) !== null;
+  const primaryUsable = primary ? await usable(primary) : false;
+  let backup: LlmProviderId | null = null;
+  for (const p of configured.slice(1)) {
+    if (await usable(p)) { backup = p; break; }
+  }
+  return { primary, primaryUsable, backup };
+}
+
+/** Human name for a provider, for messages like "tried 3 × Claude". */
+export function providerLabel(p: LlmProviderId | null): string {
+  return p ? PROVIDER_META[p].label : "none";
+}

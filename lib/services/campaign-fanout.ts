@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createScopedClient } from "@/lib/supabase/scoped";
+import { isMockCampaign } from "@/lib/services/llm-mock";
 import { COUNTRY_TO_TIMEZONE } from "@/lib/constants";
 import {
   createInstantlyCampaign,
@@ -111,6 +112,13 @@ export async function sendCampaign(
   if (!campaign) throw new Error("Campaign not found");
 
   const db = createScopedClient(campaign.company_id as string);
+
+  // A [TEST] campaign never reaches Instantly: its leads are fake, and a real
+  // send would go out from real mailboxes. Certified leads are marked sent so
+  // the screens behave as after a real send. See llm-mock.ts.
+  if (isMockCampaign(campaign.company_id as string, campaign.name as string)) {
+    return mockSend(db, campaignId, opts);
+  }
 
   const fallbackTz = campaign.schedule_timezone ?? "Asia/Kolkata";
   const sendDays = (campaign.send_days as Record<string, boolean>) ?? {};
@@ -597,4 +605,34 @@ export async function sendCampaign(
     // Always release the send lock — on success or failure.
     await db.from("campaigns").update({ send_lock_at: null }).eq("id", campaignId);
   }
+}
+
+/** Stand-in for a send on a [TEST] campaign: marks certified leads sent, no Instantly. */
+async function mockSend(
+  db: ReturnType<typeof createScopedClient>,
+  campaignId: string,
+  opts?: { campaignLeadIds?: string[]; restrictToLeadOwnerId?: string | null },
+): Promise<{ buckets: number; sent: number; errors: string[] }> {
+  let q = db.from("campaign_leads")
+    .select("id, lead_id, leads!lead_id(assigned_to)")
+    .eq("campaign_id", campaignId)
+    .eq("crm_status", "approved")
+    .is("instantly_campaign_id", null);
+  if (opts?.campaignLeadIds?.length) q = q.in("id", opts.campaignLeadIds);
+  const { data: rows } = await q;
+  const eligible = (rows ?? []).filter((r) => {
+    if (!opts?.restrictToLeadOwnerId) return true;
+    const lead = (Array.isArray(r.leads) ? r.leads[0] : r.leads) as { assigned_to?: string | null } | null;
+    return lead?.assigned_to === opts.restrictToLeadOwnerId;
+  });
+  const now = new Date().toISOString();
+  for (const r of eligible) {
+    await db.from("campaign_leads").update({ crm_status: "sent", first_sent_at: now, updated_at: now }).eq("id", r.id);
+    await db.from("email_drafts").update({ status: "sent", updated_at: now })
+      .eq("campaign_id", campaignId).eq("lead_id", r.lead_id).eq("step_number", 1).eq("status", "approved");
+  }
+  const { count } = await db.from("campaign_leads").select("id", { count: "exact", head: true })
+    .eq("campaign_id", campaignId).eq("crm_status", "sent");
+  await db.from("campaigns").update({ status: "active", sent_count: count ?? 0, updated_at: now }).eq("id", campaignId);
+  return { buckets: 0, sent: eligible.length, errors: [] };
 }

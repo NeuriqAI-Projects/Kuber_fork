@@ -3,7 +3,7 @@ import { requireAuth } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
-import { countPendingDrafts } from "@/lib/services/generate-drafts";
+import { canDraftOpenings, countPendingDrafts } from "@/lib/services/generate-drafts";
 
 type DraftRow = { status: string } | { status: string }[] | null;
 
@@ -25,7 +25,7 @@ export async function GET(
 
   const { data: campaign } = await db
     .from("campaigns")
-    .select("id")
+    .select("id, name, company_id")
     .eq("id", id)
     .maybeSingle();
 
@@ -74,6 +74,8 @@ export async function GET(
     if (s in statusCounts) statusCounts[s as keyof typeof statusCounts]++;
   }
 
+  const realPending = Math.min(pending, Math.max(0, (await countPendingDrafts(db, id)) - statusCounts.generating));
+
   return ok({
     total: rows?.length ?? 0,
     generating: statusCounts.generating,
@@ -85,6 +87,12 @@ export async function GET(
     // never will (no email, retry cap reached), which kept the drawer polling
     // forever and would make the Send-all warning cry wolf.
     // countPendingDrafts includes in-flight rows, which are reported above.
-    pending: Math.min(pending, Math.max(0, (await countPendingDrafts(db, id)) - statusCounts.generating)),
+    pending: realPending,
+    // Only asked while something is waiting: false means drafting is paused
+    // because the main model has no credits, which the drawer turns into the
+    // "Drafting paused" bar with its two ways forward.
+    ai_available: realPending > 0
+      ? await canDraftOpenings(db, { id, name: campaign.name as string, company_id: campaign.company_id as string })
+      : true,
   });
 }

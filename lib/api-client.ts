@@ -895,12 +895,31 @@ export async function triggerDraftGeneration(token: string, campaignId: string):
   return apiFetch(`/api/v1/campaigns/${campaignId}/generate-drafts`, { method: "POST" }, token);
 }
 
+/** Give every lead still waiting for an opening email the default email (no AI). Repeat until remaining is 0. */
+export async function applyDefaultDrafts(token: string, campaignId: string): Promise<{ written: number; remaining: number }> {
+  return apiFetch(`/api/v1/campaigns/${campaignId}/use-default-drafts`, { method: "POST" }, token);
+}
+
+/** Take leads out of this campaign. Leads already sent to are skipped by the server. */
+export async function removeCampaignLeads(token: string, campaignId: string, campaignLeadIds: string[]): Promise<{ removed: number; skipped: number }> {
+  return apiFetch(`/api/v1/campaigns/${campaignId}/leads/remove`, {
+    method: "POST", body: JSON.stringify({ campaign_lead_ids: campaignLeadIds }),
+  }, token);
+}
+
+/** Can the main AI model write emails right now? Asked before creating a campaign. */
+export async function checkAiReadiness(token: string, campaignName: string): Promise<{ available: boolean; model: string }> {
+  return apiFetch(`/api/v1/ai-readiness`, { method: "POST", body: JSON.stringify({ campaign_name: campaignName }) }, token);
+}
+
 export async function kickDraftGeneration(token: string, campaignId: string): Promise<{ kicked: boolean }> {
   return apiFetch(`/api/v1/campaigns/${campaignId}/generate-drafts/kick`, { method: "POST" }, token);
 }
 
 export async function fetchDraftProgress(token: string, campaignId: string): Promise<{
   total: number; generating: number; draft: number; approved: number; sent: number; failed: number; pending: number;
+  /** False while leads are waiting and the main AI model has no credits. */
+  ai_available?: boolean;
 }> {
   return apiFetch(`/api/v1/campaigns/${campaignId}/draft-progress`, {}, token);
 }

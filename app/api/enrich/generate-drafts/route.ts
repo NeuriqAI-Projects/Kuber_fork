@@ -12,7 +12,9 @@ import {
   logLlmRecovered,
   isProviderOutage,
   isDraftGenerationStalled,
+  canDraftOpenings,
 } from "@/lib/services/generate-drafts";
+import { isMockCampaign } from "@/lib/services/llm-mock";
 import { hasUsableLlmKey } from "@/lib/services/provider-keys";
 import { BatchBudget } from "@/lib/services/batch-budget";
 
@@ -78,7 +80,17 @@ export async function POST(req: NextRequest) {
   // Returning BEFORE fetchDraftTargets is the point. Bailing out later would
   // still have to decide what to do with leads already claimed; bailing here
   // means no lead is touched at all, so nothing needs forgiving afterwards.
-  if (!(await hasUsableLlmKey(db, campaign.company_id as string))) {
+  // Opening emails wait for the MAIN model (canDraftOpenings); a healthy
+  // backup alone does not start them. Follow-ups keep the any-key rule.
+  const campaignRef = { id: campaign.id as string, name: campaign.name as string, company_id: campaign.company_id as string };
+  const canDraft = stepNumber === 1
+    ? await canDraftOpenings(cdb, campaignRef)
+    : await hasUsableLlmKey(db, campaign.company_id as string);
+  if (!canDraft) {
+    // A [TEST] campaign's "no credits" is a scenario, not an outage to report.
+    if (isMockCampaign(campaignRef.company_id, campaignRef.name)) {
+      return Response.json({ processed: 0, succeeded: 0, failed: 0, status: "llm_unavailable" });
+    }
     // Feeds the red service-health banner. reset_stuck_draft_generation above
     // has already released the campaign from 'processing', so the UI shows a
     // stopped campaign plus a banner saying why, instead of a silent stall.
@@ -229,7 +241,7 @@ async function pumpStalledCampaigns(req: NextRequest, db: ReturnType<typeof crea
   // not paused or finished — those must not start spending AI credits.
   const { data: candidates } = await db
     .from("campaigns")
-    .select("id, company_id")
+    .select("id, name, company_id")
     .in("status", ["draft", "processing", "active"])
     .eq("is_deleted", false)
     .not("draft_generation_started_at", "is", null);
@@ -251,7 +263,7 @@ async function pumpStalledCampaigns(req: NextRequest, db: ReturnType<typeof crea
     if (!(await isDraftGenerationStalled(db, c.id as string))) continue;
     // A dead key is the watchdog's to report (once per pass); kicking here
     // would write an outage row every minute.
-    if (!(await hasUsableLlmKey(db, c.company_id as string))) continue;
+    if (!(await canDraftOpenings(db, { id: c.id as string, name: c.name as string, company_id: c.company_id as string }))) continue;
     kicked.push(c.id as string);
   }
 
