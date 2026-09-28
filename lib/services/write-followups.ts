@@ -29,6 +29,10 @@ import { BatchBudget } from "@/lib/services/batch-budget";
 
 const TIME_BUDGET_MS = 40_000;
 
+/** Follow-ups written at once per run. The client's Claude key allows 10k requests
+ *  a minute; 6 in flight is ~25 calls a minute (same figure as opening emails). */
+const FOLLOWUP_CONCURRENCY = 6;
+
 /** Attempts before the template safety net goes in.
  *
  *  Two, not one. The most common failure by far is a momentary blip — the model
@@ -81,13 +85,9 @@ export async function writeDueFollowups(
   const campaignById = new Map((campaigns ?? []).map((c) => [c.id as string, c]));
 
   const budget = new BatchBudget();
-  for (const target of targets) {
-    // Same measured budget the draft generator uses: a flat 40s was tuned to
-    // the average call and stranded the slow ones mid-flight.
-    if (!budget.hasRoomForAnother()) { result.ranOutOfTime = true; break; }
-
+  const one = async (target: FollowupTarget) => {
     const campaign = campaignById.get(target.campaignId);
-    if (!campaign) { result.failed++; continue; }
+    if (!campaign) { result.failed++; return; }
 
     // Scoped to the owning company so every row written here is stamped with it,
     // exactly like sendCampaign does. The sweep above is cross-company by
@@ -96,12 +96,25 @@ export async function writeDueFollowups(
 
     try {
       const written = await budget.run(() => writeOne(cdb, target, campaign));
-      if (!written) { result.failed++; continue; }
+      if (!written) { result.failed++; return; }
       if (written.templated) result.templated++; else result.written++;
       if (written.pushed) result.pushed++;
     } catch {
       result.failed++;
     }
+  };
+  // Several at a time, like opening emails (see DRAFT_CONCURRENCY in the
+  // generate-drafts route). One at a time, a template follow-up took ~2s (the
+  // Instantly push) and an AI one ~14s, so a 40s run wrote 17 templates and
+  // PACKAGING GROUP 2's 88 needed five runs on 28 Sep 2026. Targets are one
+  // step per lead, so no two in a group touch the same lead; the unique index
+  // on email_drafts still blocks a duplicate if two runs overlap.
+  for (let i = 0; i < targets.length; i += FOLLOWUP_CONCURRENCY) {
+    // Same measured budget the draft generator uses: a flat 40s was tuned to
+    // the average call and stranded the slow ones mid-flight. A group takes as
+    // long as its slowest call, which is what the budget measures.
+    if (!budget.hasRoomForAnother()) { result.ranOutOfTime = true; break; }
+    await Promise.all(targets.slice(i, i + FOLLOWUP_CONCURRENCY).map(one));
   }
 
   // Drafting worked, so clear any stale "no LLM credits" banner. Without this a

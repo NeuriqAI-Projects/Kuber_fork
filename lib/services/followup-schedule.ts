@@ -153,16 +153,53 @@ export function followupDueAt(
   firstSentAt: string | null | undefined,
   steps: FollowupStep[],
   stepOrder: number,
+  schedule?: SendSchedule | null,
 ): Date | null {
   if (!firstSentAt) return null;
   const base = new Date(firstSentAt);
   if (Number.isNaN(base.getTime())) return null;
 
-  const totalDays = steps
-    .filter((s) => s.step_order < stepOrder)
-    .reduce((sum, s) => sum + delayInDays(s), 0);
+  // One step at a time, because Instantly counts each wait from when the
+  // previous step ACTUALLY went, and a step that falls on a day the campaign
+  // doesn't send waits for the next sending day. Adding the delays up in one go
+  // put a Thursday opening + 3 days on Sunday; Instantly sent it Monday, so the
+  // next step (+2) came Wednesday, not Tuesday. That wrong Tuesday made Kuber
+  // hold PACKAGING GROUP 2's schedule change until follow-up 2 was written,
+  // two days before it was due (28 Sep 2026).
+  let at = base;
+  for (const s of steps.filter((x) => x.step_order < stepOrder).sort((a, b) => a.step_order - b.step_order)) {
+    at = nextSendingDay(new Date(at.getTime() + delayInDays(s) * 24 * 60 * 60 * 1000), schedule);
+  }
+  return at;
+}
 
-  return new Date(base.getTime() + totalDays * 24 * 60 * 60 * 1000);
+/** The campaign's sending days and the timezone they are counted in. */
+export type SendSchedule = { sendDays: Record<string, boolean> | null; timezone: string | null };
+
+const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+/** Weekday name of `at` in `timezone` (falls back to UTC for an unknown zone). */
+function weekdayIn(at: Date, timezone: string | null): string {
+  try {
+    return new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: timezone ?? "UTC" }).format(at).toLowerCase();
+  } catch {
+    return WEEKDAYS[at.getUTCDay()];
+  }
+}
+
+/**
+ * `at`, moved forward a day at a time until it lands on a day the campaign
+ * sends. No schedule, or no day switched on, leaves it unchanged, which is how
+ * the date was worked out before sending days were considered.
+ */
+export function nextSendingDay(at: Date, schedule?: SendSchedule | null): Date {
+  const days = schedule?.sendDays;
+  if (!days || !WEEKDAYS.some((d) => days[d])) return at;
+  let t = at;
+  for (let i = 0; i < 7 && !days[weekdayIn(t, schedule?.timezone ?? null)]; i++) {
+    t = new Date(t.getTime() + 24 * 60 * 60 * 1000);
+  }
+  return t;
 }
 
 /** True when a follow-up should be written now: we have reached the last
@@ -245,7 +282,7 @@ export async function findFollowupsToWrite(
   // local run stays inside the dev tenant.
   let campaignQuery = db
     .from("campaigns")
-    .select("id")
+    .select("id, send_days, schedule_timezone")
     .eq("is_deleted", false)
     .in("status", ["active", "processing"]);
 
@@ -255,6 +292,12 @@ export async function findFollowupsToWrite(
 
   const campaignIds = (campaigns ?? []).map((c) => c.id as string);
   if (campaignIds.length === 0) return [];
+  // Sending days per campaign, so a due date that lands on a day off moves to
+  // the next sending day the way Instantly moves it (see followupDueAt).
+  const scheduleByCampaign = new Map<string, SendSchedule>((campaigns ?? []).map((c) => [c.id as string, {
+    sendDays: (c.send_days as Record<string, boolean> | null) ?? null,
+    timezone: (c.schedule_timezone as string | null) ?? null,
+  }]));
 
   // Step 1 is fetched too. It is never a follow-up TARGET, but its delay is
   // what schedules step 2, so leaving it out made every due date a step late.
@@ -396,7 +439,7 @@ export async function findFollowupsToWrite(
       if (sentSteps.has(`${cl.instantly_lead_id}:${step.step_order}`)) continue;
       if (sentByLead.has(`${cl.id}:${step.step_order}`)) continue;
 
-      const dueAt = followupDueAt(cl.first_sent_at as string, steps, step.step_order);
+      const dueAt = followupDueAt(cl.first_sent_at as string, steps, step.step_order, scheduleByCampaign.get(cl.campaign_id as string));
       if (!isDueForWriting(dueAt, now)) continue;
 
       targets.push({

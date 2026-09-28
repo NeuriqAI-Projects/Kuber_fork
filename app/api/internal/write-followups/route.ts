@@ -30,7 +30,27 @@ export async function POST(req: NextRequest) {
     return fail(401, "UNAUTHORIZED", "Internal secret required");
   }
 
-  const body = await req.json().catch(() => ({})) as { limit?: number; company_id?: string };
+  const body = await req.json().catch(() => ({})) as { limit?: number; company_id?: string; pump?: boolean };
+
+  // Once-a-minute pump (pg_cron 'followup-pump'). The batch-to-batch chain
+  // below dies after a few hops on Vercel: after the client shortened
+  // PACKAGING GROUP 2's gap on 28 Sep 2026 it wrote 28 of 88 follow-ups and
+  // stopped, and the new schedule sat unpublished until the next morning's
+  // run. A campaign waiting to publish is exactly the work that must not
+  // wait, so the pump writes for its company until it goes out. Nothing
+  // waiting = one small query and done.
+  if (body.pump) {
+    const pdb = createAdminClient();
+    const { data: waiting } = await pdb
+      .from("campaigns")
+      .select("company_id")
+      .eq("sequence_publish_pending", true)
+      .eq("is_deleted", false)
+      .limit(1);
+    const companyId = waiting?.[0]?.company_id as string | undefined;
+    if (!companyId) return ok({ status: "idle" });
+    body.company_id = companyId;
+  }
 
   const guard = guardUnscoped(body.company_id);
   if (guard) return guard;
