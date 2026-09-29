@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { patchInstantlySequences, type InstantlyStep } from "@/lib/services/instantly";
+import { activateInstantlyCampaign, getInstantlyCampaign, patchInstantlySequences, type InstantlyStep } from "@/lib/services/instantly";
 import { findFollowupsToWrite } from "@/lib/services/followup-schedule";
 
 /**
@@ -129,8 +129,29 @@ export async function publishSequenceNow(
   // Every sub-campaign must take the change or the campaign ends up running two
   // different schedules by country. A single failure keeps the flag set so the
   // next pass retries the lot.
+  // Whether a finished sub-campaign may be switched back on (see
+  // shouldReopenCompleted): read once, before any sub is touched.
+  const { data: master } = await db
+    .from("campaigns")
+    .select("status, is_deleted, sending_held_at")
+    .eq("id", campaignId)
+    .maybeSingle();
+
   for (const sub of subs ?? []) {
-    await patchInstantlySequences(sub.instantly_campaign_id as string, payload);
+    const instantlyId = sub.instantly_campaign_id as string;
+    await patchInstantlySequences(instantlyId, payload);
+
+    // INSTANTLY CLOSES A CAMPAIGN ONCE EVERY LEAD HAS HAD ITS LAST STEP, and a
+    // closed ("Completed") campaign sends nothing, not even a step added later.
+    // On 29 Sep 2026 the client added follow-up 3 to PACKAGING GROUP 1: Kuber
+    // wrote all 93 and published the new sequence, and all six country
+    // campaigns sat Completed and silent until they were switched on by hand.
+    // A new follow-up on a campaign that still exists means "send it", so a
+    // Completed sub is reopened here, after the text is in place.
+    const current = await getInstantlyCampaign(instantlyId).catch(() => null);
+    if (shouldReopenCompleted(current?.status, master)) {
+      await activateInstantlyCampaign(instantlyId);
+    }
   }
 
   await db.from("campaigns").update({
@@ -138,4 +159,25 @@ export async function publishSequenceNow(
     sequence_publish_requested_at: null,
     updated_at: new Date().toISOString(),
   }).eq("id", campaignId);
+}
+
+/** Instantly's campaign status for "every lead has finished the sequence". */
+export const INSTANTLY_STATUS_COMPLETED = 3;
+
+/**
+ * Reopen a sub-campaign Instantly has closed as Completed?
+ *
+ * Yes, unless a person stopped the campaign on purpose. Deleted, paused and
+ * held are all deliberate, and a sequence edit must never undo them; only
+ * Instantly's own automatic "all done" is reversed. Any other Instantly state
+ * (active, paused by a person in Instantly) is left exactly as it is.
+ */
+export function shouldReopenCompleted(
+  instantlyStatus: number | null | undefined,
+  master: { status?: string | null; is_deleted?: boolean | null; sending_held_at?: string | null } | null | undefined,
+): boolean {
+  if (instantlyStatus !== INSTANTLY_STATUS_COMPLETED || !master) return false;
+  if (master.is_deleted) return false;
+  if (master.sending_held_at) return false;
+  return master.status === "active";
 }
