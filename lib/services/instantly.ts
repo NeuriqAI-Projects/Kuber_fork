@@ -190,6 +190,8 @@ export function mergeInstantlySchedule(
 export async function getInstantlyCampaign(
   instantlyCampaignId: string,
 ): Promise<{
+  /** 1 = active, 2 = paused, 3 = completed (every lead finished the sequence). */
+  status?: number;
   campaign_schedule?: { schedules?: InstantlySchedule[] };
   /** Instantly's own copy of the sequence. Read by the drift check — Instantly
    *  holds this independently of our campaign_steps, and the two silently
