@@ -137,28 +137,30 @@ export function realDeps(admin: SupabaseClient, companyId: string, cfg: FitScori
 }
 
 // ── Mock ────────────────────────────────────────────────────────────────────
-// Deterministic fakes driven by the company name, so a mock search shows all
-// three buckets: names with plastic words score high, trade/distribution
-// names land in Review, everything else is hidden.
-const PLASTIC = /plast|poly|pack|film|mould|mold|pipe|extru|pet\b|bottle/i;
-const UNSURE = /trad|distrib|group|holding|industr/i;
-
-function mockText(name: string): string {
-  if (PLASTIC.test(name)) return `${name} runs blown film and injection moulding lines making coloured packaging for food brands. Three plants, 400 staff.`.repeat(3);
-  if (UNSURE.test(name)) return `${name} supplies industrial materials to manufacturers across the region.`.repeat(4);
-  return `${name} provides consulting and software services to banks and retailers.`.repeat(4);
-}
+// Mock company names all contain the search keywords, so the fake score is
+// spread by a hash of the name instead: every list (good, your decision,
+// hidden, website down → LinkedIn) gets examples in a demo.
+const hashOf = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+const MOCK_SCORES = [9, 8, 7, 9, 5, 6, 2, 3, 1, 8];
+const MOCK_REASONS = {
+  good: "converter · film_extrusion · food_packaging · size medium",
+  review: "other_manufacturer · other_plastic · industrial · size not_stated",
+  hidden: "plastic_trader · not_stated · not_stated · size small",
+};
+const mockText = (name: string) => `${name} (mock page text, no real website was read). `.repeat(6);
 
 function mockScore(name: string, text: string): JevScore {
-  const score = /blown film|injection/i.test(text) ? 9 : PLASTIC.test(name) ? 8 : UNSURE.test(name) ? 5 : 2;
-  return { score, confidence: 0.8, reason: score >= 7 ? "converter · film_extrusion · food_packaging · size medium" : score >= 4 ? "unclear · not_stated · industrial · size not_stated" : "non_manufacturer · not_stated · other · size not_stated", model: "mock", input_tokens: Math.ceil(text.length / 4), answers: {} };
+  const score = MOCK_SCORES[hashOf(name) % MOCK_SCORES.length];
+  const reason = MOCK_REASONS[score >= 7 ? "good" : score >= 4 ? "review" : "hidden"];
+  return { score, confidence: 0.8, reason, model: "mock", input_tokens: Math.ceil(text.length / 4), answers: {} };
 }
 
 export function mockDeps(companyId: string, importIdFor: (searchId: string) => Promise<string | null>): Deps {
   const pause = () => new Promise((r) => setTimeout(r, 150));
   return {
     now: () => Date.now(),
-    readHome: async (url) => { await pause(); return /down|offline/i.test(url) ? { kind: "site_down", detail: "Website answered HTTP 503 (mock)" } : { kind: "ok", markdown: mockText(new URL(url).hostname) }; },
+    // Every 7th site is "down", to show the website-down → LinkedIn path.
+    readHome: async (url) => { await pause(); return hashOf(url) % 7 === 0 ? { kind: "site_down", detail: "Website answered HTTP 503 (mock)" } : { kind: "ok", markdown: mockText(new URL(url).hostname) }; },
     freeGet: async () => null,
     tavilyExtract: async (url) => { await pause(); return mockText(url.split("/").filter(Boolean).pop() ?? "company"); },
     tavilySearch: async () => "",

@@ -8,7 +8,8 @@ async function call(secret: string, path: string, body: Record<string, unknown>)
   const res = await fetch(BASE + path, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${secret}` },
-    body: JSON.stringify(body),
+    // include_usage: credits used come back in each reply (the /usage page lags behind).
+    body: JSON.stringify({ ...body, include_usage: true }),
     signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw Object.assign(new Error(`TAVILY_HTTP_${res.status}`), { status: res.status });

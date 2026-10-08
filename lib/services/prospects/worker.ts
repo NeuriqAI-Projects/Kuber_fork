@@ -18,9 +18,15 @@ function importIdFor(companyId: string, userId: string | null) {
     if (!s) return null;
     if (s.import_id) return s.import_id as string;
     // The batch name/colour the manager typed when starting the search.
-    const f = (s.filters ?? {}) as { batch_name?: string; color?: string };
+    const f = (s.filters ?? {}) as { batch_name?: string; color?: string; assigned_to?: string | null; assignment_strategy?: string };
     const label = f.batch_name?.trim() || `Scored search ${new Date(s.created_at as string).toISOString().slice(0, 10)}`;
-    const { data: imp } = await db.from("imports").insert({ label, source: "apollo", created_by: (s.created_by as string) ?? userId, lead_count: 0, color: f.color ?? "green" }).select("id").single();
+    // Assignment is stored on the batch and applied when each lead is ready to
+    // work (deferred assignment, lib/services/assignment.ts) — same as company-import.
+    const { data: imp } = await db.from("imports").insert({
+      label, source: "apollo", created_by: (s.created_by as string) ?? userId, lead_count: 0, color: f.color ?? "green",
+      assignment_strategy: f.assigned_to ? "manual" : (f.assignment_strategy ?? null),
+      assignment_target: f.assigned_to ?? null,
+    }).select("id").single();
     if (!imp) return null;
     // Only the first writer wins; a racing second run reads the winner back.
     await db.from("prospect_searches").update({ import_id: imp.id }).eq("id", searchId).is("import_id", null);

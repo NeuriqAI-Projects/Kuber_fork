@@ -194,6 +194,13 @@ export const ProspectSearchSchema = z.object({
   // The Leads-page batch the revealed contacts join, like every other import.
   batch_name: z.string().trim().min(1).max(100),
   color: z.string().default("green"),
+  // Every other Organization Search filter (same shape as Company Lookup's).
+  advanced: CompanyAdvancedSchema,
+  // Who the revealed leads go to — same choices as every other import.
+  assigned_to: dbId.nullable().optional(),
+  assignment_strategy: ImportAssignmentStrategy,
+  // Cap on automatic reveals for THIS search (1 Apollo credit each). Default: the company setting.
+  max_auto_reveals: z.number().int().min(0).max(100).optional(),
 });
 
 export const ProspectDecisionSchema = z.object({

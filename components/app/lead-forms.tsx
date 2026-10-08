@@ -151,7 +151,7 @@ export function useAssignableEmployees(enabled: boolean) {
 // The Industry Segments taxonomy (Settings > Industry Segments) is
 // per-company data now, not a compile-time constant — fetched once per form
 // so both the dropdown and the keyword-group-count summary below it agree.
-function useIndustryKeywordGroups() {
+export function useIndustryKeywordGroups() {
   const [groups, setGroups] = useState<IndustryKeywordGroup[]>([]);
 
   useEffect(() => {
@@ -294,7 +294,7 @@ function notifyDuplicateOwners(duplicates: DuplicateOwner[] | undefined, employe
 
 // ─── IndustryKeywordsDropdown ─────────────────────────────────────────────────
 
-function IndustryKeywordsDropdown({
+export function IndustryKeywordsDropdown({
   selected,
   onChange,
   groups,
