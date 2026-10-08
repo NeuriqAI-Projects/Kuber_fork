@@ -101,8 +101,8 @@ export interface Store {
   claim(limit: number): Promise<ProspectRow[]>;
   /** Write the patch and release the lock (or set it to patch.retry_at). */
   save(id: string, patch: ProspectPatch): Promise<void>;
-  /** Rows in this search already sent to automatic reveal. */
-  countAutoReveals(searchId: string): Promise<number>;
+  /** Automatic reveals already used by this search, and the search's own cap (null = use the company setting). */
+  autoReveals(searchId: string): Promise<{ used: number; cap: number | null }>;
 }
 
 export const MAX_ATTEMPTS = 3;
@@ -201,8 +201,10 @@ async function scoreStage(row: ProspectRow, deps: Deps, store: Store, cfg: FitSc
   if (bucket === "review" && row.text_source !== "website") return { ...scored, status: "flagged", last_error: "Unsure from the LinkedIn page alone" };
   if (bucket === "hidden") return { ...scored, status: "hidden" };
   if (bucket === "review") return { ...scored, status: "review" };
-  if ((await store.countAutoReveals(row.search_id)) >= cfg.max_auto_reveals_per_search) {
-    return { ...scored, status: "review", last_error: `Good fit, but this search already hit ${cfg.max_auto_reveals_per_search} automatic reveals` };
+  const { used, cap: own } = await store.autoReveals(row.search_id);
+  const cap = own ?? cfg.max_auto_reveals_per_search;
+  if (used >= cap) {
+    return { ...scored, status: "review", last_error: `Good fit, but this search already hit its limit of ${cap} automatic reveals` };
   }
   return { ...scored, status: "good", auto_reveal: true };
 }

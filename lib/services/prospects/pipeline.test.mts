@@ -15,7 +15,8 @@ const THIN = "Welcome";
 // ── fakes ───────────────────────────────────────────────────────────────────
 class MemStore implements Store {
   rows = new Map<string, ProspectRow & ProspectPatch & { locked_until: number | null }>();
-  autoReveals = 0;
+  autoRevealCount = 0;
+  capOverride: number | null = null;
   constructor(public clock: { t: number }) {}
   add(r: Partial<ProspectRow> & { id: string }) {
     this.rows.set(r.id, { search_id: "s1", apollo_org_id: "ap-" + r.id, name: "Co " + r.id, domain: null, website_url: null, linkedin_url: null,
@@ -33,10 +34,10 @@ class MemStore implements Store {
   }
   async save(id: string, p: ProspectPatch) {
     const r = this.rows.get(id)!;
-    if (p.status === "good" && p.auto_reveal) this.autoReveals++;
+    if (p.status === "good" && p.auto_reveal) this.autoRevealCount++;
     Object.assign(r, p, { locked_until: p.retry_at ?? null });
   }
-  async countAutoReveals() { return this.autoReveals; }
+  async autoReveals() { return { used: this.autoRevealCount, cap: this.capOverride }; }
   get(id: string) { return this.rows.get(id)!; }
 }
 
@@ -270,4 +271,13 @@ test("21. fit settings: bad or partial client settings fall back to defaults", (
   assert.deepEqual(parseFitScoring("not json"), DEFAULT_FIT_SCORING);
   const p = parseFitScoring({ auto_reveal_min: 8, levels: ["too", "short"] });
   assert.equal(p.auto_reveal_min, 8); assert.equal(p.levels.length, 10);
+});
+
+test("22. a search's own reveal limit wins over the company setting", async () => {
+  const clock = { t: 0 }; const store = new MemStore(clock); const { deps, calls } = makeDeps(clock);
+  store.capOverride = 1;
+  for (const id of ["a", "b"]) store.add({ id, website_url: `https://${id}.com` });
+  await drain(store, deps, clock);
+  assert.deepEqual(["a", "b"].map((id) => store.get(id).status).sort(), ["promoted", "review"]);
+  assert.equal(calls.promote, 1);
 });

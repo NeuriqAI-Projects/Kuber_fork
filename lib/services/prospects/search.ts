@@ -13,6 +13,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { searchOrganizations, type ApolloOrganization } from "@/lib/services/apollo";
 import { isApolloMockCompany, mockApolloDelay, mockSearchOrganizations } from "@/lib/services/apollo-mock";
 import { checkApolloCredits } from "@/lib/services/provider-credits";
+import { DEV_COMPANY_ID, parseIndustryKeywordGroups, resolveApolloKeyword } from "@/lib/constants";
+import type { ApolloOrgAdvancedFilters } from "@/lib/services/apollo";
 import { normalizeDomain } from "@/lib/utils/domain";
 
 export interface ProspectSearchInput {
@@ -24,6 +26,10 @@ export interface ProspectSearchInput {
   page: number;
   batch_name: string;
   color: string;
+  advanced?: ApolloOrgAdvancedFilters;
+  assigned_to?: string | null;
+  assignment_strategy?: "manual" | "round_robin" | "territory";
+  max_auto_reveals?: number;
 }
 
 export type SearchOutcome =
@@ -58,6 +64,7 @@ export function defaultSearchDeps(db: SupabaseClient, companyId: string): Search
         locations: input.locations,
         page: input.page,
         advanced: {
+          ...input.advanced,
           keywordTags: input.keywords,
           employeeRanges: input.employee_ranges,
           lookalikeOrgIds: input.lookalike_org_ids,
@@ -72,6 +79,12 @@ export function defaultSearchDeps(db: SupabaseClient, companyId: string): Search
 export async function runProspectSearch(db: SupabaseClient, companyId: string, userId: string, input: ProspectSearchInput, deps: SearchDeps = defaultSearchDeps(db, companyId)): Promise<SearchOutcome> {
   const mock = deps.mock;
 
+  // Local/preview runs use mock data but share the LIVE database. Mock
+  // companies and leads must never land in a real client's workspace.
+  if (mock && companyId !== DEV_COMPANY_ID) {
+    return { ok: false, status: 400, code: "MOCK_ONLY_IN_DEV", message: "This is a test (mock) run. Switch to the Dev workspace to try it, so test companies never land in a client's real data." };
+  }
+
   if (!mock) {
     const left = await deps.creditsLeft();
     if (left !== null && left < 1) {
@@ -79,8 +92,16 @@ export async function runProspectSearch(db: SupabaseClient, companyId: string, u
     }
   }
 
+  // Industry-segment labels (Settings > Industry Segments) → the words Apollo
+  // is searched with, exactly as Apollo Search does. Free-typed words pass through.
+  const { data: kwSetting } = await db.from("settings").select("value").eq("key", "industry_keyword_groups").maybeSingle();
+  const groups = parseIndustryKeywordGroups(kwSetting?.value);
+  // The labels the user picked are kept too, so the form can show them again.
+  const keywordLabels = input.keywords;
+  input = { ...input, keywords: [...new Set(input.keywords.map((k) => resolveApolloKeyword(groups, k)))] };
+
   const { data: search, error: sErr } = await db.from("prospect_searches")
-    .insert({ created_by: userId, filters: input, page: input.page, status: "paying", mock })
+    .insert({ created_by: userId, filters: { ...input, keyword_labels: keywordLabels }, page: input.page, status: "paying", mock })
     .select("id").single();
   if (sErr || !search) return { ok: false, status: 500, code: "INTERNAL", message: `Could not start search: ${sErr?.message}` };
   const searchId = search.id as string;
