@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, FileSpreadsheet, Search, UserPlus } from "lucide-react";
+import { Building2, FileSpreadsheet, Search, Sparkles, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ApolloForm, ExcelForm, ManualForm, type ManualFormProps } from "@/components/app/lead-forms";
 import { CompanyLookupForm } from "@/components/app/company-lookup-form";
+import { ProspectFinderForm } from "@/components/app/prospect-finder-form";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useApp } from "@/lib/app-context";
@@ -19,10 +20,21 @@ interface AddLeadsDrawerProps {
   editMode?: boolean;
 }
 
-type SectionKey = "apollo" | "company" | "excel" | "manual";
+type SectionKey = "apollo" | "scored" | "company" | "excel" | "manual";
+
+// Re-opening Add Leads lands on the source the manager used last (e.g. a
+// Scored Companies search still running in the background), per browser tab.
+const LAST_SECTION_KEY = "kuber.addLeads.section";
+function lastSection(fallback: SectionKey): SectionKey {
+  try {
+    const v = sessionStorage.getItem(LAST_SECTION_KEY) as SectionKey | null;
+    return v && ["apollo", "scored", "company", "excel", "manual"].includes(v) ? v : fallback;
+  } catch { return fallback; }
+}
 
 const SECTIONS: { value: SectionKey; label: string; icon: typeof Search; description: string }[] = [
   { value: "apollo",  label: "Apollo Search",  icon: Search,          description: "Filter Apollo's database by industry, title & location" },
+  { value: "scored",  label: "Scored Companies", icon: Sparkles,      description: "AI scores companies first; reveal one contact only at good fits" },
   { value: "company", label: "Company Lookup", icon: Building2,       description: "Find one company by name and pick its contacts" },
   { value: "excel",   label: "Excel / CSV",    icon: FileSpreadsheet, description: "Upload a spreadsheet and map its columns" },
   { value: "manual",  label: "Manual Entry",   icon: UserPlus,        description: "Add an organization and its people by hand" },
@@ -43,7 +55,7 @@ export function AddLeadsDrawer({
   // Re-sync the active section whenever the dialog is (re)opened — mirrors the
   // previous implementation's `key={initialTab + prefillOrg?.id}` reset trick.
   useEffect(() => {
-    if (open) setSection(prefillOrg ? "manual" : (isManager ? defaultTab : "manual"));
+    if (open) setSection(prefillOrg ? "manual" : (isManager ? lastSection(defaultTab) : "manual"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, prefillOrg?.id, defaultTab, isManager]);
 
@@ -81,7 +93,7 @@ export function AddLeadsDrawer({
                     key={s.value}
                     type="button"
                     variant="ghost"
-                    onClick={() => setSection(s.value)}
+                    onClick={() => { setSection(s.value); try { sessionStorage.setItem(LAST_SECTION_KEY, s.value); } catch { /* private mode */ } }}
                     className={cn(
                       "h-auto w-full min-w-0 flex-col items-start gap-1 whitespace-normal rounded-lg px-3 py-2.5 text-left font-normal",
                       active
@@ -113,6 +125,7 @@ export function AddLeadsDrawer({
             ) : (
               <>
                 {section === "apollo" && <ApolloForm onImport={handleImport} />}
+                {section === "scored" && <ProspectFinderForm />}
                 {section === "company" && <CompanyLookupForm onImport={handleImport} />}
                 {section === "excel" && <ExcelForm onImport={handleImport} />}
                 {section === "manual" && <ManualForm onImport={handleImport} />}

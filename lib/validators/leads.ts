@@ -183,6 +183,23 @@ export const CompanySearchSchema = z.object({
   advanced: CompanyAdvancedSchema,
 });
 
+/** Company-first scored search. Every page is one paid Apollo credit. */
+export const ProspectSearchSchema = z.object({
+  keywords: z.array(z.string().trim().min(1).max(100)).min(1).max(50),
+  locations: z.array(z.string().trim().min(1).max(100)).max(200).optional(),
+  employee_ranges: z.array(z.string().regex(/^\d+,\d+$/)).max(20).optional(),
+  lookalike_org_ids: z.array(z.string().trim().min(1)).max(5).optional(),
+  exclude_websites: z.array(z.string().trim().min(1).max(200)).max(1000).optional(),
+  page: z.number().int().min(1).max(500).default(1),
+  // The Leads-page batch the revealed contacts join, like every other import.
+  batch_name: z.string().trim().min(1).max(100),
+  color: z.string().default("green"),
+});
+
+export const ProspectDecisionSchema = z.object({
+  action: z.enum(["approve", "reject", "retry"]),
+});
+
 export const CompanyPeopleSchema = z.object({
   apollo_org_id: z.string().trim().min(1),
   page: z.number().int().min(1).max(20).default(1),
