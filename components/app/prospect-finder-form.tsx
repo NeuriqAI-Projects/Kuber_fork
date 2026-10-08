@@ -198,10 +198,14 @@ export function ProspectFinderForm() {
   const pending = (data?.searches ?? []).some((s) => s.in_progress > 0);
   useEffect(() => {
     if (!pending) return;
-    const t = setInterval(async () => {
-      if (running.current) return;
-      running.current = true;
-      try { await api("/api/v1/prospects/run", { method: "POST" }); await load(); } catch { /* next tick */ } finally { running.current = false; }
+    const t = setInterval(() => {
+      // A run works for up to ~45 s, so it's started in the background and the
+      // list refreshes every tick on its own; only one run at a time from here.
+      if (!running.current) {
+        running.current = true;
+        api("/api/v1/prospects/run", { method: "POST" }).catch(() => {}).finally(() => { running.current = false; });
+      }
+      load().catch(() => {});
     }, 4000);
     return () => clearInterval(t);
   }, [pending, load]);
@@ -253,7 +257,7 @@ export function ProspectFinderForm() {
         {step === 0 && (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Find companies, let the AI score each one 1–10 from its website or LinkedIn, and reveal <b>one</b> contact only at good fits (7+). Scores 4–6 wait for your decision; 1–3 are hidden.
+              Find companies, let the AI read each one&apos;s website or LinkedIn, and reveal <b>one</b> contact only at companies that make plastic products (so they can buy masterbatch). Unclear ones wait for your decision; the rest are hidden.
             </p>
             <IndustryKeywordsDropdown selected={keywords} onChange={setKeywords} groups={industryGroups} onGroupsChange={setIndustryGroups} />
             <p className="-mt-2 text-xs text-muted-foreground">Pick as many as you like — one search covers all of them and still costs 1 credit per 100 companies.</p>
@@ -276,9 +280,9 @@ export function ProspectFinderForm() {
                 onChange={(e) => setMaxReveals(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} className="w-32" />
             </div>
             <div className="space-y-1 text-sm text-muted-foreground">
-              <p><b className="text-foreground">7–10</b> — good fit: one contact is revealed automatically.</p>
-              <p><b className="text-foreground">4–6</b>, no website, unclear LinkedIn or website down — waits for your decision.</p>
-              <p><b className="text-foreground">1–3</b> — poor fit: hidden (still saved).</p>
+              <p><b className="text-foreground">Good fit</b> — makes plastic products: one contact is revealed automatically. Score 9 if it makes the products you searched for, 7 if other plastic products.</p>
+              <p><b className="text-foreground">Your decision</b> — the AI can&apos;t tell, no website, unclear LinkedIn, or website down.</p>
+              <p><b className="text-foreground">Hidden</b> — not a plastic maker (traders, distributors, machine makers, brands that only use packaging). Still saved.</p>
             </div>
           </div>
         )}

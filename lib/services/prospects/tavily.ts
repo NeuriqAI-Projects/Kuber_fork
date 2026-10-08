@@ -10,7 +10,7 @@ async function call(secret: string, path: string, body: Record<string, unknown>)
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${secret}` },
     // include_usage: credits used come back in each reply (the /usage page lags behind).
     body: JSON.stringify({ ...body, include_usage: true }),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw Object.assign(new Error(`TAVILY_HTTP_${res.status}`), { status: res.status });
   return res.json() as Promise<Record<string, unknown>>;

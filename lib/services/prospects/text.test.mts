@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { cleanText, wordCount, htmlToText, linksFromMarkdown, pickSecondPage, sitemapLocs } from "./text.ts";
-import { bucketFor, DEFAULT_FIT_SCORING } from "./fit-rules.ts";
+import { verdict, displayScore, reasonFor, DEFAULT_FIT_SCORING } from "./fit-rules.ts";
 
 test("cleaning drops images, link targets, bare URLs and repeated lines", () => {
   const t = cleanText("![logo](a.png)\n# Hi [About us](/about) https://x.com\nHi About us\nhi about us\n");
@@ -24,6 +24,9 @@ test("links and sitemap parsing", () => {
   assert.equal(htmlToText("<style>x{}</style><p>Hello&nbsp;world</p>"), "Hello world");
 });
 
-test("buckets follow the agreed thresholds: 7–10 / 4–6 / 1–3", () => {
-  assert.deepEqual([1, 3, 4, 6, 7, 10].map((s) => bucketFor(s, DEFAULT_FIT_SCORING)), ["hidden", "hidden", "review", "review", "good", "good"]);
+test("decision rules: plastic maker ≥65% good, ≤35% hidden, between unsure; 9/7/2 shown", () => {
+  const C = DEFAULT_FIT_SCORING;
+  assert.deepEqual([0.1, 0.35, 0.5, 0.64, 0.65, 0.95].map((p) => verdict(p, C)), ["hidden", "hidden", "unsure", "unsure", "good", "good"]);
+  assert.deepEqual([displayScore(0.9, 0.9, C), displayScore(0.9, 0.1, C), displayScore(0.5, 0.9, C), displayScore(0.1, 0.9, C)], [9, 7, null, 2]);
+  assert.match(reasonFor(0.12, 0.9, C), /Not a plastic maker \(12%\)/);
 });

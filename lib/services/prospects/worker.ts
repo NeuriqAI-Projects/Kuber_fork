@@ -7,8 +7,13 @@ import { isMockProspecting, mockDeps, realDeps } from "./deps";
 import { runBatch, WORKABLE } from "./pipeline";
 import { supabaseStore } from "./store";
 
-/** Under the 55–60 s route limit with room for one slow stage to finish. */
-export const WORKER_BUDGET_MS = 25_000;
+/** Measured 9 Oct 2026 (200 real companies): a 45 s budget let runs reach 57–61 s,
+ *  past the 60 s route limit. So: no new company after 30 s, and no paid website
+ *  read may START after 35 s (a slow read takes ~15 s). Runs end well inside 60 s. */
+export const WORKER_BUDGET_MS = 30_000;
+export const WORKER_PAID_START_MS = 35_000;
+/** Companies worked on at once. Firecrawl is separately capped at 4 (deps.ts); Jev allows 40 requests/s. */
+export const WORKER_LANES = 8;
 
 /** The Leads batch a search's promoted contacts join — created on first use, once. */
 function importIdFor(companyId: string, userId: string | null) {
@@ -41,8 +46,8 @@ export async function runProspectWorker(admin: SupabaseClient, companyId: string
   const { data: setting } = await scoped.from("settings").select("value").eq("key", "fit_scoring").maybeSingle();
   const cfg = parseFitScoring(setting?.value ?? null);
   const imp = importIdFor(companyId, null);
-  const deps = isMockProspecting(companyId) ? mockDeps(companyId, imp) : realDeps(admin, companyId, cfg, imp);
-  return runBatch(deps, supabaseStore(admin, companyId), cfg, { budgetMs, batch: 3 });
+  const deps = isMockProspecting(companyId) ? mockDeps(companyId, imp) : realDeps(admin, companyId, imp);
+  return runBatch(deps, supabaseStore(admin, companyId), cfg, { budgetMs, lanes: WORKER_LANES, paidStartMs: budgetMs + (WORKER_PAID_START_MS - WORKER_BUDGET_MS) });
 }
 
 /** Companies that currently have work waiting (for the cron pump). */

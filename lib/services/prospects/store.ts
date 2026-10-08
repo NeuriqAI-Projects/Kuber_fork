@@ -19,14 +19,10 @@ export function supabaseStore(db: SupabaseClient, companyId: string): Store {
         .eq("company_id", companyId);
       if (error) throw new Error(`save prospect: ${error.message}`);
     },
-    async autoReveals(searchId) {
-      const [{ count }, { data: s }] = await Promise.all([
-        db.from("prospect_companies").select("id", { count: "exact", head: true })
-          .eq("company_id", companyId).eq("search_id", searchId).eq("auto_reveal", true),
-        db.from("prospect_searches").select("filters").eq("id", searchId).eq("company_id", companyId).maybeSingle(),
-      ]);
-      const cap = (s?.filters as { max_auto_reveals?: number } | null)?.max_auto_reveals;
-      return { used: count ?? 0, cap: typeof cap === "number" ? cap : null };
+    async reserveAutoReveal(searchId, defaultCap) {
+      const { data, error } = await db.rpc("reserve_auto_reveal", { p_search: searchId, p_default_cap: defaultCap });
+      if (error) throw new Error(`reserve_auto_reveal: ${error.message}`);
+      return data === true;
     },
   };
 }

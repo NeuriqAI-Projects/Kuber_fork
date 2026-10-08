@@ -3,10 +3,11 @@
 // fake that can be told to fail, and the store is in memory. Zero spend.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { advance, runBatch, WORKABLE, MAX_ATTEMPTS, type Deps, type ProspectRow, type ProspectPatch, type Store } from "./pipeline.ts";
+import { advance, runBatch, OutOfTime, WORKABLE, MAX_ATTEMPTS, type Deps, type ProspectRow, type ProspectPatch, type Store } from "./pipeline.ts";
 import { DEFAULT_FIT_SCORING, parseFitScoring } from "./fit-rules.ts";
 import { parseJevResponse } from "./jev.ts";
-import type { JevScore } from "./jev.ts";
+import type { JevVerdict } from "./jev.ts";
+import { limiter } from "./deps.ts";
 
 const CFG = DEFAULT_FIT_SCORING;
 const RICH = "We are a plastic film converter running blown film lines for food packaging. ".repeat(5);
@@ -34,14 +35,18 @@ class MemStore implements Store {
   }
   async save(id: string, p: ProspectPatch) {
     const r = this.rows.get(id)!;
-    if (p.status === "good" && p.auto_reveal) this.autoRevealCount++;
     Object.assign(r, p, { locked_until: p.retry_at ?? null });
   }
-  async autoReveals() { return { used: this.autoRevealCount, cap: this.capOverride }; }
+  // Synchronous check-and-take = atomic in JS, like the SQL function.
+  async reserveAutoReveal(_s: string, defaultCap: number) {
+    if (this.autoRevealCount >= (this.capOverride ?? defaultCap)) return false;
+    this.autoRevealCount++; return true;
+  }
   get(id: string) { return this.rows.get(id)!; }
 }
 
-const jev = (score: number): JevScore => ({ score, confidence: 0.9, reason: "converter · film · food · size medium", model: "fake", input_tokens: 100, answers: {} });
+/** Jev's two answers: P(plastic maker) and P(makes the searched products). */
+const jev = (plastic: number, on_target = 0.9): JevVerdict => ({ plastic, on_target, model: "fake", input_tokens: 100, answers: {} });
 
 function makeDeps(clock: { t: number }, over: Partial<Deps> = {}) {
   const calls = { readHome: 0, score: 0, tavilySearch: 0, tavilyExtract: 0, findPeople: 0, promote: 0, freeGet: 0 };
@@ -52,7 +57,7 @@ function makeDeps(clock: { t: number }, over: Partial<Deps> = {}) {
     freeGet: async () => { calls.freeGet++; return null; },
     tavilyExtract: async () => { calls.tavilyExtract++; return RICH; },
     tavilySearch: async () => { calls.tavilySearch++; return ""; },
-    score: async () => { calls.score++; return jev(9); },
+    score: async () => { calls.score++; return jev(0.9); },
     apolloCreditsFree: async () => 50,
     findPeople: async () => { calls.findPeople++; return [{ id: "p1", title: "Purchase Manager", has_email: true }, { id: "p2", title: "Intern", has_email: true }]; },
     promote: async (row: ProspectRow) => {
@@ -67,7 +72,7 @@ function makeDeps(clock: { t: number }, over: Partial<Deps> = {}) {
 
 async function drain(store: MemStore, deps: Deps, clock: { t: number }) {
   for (let i = 0; i < 20; i++) {
-    await runBatch(deps, store, CFG, { budgetMs: 60_000, batch: 10 });
+    await runBatch(deps, store, CFG, { budgetMs: 60_000, lanes: 4 });
     clock.t += 15 * 60_000; // let backoffs and credit waits pass
   }
 }
@@ -85,8 +90,8 @@ test("1. happy path: website → score 9 → one contact promoted, Firecrawl pai
   assert.equal(calls.promote, 1);
 });
 
-test("2. scores sort into buckets: 7+ good, 4–6 review, 1–3 hidden", async () => {
-  for (const [score, want] of [[8, "promoted"], [5, "review"], [2, "hidden"]] as const) {
+test("2. Jev's answer decides: plastic maker → good, not → hidden, in between → your decision", async () => {
+  for (const [score, want] of [[0.9, "promoted"], [0.5, "review"], [0.1, "hidden"]] as const) {
     const clock = { t: 0 }; const store = new MemStore(clock); const { deps } = makeDeps(clock, { score: async () => jev(score) });
     store.add({ id: "x", website_url: "https://x.com" });
     await drain(store, deps, clock);
@@ -133,9 +138,10 @@ test("5. a step that keeps failing stops after 3 tries and goes to Review with t
 });
 
 test("6. Jev returns garbage: treated as a failure, never stored as a score", () => {
-  assert.throws(() => parseJevResponse({ answers: { fit: { score: 42 } } }), /JEV_BAD_RESPONSE/);
+  assert.throws(() => parseJevResponse({ answers: { plastic_maker: { noul: 1.4 }, on_target: { noul: 0.2 } } }), /JEV_BAD_RESPONSE/);
+  assert.throws(() => parseJevResponse({ answers: { plastic_maker: { noul: 0.9 } } }), /JEV_BAD_RESPONSE/);
   assert.throws(() => parseJevResponse({}), /JEV_BAD_RESPONSE/);
-  assert.equal(parseJevResponse({ answers: { fit: { score: 8, confidence: 0.7 }, business: { choice: "converter" } } }).score, 9);
+  assert.equal(parseJevResponse({ answers: { plastic_maker: { noul: 0.91 }, on_target: { noul: 0.2 } }, usage: { input_tokens: 1900 } }).plastic, 0.91);
 });
 
 test("7. Firecrawl itself down (our side): retried, never marked as site down", async () => {
@@ -174,7 +180,7 @@ test("10. no website, no LinkedIn: flagged without spending anything", async () 
 });
 
 test("11. LinkedIn only, AI unsure: flagged (not auto-revealed, not review)", async () => {
-  const clock = { t: 0 }; const store = new MemStore(clock); const { deps } = makeDeps(clock, { score: async () => jev(5) });
+  const clock = { t: 0 }; const store = new MemStore(clock); const { deps } = makeDeps(clock, { score: async () => jev(0.5) });
   store.add({ id: "a", linkedin_url: "https://linkedin.com/company/a" });
   await drain(store, deps, clock);
   assert.equal(store.get("a").status, "flagged");
@@ -189,7 +195,7 @@ test("12. LinkedIn page too thin: flagged", async () => {
 
 test("13. unsure on website: free About page, then Tavily search, each re-scored", async () => {
   const clock = { t: 0 }; const store = new MemStore(clock);
-  const seq = [5, 5, 8];
+  const seq = [0.5, 0.5, 0.9];
   const { deps, calls } = makeDeps(clock, {
     score: async () => jev(seq.shift()!),
     freeGet: async (u: string) => (u.endsWith("/sitemap.xml") ? "<loc>https://a.com/about-us</loc>" : u.includes("about") ? `<p>${RICH}</p>` : null),
@@ -199,12 +205,12 @@ test("13. unsure on website: free About page, then Tavily search, each re-scored
   await drain(store, deps, clock);
   const r = store.get("a");
   assert.deepEqual(r.extra_sources, ["https://a.com/about-us", "tavily_search"]);
-  assert.equal(r.score, 8); assert.equal(r.status, "promoted");
+  assert.equal(r.score, 9); assert.equal(r.status, "promoted");
 });
 
 test("14. Tavily out of credits during the extra search: ignored, company still scored", async () => {
   const clock = { t: 0 }; const store = new MemStore(clock);
-  const { deps } = makeDeps(clock, { score: async () => jev(5), tavilySearch: async () => { throw new Error("TAVILY_HTTP_432"); } });
+  const { deps } = makeDeps(clock, { score: async () => jev(0.5), tavilySearch: async () => { throw new Error("TAVILY_HTTP_432"); } });
   store.add({ id: "a", website_url: "https://a.com" });
   await drain(store, deps, clock);
   assert.equal(store.get("a").status, "review"); assert.equal(store.get("a").attempts, 0);
@@ -234,7 +240,7 @@ test("17. auto-reveal cap per search: extras go to Review instead of spending", 
   const clock = { t: 0 }; const store = new MemStore(clock); const { deps, calls } = makeDeps(clock);
   const cfg = { ...CFG, max_auto_reveals_per_search: 2 };
   for (const id of ["a", "b", "c"]) store.add({ id, website_url: `https://${id}.com` });
-  for (let i = 0; i < 10; i++) { await runBatch(deps, store, cfg, { budgetMs: 60_000, batch: 10 }); clock.t += 15 * 60_000; }
+  for (let i = 0; i < 10; i++) { await runBatch(deps, store, cfg, { budgetMs: 60_000, lanes: 4 }); clock.t += 15 * 60_000; }
   const statuses = ["a", "b", "c"].map((id) => store.get(id).status).sort();
   assert.deepEqual(statuses, ["promoted", "promoted", "review"]);
   assert.equal(calls.promote, 2);
@@ -260,7 +266,7 @@ test("20. time budget: no new step starts once the run's time is up (a step alre
   const starts: number[] = [];
   const { deps } = makeDeps(clock, { readHome: async () => { starts.push(clock.t); clock.t += 20_000; return { kind: "ok", markdown: RICH }; } });
   for (const id of ["a", "b", "c", "d", "e", "f"]) store.add({ id, website_url: `https://${id}.com` });
-  await runBatch(deps, store, CFG, { budgetMs: 25_000, batch: 1 });
+  await runBatch(deps, store, CFG, { budgetMs: 25_000, lanes: 1 });
   assert.ok(starts.every((t) => t < 25_000), `started at ${starts}`);
   assert.ok(starts.length < 6, "the rest waits for the next run");
   const untouched = [...store.rows.values()].filter((r) => r.status === "queued" && r.locked_until === null);
@@ -269,8 +275,8 @@ test("20. time budget: no new step starts once the run's time is up (a step alre
 
 test("21. fit settings: bad or partial client settings fall back to defaults", () => {
   assert.deepEqual(parseFitScoring("not json"), DEFAULT_FIT_SCORING);
-  const p = parseFitScoring({ auto_reveal_min: 8, levels: ["too", "short"] });
-  assert.equal(p.auto_reveal_min, 8); assert.equal(p.levels.length, 10);
+  assert.equal(parseFitScoring({ yes_min: 0.7 }).yes_min, 0.7);
+  assert.deepEqual(parseFitScoring({ yes_min: 0.2, no_max: 0.5 }), DEFAULT_FIT_SCORING, "yes below no is rejected");
 });
 
 test("22. a search's own reveal limit wins over the company setting", async () => {
@@ -280,4 +286,52 @@ test("22. a search's own reveal limit wins over the company setting", async () =
   await drain(store, deps, clock);
   assert.deepEqual(["a", "b"].map((id) => store.get(id).status).sort(), ["promoted", "review"]);
   assert.equal(calls.promote, 1);
+});
+
+test("23. score shows priority: 9 = makes the searched products, 7 = other plastic products", async () => {
+  for (const [on, want] of [[0.9, 9], [0.2, 7]] as const) {
+    const clock = { t: 0 }; const store = new MemStore(clock); const { deps } = makeDeps(clock, { score: async () => jev(0.9, on) });
+    store.add({ id: "a", website_url: "https://a.com" });
+    await drain(store, deps, clock);
+    assert.equal(store.get("a").score, want);
+    assert.equal(store.get("a").status, "promoted", "both are plastic makers, so both are revealed");
+  }
+});
+
+test("24. parallel lanes: many companies at once, never more than 4 Firecrawl reads at once", async () => {
+  // Real timers here: this measures actual concurrency, not a fake clock.
+  const store = new MemStore({ t: 0 });
+  const slot = limiter(4);
+  let reading = 0, peak = 0;
+  const deps = makeDeps({ t: 0 }, {
+    now: () => Date.now(),
+    readHome: (url: string) => slot(async () => {
+      reading++; peak = Math.max(peak, reading);
+      await new Promise((r) => setTimeout(r, 40));
+      reading--;
+      return { kind: "ok" as const, markdown: RICH + url };
+    }),
+    score: async () => { await new Promise((r) => setTimeout(r, 5)); return jev(0.1); },
+  }).deps;
+  store.clock = { get t() { return Date.now(); } } as { t: number };
+  for (let i = 0; i < 24; i++) store.add({ id: `c${i}`, website_url: `https://c${i}.com` });
+  const t0 = Date.now();
+  await runBatch(deps, store, CFG, { budgetMs: 30_000, lanes: 8 });
+  const ms = Date.now() - t0;
+  assert.equal(peak, 4, "Firecrawl capped at 4 at once");
+  assert.ok([...store.rows.values()].every((r) => r.status === "hidden"), "all 24 finished in one run");
+  assert.ok(ms < 24 * 40 * 0.5, `parallel run took ${ms} ms (one at a time would be ~${24 * 40} ms)`);
+});
+
+test("25. no paid read starts once the run is nearly over: the company waits for the next run, no try used", async () => {
+  const clock = { t: 0 }; const store = new MemStore(clock);
+  let paid = 0;
+  const { deps } = makeDeps(clock, { readHome: async (_u: string, startBy: number) => { if (clock.t > startBy) throw new OutOfTime(); paid++; return { kind: "ok", markdown: RICH }; } });
+  store.add({ id: "a", website_url: "https://a.com" });
+  const row = (await store.claim(1))[0];
+  clock.t = 40_000;
+  await advance(row, deps, store, CFG, 35_000);
+  assert.equal(paid, 0, "Firecrawl not called");
+  const r = store.get("a");
+  assert.equal(r.status, "queued"); assert.equal(r.attempts, 0); assert.equal(r.locked_until, null, "released for the next run");
 });
