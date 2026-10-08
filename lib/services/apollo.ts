@@ -310,6 +310,10 @@ export interface ApolloOrgAdvancedFilters {
   numJobsMax?: number;
   jobPostedAtMin?: string;
   jobPostedAtMax?: string;
+  /** Up to 5 Apollo org ids; results are ranked by similarity to them. */
+  lookalikeOrgIds?: string[];
+  /** Domains to leave out (every domain Apollo holds for that company). */
+  notWebsites?: string[];
 }
 
 type RawOrg = Record<string, unknown>;
@@ -369,7 +373,8 @@ export function normalizeOrg(row: RawOrg): ApolloOrganization {
 export const APOLLO_ORG_PER_PAGE = 100;
 
 export async function searchOrganizations(opts: {
-  name: string;
+  /** Optional: the company-first prospect search runs on keywords alone. */
+  name?: string;
   locations?: string[];
   domains?: string[];
   page?: number;
@@ -377,10 +382,10 @@ export async function searchOrganizations(opts: {
 }): Promise<ApolloOrgSearchResult> {
   const a = opts.advanced ?? {};
   const body: Record<string, unknown> = {
-    q_organization_name: opts.name,
     page: opts.page ?? 1,
     per_page: APOLLO_ORG_PER_PAGE,
   };
+  if (opts.name?.trim()) body.q_organization_name = opts.name;
 
   const setList = (key: string, value?: string[]) => {
     if (value && value.length > 0) body[key] = value;
@@ -400,6 +405,8 @@ export async function searchOrganizations(opts: {
   setList("organization_not_locations", a.notLocations);
   setList("q_organization_job_titles", a.jobTitles);
   setList("organization_job_locations", a.jobLocations);
+  setList("lookalike_organization_ids", a.lookalikeOrgIds);
+  setList("not_organization_websites_list", a.notWebsites);
   setRange("revenue_range", a.revenueMin, a.revenueMax);
   setRange("latest_funding_amount_range", a.latestFundingAmountMin, a.latestFundingAmountMax);
   setRange("total_funding_range", a.totalFundingMin, a.totalFundingMax);

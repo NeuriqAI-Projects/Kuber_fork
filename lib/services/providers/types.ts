@@ -18,7 +18,9 @@ export type ProviderId =
   | "groq"
   | "firecrawl"
   | "apollo"
-  | "instantly";
+  | "instantly"
+  | "jev"
+  | "tavily";
 
 export interface CompletionOpts {
   system: string;
