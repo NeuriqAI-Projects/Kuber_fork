@@ -4,7 +4,7 @@ import { ok, fail } from "@/lib/api-response";
 import { safeSecretEqual } from "@/lib/auth/secret";
 import { companiesWithWork, runProspectWorker, WORKER_BUDGET_MS } from "@/lib/services/prospects/worker";
 
-export const maxDuration = 55;
+export const maxDuration = 60;
 
 /**
  * Prospect scoring pump (pg_cron, every minute — see

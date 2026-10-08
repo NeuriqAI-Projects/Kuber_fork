@@ -13,16 +13,15 @@ import { checkApolloCredits } from "@/lib/services/provider-credits";
 import { getServiceSecret } from "@/lib/services/service-keys";
 import { createScopedClient } from "@/lib/supabase/scoped";
 import { normalizeDomain } from "@/lib/utils/domain";
-import { jevScore, type JevScore } from "./jev";
+import { jevCheck, type JevVerdict, type SearchedFor } from "./jev";
 import { tavilyExtract, tavilySearch } from "./tavily";
-import type { FitScoring } from "./fit-rules";
-import type { Deps, HomeRead, Person, ProspectRow } from "./pipeline";
+import { OutOfTime, type Deps, type HomeRead, type Person, type ProspectRow } from "./pipeline";
 
 const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126 Safari/537.36" };
 
 async function freeGet(url: string): Promise<string | null> {
   try {
-    const r = await fetch(url, { headers: UA, redirect: "follow", signal: AbortSignal.timeout(10_000) });
+    const r = await fetch(url, { headers: UA, redirect: "follow", signal: AbortSignal.timeout(6_000) });
     return r.ok ? (await r.text()).slice(0, 500_000) : null;
   } catch { return null; }
 }
@@ -30,8 +29,27 @@ async function freeGet(url: string): Promise<string | null> {
 /** Firecrawl failures that are about OUR account (retry), not the target site. */
 const PROVIDER_FAULT = /No usable Firecrawl key|HTTP (401|402|403|429)\b/;
 
-async function readHomeFirecrawl(url: string, companyId: string): Promise<HomeRead> {
-  const r = await scrapePage(url, companyId);
+/** At most `n` calls at once in this process; the rest wait their turn. */
+export function limiter(n: number) {
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  return async <T>(fn: () => Promise<T>): Promise<T> => {
+    if (active >= n) await new Promise<void>((go) => waiting.push(go));
+    active++;
+    try { return await fn(); } finally { active--; waiting.shift()?.(); }
+  };
+}
+
+/** Firecrawl Hobby allows 5 pages at once (https://docs.firecrawl.dev/rate-limits).
+ *  4 here leaves one for the normal enrichment job, which shares the account. */
+const firecrawlSlot = limiter(4);
+
+async function readHomeFirecrawl(url: string, companyId: string, startBy: number): Promise<HomeRead> {
+  // Checked AFTER waiting for a slot: the wait itself can eat the run's time.
+  const r = await firecrawlSlot(() => {
+    if (Date.now() > startBy) throw new OutOfTime();
+    return scrapePage(url, companyId);
+  });
   if (!r.success) {
     if (PROVIDER_FAULT.test(r.error ?? "")) throw new Error(`Firecrawl: ${r.error}`);
     return { kind: "site_down", detail: `Website could not be read (${r.error ?? "unknown"})` };
@@ -122,14 +140,31 @@ export async function promote(db: SupabaseClient, row: ProspectRow, person: Pers
   return orgId;
 }
 
-export function realDeps(admin: SupabaseClient, companyId: string, cfg: FitScoring, importIdFor: (searchId: string) => Promise<string | null>): Deps {
+/** What each search was run for (its keyword labels + batch name), fetched once per search per run. */
+function searchedForLookup(companyId: string) {
+  const db = createScopedClient(companyId);
+  const cache = new Map<string, Promise<SearchedFor>>();
+  return (searchId: string) => {
+    if (!cache.has(searchId)) {
+      cache.set(searchId, (async () => {
+        const { data } = await db.from("prospect_searches").select("filters").eq("id", searchId).maybeSingle();
+        const f = (data?.filters ?? {}) as { batch_name?: string; keyword_labels?: string[]; keywords?: string[] };
+        return { segment: f.batch_name ?? null, keywords: f.keyword_labels ?? f.keywords ?? [] };
+      })());
+    }
+    return cache.get(searchId)!;
+  };
+}
+
+export function realDeps(admin: SupabaseClient, companyId: string, importIdFor: (searchId: string) => Promise<string | null>): Deps {
+  const searchedFor = searchedForLookup(companyId);
   return {
     now: () => Date.now(),
-    readHome: (url) => readHomeFirecrawl(url, companyId),
+    readHome: (url, startBy) => readHomeFirecrawl(url, companyId, startBy),
     freeGet,
     tavilyExtract: async (url) => tavilyExtract(await need("tavily", companyId), url),
     tavilySearch: async (q) => tavilySearch(await need("tavily", companyId), q),
-    score: async (name, text) => jevScore(await need("jev", companyId), cfg, name, text),
+    score: async (row, text) => jevCheck(await need("jev", companyId), { name: row.name, website: row.domain }, await searchedFor(row.search_id), text),
     apolloCreditsFree: () => apolloCreditsFree(admin),
     findPeople: async (orgId) => (await searchPeople({ organizationIds: [orgId], page: 1 })).people,
     promote: async (row, person) => promote(createScopedClient(companyId), row, person, false, await importIdFor(row.search_id)),
@@ -137,34 +172,34 @@ export function realDeps(admin: SupabaseClient, companyId: string, cfg: FitScori
 }
 
 // ── Mock ────────────────────────────────────────────────────────────────────
-// Mock company names all contain the search keywords, so the fake score is
-// spread by a hash of the name instead: every list (good, your decision,
-// hidden, website down → LinkedIn) gets examples in a demo.
+// Mock company names all contain the search keywords, so the fake answers are
+// spread by a hash of the name: every list (good, your decision, hidden,
+// website down → LinkedIn) gets examples. Delays match the live 100-company run
+// (Firecrawl ~3.7 s average, Jev ~0.4 s), so the progress screen behaves like
+// the real thing.
 const hashOf = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
-const MOCK_SCORES = [9, 8, 7, 9, 5, 6, 2, 3, 1, 8];
-const MOCK_REASONS = {
-  good: "converter · film_extrusion · food_packaging · size medium",
-  review: "other_manufacturer · other_plastic · industrial · size not_stated",
-  hidden: "plastic_trader · not_stated · not_stated · size small",
-};
+const MOCK_PLASTIC = [0.92, 0.85, 0.8, 0.9, 0.5, 0.55, 0.12, 0.2, 0.05, 0.88];
 const mockText = (name: string) => `${name} (mock page text, no real website was read). `.repeat(6);
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function mockScore(name: string, text: string): JevScore {
-  const score = MOCK_SCORES[hashOf(name) % MOCK_SCORES.length];
-  const reason = MOCK_REASONS[score >= 7 ? "good" : score >= 4 ? "review" : "hidden"];
-  return { score, confidence: 0.8, reason, model: "mock", input_tokens: Math.ceil(text.length / 4), answers: {} };
+function mockVerdict(row: ProspectRow, text: string): JevVerdict {
+  const h = hashOf(row.name);
+  return { plastic: MOCK_PLASTIC[h % MOCK_PLASTIC.length], on_target: h % 3 === 0 ? 0.2 : 0.85, model: "mock", input_tokens: Math.ceil(text.length / 4), answers: {} };
 }
 
 export function mockDeps(companyId: string, importIdFor: (searchId: string) => Promise<string | null>): Deps {
-  const pause = () => new Promise((r) => setTimeout(r, 150));
   return {
     now: () => Date.now(),
     // Every 7th site is "down", to show the website-down → LinkedIn path.
-    readHome: async (url) => { await pause(); return hashOf(url) % 7 === 0 ? { kind: "site_down", detail: "Website answered HTTP 503 (mock)" } : { kind: "ok", markdown: mockText(new URL(url).hostname) }; },
+    readHome: (url, startBy) => firecrawlSlot(async () => {
+      if (Date.now() > startBy) throw new OutOfTime();
+      await wait(1500 + (hashOf(url) % 4000));
+      return hashOf(url) % 7 === 0 ? { kind: "site_down", detail: "Website answered HTTP 503 (mock)" } : { kind: "ok", markdown: mockText(new URL(url).hostname) };
+    }),
     freeGet: async () => null,
-    tavilyExtract: async (url) => { await pause(); return mockText(url.split("/").filter(Boolean).pop() ?? "company"); },
+    tavilyExtract: async (url) => { await wait(2000); return mockText(url.split("/").filter(Boolean).pop() ?? "company"); },
     tavilySearch: async () => "",
-    score: async (name, text) => { await pause(); return mockScore(name, text); },
+    score: async (row, text) => { await wait(400); return mockVerdict(row, text); },
     apolloCreditsFree: async () => 100,
     findPeople: async (orgId) => mockSearchPeople({ organizationIds: [orgId] }).people,
     promote: async (row, person) => promote(createScopedClient(companyId), row, person, true, await importIdFor(row.search_id)),

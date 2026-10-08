@@ -1,63 +1,56 @@
-// The client's fit rules and what each score leads to. Stored per company in
-// `settings.fit_scoring` so the client can edit them; DEFAULT_FIT_SCORING is
-// Kuber's first draft (1 Oct 2026), used until the client sends their own.
+// How Jev's two answers become a decision. Stored per company in
+// `settings.fit_scoring` so the cut-offs can be tuned from the client's
+// Approve/Reject clicks; these defaults come from the 8–9 Oct 2026 tests.
 
 export interface FitScoring {
-  /** Score at or above this reveals one email automatically. */
-  auto_reveal_min: number;
-  /** Score at or above this (and below auto) waits for the client to decide. Below it is hidden. */
-  review_min: number;
+  /** P(plastic maker) at or above this → good fit. */
+  yes_min: number;
+  /** P(plastic maker) at or below this → hidden. In between = unsure. */
+  no_max: number;
   /** Cap on automatic reveals per search, so one search can't drain Apollo. */
   max_auto_reveals_per_search: number;
-  /** Who the client sells to, in one sentence. Goes into every scoring question. */
-  ideal_customer: string;
-  /** Exactly 10 levels, score 1 first. Jev picks one. */
-  levels: string[];
 }
 
-export const DEFAULT_FIT_SCORING: FitScoring = {
-  auto_reveal_min: 7,
-  review_min: 4,
-  max_auto_reveals_per_search: 20,
-  ideal_customer:
-    "Kuber Polyplast sells colour, white, black and additive masterbatch to companies that process plastic themselves (film, bags, packaging, moulded parts, pipes, sheets, bottles).",
-  levels: [
-    "Not a manufacturer: services, retail, publisher, software, food or pharma trading",
-    "Manufacturer that does not process plastic (metal, paper, textile, food, cosmetics)",
-    "Trades or distributes plastics or resins, or makes masterbatch or colours itself (a competitor); does not convert plastic",
-    "Uses plastic parts in its products but buys them in; plastic processing is not its own process",
-    "The text does not make clear whether the company processes plastic",
-    "Processes some plastic, but plastic is a small side activity",
-    "Plastic converter of modest size or narrow range",
-    "Plastic converter clearly making coloured or additive-containing plastic products",
-    "Sizeable plastic converter (film, bags, packaging, moulded parts, pipes, sheets) with clear colour or additive needs",
-    "Large or multi-site plastic converter with high-volume colour, white, black or additive use",
-  ],
-};
+export const DEFAULT_FIT_SCORING: FitScoring = { yes_min: 0.65, no_max: 0.35, max_auto_reveals_per_search: 20 };
 
-export type Bucket = "good" | "review" | "hidden";
+export type Verdict = "good" | "hidden" | "unsure";
 
-export function bucketFor(score: number, cfg: FitScoring): Bucket {
-  if (score >= cfg.auto_reveal_min) return "good";
-  if (score >= cfg.review_min) return "review";
-  return "hidden";
+export function verdict(plastic: number, cfg: FitScoring): Verdict {
+  if (plastic >= cfg.yes_min) return "good";
+  if (plastic <= cfg.no_max) return "hidden";
+  return "unsure";
 }
 
-/** "AI unsure" band: worth spending a free/cheap extra lookup before deciding. */
-export const isUnsure = (score: number, cfg: FitScoring): boolean => bucketFor(score, cfg) === "review";
+/** The 1–10 number shown in the list: 9 = makes the searched products, 7 = other plastic products, 2 = not a fit. */
+export function displayScore(plastic: number, onTarget: number, cfg: FitScoring): number | null {
+  const v = verdict(plastic, cfg);
+  if (v === "hidden") return 2;
+  if (v === "unsure") return null;
+  return onTarget >= cfg.yes_min ? 9 : 7;
+}
+
+/** One plain line for the list, built in code (Jev never writes text). */
+export function reasonFor(plastic: number, onTarget: number, cfg: FitScoring): string {
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  const v = verdict(plastic, cfg);
+  if (v === "hidden") return `Not a plastic maker (${pct(plastic)})`;
+  if (v === "unsure") return `Unclear if it makes plastic (${pct(plastic)})`;
+  return onTarget >= cfg.yes_min
+    ? `Makes plastic products (${pct(plastic)}) · matches the searched products (${pct(onTarget)})`
+    : `Makes plastic products (${pct(plastic)}) · other products than searched (${pct(onTarget)})`;
+}
 
 /** Merge a stored (possibly partial or malformed) setting over the defaults. */
 export function parseFitScoring(raw: unknown): FitScoring {
   let v: Partial<FitScoring> = {};
   try { v = (typeof raw === "string" ? JSON.parse(raw) : raw) ?? {}; } catch { v = {}; }
-  const num = (x: unknown, d: number) => (typeof x === "number" && Number.isFinite(x) ? x : d);
-  const levels = Array.isArray(v.levels) && v.levels.length === 10 && v.levels.every((l) => typeof l === "string" && l.trim())
-    ? v.levels : DEFAULT_FIT_SCORING.levels;
+  const prob = (x: unknown, d: number) => (typeof x === "number" && x >= 0 && x <= 1 ? x : d);
+  const yes = prob(v.yes_min, DEFAULT_FIT_SCORING.yes_min);
+  const no = prob(v.no_max, DEFAULT_FIT_SCORING.no_max);
+  const cap = v.max_auto_reveals_per_search;
   return {
-    auto_reveal_min: num(v.auto_reveal_min, DEFAULT_FIT_SCORING.auto_reveal_min),
-    review_min: num(v.review_min, DEFAULT_FIT_SCORING.review_min),
-    max_auto_reveals_per_search: num(v.max_auto_reveals_per_search, DEFAULT_FIT_SCORING.max_auto_reveals_per_search),
-    ideal_customer: typeof v.ideal_customer === "string" && v.ideal_customer.trim() ? v.ideal_customer : DEFAULT_FIT_SCORING.ideal_customer,
-    levels,
+    yes_min: yes > no ? yes : DEFAULT_FIT_SCORING.yes_min,
+    no_max: yes > no ? no : DEFAULT_FIT_SCORING.no_max,
+    max_auto_reveals_per_search: typeof cap === "number" && cap >= 0 ? cap : DEFAULT_FIT_SCORING.max_auto_reveals_per_search,
   };
 }
