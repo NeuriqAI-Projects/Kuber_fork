@@ -26,6 +26,11 @@ import {
 import { useApp } from "@/lib/app-context";
 import { Avatar, StatusBadge } from "@/components/leads/lead-ui";
 import { KanbanBoard } from "@/components/app/kanban-board";
+import {
+  EMPTY_SCORED_FILTER, GroupPill, RunningSearchesBar, ScoredFilterChips, ScoredFiltersDialog, ScoredOrgsKanban, ScoredOrgsTable,
+  decideScored, scoredFilterActive, useScoredOrgs, type ScoredFilter,
+} from "@/components/app/scored-orgs";
+import { GROUPS, type Group } from "@/lib/services/prospects/groups";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
@@ -164,6 +169,7 @@ const DEFAULT_VISIBILITY: ColVisibility = Object.fromEntries(
 ) as ColVisibility;
 
 const ORG_COLUMN_DEFS = [
+  { key: "fit_status",  label: "Status",      defaultVisible: true  },
   { key: "enrichment",  label: "Enrichment",  defaultVisible: true  },
   { key: "domain",      label: "Domain",      defaultVisible: true  },
   { key: "description", label: "Description", defaultVisible: true  },
@@ -676,6 +682,13 @@ export default function LeadsPage() {
     };
   });
   const [showFilters,      setShowFilters     ] = useState(false);
+  // Scored companies (Add leads > Scored Companies): batch / status filters for the Organization view.
+  const [scoredFilter, setScoredFilter] = useState<ScoredFilter>(() => ({
+    searchIds: (searchParams.get("sbatch") ?? "").split(",").filter(Boolean),
+    groups: (searchParams.get("sgroups") ?? "").split(",").filter((g): g is Group => (GROUPS as readonly string[]).includes(g)),
+    hidden: searchParams.get("shidden") === "1",
+  }));
+  const [showScoredFilters, setShowScoredFilters] = useState(false);
   const [page,             setPage            ] = useState(1);
   const [pageSize,         setPageSize        ] = useState(50);
   const [importBatches,    setImportBatches   ] = useState<ImportBatch[]>([]);
@@ -726,6 +739,9 @@ export default function LeadsPage() {
     if (filters.batchLabels.size > 0)  params.set("batches",  [...filters.batchLabels].join(","));
     if (filters.createdFrom)          params.set("from", filters.createdFrom.toISOString().slice(0, 10));
     if (filters.createdTo)            params.set("to",   filters.createdTo.toISOString().slice(0, 10));
+    if (scoredFilter.searchIds.length) params.set("sbatch",  scoredFilter.searchIds.join(","));
+    if (scoredFilter.groups.length)    params.set("sgroups", scoredFilter.groups.join(","));
+    if (scoredFilter.hidden)           params.set("shidden", "1");
     const qs = params.toString();
     // Debounced. `searchQuery` is in the dep list and moves on every keystroke,
     // and Next 15 defaults staleTimes.dynamic to 0 — a dynamic route is never
@@ -737,7 +753,31 @@ export default function LeadsPage() {
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     }, 300);
     return () => clearTimeout(handle);
-  }, [searchQuery, leadsSort, leadsViewMode, leadsEntityMode, filters, pathname, router]);
+  }, [searchQuery, leadsSort, leadsViewMode, leadsEntityMode, filters, scoredFilter, pathname, router]);
+
+  const scored = useScoredOrgs(scoredFilter, searchQuery, leadsEntityMode === "orgs");
+  const scoredView = leadsEntityMode === "orgs" && (leadsViewMode === "kanban" || scoredFilterActive(scoredFilter));
+  // Status of each organization that came from a scored search, for the classic list's Status column.
+  const orgFitStatus = useMemo(() => {
+    const m = new Map<string, { group: Group; status: string }>();
+    for (const c of scored.data?.companies ?? []) if (c.organization_id) m.set(c.organization_id, { group: c.group, status: c.status });
+    return m;
+  }, [scored.data]);
+  async function handleScoredDecide(ids: string[], action: "approve" | "reject" | "retry") {
+    try { await decideScored(ids, action); } catch (e) { toast.error((e as Error).message); }
+    await scored.reload();
+  }
+  // "Open in Organizations" from Add leads > Scored Companies lands here, on that batch.
+  useEffect(() => {
+    function onOpen(e: Event) {
+      const id = (e as CustomEvent<{ searchId: string }>).detail?.searchId;
+      setLeadsEntityMode("orgs");
+      setLeadsViewMode("list");
+      setScoredFilter({ ...EMPTY_SCORED_FILTER, searchIds: id ? [id] : [] });
+    }
+    window.addEventListener("kuber:open-scored-batch", onOpen);
+    return () => window.removeEventListener("kuber:open-scored-batch", onOpen);
+  }, []);
 
   // Reset to page 1 whenever the filtered result set changes
   useEffect(() => { setPage(1); }, [searchQuery, filters, leadsSort]);
@@ -1009,7 +1049,7 @@ export default function LeadsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {leadsEntityMode === "individual" && (
+          {(leadsEntityMode === "individual" || leadsEntityMode === "orgs") && (
             <SegmentedTabs
               value={leadsViewMode}
               onValueChange={setLeadsViewMode}
@@ -1043,6 +1083,14 @@ export default function LeadsPage() {
       <div className="px-8 pt-3">
         <ServiceHealthBanner />
       </div>
+      {leadsEntityMode === "orgs" && (
+        <div className="px-8 pt-3">
+          <RunningSearchesBar
+            data={scored.data}
+            onOpen={(searchId, group) => { setLeadsViewMode("list"); setScoredFilter({ ...EMPTY_SCORED_FILTER, searchIds: [searchId], groups: group ? [group] : [] }); }}
+          />
+        </div>
+      )}
 
       {/* ── Search + Columns toolbar ── */}
       {(leadsEntityMode === "orgs" || (leadsEntityMode === "individual" && (leadsViewMode === "list" || leadsViewMode === "kanban"))) && (
@@ -1092,7 +1140,22 @@ export default function LeadsPage() {
                 )}
               </Button>
             )}
-            {leadsEntityMode === "orgs" ? (
+            {leadsEntityMode === "orgs" && (
+              <>
+                <ScoredFilterChips value={scoredFilter} data={scored.data} onChange={setScoredFilter} />
+                <Button
+                  type="button"
+                  variant={scoredFilterActive(scoredFilter) ? "default" : "outline"}
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => setShowScoredFilters(true)}
+                >
+                  <SlidersHorizontal className="size-3.5" />
+                  Filters
+                </Button>
+              </>
+            )}
+            {leadsEntityMode === "orgs" && !scoredView ? (
               <ColumnsDropdown
                 defs={ORG_COLUMN_DEFS}
                 visible={orgVisibleCols}
@@ -1111,7 +1174,7 @@ export default function LeadsPage() {
             )}
             <span className="font-mono text-xs text-muted-foreground tabular-nums">
               {leadsEntityMode === "orgs"
-                ? `${orgRows.length} orgs`
+                ? scoredView ? `${scored.data?.companies.length ?? 0} companies` : `${orgRows.length} orgs`
                 : searchLoading ? "…" : `${displayLeads.length} leads`}
             </span>
           </div>
@@ -1146,6 +1209,17 @@ export default function LeadsPage() {
               ))}
             </div>
           </div>
+        ) : scoredView && leadsViewMode === "kanban" ? (
+          <ScoredOrgsKanban
+            data={scored.data}
+            error={scored.error}
+            loading={scored.loading}
+            onDecide={handleScoredDecide}
+            onShowHidden={() => { setLeadsViewMode("list"); setScoredFilter((f) => ({ ...f, groups: ["hidden"], hidden: true })); }}
+            onOpenOrg={(id) => setSelectedOrgId(id)}
+          />
+        ) : scoredView ? (
+          <ScoredOrgsTable data={scored.data} error={scored.error} loading={scored.loading} onDecide={handleScoredDecide} onOpenOrg={(id) => setSelectedOrgId(id)} />
         ) : leadsEntityMode === "orgs" ? (
             <div>
               <div className="rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden w-full">
@@ -1153,6 +1227,9 @@ export default function LeadsPage() {
                   <TableHeader>
                     <TableRow className="border-border hover:bg-transparent">
                       <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Organization</TableHead>
+                      {orgVisibleCols.fit_status && (
+                        <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Status</TableHead>
+                      )}
                       {orgVisibleCols.enrichment && (
                         <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-8" title="Enrichment" />
                       )}
@@ -1199,6 +1276,13 @@ export default function LeadsPage() {
                               <p className="text-sm font-semibold">{org.name || "—"}</p>
                             </div>
                           </TableCell>
+                          {orgVisibleCols.fit_status && (
+                            <TableCell>
+                              {orgFitStatus.has(org.id)
+                                ? <GroupPill group={orgFitStatus.get(org.id)!.group} status={orgFitStatus.get(org.id)!.status} />
+                                : <span className="text-xs text-muted-foreground">—</span>}
+                            </TableCell>
+                          )}
                           {orgVisibleCols.enrichment && (
                             <TableCell className="text-center">
                               <EnrichDot stage={org.enrichmentStage} />
@@ -1452,6 +1536,7 @@ export default function LeadsPage() {
         </div>
       )}
 
+      <ScoredFiltersDialog open={showScoredFilters} onOpenChange={setShowScoredFilters} value={scoredFilter} onApply={setScoredFilter} data={scored.data} />
       {showFilters && (
         <FiltersModal
           filters={filters}

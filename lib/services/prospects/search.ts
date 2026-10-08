@@ -50,15 +50,26 @@ export interface SearchDeps {
   search(input: ProspectSearchInput): Promise<OrgPage>;
 }
 
-export function defaultSearchDeps(db: SupabaseClient, companyId: string): SearchDeps {
+/** Dev-workspace test scenarios, switched on by a word in the batch name:
+ *  [apollo-0] no credits · [apollo-down] Apollo answers 500 · [apollo-timeout] no answer · [apollo-empty] 0 results
+ *  · [no-socials] companies come without LinkedIn/Twitter/Facebook. */
+const has = (input: ProspectSearchInput, f: string) => input.batch_name.toLowerCase().includes(`[${f}]`);
+
+export function defaultSearchDeps(db: SupabaseClient, companyId: string, input?: ProspectSearchInput): SearchDeps {
   const mock = isApolloMockCompany(companyId);
   return {
     mock,
-    creditsLeft: async () => (mock ? null : (await checkApolloCredits(db, "any" /* one shared Apollo account */, { fresh: true })).remaining),
+    creditsLeft: async () => (mock ? (input && has(input, "apollo-0") ? 0 : null) : (await checkApolloCredits(db, "any" /* one shared Apollo account */, { fresh: true })).remaining),
     search: async (input) => {
       if (mock) {
         await mockApolloDelay();
-        return mockSearchOrganizations({ name: input.keywords.join(" "), locations: input.locations, page: input.page });
+        if (has(input, "apollo-down")) throw Object.assign(new Error("Apollo org search 500: internal error (mock)"), { status: 500 });
+        if (has(input, "apollo-timeout")) throw new Error("The operation was aborted due to timeout (mock)");
+        if (has(input, "apollo-empty")) return { organizations: [], pagination: { total_entries: 0 } };
+        const res = mockSearchOrganizations({ name: input.keywords.join(" "), locations: input.locations, page: input.page });
+        // [no-socials]: no LinkedIn/Twitter/Facebook, so a down website ends in "Website down" (Retry).
+        if (has(input, "no-socials")) res.organizations = res.organizations.map((o) => ({ ...o, linkedin_url: null, twitter_url: null, facebook_url: null }));
+        return res;
       }
       return searchOrganizations({
         locations: input.locations,
@@ -76,7 +87,7 @@ export function defaultSearchDeps(db: SupabaseClient, companyId: string): Search
 }
 
 /** `db` must be company-scoped (it stamps and filters company_id). */
-export async function runProspectSearch(db: SupabaseClient, companyId: string, userId: string, input: ProspectSearchInput, deps: SearchDeps = defaultSearchDeps(db, companyId)): Promise<SearchOutcome> {
+export async function runProspectSearch(db: SupabaseClient, companyId: string, userId: string, input: ProspectSearchInput, deps: SearchDeps = defaultSearchDeps(db, companyId, input)): Promise<SearchOutcome> {
   const mock = deps.mock;
 
   // Local/preview runs use mock data but share the LIVE database. Mock
@@ -85,7 +96,8 @@ export async function runProspectSearch(db: SupabaseClient, companyId: string, u
     return { ok: false, status: 400, code: "MOCK_ONLY_IN_DEV", message: "This is a test (mock) run. Switch to the Dev workspace to try it, so test companies never land in a client's real data." };
   }
 
-  if (!mock) {
+  {
+    // Mock mode only reports a number in the [apollo-0] test scenario.
     const left = await deps.creditsLeft();
     if (left !== null && left < 1) {
       return { ok: false, status: 402, code: "APOLLO_OUT_OF_CREDITS", message: "Apollo has no credits left. Nothing was searched or charged." };

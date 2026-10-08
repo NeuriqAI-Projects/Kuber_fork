@@ -77,7 +77,8 @@ async function apolloCreditsFree(admin: SupabaseClient): Promise<number | null> 
 }
 
 /** `db` must be company-scoped (stamps + filters company_id). Exported for tests. */
-export async function promote(db: SupabaseClient, row: ProspectRow, person: Person, mock: boolean, importId: string | null): Promise<string> {
+export async function promote(db: SupabaseClient, row: ProspectRow, person: Person, mock: boolean, batch: { importId: string | null; createdBy: string | null }): Promise<string> {
+  if (!batch.createdBy) throw new Error("Search has no creator to record on the lead");
   let domain: string | null = null;
   try { domain = row.domain ? normalizeDomain(row.domain) : null; } catch { domain = row.domain; }
 
@@ -134,7 +135,8 @@ export async function promote(db: SupabaseClient, row: ProspectRow, person: Pers
     country: person.country ?? null,
     organization_id: orgId,
     lead_source: "apollo",
-    import_id: importId,
+    import_id: batch.importId,
+    created_by: batch.createdBy,
   }, { onConflict: "apollo_id", ignoreDuplicates: true });
   if (lead.error) throw new Error(`Could not create lead: ${lead.error.message}`);
   return orgId;
@@ -156,7 +158,9 @@ function searchedForLookup(companyId: string) {
   };
 }
 
-export function realDeps(admin: SupabaseClient, companyId: string, importIdFor: (searchId: string) => Promise<string | null>): Deps {
+type BatchFor = (searchId: string) => Promise<{ importId: string | null; createdBy: string | null }>;
+
+export function realDeps(admin: SupabaseClient, companyId: string, batchFor: BatchFor): Deps {
   const searchedFor = searchedForLookup(companyId);
   return {
     now: () => Date.now(),
@@ -167,7 +171,7 @@ export function realDeps(admin: SupabaseClient, companyId: string, importIdFor: 
     score: async (row, text) => jevCheck(await need("jev", companyId), { name: row.name, website: row.domain }, await searchedFor(row.search_id), text),
     apolloCreditsFree: () => apolloCreditsFree(admin),
     findPeople: async (orgId) => (await searchPeople({ organizationIds: [orgId], page: 1 })).people,
-    promote: async (row, person) => promote(createScopedClient(companyId), row, person, false, await importIdFor(row.search_id)),
+    promote: async (row, person) => promote(createScopedClient(companyId), row, person, false, await batchFor(row.search_id)),
   };
 }
 
@@ -187,22 +191,52 @@ function mockVerdict(row: ProspectRow, text: string): JevVerdict {
   return { plastic: MOCK_PLASTIC[h % MOCK_PLASTIC.length], on_target: h % 3 === 0 ? 0.2 : 0.85, model: "mock", input_tokens: Math.ceil(text.length / 4), answers: {} };
 }
 
-export function mockDeps(companyId: string, importIdFor: (searchId: string) => Promise<string | null>): Deps {
+/**
+ * Test scenarios for the Dev workspace, switched on by a word in the BATCH NAME
+ * (so a tester can see every screen state without real failures):
+ *   [no-credits]       Apollo has no credits: good fits wait for credits
+ *   [credits-run-out]  credits for 3 reveals, then none (runs out midway)
+ *   [sites-down]       every website is down (→ LinkedIn, or "Website down")
+ *   [jev-down]         the AI service fails every time (→ 3 tries → your decision)
+ *   [flaky]            ~30% of website reads and AI calls fail (→ retries)
+ * Search-side words ([apollo-down], [apollo-timeout], [apollo-0], [apollo-empty]) are in search.ts.
+ */
+export const mockFlag = (batchName: string | null | undefined, flag: string) => (batchName ?? "").toLowerCase().includes(`[${flag}]`);
+const mockRevealsUsed = new Map<string, number>();
+
+export function mockDeps(companyId: string, batchFor: BatchFor): Deps {
+  const searchedFor = searchedForLookup(companyId);
+  const flag = async (row: ProspectRow, f: string) => mockFlag((await searchedFor(row.search_id)).segment, f);
+  const flaky = async (row: ProspectRow) => { if ((await flag(row, "flaky")) && Math.random() < 0.3) throw new Error("Network error (mock)"); };
   return {
     now: () => Date.now(),
     // Every 7th site is "down", to show the website-down → LinkedIn path.
-    readHome: (url, startBy) => firecrawlSlot(async () => {
+    readHome: (url, startBy, row) => firecrawlSlot(async () => {
       if (Date.now() > startBy) throw new OutOfTime();
       await wait(1500 + (hashOf(url) % 4000));
-      return hashOf(url) % 7 === 0 ? { kind: "site_down", detail: "Website answered HTTP 503 (mock)" } : { kind: "ok", markdown: mockText(new URL(url).hostname) };
+      await flaky(row);
+      if (hashOf(url) % 7 === 0 || (await flag(row, "sites-down"))) return { kind: "site_down", detail: "Website answered HTTP 503 (mock)" };
+      return { kind: "ok", markdown: mockText(new URL(url).hostname) };
     }),
     freeGet: async () => null,
     tavilyExtract: async (url) => { await wait(2000); return mockText(url.split("/").filter(Boolean).pop() ?? "company"); },
     tavilySearch: async () => "",
-    score: async (row, text) => { await wait(400); return mockVerdict(row, text); },
-    apolloCreditsFree: async () => 100,
+    score: async (row, text) => {
+      await wait(400);
+      if (await flag(row, "jev-down")) throw new Error("JEV_HTTP_503 (mock)");
+      await flaky(row);
+      return mockVerdict(row, text);
+    },
+    apolloCreditsFree: async (row) => {
+      if (await flag(row, "no-credits")) return 0;
+      if (await flag(row, "credits-run-out")) return Math.max(0, 3 - (mockRevealsUsed.get(row.search_id) ?? 0));
+      return 100;
+    },
     findPeople: async (orgId) => mockSearchPeople({ organizationIds: [orgId] }).people,
-    promote: async (row, person) => promote(createScopedClient(companyId), row, person, true, await importIdFor(row.search_id)),
+    promote: async (row, person) => {
+      mockRevealsUsed.set(row.search_id, (mockRevealsUsed.get(row.search_id) ?? 0) + 1);
+      return promote(createScopedClient(companyId), row, person, true, await batchFor(row.search_id));
+    },
   };
 }
 

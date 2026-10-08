@@ -80,10 +80,10 @@ test("S8. empty result page: free, no ledger row", async () => {
   assert.ok(out.ok); assert.equal(out.credits_spent, 0); assert.equal(tables.enrichment_logs.length, 0);
 });
 
-test("S9. mock mode never checks or spends credits", async () => {
-  const { db, tables } = fakeDb(); let checked = false;
-  const out = await runProspectSearch(db, "00000000-0000-0000-0000-00000000000a", "u", INPUT, deps({ mock: true, creditsLeft: async () => { checked = true; return 0; } }));
-  assert.ok(out.ok); assert.equal(checked, false); assert.equal(out.credits_spent, 0); assert.equal(tables.enrichment_logs.length, 0);
+test("S9. mock mode never spends credits", async () => {
+  const { db, tables } = fakeDb();
+  const out = await runProspectSearch(db, "00000000-0000-0000-0000-00000000000a", "u", INPUT, deps({ mock: true, creditsLeft: async () => null }));
+  assert.ok(out.ok); assert.equal(out.credits_spent, 0); assert.equal(tables.enrichment_logs.length, 0);
 });
 
 test("S10. a mock run in a real client workspace is refused (local runs share the live DB)", async () => {
