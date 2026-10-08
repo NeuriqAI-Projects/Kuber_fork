@@ -84,7 +84,7 @@ export interface Deps {
   now(): number;
   /** Firecrawl, 1 credit. site_down = the website itself failed; throw = Firecrawl/our side failed.
    *  Must throw OutOfTime instead of starting the paid call after `startBy` (epoch ms). */
-  readHome(url: string, startBy: number): Promise<HomeRead>;
+  readHome(url: string, startBy: number, row: ProspectRow): Promise<HomeRead>;
   /** Free GET; null on any failure. */
   freeGet(url: string): Promise<string | null>;
   tavilyExtract(url: string): Promise<string>;
@@ -92,7 +92,7 @@ export interface Deps {
   /** Jev's two yes/no answers for this company (keywords come from the row's search). */
   score(row: ProspectRow, text: string): Promise<JevVerdict>;
   /** Apollo credits free for NEW reveals (balance minus reveals already queued). null = unknown, proceed. */
-  apolloCreditsFree(): Promise<number | null>;
+  apolloCreditsFree(row: ProspectRow): Promise<number | null>;
   findPeople(apolloOrgId: string): Promise<Person[]>;
   /** Create (or find) the organization + one lead. Must be idempotent. Returns organization id. */
   promote(row: ProspectRow, person: Person): Promise<string>;
@@ -152,7 +152,7 @@ async function readStage(row: ProspectRow, deps: Deps, startBy: number): Promise
   const site = row.website_url || (row.domain ? `https://${row.domain}` : null);
   if (!site) return socialStage(row, deps); // no paid call yet, safe to do in this stage
 
-  const home = await deps.readHome(site, startBy); // the one paid call; saved right after
+  const home = await deps.readHome(site, startBy, row); // the one paid call; saved right after
   if (home.kind === "ok") {
     const text = cleanText(home.markdown);
     if (wordCount(text) >= MIN_WORDS) {
@@ -256,7 +256,7 @@ async function freeSecondPage(row: ProspectRow, deps: Deps): Promise<{ url: stri
 }
 
 async function promoteStage(row: ProspectRow, deps: Deps): Promise<ProspectPatch> {
-  const free = await deps.apolloCreditsFree();
+  const free = await deps.apolloCreditsFree(row);
   if (free !== null && free < 1) {
     // Not a failure: no attempt is used up. Checked again every 10 minutes.
     return { status: "waiting_credits", attempts: row.attempts, last_error: "Apollo has no credits free for a reveal", retry_at: deps.now() + WAIT_FOR_CREDITS_MS };
