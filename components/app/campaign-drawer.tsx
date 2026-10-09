@@ -2198,6 +2198,17 @@ export function CampaignDetail({
           ? `Saved. Writing ${res.preparing} follow-up${res.preparing === 1 ? "" : "s"} before this goes live — Instantly keeps the current schedule until then.`
           : "Steps saved",
       );
+      // A step's default text changed: say what happened to follow-ups already
+      // written from the old text (sent ones can't change; edited ones are kept).
+      for (const r of res.refreshed ?? []) {
+        const label = `Follow-up ${sequenceDisplayStep(r.step)}`;
+        const parts = [`${r.updated} updated to the new text`];
+        if (r.alreadySent) parts.push(`${r.alreadySent} already sent (can't change)`);
+        if (r.kept) parts.push(`${r.kept} AI-written or edited by hand (kept)`);
+        (r.pushFailed ? toast.error : toast.success)(
+          `${label}: ${parts.join(", ")}.` + (r.pushFailed ? ` ${r.pushFailed} could not be changed in Instantly and will still send the old text.` : ""),
+        );
+      }
     } catch (e) {
       toast.error("Failed to save: " + (e as Error).message);
     } finally {

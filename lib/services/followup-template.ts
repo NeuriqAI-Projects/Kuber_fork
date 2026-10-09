@@ -84,14 +84,24 @@ export async function resolveFollowupTemplate(
       // which is truthy, so a blank box used to win this rung and resolve to an
       // email with no body at all — the opposite of the "Leave empty for the
       // company default" the UI promises.
-      const perStep = (data?.fallback_body as string | null)?.trim();
-      if (perStep && hasVisibleText(perStep)) return perStep;
+      const perStep = data?.fallback_body as string | null;
+      if (perStep?.trim() && hasVisibleText(perStep.trim())) return perStep.trim();
     }
 
-    const fromSettings = (await getFollowupFallbackTemplate(db))?.trim();
-    if (fromSettings && hasVisibleText(fromSettings)) return fromSettings;
+    return pickFollowupTemplate(null, await getFollowupFallbackTemplate(db));
   } catch {
     // fall through — see the note above
+  }
+  return BUILT_IN_FOLLOWUP_FALLBACK;
+}
+
+/** The same resolution order without the DB reads: the step's own text, else
+ *  the Settings default, else the built-in. Used to tell whether a Sequences
+ *  save actually changed what a step falls back to. */
+export function pickFollowupTemplate(perStep: string | null | undefined, fromSettings: string | null | undefined): string {
+  for (const t of [perStep, fromSettings]) {
+    const s = t?.trim();
+    if (s && hasVisibleText(s)) return s;
   }
   return BUILT_IN_FOLLOWUP_FALLBACK;
 }

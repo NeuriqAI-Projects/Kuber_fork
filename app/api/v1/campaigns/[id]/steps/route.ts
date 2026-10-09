@@ -6,6 +6,12 @@ import { countMissingText, publishSequenceNow } from "@/lib/services/sequence-pu
 import { internalAppBaseUrl } from "@/lib/internal-url";
 import { assertCampaignAccess, assertCampaignSettingsAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { pickFollowupTemplate } from "@/lib/services/followup-template";
+import { getFollowupFallbackTemplate } from "@/lib/services/settings";
+import { refreshTemplateFollowups, type RefreshResult } from "@/lib/services/followup-refresh";
+
+// Saving can rewrite already-written follow-ups and push each to Instantly.
+export const maxDuration = 60;
 
 export async function GET(
   req: NextRequest,
@@ -73,6 +79,10 @@ export async function PUT(
       .eq("id", id);
   }
 
+  // What each step fell back to BEFORE this save, so we can tell which
+  // steps' default text actually changed.
+  const { data: oldSteps } = await db.from("campaign_steps").select("step_order, fallback_body").eq("campaign_id", id);
+
   // Replace all steps for this campaign
   await db.from("campaign_steps").delete().eq("campaign_id", id);
   const { error } = await db.from("campaign_steps").insert(
@@ -83,6 +93,19 @@ export async function PUT(
     })),
   );
   if (error) return fail(500, "INTERNAL", error.message);
+
+  // A step's default text changed: rewrite the unsent follow-ups written from
+  // the old text (lib/services/followup-refresh.ts). Sent, AI-written and
+  // hand-edited ones are left alone.
+  const settingsDefault = await getFollowupFallbackTemplate(db);
+  const oldByStep = new Map((oldSteps ?? []).map((s) => [s.step_order as number, s.fallback_body as string | null]));
+  const refreshed: RefreshResult[] = [];
+  for (const s of parsed.data.steps) {
+    if (s.step_order < 2 || !oldByStep.has(s.step_order)) continue;
+    const oldText = pickFollowupTemplate(oldByStep.get(s.step_order), settingsDefault);
+    const newText = pickFollowupTemplate(s.fallback_body, settingsDefault);
+    if (oldText !== newText) refreshed.push(await refreshTemplateFollowups(db, id, s.step_order, newText));
+  }
 
   // PREPARE, THEN PUBLISH.
   //
@@ -103,7 +126,7 @@ export async function PUT(
     // Nothing this change makes due is unwritten, so there is no race to lose:
     // publish immediately and keep the old instant-feedback behaviour.
     await publishSequenceNow(db, id);
-    return ok({ updated: true, published: true, preparing: 0 });
+    return ok({ updated: true, published: true, preparing: 0, refreshed });
   }
 
   await db.from("campaigns").update({
@@ -126,5 +149,5 @@ export async function PUT(
     );
   }
 
-  return ok({ updated: true, published: false, preparing: missing });
+  return ok({ updated: true, published: false, preparing: missing, refreshed });
 }
