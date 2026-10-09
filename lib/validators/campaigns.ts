@@ -84,8 +84,13 @@ export const CampaignStepInput = z.object({
   ai_instruction: z.string().trim().max(1000).nullable().optional(),
   /** Per-step follow-up text for when the email cannot be personalised.
    *  Empty/null means inherit the Settings default — see
-   *  lib/services/followup-template.ts. */
-  fallback_body: z.string().trim().max(2000).nullable().optional(),
+   *  lib/services/followup-template.ts.
+   *  The cap counts stored HTML, not visible text: a ~1,000-character email with
+   *  a bold offer and a bulleted list is past 2,000 once the tags are in, and the
+   *  old 2,000 cap rejected the whole Sequences save for it (client, 9 Oct 2026:
+   *  "steps.6.fallback_body"). Production builds also lose zod's message text, so
+   *  the toast only said "Invalid input" for what is really a too-long field. */
+  fallback_body: z.string().trim().max(20_000).nullable().optional(),
 });
 
 export const CampaignStepsSchema = z.object({
