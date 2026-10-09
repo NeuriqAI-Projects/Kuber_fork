@@ -32,6 +32,9 @@ export const PatchSettingsSchema = z.object({
   // lib/services/campaign-fanout.ts. Supports {{first_name}}. No subject: a
   // follow-up always threads with an empty subject.
   followup_fallback_body:  z.string().optional(),
+  // "true" | "false". When true the drafting model MAY emit an HTML table, but
+  // only when a campaign instruction / revision explicitly asks for one.
+  allow_html_emails:       z.enum(["true", "false"]).optional(),
 });
 
 // The subset of company settings an employee may edit: the Product Offerings
@@ -66,6 +69,7 @@ export const SETTINGS_KEYS = [
   "generic_email_subject",
   "generic_email_body",
   "followup_fallback_body",
+  "allow_html_emails",
 ] as const;
 
 // ── Per-user settings (`user_settings` table) ────────────────────────────────

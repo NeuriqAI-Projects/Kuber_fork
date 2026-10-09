@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { AvailabilityToggle } from "@/components/ui/availability-toggle";
 import { LEAD_TEMPLATE_VARS } from "@/components/ui/template-var-textarea";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
@@ -55,7 +56,7 @@ const EmailSendingView = dynamic(
 );
 
 type Section = "profile" | "ai" | "knowledge" | "appearance" | "account" | "team" | "email" | "keys";
-type AiSection = "my-writing" | "my-signature" | "template" | "default" | "followup" | "replies" | "footer";
+type AiSection = "my-writing" | "my-signature" | "template" | "default" | "followup" | "html" | "replies" | "footer";
 type KnowledgeSection = "company" | "products" | "industry-segments";
 type KeysSection = "credentials" | "usage";
 type ProductOffering = { name: string; description: string };
@@ -99,6 +100,7 @@ const COMPANY_AI_NAV_ITEMS: { id: AiSection; label: string; icon: React.Componen
   { id: "template", label: "Email Template",  icon: PenLine },
   { id: "default",  label: "Default draft",   icon: FileText },
   { id: "followup", label: "Follow-up fallback", icon: FileText },
+  { id: "html",     label: "HTML emails",     icon: FileText },
   { id: "replies",  label: "Reply AI",        icon: Bot },
   { id: "footer",   label: "Email Footer",    icon: Type },
 ];
@@ -281,6 +283,7 @@ export function SettingsView() {
   const [genericSubject, setGenericSubject] = useState("");
   const [genericBody,    setGenericBody   ] = useState("");
   const [followupFallbackBody, setFollowupFallbackBody] = useState("");
+  const [allowHtmlEmails, setAllowHtmlEmails] = useState(false);
   const [logoPath,       setLogoPath      ] = useState<string | null>(null);
   const [logoUrl,        setLogoUrl       ] = useState<string | null>(null);
   const [logoUploading,  setLogoUploading ] = useState(false);
@@ -377,6 +380,7 @@ export function SettingsView() {
           setGenericSubject(s.generic_email_subject ?? "");
           setGenericBody(s.generic_email_body ?? "");
           setFollowupFallbackBody(s.followup_fallback_body ?? "");
+          setAllowHtmlEmails(s.allow_html_emails === "true");
           setSigContact(s.signature_contact ?? "");
           setReplyDrafterPrompt(s.reply_drafter_prompt ?? "");
           try { setProductOfferings(JSON.parse(s.product_offerings ?? "[]") as ProductOffering[]); } catch { setProductOfferings([]); }
@@ -483,6 +487,7 @@ export function SettingsView() {
           generic_email_subject:   genericSubject,
           generic_email_body:      genericBody,
           followup_fallback_body:  followupFallbackBody,
+          allow_html_emails:       allowHtmlEmails ? "true" : "false",
           signature_contact:       sigContact,
           reply_drafter_prompt:    replyDrafterPrompt,
         });
@@ -1062,6 +1067,31 @@ export function SettingsView() {
                         />
                         <p className="text-xs text-muted-foreground">Left blank, this default text is used. This text is sent as-is — the AI does not rewrite it.</p>
                       </div>
+                    </section>
+                  )}
+
+                  {isManager && aiSection === "html" && (
+                    <section className="space-y-4">
+                      <div className="flex items-center gap-2 border-b border-border pb-4">
+                        <FileText className="size-4 text-muted-foreground" />
+                        <div>
+                          <p className="eyebrow">Outreach</p>
+                          <h3 className="font-display text-base font-semibold mt-0.5">HTML emails</h3>
+                        </div>
+                      </div>
+                      <SettingsRow
+                        label="Allow HTML in emails"
+                        description="Lets the AI include an HTML table in an email when it is explicitly asked for."
+                      >
+                        <Switch checked={allowHtmlEmails} onCheckedChange={setAllowHtmlEmails} />
+                      </SettingsRow>
+                      <p className="text-xs text-muted-foreground">
+                        <strong>Off (default):</strong> every email is plain text with bold/italic/links, exactly as today.{" "}
+                        <strong>On:</strong> nothing changes for ordinary emails. The AI only adds a table when a
+                        campaign instruction or a regenerate request clearly asks for one (e.g. &ldquo;add a
+                        comparison table of our grades&rdquo;). The table is cleaned up (no scripts or styles) and
+                        Instantly sends it as HTML. Applies to newly written or regenerated drafts; existing drafts are unchanged.
+                      </p>
                     </section>
                   )}
 

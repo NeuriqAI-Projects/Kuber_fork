@@ -8,6 +8,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
+import { Table, TableRow, TableHeader, TableCell } from "@tiptap/extension-table";
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -74,14 +75,14 @@ const TemplateVarHighlight = Extension.create({
 import {
   Bold, Italic, Underline as UnderlineIcon,
   List, ListOrdered, Link as LinkIcon, Unlink,
-  Heading2, Copy,
+  Heading2, Copy, Table2, BetweenHorizontalStart, BetweenVerticalStart, Trash2,
 } from "lucide-react";
 
 function normalizeToHtml(raw: string): string {
   if (!raw) return "";
   // Already block-level HTML (saved by TipTap on a previous edit) — safety net
   // for residual markdown markers, otherwise return as-is.
-  if (/^\s*<(p|div|ul|ol|h[1-6])\b/i.test(raw)) return convertResidualMarkdownInHtml(raw);
+  if (/^\s*<(p|div|ul|ol|table|h[1-6])\b/i.test(raw)) return convertResidualMarkdownInHtml(raw);
   // Plain text (possibly with **bold** markers): match Gmail's rendering exactly.
   // Escape entities first, then convert **bold** → <strong>, then newlines → <br>.
   const escaped = raw
@@ -108,6 +109,9 @@ interface RichTextEditorProps {
    *  name or company. Omit for no pills; pass the tokens the reading code on
    *  the other end actually substitutes (see the TemplateVar doc comment). */
   templateVars?: TemplateVar[];
+  /** Show the "insert table" controls. Stored as plain HTML <table>, which is
+   *  what Instantly sends. Off by default: only outreach email editors want it. */
+  tables?: boolean;
 }
 
 function ToolbarButton({
@@ -143,6 +147,29 @@ function ToolbarButton({
   );
 }
 
+// Draft bodies can contain an HTML table when "HTML emails" is on in Settings.
+// StarterKit has no table node, so without this the first edit of such a draft
+// would silently flatten it to text. The three presentational attributes are
+// kept because they are what gives the table its grid in an email client.
+// Tables are never created from the toolbar - only preserved.
+const EmailTable = Table.extend({
+  addAttributes() {
+    const keep = (name: string) => ({
+      default: null,
+      parseHTML: (el: HTMLElement) => el.getAttribute(name),
+      renderHTML: (attrs: Record<string, unknown>) => (attrs[name] ? { [name]: attrs[name] as string } : {}),
+    });
+    return {
+      ...this.parent?.(),
+      // Defaults so a table inserted from the toolbar gets the same grid the
+      // AI-written ones carry (and survives Tailwind-less mail clients).
+      border: { ...keep("border"), default: "1" },
+      cellpadding: { ...keep("cellpadding"), default: "8" },
+      cellspacing: { ...keep("cellspacing"), default: "0" },
+    };
+  },
+});
+
 export function RichTextEditor({
   value,
   onChange,
@@ -151,6 +178,7 @@ export function RichTextEditor({
   className,
   minHeight = 280,
   templateVars,
+  tables = false,
 }: RichTextEditorProps) {
   const editor = useEditor({
     extensions: [
@@ -167,6 +195,10 @@ export function RichTextEditor({
       }),
       Placeholder.configure({ placeholder }),
       TemplateVarHighlight,
+      EmailTable,
+      TableRow,
+      TableHeader,
+      TableCell,
     ],
     content: normalizeToHtml(value),
     editable: !disabled,
@@ -269,6 +301,38 @@ export function RichTextEditor({
           <ListOrdered className="size-3.5" />
         </ToolbarButton>
 
+        {tables && (
+          <>
+            <div className="w-px h-4 bg-border mx-1" />
+            <ToolbarButton
+              title="Insert table"
+              onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+              disabled={disabled || editor.isActive("table")}
+            >
+              <Table2 className="size-3.5" />
+            </ToolbarButton>
+            {editor.isActive("table") && (
+              <>
+                <ToolbarButton title="Add row below" onClick={() => editor.chain().focus().addRowAfter().run()} disabled={disabled}>
+                  <BetweenHorizontalStart className="size-3.5" />
+                </ToolbarButton>
+                <ToolbarButton title="Add column right" onClick={() => editor.chain().focus().addColumnAfter().run()} disabled={disabled}>
+                  <BetweenVerticalStart className="size-3.5" />
+                </ToolbarButton>
+                <ToolbarButton title="Delete row" onClick={() => editor.chain().focus().deleteRow().run()} disabled={disabled}>
+                  <span className="text-[10px] font-semibold">−Row</span>
+                </ToolbarButton>
+                <ToolbarButton title="Delete column" onClick={() => editor.chain().focus().deleteColumn().run()} disabled={disabled}>
+                  <span className="text-[10px] font-semibold">−Col</span>
+                </ToolbarButton>
+                <ToolbarButton title="Delete table" onClick={() => editor.chain().focus().deleteTable().run()} disabled={disabled}>
+                  <Trash2 className="size-3.5" />
+                </ToolbarButton>
+              </>
+            )}
+          </>
+        )}
+
         <div className="w-px h-4 bg-border mx-1" />
 
         <ToolbarButton title="Add link" onClick={addLink} disabled={disabled}>
@@ -328,6 +392,9 @@ export function RichTextEditor({
           "[&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:pl-5 [&_.ProseMirror_ul]:my-1",
           "[&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:pl-5 [&_.ProseMirror_ol]:my-1",
           "[&_.ProseMirror_li]:my-0.5",
+          "[&_.ProseMirror_table]:border-collapse [&_.ProseMirror_table]:my-2",
+          "[&_.ProseMirror_td]:border [&_.ProseMirror_td]:border-border [&_.ProseMirror_td]:px-2 [&_.ProseMirror_td]:py-1 [&_.ProseMirror_td_p]:mb-0",
+          "[&_.ProseMirror_th]:border [&_.ProseMirror_th]:border-border [&_.ProseMirror_th]:px-2 [&_.ProseMirror_th]:py-1 [&_.ProseMirror_th]:text-left [&_.ProseMirror_th_p]:mb-0",
           "[&_.ProseMirror_.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]",
           "[&_.ProseMirror_.is-editor-empty:first-child::before]:text-muted-foreground",
           "[&_.ProseMirror_.is-editor-empty:first-child::before]:float-left",

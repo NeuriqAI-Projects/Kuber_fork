@@ -263,3 +263,9 @@ button:disabled, [role="button"][aria-disabled="true"] { cursor: not-allowed; }
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* HTML emails (Settings > AI & Outreach > HTML emails): Tailwind's preflight
+   zeroes borders, which also cancels the `border="1"` attribute that gives an
+   email table its grid in a mail client. Restore it for draft/thread previews. */
+table[border="1"] { border-collapse: collapse; }
+table[border="1"] :is(td, th) { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }

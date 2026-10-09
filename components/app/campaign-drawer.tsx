@@ -985,6 +985,9 @@ export function CampaignDetail({
   /** Which follow-up is being hand-edited, and its working copy. */
   const [seqEditingDraftId, setSeqEditingDraftId] = useState<string | null>(null);
   const [seqEditBody, setSeqEditBody] = useState("");
+  // Set when Certify is pressed while the open draft has unsaved editor changes.
+  // `bulk` = came from Certify / Certify all (ids undefined = every draft).
+  const [certifyPrompt, setCertifyPrompt] = useState<{ bulk: boolean; ids?: string[] } | null>(null);
   const [seqEditSaving, setSeqEditSaving] = useState(false);
   /** Which follow-up has its regenerate box open, and what was typed into it.
    *  The opening email has always asked before regenerating; this one fired
@@ -1655,7 +1658,7 @@ export function CampaignDetail({
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
       await reopenDraft(session.access_token, selected.email_drafts.id);
-      toast.success("Draft reopened for editing");
+      toast.success("Certification undone — draft is editable again");
       await loadData();
     } catch (e) {
       toast.error((e as Error).message);
@@ -1698,12 +1701,26 @@ export function CampaignDetail({
     !!selected.email_drafts.created_at &&
     new Date(systemPromptUpdatedAt).getTime() > new Date(selected.email_drafts.created_at).getTime();
 
-  async function handleCertifyOne(draftId: string) {
+  /** The open draft has edits in the editor that "Save edits" has not stored. */
+  const hasUnsavedEdits = !!selected?.email_drafts
+    && (editBody !== (selected.email_drafts.body ?? "") || editSubject !== (selected.email_drafts.subject ?? ""));
+
+  /** `edits` decides what happens to unsaved changes: store them first, or
+   *  certify the stored draft as-is. */
+  async function handleCertifyOne(draftId: string, edits: "save" | "discard" = "discard") {
+    setCertifyPrompt(null);
     setCertifying(true);
     setError("");
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
+      // Certify approves what is STORED. Edits sit in editSubject/editBody until
+      // "Save edits" is pressed, so certifying straight after typing sent the
+      // original AI draft and silently dropped the edit (seen with a hand-built
+      // table, 9 Oct 2026). The button now asks which one is meant.
+      if (edits === "save" && selected?.email_drafts?.id === draftId) {
+        await editDraft(session.access_token, draftId, editSubject, editBody);
+      }
       await approveDraft(session.access_token, draftId);
       toast.success("Draft certified");
       await loadData();
@@ -1714,16 +1731,25 @@ export function CampaignDetail({
     }
   }
 
-  async function handleBulkCertify(draftIds?: string[]) {
+  async function handleBulkCertify(draftIds?: string[], edits?: "save" | "discard") {
     const ids = draftIds ?? campaignLeads
       .filter((cl) => cl.email_drafts?.status === "draft")
       .map((cl) => cl.email_drafts!.id);
     if (ids.length === 0) return;
+    // Bulk certify approves STORED drafts too, so unsaved edits in the open
+    // draft would be dropped exactly like a single Certify. Ask first.
+    const openId = selected?.email_drafts?.id;
+    if (!edits && hasUnsavedEdits && openId && ids.includes(openId)) {
+      setCertifyPrompt({ bulk: true, ids: draftIds });
+      return;
+    }
+    setCertifyPrompt(null);
     setCertifying(true);
     setError("");
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
+      if (edits === "save" && openId) await editDraft(session.access_token, openId, editSubject, editBody);
       await bulkApproveDrafts(session.access_token, ids);
       toast.success(`${ids.length} draft${ids.length !== 1 ? "s" : ""} certified`);
       setCheckedIds(new Set());
@@ -4758,6 +4784,7 @@ export function CampaignDetail({
                         onChange={setEditBody}
                         disabled={isPreviewingHistory || selected.email_drafts.status === "approved"}
                         templateVars={LEAD_TEMPLATE_VARS}
+                        tables
                         minHeight={360}
                       />
                     </div>
@@ -4824,7 +4851,7 @@ export function CampaignDetail({
                             {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
                             Save edits
                           </Button>
-                          <Button className="gap-1.5" disabled={certifying || regenJobActive} title={regenJobActive ? "A regeneration is running — certifying is paused until it finishes" : undefined} onClick={() => handleCertifyOne(selected.email_drafts!.id)}>
+                          <Button className="gap-1.5" disabled={certifying || regenJobActive} title={regenJobActive ? "A regeneration is running — certifying is paused until it finishes" : undefined} onClick={() => (hasUnsavedEdits ? setCertifyPrompt({ bulk: false }) : void handleCertifyOne(selected.email_drafts!.id))}>
                             {certifying ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
                             Certify
                           </Button>
@@ -4848,7 +4875,7 @@ export function CampaignDetail({
                             <CheckCircle2 className="size-4" /> Certified. Ready to send.
                           </p>
                           <Button variant="outline" className="gap-1.5" disabled={certifying} onClick={handleReopen}>
-                            <RotateCcw className="size-3.5" /> Reopen for editing
+                            <RotateCcw className="size-3.5" /> Undo certify
                           </Button>
                         </>
                       )}
@@ -5469,7 +5496,7 @@ export function CampaignDetail({
 
                         {row.written ? (
                           seqEditingDraftId === row.draft?.id ? (
-                            <RichTextEditor value={seqEditBody} onChange={setSeqEditBody} templateVars={LEAD_TEMPLATE_VARS} />
+                            <RichTextEditor value={seqEditBody} onChange={setSeqEditBody} templateVars={LEAD_TEMPLATE_VARS} tables />
                           ) : (
                             <div
                               className="text-sm leading-relaxed [&_p]:mb-2"
@@ -6180,6 +6207,25 @@ export function CampaignDetail({
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={certifyPrompt !== null}
+        tone="warning"
+        title="You have unsaved edits"
+        description="The changes you made in the editor haven't been saved. Save them and certify, or certify the original draft and discard your changes?"
+        confirmLabel="Save edits & certify"
+        confirmIcon={<Save />}
+        secondaryLabel="Use original"
+        onSecondary={() => {
+          if (certifyPrompt?.bulk) void handleBulkCertify(certifyPrompt.ids, "discard");
+          else if (selected?.email_drafts) void handleCertifyOne(selected.email_drafts.id, "discard");
+        }}
+        onConfirm={() => {
+          if (certifyPrompt?.bulk) void handleBulkCertify(certifyPrompt.ids, "save");
+          else if (selected?.email_drafts) void handleCertifyOne(selected.email_drafts.id, "save");
+        }}
+        onClose={() => setCertifyPrompt(null)}
+      />
 
       {removeIds && (
         <ConfirmDialog

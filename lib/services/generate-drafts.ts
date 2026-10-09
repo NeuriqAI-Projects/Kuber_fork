@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { plainToHtml, htmlToPlainText } from "@/lib/utils/email-html";
+import { plainToHtmlWithTables } from "@/lib/utils/email-tables";
 import { complete, draftingProviders, providerLabel } from "@/lib/services/llm";
 import { isMockCampaign, mockAiAvailable, mockDraftCompletion, MOCK_BACKUP, MOCK_PRIMARY } from "@/lib/services/llm-mock";
 import type { ProviderId } from "@/lib/services/providers/types";
@@ -10,6 +11,7 @@ import {
   getProductOfferings,
   getCompanyContext,
   getGenericTemplate,
+  getAllowHtmlEmails,
   tidyName,
 } from "@/lib/services/settings";
 import { logLeadEvent } from "@/lib/services/lead-events";
@@ -546,12 +548,25 @@ function ensureProductEmphasis(body: string, productMatch: string | undefined): 
  * — "processing under <200 C" — is left exactly as written, since treating
  * that as markup would silently eat the rest of the sentence.
  */
-function unescapeModelHtml(body: string): string {
+function unescapeModelHtml(body: string, keepTables = false): string {
   // The word boundary matters: without it "<production>" matches the "p"
   // branch and a perfectly good body gets run through the HTML stripper.
   const looksLikeHtml = /<\/?(p|br|div|span|strong|em|b|i|u|ul|ol|li|a|h[1-6])\b[^>]*>/i.test(body);
-  return looksLikeHtml ? htmlToPlainText(body) : body;
+  return looksLikeHtml ? htmlToPlainText(body, { keepTables }) : body;
 }
+
+/**
+ * Appended to the system prompt ONLY when Settings > "HTML emails" is on.
+ * Off, this never reaches the model and drafting is exactly as before.
+ * The trigger is the explicit request, not the setting: the setting only makes
+ * a table allowed, so ordinary emails stay plain text.
+ */
+const HTML_TABLE_RULES = `
+
+HTML TABLE (RARELY USED, ONLY ON EXPLICIT REQUEST)
+Everything stays plain text with **bold** markers, as above. The ONE exception: if the campaign instruction, revision request or system prompt EXPLICITLY asks for a table (e.g. "include a table", "add a comparison table", "show specs in a table"), put a single HTML table in the body where it belongs:
+<table border="1" cellpadding="8" cellspacing="0"><tr><th>Header</th><th>Header</th></tr><tr><td>Cell</td><td>Cell</td></tr></table>
+Rules: only table/tr/th/td tags, no style or class attributes, no other HTML anywhere, every cell filled with real facts from the product library or prospect data (never invented figures), keep rows and columns few. If nobody asked for a table, write a normal plain-text email and do NOT use any HTML. When revising an email that already contains a table, keep it unless told to change or remove it.`;
 
 function buildAuthoritativeInstruction(instruction: string): string {
   if (!instruction.trim()) return "";
@@ -787,6 +802,7 @@ export async function generateOneDraft(
 
   // Signature: campaign override → lead owner's personal signature → company default.
   const signatureBlock = await resolveCampaignSignature(db, { ...campaign, created_by: promptOwnerId });
+  const allowHtml = await getAllowHtmlEmails(db);
 
   // Per-lead attachment overrides campaign default. Instantly's API cannot send
   // real file attachments, so an "attachment" is delivered as a hosted download
@@ -861,7 +877,7 @@ export async function generateOneDraft(
   const hasOrgData = !!org?.company_description?.trim();
   const revisionInstruction = customInstruction?.trim() || "";
   const previousPlainBody = previousDraft?.body
-    ? stripTrailingSignature(htmlToPlainText(previousDraft.body), signatureBlock)
+    ? stripTrailingSignature(htmlToPlainText(previousDraft.body, { keepTables: allowHtml }), signatureBlock)
     : "";
   /** Rewriting an existing draft with nothing said about what to change.
    *
@@ -1038,10 +1054,13 @@ export async function generateOneDraft(
         + (revisionIntent === "local" ? baseSystemPrompt : "")
         + buildCompanyBlock(companyContext)
         + buildProductReferenceBlock(promptProducts)
+        // Before the instruction: it must stay the last thing in a revision prompt.
+        + (allowHtml ? HTML_TABLE_RULES : "")
         + buildAuthoritativeInstruction(revisionInstruction)
       : baseSystemPrompt
         + buildCompanyBlock(companyContext)
-        + buildProductReferenceBlock(promptProducts);
+        + buildProductReferenceBlock(promptProducts)
+        + (allowHtml ? HTML_TABLE_RULES : "");
 
     // One textarea carries both "what to change" and, often, a whole example
     // email. Separating them is what stops the example's prospect being copied.
@@ -1190,7 +1209,7 @@ export async function generateOneDraft(
     // "&lt;p&gt;Dear Said,&lt;/p&gt;" in their inbox. Converting markup back to
     // text first makes the pipeline tolerant of the one case in forty-five
     // instead of trusting an instruction that is followed 97.8% of the time.
-    let aiBody = unescapeModelHtml(validated.data.body)
+    let aiBody = unescapeModelHtml(validated.data.body, allowHtml)
       .trim()
       .replace(/\[Your Name\]/gi, "")
       .replace(/\[Your (Title|Position)\]/gi, "")
@@ -1254,7 +1273,7 @@ export async function generateOneDraft(
     const linkBrochure = stepNumber === 1 && !!effectiveAttachmentName && !!effectiveAttachmentUrl && /brochure/i.test(aiBody);
     if (linkBrochure) aiBody = aiBody.replace(/brochure/i, BROCHURE_TOKEN);
 
-    let finalBody = plainToHtml([aiBody, effectiveSignature].filter(Boolean).join("\n\n"));
+    let finalBody = (allowHtml ? plainToHtmlWithTables : plainToHtml)([aiBody, effectiveSignature].filter(Boolean).join("\n\n"));
     if (linkBrochure) {
       finalBody = finalBody.replace(
         BROCHURE_TOKEN,

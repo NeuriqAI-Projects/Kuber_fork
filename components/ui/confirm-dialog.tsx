@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, Pause, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,12 @@ interface ConfirmDialogProps {
   loading?: boolean;
   /** Blocks confirming without showing the loading spinner. */
   confirmDisabled?: boolean;
+  /** Replaces the default tone icon on the confirm button. */
+  confirmIcon?: ReactNode;
+  /** Optional third choice, shown between Cancel and the confirm action
+   *  (e.g. "Use original" next to "Save & certify"). */
+  secondaryLabel?: string;
+  onSecondary?: () => void;
   onClose: () => void;
   onConfirm: () => void;
 }
@@ -54,6 +61,9 @@ export function ConfirmDialog({
   tone = "destructive",
   loading,
   confirmDisabled,
+  confirmIcon,
+  secondaryLabel,
+  onSecondary,
   onClose,
   onConfirm,
 }: ConfirmDialogProps) {
@@ -67,7 +77,7 @@ export function ConfirmDialog({
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={() => { if (!loading) onClose(); }}
       />
-      <div className="enter relative z-10 w-full max-w-sm mx-4 swatch-bar-top overflow-hidden rounded-2xl border border-border bg-card shadow-2xl p-6 flex flex-col gap-5">
+      <div className="enter relative z-10 w-full max-w-md mx-4 swatch-bar-top overflow-hidden rounded-2xl border border-border bg-card shadow-2xl p-6 flex flex-col gap-5">
         <div className="flex items-start gap-4">
           <div className={`shrink-0 size-10 rounded-full flex items-center justify-center ${isWarning ? "bg-amber-500/15 border border-amber-500/25" : "bg-destructive/15 border border-destructive/25"}`}>
             <AlertTriangle className={`size-5 ${isWarning ? "text-amber-500" : "text-destructive"}`} />
@@ -81,8 +91,13 @@ export function ConfirmDialog({
           <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
+          {secondaryLabel && onSecondary && (
+            <Button type="button" variant="outline" onClick={onSecondary} disabled={loading}>
+              {secondaryLabel}
+            </Button>
+          )}
           <Button type="button" variant={isWarning ? "warning" : "destructive"} onClick={onConfirm} disabled={loading || confirmDisabled} className="gap-2">
-            {loading ? <RefreshCw className="animate-spin" /> : isWarning ? <Pause /> : <Trash2 />}
+            {loading ? <RefreshCw className="animate-spin" /> : confirmIcon ?? (isWarning ? <Pause /> : <Trash2 />)}
             {confirmLabel}
           </Button>
         </div>
