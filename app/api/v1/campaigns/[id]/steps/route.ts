@@ -46,7 +46,16 @@ export async function PUT(
   try { user = await requireAuth(req); } catch (r) { return r as Response; }
   const { id } = await params;
   const parsed = CampaignStepsSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid steps", parsed.error.flatten());
+  if (!parsed.success) {
+    // flatten() folds every nested problem under "steps" with no index or field,
+    // so the toast said only "steps — Invalid input" and nobody could tell which
+    // step or field was rejected. Name them.
+    const where = parsed.error.issues
+      .slice(0, 3)
+      .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+      .join("; ");
+    return fail(400, "VALIDATION_ERROR", `Invalid steps (${where})`, parsed.error.flatten());
+  }
 
   const db = dbForUser(user);
   try { await assertCampaignSettingsAccess(db, user, id); } catch (r) { return r as Response; }
