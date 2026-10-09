@@ -156,7 +156,7 @@ export async function campaignsEditableByEmployee(
  *
  * Managers always may. An employee may only when they are the sole employee in
  * the campaign — otherwise they'd silently change what a teammate's leads send
- * under. See EDGE_CASES.md §2.10.
+ * under. See docs/notes/EDGE_CASES.md §2.10.
  */
 export async function assertCampaignSettingsAccess(
   db: Db,

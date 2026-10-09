@@ -1,5 +1,32 @@
 # Kuber — agent notes
 
+Next.js 15 (App Router) + React 19 + Tailwind 4 + Supabase. Deployed on Vercel.
+Lead-gen pipeline: **Apollo** (find people/companies, reveal emails) → **Firecrawl**
+(read company site) → **LLM** (write emails) → **Instantly** (send) → **Unibox** (replies).
+
+## Map — each folder has its own CLAUDE.md, read it before editing there
+
+| Folder | What lives there |
+|---|---|
+| `app/` | Pages (`app/(app)/`) and API routes (`app/api/`) |
+| `components/` | `ui/` = shared controls (mandatory, see rules below); `app/` = feature screens |
+| `lib/` | Everything that isn't UI: auth, Supabase clients, services, validators |
+| `lib/services/` | Business logic + provider calls (Apollo, Firecrawl, Instantly, LLM) |
+| `supabase/migrations/` | SQL migrations — the user runs them by hand on the live DB |
+| `scripts/` | One-off checks, repairs, probes, the local watchdog |
+| `docs/` | Design docs, RCAs, PRDs, `docs/notes/` audits, `docs/legacy/` old schema |
+| `Deployed/` | Untracked deploy clone (rjm2007/Kuber_fork). Not part of this repo; excluded from tsconfig |
+
+## Repo-wide rules
+- **Multi-tenant.** Every request works for one company. Use `createScopedClient(companyId)`
+  (`lib/supabase/scoped.ts`); `createAdminClient()` only for deliberate cross-company work (cron, watchdogs).
+- **Live DB.** `.env.local` points at the client's live Supabase. Test on the Dev company
+  `00000000-0000-0000-0000-00000000000a`. Non-production Apollo calls are mocked.
+- **Provider keys** are DB-first (`provider_keys`, Settings > Keys), `.env.local` is the fallback. Never print keys.
+- **Before pushing:** `npm run build` (redirect to a file, grep `Error:`; lint tail hides errors). Never run two builds at once.
+- **Tests:** `npx tsx --test lib/**/*.test.mts` style, file by file (e.g. `npx tsx --test lib/services/prospects/*.test.mts`).
+- Answer the user in very short, easy words.
+
 ## One shared component per control type (hard rule, strict)
 
 **Every field-like control anywhere in this app MUST be the shared component from `components/ui/` — never a one-off hand-styled element, and never a local re-implementation.**

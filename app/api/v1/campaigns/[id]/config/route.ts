@@ -28,7 +28,7 @@ export const maxDuration = 120;
 //
 // Managers may always edit. An employee may edit only a campaign no other
 // employee is part of — there, the only leads affected are their own. See
-// EDGE_CASES.md §2.10.
+// docs/notes/EDGE_CASES.md §2.10.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   let user: Awaited<ReturnType<typeof requireAuth>>;
   try { user = await requireAuth(req); } catch (r) { return r as Response; }

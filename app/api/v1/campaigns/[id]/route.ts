@@ -45,7 +45,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     ? { ...campaign, ...computeCampaignStats(memberships ?? []) }
     : campaign;
 
-  // Whether the caller may edit the shared Options/Sequences (EDGE_CASES.md
+  // Whether the caller may edit the shared Options/Sequences (docs/notes/EDGE_CASES.md
   // §2.10). Always true for a manager; for an employee, only when no other
   // employee has leads in this container.
   const can_edit_settings = user.role !== "employee"
