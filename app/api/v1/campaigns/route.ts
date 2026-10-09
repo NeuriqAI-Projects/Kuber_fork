@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Which of these the employee may edit the shared Options/Sequences of:
-    // the ones no other employee is part of (EDGE_CASES.md §2.10). The UI needs
+    // the ones no other employee is part of (docs/notes/EDGE_CASES.md §2.10). The UI needs
     // it per card to know whether to render those tabs editable.
     const editable = await campaignsEditableByEmployee(db, user.id, ids);
 

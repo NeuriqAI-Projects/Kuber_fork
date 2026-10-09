@@ -83,7 +83,7 @@ export interface DbCampaign {
   assigned_to?: string | null;
   /** Non-null while sending is held. See campaigns.sending_held_at. */
   sending_held_at?: string | null;
-  /** Server's verdict on whether the caller may edit Options/Sequences (EDGE_CASES.md §2.10). */
+  /** Server's verdict on whether the caller may edit Options/Sequences (docs/notes/EDGE_CASES.md §2.10). */
   can_edit_settings?: boolean;
 }
 

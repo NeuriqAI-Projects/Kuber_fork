@@ -155,7 +155,7 @@ export interface DbCampaign {
   sender_name: string | null;
   hot_count: number;
   cold_count: number;
-  /** Server's verdict on whether the caller may edit Options/Sequences (EDGE_CASES.md §2.10). */
+  /** Server's verdict on whether the caller may edit Options/Sequences (docs/notes/EDGE_CASES.md §2.10). */
   can_edit_settings?: boolean;
   // followup_day_2 / followup_day_3 are kept as nullable columns in the DB but
   // no longer written on creation — step delays now live in campaign_steps rows.

@@ -34,7 +34,7 @@ export async function GET(
 
 // Sequence steps are campaign-wide templates that propagate live to every
 // Instantly sub-campaign already sending, i.e. to every lead in this container
-// (spec §5, EDGE_CASES.md §2.10). So: managers always, and an employee only on a
+// (spec §5, docs/notes/EDGE_CASES.md §2.10). So: managers always, and an employee only on a
 // campaign no other employee is part of, where the only leads they can affect
 // are their own. GET above stays open to any employee with campaign access so
 // they can still view the sequence content read-only.
