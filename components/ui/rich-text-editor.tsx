@@ -109,8 +109,9 @@ interface RichTextEditorProps {
    *  name or company. Omit for no pills; pass the tokens the reading code on
    *  the other end actually substitutes (see the TemplateVar doc comment). */
   templateVars?: TemplateVar[];
-  /** Show the "insert table" controls. Stored as plain HTML <table>, which is
-   *  what Instantly sends. Off by default: only outreach email editors want it. */
+  /** Show the "insert table" controls (stored as plain HTML <table>, which is
+   *  what Instantly sends). On everywhere by default — every email editor in
+   *  the app is this component, so they all behave the same. */
   tables?: boolean;
 }
 
@@ -178,7 +179,7 @@ export function RichTextEditor({
   className,
   minHeight = 280,
   templateVars,
-  tables = false,
+  tables = true,
 }: RichTextEditorProps) {
   const editor = useEditor({
     extensions: [
