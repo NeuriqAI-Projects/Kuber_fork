@@ -24,5 +24,5 @@
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "// scripts": "Standalone self-checks, run directly by node --experimental-strip-types, which requires the .ts extension on relative imports that this config forbids. They are not part of the app build.",
-  "exclude": ["node_modules", "scripts", "Deployed"]
+  "exclude": ["node_modules", "scripts"]
 }

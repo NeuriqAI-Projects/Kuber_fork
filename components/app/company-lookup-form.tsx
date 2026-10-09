@@ -478,7 +478,7 @@ function DateField({ value, onChange }: { value: string; onChange: (v: string) =
 
 /** Raw text inputs → the typed shape CompanySearchSchema expects. Empty values
  *  are dropped entirely, so an untouched Advanced panel never narrows a search. */
-export function buildAdvanced(raw: Record<string, string>): Record<string, unknown> | undefined {
+function buildAdvanced(raw: Record<string, string>): Record<string, unknown> | undefined {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(raw)) {
     const v = value.trim();
@@ -494,113 +494,6 @@ export function buildAdvanced(raw: Record<string, string>): Record<string, unkno
     }
   }
   return Object.keys(out).length > 0 ? out : undefined;
-}
-
-/** The "Advanced search" panel of Organization Search filters (collapsed by
- *  default; active filters stay visible as removable chips when collapsed).
- *  Shared by Company Lookup and Scored Companies. `omit` hides fields a form
- *  already shows elsewhere. `value` is raw text per field; turn it into the
- *  request shape with buildAdvanced(). */
-export function CompanyAdvancedSearch({ value, onChange, omit = [] }: {
-  value: Record<string, string>;
-  onChange: (v: Record<string, string>) => void;
-  omit?: string[];
-}) {
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const groups = ADVANCED_GROUPS
-    .map((g) => ({ ...g, fields: g.fields.filter((f) => !omit.includes(f.key)) }))
-    .filter((g) => g.fields.length > 0);
-  const activeAdvanced = Object.entries(value).filter(([k, v]) => v.trim() !== "" && !omit.includes(k));
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setAdvancedOpen((o) => !o)}
-        className="flex w-full items-center justify-between py-1.5 text-left"
-      >
-        <span className="text-xs font-medium">
-          Advanced search
-          {activeAdvanced.length > 0 && (
-            <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-              {activeAdvanced.length} active
-            </span>
-          )}
-        </span>
-        <ChevronDown className={cn("size-3.5 text-muted-foreground transition-transform", advancedOpen && "rotate-180")} />
-      </button>
-
-      {/* Active filters stay visible when collapsed — results must never be
-          narrowed by something the user can't see. */}
-      {!advancedOpen && activeAdvanced.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 pb-2.5">
-          {activeAdvanced.map(([k, v]) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => onChange({ ...value, [k]: "" })}
-              className="rounded border border-border bg-field px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
-              title="Remove filter"
-            >
-              {k}: {v} ✕
-            </button>
-          ))}
-        </div>
-      )}
-
-      {advancedOpen && (
-        <div className="space-y-3 border-t border-border pt-3 pb-1">
-          {groups.map((g) => (
-            <div key={g.group} className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{g.group}</p>
-              <div className="grid grid-cols-2 gap-2">
-                {g.fields.map((f) => (
-                  f.kind === "locations" ? (
-                    <div key={f.key} className="col-span-2">
-                      <LocationsPicker
-                        label={f.label}
-                        helpText={f.tip}
-                        placeholder={f.placeholder ?? "Select countries…"}
-                        selected={csvToList(value[f.key])}
-                        onChangeSelected={(v) => onChange({ ...value, [f.key]: v.join(", ") })}
-                        labelClassName="text-[11px] font-normal text-muted-foreground"
-                        triggerClassName="h-8 text-xs"
-                      />
-                    </div>
-                  ) : f.kind === "date" ? (
-                    <div key={f.key} className="space-y-1">
-                      <div className="flex items-center gap-0.5">
-                        <Label className="text-[11px] font-normal text-muted-foreground">{f.label}</Label>
-                        <InfoTip side="right" text={f.tip} />
-                      </div>
-                      <DateField
-                        value={value[f.key] ?? ""}
-                        onChange={(v) => onChange({ ...value, [f.key]: v })}
-                      />
-                    </div>
-                  ) : (
-                    <div key={f.key} className="space-y-1">
-                      <div className="flex items-center gap-0.5">
-                        <Label className="text-[11px] font-normal text-muted-foreground">{f.label}</Label>
-                        <InfoTip side="right" text={f.tip} />
-                      </div>
-                      <Input
-                        value={value[f.key] ?? ""}
-                        onChange={(e) => onChange({ ...value, [f.key]: e.target.value })}
-                        placeholder={f.placeholder}
-                        type={f.kind === "num" ? "number" : "text"}
-                        className="h-8 text-xs"
-                      />
-                    </div>
-                  )
-                ))}
-              </div>
-            </div>
-          ))}
-          <p className="text-[10px] text-muted-foreground">Separate multiple values with commas. Location filters use the country picker. Filters change which companies come back — they don&apos;t change the cost.</p>
-        </div>
-      )}
-    </div>
-  );
 }
 
 /**
@@ -665,6 +558,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
   const [name, setName] = useState("");
   const [countries, setCountries] = useState<string[]>([]);
   const [website, setWebsite] = useState("");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [advanced, setAdvanced] = useState<Record<string, string>>({});
 
   // Step 2 — companies
@@ -693,6 +587,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
   const [assignMode, setAssignMode] = useState<ImportAssignMode>("manual");
   const employees = useAssignableEmployees(true);
 
+  const activeAdvanced = Object.entries(advanced).filter(([, v]) => v.trim() !== "");
 
   /** Identity of a search. Two searches with the same criteria return the same
    *  companies, so re-running one is a credit spent for nothing. */
@@ -941,7 +836,94 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
               onChangeSelected={setCountries}
             />
 
-          <CompanyAdvancedSearch value={advanced} onChange={setAdvanced} />
+          <div>
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((o) => !o)}
+              className="flex w-full items-center justify-between py-1.5 text-left"
+            >
+              <span className="text-xs font-medium">
+                Advanced search
+                {activeAdvanced.length > 0 && (
+                  <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                    {activeAdvanced.length} active
+                  </span>
+                )}
+              </span>
+              <ChevronDown className={cn("size-3.5 text-muted-foreground transition-transform", advancedOpen && "rotate-180")} />
+            </button>
+
+            {/* Active filters stay visible when collapsed — results must never be
+                narrowed by something the user can't see. */}
+            {!advancedOpen && activeAdvanced.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pb-2.5">
+                {activeAdvanced.map(([k, v]) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setAdvanced((a) => ({ ...a, [k]: "" }))}
+                    className="rounded border border-border bg-field px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+                    title="Remove filter"
+                  >
+                    {k}: {v} ✕
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {advancedOpen && (
+              <div className="space-y-3 border-t border-border pt-3 pb-1">
+                {ADVANCED_GROUPS.map((g) => (
+                  <div key={g.group} className="space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{g.group}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {g.fields.map((f) => (
+                        f.kind === "locations" ? (
+                          <div key={f.key} className="col-span-2">
+                            <LocationsPicker
+                              label={f.label}
+                              helpText={f.tip}
+                              placeholder={f.placeholder ?? "Select countries…"}
+                              selected={csvToList(advanced[f.key])}
+                              onChangeSelected={(v) => setAdvanced((a) => ({ ...a, [f.key]: v.join(", ") }))}
+                              labelClassName="text-[11px] font-normal text-muted-foreground"
+                              triggerClassName="h-8 text-xs"
+                            />
+                          </div>
+                        ) : f.kind === "date" ? (
+                          <div key={f.key} className="space-y-1">
+                            <div className="flex items-center gap-0.5">
+                              <Label className="text-[11px] font-normal text-muted-foreground">{f.label}</Label>
+                              <InfoTip side="right" text={f.tip} />
+                            </div>
+                            <DateField
+                              value={advanced[f.key] ?? ""}
+                              onChange={(v) => setAdvanced((a) => ({ ...a, [f.key]: v }))}
+                            />
+                          </div>
+                        ) : (
+                          <div key={f.key} className="space-y-1">
+                            <div className="flex items-center gap-0.5">
+                              <Label className="text-[11px] font-normal text-muted-foreground">{f.label}</Label>
+                              <InfoTip side="right" text={f.tip} />
+                            </div>
+                            <Input
+                              value={advanced[f.key] ?? ""}
+                              onChange={(e) => setAdvanced((a) => ({ ...a, [f.key]: e.target.value }))}
+                              placeholder={f.placeholder}
+                              type={f.kind === "num" ? "number" : "text"}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                        )
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <p className="text-[10px] text-muted-foreground">Separate multiple values with commas. Location filters use the country picker. Filters change which companies come back — they don&apos;t change the cost.</p>
+              </div>
+            )}
+          </div>
 
           {cached && cached.criteria === criteria && cached.companies.length > 0 ? (
             <p className="text-[11px] text-emerald-600 dark:text-emerald-400">

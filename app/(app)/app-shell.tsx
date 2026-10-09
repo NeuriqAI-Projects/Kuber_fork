@@ -114,19 +114,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
     return () => clearInterval(id);
   }, [session]);
 
-  // Scored companies waiting for a manager's Approve / Decline (Leads > Organization).
-  const [scoredToReview, setScoredToReview] = useState(0);
-  useEffect(() => {
-    if (!session || role !== "manager") return;
-    const load = () => {
-      fetch("/api/v1/prospects?summary=1", { headers: { Authorization: `Bearer ${session.access_token}` } })
-        .then((r) => r.json()).then((j) => setScoredToReview(j?.data?.review_total ?? 0)).catch(() => {});
-    };
-    load();
-    const id = setInterval(load, 60_000);
-    return () => clearInterval(id);
-  }, [session, role]);
-
   useEffect(() => {
     if (!session) return;
     const load = () => {
@@ -248,11 +235,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
                 >
                   <Icon className="size-4 shrink-0" />
                   {!sidebarCollapsed && <span className="flex-1 text-left">{label}</span>}
-                  {label === "Leads" && scoredToReview > 0 && !sidebarCollapsed && (
-                    <span title={`${scoredToReview} scored companies need your review`} className="font-mono text-[10px] font-semibold rounded-full px-1.5 py-0.5 tabular-nums bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                      {scoredToReview} to review
-                    </span>
-                  )}
                   {badge !== null && badge > 0 && (
                     sidebarCollapsed ? (
                       <span className="absolute top-1 right-1.5 size-1.5 rounded-full bg-primary" />

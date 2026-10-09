@@ -18,8 +18,6 @@ export const ENV_KEY_VARS: Record<ProviderId, string> = {
   firecrawl: "FIRECRAWL_API_KEY",
   apollo: "APOLLO_API_KEY",
   instantly: "INSTANTLY_API_KEY",
-  jev: "JEV_API_KEY",
-  tavily: "TAVILY_API_KEY",
 };
 
 const ENV_MODEL_PRIMARY = "LLM_PRIMARY_MODEL"; // openrouter only, legacy name

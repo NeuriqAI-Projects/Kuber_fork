@@ -293,38 +293,10 @@ async function fetchInstantlyCredits(secret: string): Promise<CreditCheck> {
   }
 }
 
-async function fetchTavilyCredits(secret: string): Promise<CreditCheck> {
-  // GET /usage is free and returns the plan limit and what has been used.
-  try {
-    const res = await fetch("https://api.tavily.com/usage", { headers: { Authorization: `Bearer ${secret}` } });
-    if (res.status === 401 || res.status === 403) return { ok: false, remaining: null, limit: null, message: "Tavily rejected the API key (401/403) — invalid key" };
-    if (!res.ok) return { ok: true, remaining: null, limit: null, message: `Tavily key check failed (HTTP ${res.status}) — proceeding` };
-    const j = await res.json().catch(() => ({})) as { account?: { plan_usage?: number; plan_limit?: number | null } };
-    const limit = j.account?.plan_limit ?? null;
-    const remaining = limit == null ? null : Math.max(0, limit - (j.account?.plan_usage ?? 0));
-    return { ok: remaining == null || remaining > 0, remaining, limit, message: remaining === 0 ? "Tavily has no credits left this month" : "OK" };
-  } catch {
-    return { ok: true, remaining: null, limit: null, message: "Tavily key check errored — proceeding" };
-  }
-}
-
-async function fetchJevCredits(secret: string): Promise<CreditCheck> {
-  // GET /v1/models is free; TypeSafe exposes no balance endpoint.
-  try {
-    const res = await fetch("https://api.typesafe.ai/v1/models", { headers: { Authorization: `Bearer ${secret}` } });
-    if (res.status === 401 || res.status === 403) return { ok: false, remaining: null, limit: null, message: "Jev rejected the API key (401/403) — invalid key" };
-    return { ok: true, remaining: null, limit: null, message: res.ok ? "Jev key is valid" : `Jev key check failed (HTTP ${res.status}) — proceeding` };
-  } catch {
-    return { ok: true, remaining: null, limit: null, message: "Jev key check errored — proceeding" };
-  }
-}
-
 const FETCHERS: Record<ProviderId, (secret: string) => Promise<CreditCheck>> = {
   firecrawl: fetchFirecrawlCredits,
   apollo: fetchApolloCredits,
   instantly: fetchInstantlyCredits,
-  jev: fetchJevCredits,
-  tavily: fetchTavilyCredits,
   openrouter: fetchOpenRouterCredits,
   openai: fetchOpenAICredits,
   anthropic: fetchAnthropicCredits,
@@ -377,7 +349,6 @@ async function checkCredits(
 
 export const checkFirecrawlCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "firecrawl", "credit_check_firecrawl", scope, opts);
 export const checkApolloCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "apollo", "credit_check_apollo", scope, opts);
-export const checkTavilyCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "tavily", "credit_check_tavily", scope, opts);
 export const checkInstantlyCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "instantly", "credit_check_instantly", scope, opts);
 export const checkOpenRouterCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "openrouter", "credit_check_openrouter", scope, opts);
 export const checkOpenAICredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "openai", "credit_check_openai", scope, opts);
