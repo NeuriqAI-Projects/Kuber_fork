@@ -36,6 +36,16 @@ export { DRAFT_JSON_SUFFIX };
 const DEFAULT_FOLLOWUP_FALLBACK_BODY =
   "Hi {{first_name}},<br><br>Just following up on my previous note — would love your thoughts.<br><br>Best regards";
 
+/** Settings > AI & Outreach > "HTML emails". Off unless explicitly "true". */
+export async function getAllowHtmlEmails(db: SupabaseClient): Promise<boolean> {
+  const { data } = await db
+    .from("settings")
+    .select("value")
+    .eq("key", "allow_html_emails")
+    .maybeSingle();
+  return data?.value === "true";
+}
+
 export async function getFollowupFallbackTemplate(db: SupabaseClient): Promise<string> {
   const { data } = await db
     .from("settings")

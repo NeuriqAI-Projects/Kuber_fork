@@ -1,5 +1,6 @@
 import { toInstantlyTimezone } from "@/lib/instantly-timezones";
 import { requireServiceSecret } from "@/lib/services/service-keys";
+import { collapseTableWhitespace } from "@/lib/utils/email-html";
 
 const BASE = "https://api.instantly.ai/api/v2";
 
@@ -69,7 +70,7 @@ export function buildCustomVariables(
   for (const d of drafts) {
     const sfx = d.step_number === 1 ? "" : String(d.step_number);
     if (d.subject != null) vars[`customSubject${sfx}`] = d.subject;
-    if (d.body != null)    vars[`customBody${sfx}`]    = d.body.replace(/\n/g, "<br>");
+    if (d.body != null)    vars[`customBody${sfx}`]    = collapseTableWhitespace(d.body).replace(/\n/g, "<br>");
   }
   if (senderName) vars.senderName = senderName;
   return vars;

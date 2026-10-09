@@ -90,7 +90,37 @@ export function hasVisibleText(html: string | null | undefined): boolean {
   return htmlToPlainText(html ?? "").replace(/\s/g, "") !== "";
 }
 
-export function htmlToPlainText(html: string): string {
+/**
+ * A table cannot survive the plain-text round trip (cells have no markdown
+ * form), so when HTML emails are enabled the table block itself is carried
+ * through as raw HTML inside the "plain" text. Opt-in: with the setting off,
+ * every caller keeps flattening exactly as before.
+ */
+const TABLE_BLOCK = /<table\b[\s\S]*?<\/table>/gi;
+
+/**
+ * Newlines inside a table must not become <br> when the body is pushed to
+ * Instantly (buildCustomVariables turns every \n into <br>). A <br> between
+ * <tr>s is not valid there and browsers/mail clients hoist it out of the
+ * table, wrecking the layout.
+ */
+export function collapseTableWhitespace(html: string): string {
+  if (!html.includes("<table")) return html;
+  return html.replace(TABLE_BLOCK, (t) => t.replace(/>\s*\n\s*</g, "><").replace(/\s*\n\s*/g, " "));
+}
+
+export function htmlToPlainText(html: string, opts: { keepTables?: boolean } = {}): string {
+  if (opts.keepTables && /<table\b/i.test(html)) {
+    const tables: string[] = [];
+    const masked = html.replace(TABLE_BLOCK, (t) => {
+      tables.push(collapseTableWhitespace(t));
+      return `\n\nXTABLEBLOCK${tables.length - 1}X\n\n`;
+    });
+    return htmlToPlainText(masked)
+      .replace(/XTABLEBLOCK(\d+)X/g, (_m, i: string) => tables[Number(i)])
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
   return html
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/p>/gi, "\n\n")
