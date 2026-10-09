@@ -2734,6 +2734,11 @@ export function CampaignDetail({
   // chain the other tiles use) — this is a real count of a real column, not
   // an estimate, so it should read as exactly right the moment leads load.
   const campaignLeadsOpenedCount = campaignLeads.filter((cl) => !!cl.opened_at).length;
+  // A lead can only open what reached their inbox. first_sent_at is set by
+  // Instantly's email_sent webhook, so a lead without it (still a draft, or
+  // queued but not delivered) is "not sent yet", never "not opened".
+  const activityDelivered = (cl: CampaignLead) => !!cl.first_sent_at || !!cl.opened_at;
+  const campaignLeadsDeliveredCount = campaignLeads.filter(activityDelivered).length;
   const analyticsTotalLeads = report?.totals.leads ?? (!loading ? scopedStats.total_leads : (campaign.leads ?? 0));
   const analyticsSent = report?.totals.sent ?? (!loading ? scopedStats.sent_count : (campaign.sent ?? 0));
   const analyticsReplied = report?.totals.replied ?? (!loading ? scopedStats.replied_count : (campaign.replied ?? 0));
@@ -5936,11 +5941,24 @@ export function CampaignDetail({
               <SelectContent align="start" className="min-w-40">
                 <SelectItem value="all">All ({campaignLeads.length})</SelectItem>
                 <SelectItem value="opened">Opened ({campaignLeadsOpenedCount})</SelectItem>
-                <SelectItem value="not_opened">Not opened yet ({campaignLeads.length - campaignLeadsOpenedCount})</SelectItem>
+                <SelectItem value="not_opened">Not opened yet ({campaignLeadsDeliveredCount - campaignLeadsOpenedCount})</SelectItem>
               </SelectContent>
             </Select>
             <InfoTooltip text="Whether a lead has opened one of our emails, per Instantly's own open tracking. Requires open tracking to be turned on for this campaign in Instantly — if it's off, every lead here reads as not opened even if they read it." />
           </div>
+
+          {/* Instantly only reports opens when open tracking is on for the
+              campaign, and Kuber creates campaigns with it off (Instantly's
+              own advice for cold email: the pixel can hurt inbox placement).
+              On 27 Sep 2026: 4,230 sends reported, 0 opens. Say so rather than
+              let "Not opened" read as nobody reading. */}
+          {campaignLeadsDeliveredCount > 0 && campaignLeadsOpenedCount === 0 && (
+            <div className="px-6 pt-3 shrink-0">
+              <p className="rounded-md border border-border bg-field px-3 py-2 text-xs text-muted-foreground">
+                No opens recorded yet. Open tracking is off in Instantly for this campaign, so opens aren&apos;t reported. Replies are the reliable signal.
+              </p>
+            </div>
+          )}
 
           {/* Table — identical structure/classes to the Leads tab's table. */}
           <div className="flex-1 min-h-0 overflow-y-auto bg-secondary px-6 py-4">
@@ -5949,7 +5967,7 @@ export function CampaignDetail({
               const rows = campaignLeads
                 .filter((cl) => {
                   if (activityFilter === "opened" && !cl.opened_at) return false;
-                  if (activityFilter === "not_opened" && cl.opened_at) return false;
+                  if (activityFilter === "not_opened" && (cl.opened_at || !activityDelivered(cl))) return false;
                   if (!q) return true;
                   const lead = cl.leads;
                   const name = [lead?.first_name, lead?.last_name].filter(Boolean).join(" ").toLowerCase();
@@ -6009,7 +6027,7 @@ export function CampaignDetail({
                               </span>
                             ) : (
                               <span className="inline-flex items-center px-2 py-0.5 rounded-md font-mono text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap bg-muted text-muted-foreground border border-border">
-                                Not opened
+                                {activityDelivered(cl) ? "Not opened" : "Not sent yet"}
                               </span>
                             )}
                           </td>
@@ -6017,7 +6035,8 @@ export function CampaignDetail({
                             <span className="whitespace-nowrap">{cl.opened_at ? format(new Date(cl.opened_at), "d MMM, h:mm a") : "—"}</span>
                           </td>
                           <td className="px-6 py-3 font-mono text-xs text-muted-foreground tabular-nums">
-                            {cl.opened_step ? sequenceDisplayStep(cl.opened_step) : "—"}
+                            {/* opened_step is Instantly's step (1 = opening email). */}
+                            {cl.opened_step ? (cl.opened_step === 1 ? "Opening email" : `Follow-up ${sequenceDisplayStep(cl.opened_step)}`) : "—"}
                           </td>
                         </tr>
                       );
