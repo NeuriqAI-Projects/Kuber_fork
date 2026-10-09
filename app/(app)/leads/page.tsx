@@ -171,7 +171,6 @@ const DEFAULT_VISIBILITY: ColVisibility = Object.fromEntries(
 
 const ORG_COLUMN_DEFS = [
   { key: "fit_status",  label: "Status",      defaultVisible: true  },
-  { key: "enrichment",  label: "Enrichment",  defaultVisible: true  },
   { key: "domain",      label: "Domain",      defaultVisible: true  },
   { key: "description", label: "Description", defaultVisible: true  },
   { key: "sells_to",    label: "Sells To",    defaultVisible: true  },
@@ -201,23 +200,6 @@ function StatusDot({ status }: { status: LeadStatus }) {
     <span
       className={cn("size-2 rounded-full inline-block", STATUS_DOT[status])}
       title={status}
-    />
-  );
-}
-
-// ── Enrichment pipeline dot ───────────────────────────────────────────────────
-
-function EnrichDot({ stage }: { stage: EnrichmentStage | null }) {
-  const styles: Record<EnrichmentStage, string> = {
-    queued:   "bg-muted-foreground/40",
-    scraping: "bg-yellow-400 animate-pulse",
-    done:     "bg-green-500",
-    failed:   "bg-red-500",
-  };
-  return (
-    <span
-      className={cn("size-2 rounded-full inline-block", stage ? styles[stage] : "bg-border")}
-      title={stage ?? "not queued"}
     />
   );
 }
@@ -1092,9 +1074,6 @@ export default function LeadsPage() {
                       {orgVisibleCols.fit_status && (
                         <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Status</TableHead>
                       )}
-                      {orgVisibleCols.enrichment && (
-                        <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-8" title="Enrichment" />
-                      )}
                       {orgVisibleCols.domain && (
                         <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Domain</TableHead>
                       )}
@@ -1143,11 +1122,6 @@ export default function LeadsPage() {
                               {orgFitStatus.has(org.id)
                                 ? <GroupPill group={orgFitStatus.get(org.id)!.group} status={orgFitStatus.get(org.id)!.status} />
                                 : <span className="text-xs text-muted-foreground">—</span>}
-                            </TableCell>
-                          )}
-                          {orgVisibleCols.enrichment && (
-                            <TableCell className="text-center">
-                              <EnrichDot stage={org.enrichmentStage} />
                             </TableCell>
                           )}
                           {orgVisibleCols.domain && (

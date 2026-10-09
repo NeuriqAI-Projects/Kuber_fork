@@ -153,18 +153,21 @@ function Links({ c, linkedin = true }: { c: ScoredCompany; linkedin?: boolean })
   );
 }
 
-function Decide({ c, busy, onDecide }: { c: ScoredCompany; busy: boolean; onDecide: (ids: string[], a: DecideAction) => void }) {
+function Decide({ c, busy, onDecide, large = false }: { c: ScoredCompany; busy: boolean; onDecide: (ids: string[], a: DecideAction) => void; large?: boolean }) {
   const act = (a: DecideAction) => (e: React.MouseEvent) => { e.stopPropagation(); onDecide([c.id], a); };
+  // `large` = the drawer footer: full-width, taller buttons. Cards keep the compact size.
+  const btn = large ? "h-10 flex-1 gap-1.5 px-4 text-sm [&_svg]:size-4" : "h-7 gap-1 px-2 text-xs [&_svg]:size-3";
+  const row = large ? "flex gap-2" : "flex justify-end gap-1.5";
   if (c.status === "rejected") {
-    return <span className="flex justify-end"><Button size="sm" variant="outline" disabled={busy} onClick={act("undo")} className="h-7 gap-1 border-amber-500/50 px-2 text-xs text-amber-500 hover:bg-amber-500/10 hover:text-amber-500"><Undo2 className="size-3" />Undo</Button></span>;
+    return <span className={large ? "flex" : "flex justify-end"}><Button size="sm" variant="outline" disabled={busy} onClick={act("undo")} className={cn(btn, "border-amber-500/50 text-amber-500 hover:bg-amber-500/10 hover:text-amber-500")}><Undo2 />Undo</Button></span>;
   }
   if (c.group !== "review" && c.status !== "hidden") return null;
   return (
-    <span className="flex justify-end gap-1.5">
+    <span className={row}>
       {c.status === "site_down"
-        ? <Button size="sm" variant="outline" disabled={busy} onClick={act("retry")} className="h-7 gap-1 px-2 text-xs"><RotateCcw className="size-3" />Retry</Button>
-        : <Button size="sm" disabled={busy} onClick={act("approve")} className="h-7 gap-1 px-2 text-xs"><Check className="size-3" />Approve</Button>}
-      <Button size="sm" variant="outline" disabled={busy} onClick={act("reject")} className="h-7 gap-1 px-2 text-xs"><X className="size-3" />Decline</Button>
+        ? <Button size="sm" variant="outline" disabled={busy} onClick={act("retry")} className={btn}><RotateCcw />Retry</Button>
+        : <Button size="sm" disabled={busy} onClick={act("approve")} className={btn}><Check />Approve</Button>}
+      <Button size="sm" variant="outline" disabled={busy} onClick={act("reject")} className={btn}><X />Decline</Button>
     </span>
   );
 }
@@ -467,7 +470,7 @@ export function ScoredCompanyDrawer({ company, onClose, onDecide, onFilterBatch 
                 {c.attempts > 0 && <Row label="Attempts"><span className="font-mono text-xs">{c.attempts}</span></Row>}
               </div>
             </div>
-            <div className="shrink-0 border-t border-border p-4"><Decide c={c} busy={busy} onDecide={run} /></div>
+            <div className="shrink-0 border-t border-border p-4"><Decide c={c} busy={busy} onDecide={run} large /></div>
           </>
         )}
       </div>
