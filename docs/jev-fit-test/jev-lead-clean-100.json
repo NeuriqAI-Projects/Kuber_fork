@@ -1,0 +1,3028 @@
+{
+  "scored_at": "2026-10-05T12:19:33.182Z",
+  "model": "jev-1.13.0",
+  "markdown_cap": 15000,
+  "question": "How good a lead is the company for Kuber Polyplast?",
+  "questions": {
+    "lead_fit": {
+      "type": "score",
+      "instructions": "How good a lead is `company` for the business described in `about_kuber_polyplast`?",
+      "criteria": [
+        "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+        "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+        "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+        "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+        "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+      ]
+    }
+  },
+  "totals": {
+    "scored": 100,
+    "failed": 0,
+    "input_tokens": 356643,
+    "output_tokens": 1800,
+    "est_cost_usd": 0.014979006
+  },
+  "results": [
+    {
+      "org_id": "9eef5e91-55df-4cde-a147-8a591569f8ea",
+      "name": "QIPBF",
+      "domain": "qipbf-qatar.com",
+      "markdown_chars": 859,
+      "latency_ms": 5351,
+      "answer": {
+        "type": "score",
+        "score": 3.88,
+        "confidence": 0.9,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.01,
+          "1": 0.01,
+          "2": 0,
+          "3": 0.04,
+          "4": 0.94
+        }
+      },
+      "usage": {
+        "input_tokens": 2437,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "11cbef2e-d2c0-4b6b-8505-bac1597b8638",
+      "name": "IBI INTERNATIONAL BAG INDUSTRY",
+      "domain": "ibi-as.dk",
+      "markdown_chars": 2155,
+      "latency_ms": 5452,
+      "answer": {
+        "type": "score",
+        "score": 3.84,
+        "confidence": 0.87,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.01,
+          "1": 0.01,
+          "2": 0,
+          "3": 0.09,
+          "4": 0.89
+        }
+      },
+      "usage": {
+        "input_tokens": 2916,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "32e286ff-a7ef-4579-9334-161952990fbe",
+      "name": "OZYANCE",
+      "domain": "ozyance.com",
+      "markdown_chars": 1928,
+      "latency_ms": 6203,
+      "answer": {
+        "type": "score",
+        "score": 1,
+        "confidence": 0.99,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.01,
+          "1": 0.98,
+          "2": 0.01,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 2736,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "19064b77-1356-4000-b256-66b5842e7839",
+      "name": "Indevco Flexible Packaging",
+      "domain": "indevcogroup.com",
+      "markdown_chars": 2373,
+      "latency_ms": 5409,
+      "answer": {
+        "type": "score",
+        "score": 2.84,
+        "confidence": 0.04,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.01,
+          "1": 0.19,
+          "2": 0.12,
+          "3": 0.31,
+          "4": 0.37
+        }
+      },
+      "usage": {
+        "input_tokens": 2861,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "89f02db9-be3b-4056-b676-a4d373790991",
+      "name": "Anadolu İplik",
+      "domain": "anadoluiplik.com.tr",
+      "markdown_chars": 4809,
+      "latency_ms": 5533,
+      "answer": {
+        "type": "score",
+        "score": 0.5,
+        "confidence": 0.58,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.74,
+          "1": 0.14,
+          "2": 0.03,
+          "3": 0.04,
+          "4": 0.05
+        }
+      },
+      "usage": {
+        "input_tokens": 4171,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "5c943c03-f2c2-497e-9bd9-a2374a5b0f59",
+      "name": "INTRALOX",
+      "domain": "intralox.com",
+      "markdown_chars": 2271,
+      "latency_ms": 311,
+      "answer": {
+        "type": "score",
+        "score": 2.13,
+        "confidence": 0,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.17,
+          "1": 0.22,
+          "2": 0.09,
+          "3": 0.35000000000000003,
+          "4": 0.17
+        }
+      },
+      "usage": {
+        "input_tokens": 2797,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "125ddff1-e547-48ae-92dc-4fc84ee83670",
+      "name": "MC emballage A/S",
+      "domain": "mcemballage.dk",
+      "markdown_chars": 14429,
+      "latency_ms": 335,
+      "answer": {
+        "type": "score",
+        "score": 1,
+        "confidence": 0.9,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.06,
+          "1": 0.91,
+          "2": 0.01,
+          "3": 0.01,
+          "4": 0.01
+        }
+      },
+      "usage": {
+        "input_tokens": 6648,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "3c252618-992e-158d-9602-d2252d9cef4c",
+      "name": "Agios Pharmaceuticals",
+      "domain": "agios.com",
+      "markdown_chars": 3776,
+      "latency_ms": 325,
+      "answer": {
+        "type": "score",
+        "score": 0,
+        "confidence": 1,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 1,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 3181,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "fdcd0c98-2ae5-365f-2b4d-1b6868d9a397",
+      "name": "River States Pallets & Crates",
+      "domain": "riverstatespallets.com",
+      "markdown_chars": 4718,
+      "latency_ms": 365,
+      "answer": {
+        "type": "score",
+        "score": 0.04,
+        "confidence": 0.97,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.97,
+          "1": 0.03,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 3209,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "44cb6a1b-fcf2-e1cd-6ae6-89b2a5212899",
+      "name": "Gohar Textile Mills Ltd",
+      "domain": "gohartextile.com",
+      "markdown_chars": 1876,
+      "latency_ms": 301,
+      "answer": {
+        "type": "score",
+        "score": 0.01,
+        "confidence": 0.99,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.99,
+          "1": 0.01,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 2652,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "d43805b6-70d6-47e7-0f6a-249f8ef7f241",
+      "name": "Kohl Recycling GmbH",
+      "domain": "kohl-gmbh.de",
+      "markdown_chars": 2074,
+      "latency_ms": 337,
+      "answer": {
+        "type": "score",
+        "score": 0.07,
+        "confidence": 0.95,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.94,
+          "1": 0.06,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 2936,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "308af18a-148b-ff00-fd76-9dca048ebcdd",
+      "name": "AUNDE Italy | Automotive Fashion Furnishing Textile",
+      "domain": "aunde.com",
+      "markdown_chars": 1631,
+      "latency_ms": 322,
+      "answer": {
+        "type": "score",
+        "score": 0.38,
+        "confidence": 0.69,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.76,
+          "1": 0.17,
+          "2": 0.02,
+          "3": 0.04,
+          "4": 0.01
+        }
+      },
+      "usage": {
+        "input_tokens": 2810,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "7d3a1565-5f6a-ebbe-2432-c934e6837521",
+      "name": "Grande Cosmetics",
+      "domain": "grandecosmetics.com",
+      "markdown_chars": 4159,
+      "latency_ms": 366,
+      "answer": {
+        "type": "score",
+        "score": 0.23,
+        "confidence": 0.81,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.86,
+          "1": 0.09,
+          "2": 0.02,
+          "3": 0.02,
+          "4": 0.01
+        }
+      },
+      "usage": {
+        "input_tokens": 3637,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "fa6b46ac-f3ee-40d9-a1a2-3fb8f9ecd7c6",
+      "name": "INVERSIONES AND  NEGOCIO SA",
+      "domain": "inesa.com.do",
+      "markdown_chars": 5754,
+      "latency_ms": 292,
+      "answer": {
+        "type": "score",
+        "score": 0,
+        "confidence": 1,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 1,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 4351,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "5bb7746e-eecd-0ab5-2577-8a44d27d143e",
+      "name": "SIC Recycling",
+      "domain": "sicrecycling.com",
+      "markdown_chars": 1237,
+      "latency_ms": 302,
+      "answer": {
+        "type": "score",
+        "score": 0,
+        "confidence": 1,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 1,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 2583,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "13e52bad-f17c-bafe-4a45-9bc4431b91d6",
+      "name": "Parmaco Metal Injection Molding AG",
+      "domain": "parmaco.com",
+      "markdown_chars": 1744,
+      "latency_ms": 885,
+      "answer": {
+        "type": "score",
+        "score": 0.01,
+        "confidence": 0.99,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 1,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 2743,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "cde5e8f6-633d-ff1e-4104-fe2b458219e9",
+      "name": "Ahsan Ikram Textile Pvt Ltd",
+      "domain": "ait.com.pk",
+      "markdown_chars": 2152,
+      "latency_ms": 409,
+      "answer": {
+        "type": "score",
+        "score": 0,
+        "confidence": 1,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 1,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 2797,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "5f0bcffe-01a5-c7b6-a808-9bcecdfd8b07",
+      "name": "Textile Care Services",
+      "domain": "textilecs.com",
+      "markdown_chars": 3643,
+      "latency_ms": 309,
+      "answer": {
+        "type": "score",
+        "score": 0.01,
+        "confidence": 1,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 1,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 3123,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "1c91bb7e-266f-41d0-b9b5-08a812bc6ee1",
+      "name": "GABB",
+      "domain": "grupogabb.com.br",
+      "markdown_chars": 3817,
+      "latency_ms": 344,
+      "answer": {
+        "type": "score",
+        "score": 3.38,
+        "confidence": 0.54,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.02,
+          "1": 0.01,
+          "2": 0.01,
+          "3": 0.49,
+          "4": 0.47
+        }
+      },
+      "usage": {
+        "input_tokens": 3248,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "d2ad7725-9a45-3e22-bee4-a41b7b01d0d8",
+      "name": "Iba Cosmetics",
+      "domain": "ibacosmetics.com",
+      "markdown_chars": 30440,
+      "latency_ms": 344,
+      "answer": {
+        "type": "score",
+        "score": 0.07,
+        "confidence": 0.94,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.96,
+          "1": 0.03,
+          "2": 0,
+          "3": 0.01,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 7607,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "9bb0b159-b11c-f275-cd9d-bbcfe84030b4",
+      "name": "SMF Textile",
+      "domain": "smftekstil.com",
+      "markdown_chars": 3017,
+      "latency_ms": 308,
+      "answer": {
+        "type": "score",
+        "score": 0,
+        "confidence": 1,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 1,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 3011,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "e187bd0a-8130-0a4a-b0aa-5d3bb1705014",
+      "name": "Doğkar Textile",
+      "domain": "dogkartextile.com",
+      "markdown_chars": 5452,
+      "latency_ms": 480,
+      "answer": {
+        "type": "score",
+        "score": 0.01,
+        "confidence": 0.99,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 1,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 4440,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "420ea8e0-2afe-1021-db90-455acaf5f63a",
+      "name": "Borusan Pipe Group",
+      "domain": "borusan.com",
+      "markdown_chars": 10123,
+      "latency_ms": 415,
+      "answer": {
+        "type": "score",
+        "score": 0.3,
+        "confidence": 0.75,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.86,
+          "1": 0.07,
+          "2": 0.01,
+          "3": 0.02,
+          "4": 0.04
+        }
+      },
+      "usage": {
+        "input_tokens": 5986,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "fe5e7d08-f378-dfd9-c93e-3ff482ed8e7a",
+      "name": "Metal Closures Private Limited",
+      "domain": "metalclosures.com",
+      "markdown_chars": 646,
+      "latency_ms": 295,
+      "answer": {
+        "type": "score",
+        "score": 0.09,
+        "confidence": 0.92,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.94,
+          "1": 0.03,
+          "2": 0.01,
+          "3": 0.01,
+          "4": 0.01
+        }
+      },
+      "usage": {
+        "input_tokens": 2379,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "f4803686-843b-a4d3-e9f0-09c8b41d41f1",
+      "name": "Timbuk Toys",
+      "domain": "timbuktoys.com",
+      "markdown_chars": 8618,
+      "latency_ms": 311,
+      "answer": {
+        "type": "score",
+        "score": 0.15,
+        "confidence": 0.88,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.86,
+          "1": 0.13,
+          "2": 0.01,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 4996,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "ede963d7-661a-5259-b2b1-dddff3144adb",
+      "name": "RG Cosmetics",
+      "domain": "rgcosmetics.com",
+      "markdown_chars": 6501,
+      "latency_ms": 354,
+      "answer": {
+        "type": "score",
+        "score": 0.19,
+        "confidence": 0.84,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.89,
+          "1": 0.08,
+          "2": 0.01,
+          "3": 0.01,
+          "4": 0.01
+        }
+      },
+      "usage": {
+        "input_tokens": 4580,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "2bb30e18-d675-4cca-8909-aa47edae5d9b",
+      "name": "Eidesvik Offshore ASA",
+      "domain": "eidesvik.no",
+      "markdown_chars": 3238,
+      "latency_ms": 302,
+      "answer": {
+        "type": "score",
+        "score": 0.09,
+        "confidence": 0.92,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.93,
+          "1": 0.06,
+          "2": 0.01,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 3018,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "90626061-071a-699d-7f5e-cd438f73c784",
+      "name": "Acacia Furniture",
+      "domain": "acaciafurniture.com.au",
+      "markdown_chars": 1531,
+      "latency_ms": 319,
+      "answer": {
+        "type": "score",
+        "score": 0.34,
+        "confidence": 0.71,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.73,
+          "1": 0.21,
+          "2": 0.02,
+          "3": 0.03,
+          "4": 0.01
+        }
+      },
+      "usage": {
+        "input_tokens": 2696,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "0108abc6-5b42-5d96-88a4-a25bffbe2df5",
+      "name": "BAOBA Open Business Agriculture",
+      "domain": "baoba.ag",
+      "markdown_chars": 4291,
+      "latency_ms": 422,
+      "answer": {
+        "type": "score",
+        "score": 0.01,
+        "confidence": 0.99,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 1,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 3426,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "e7614e03-0211-0b2d-7984-47db660a2ce9",
+      "name": "Advanced Furniture",
+      "domain": "adv-furniture.co.uk",
+      "markdown_chars": 1011,
+      "latency_ms": 310,
+      "answer": {
+        "type": "score",
+        "score": 3.19,
+        "confidence": 0.32,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.05,
+          "1": 0.06,
+          "2": 0.01,
+          "3": 0.42,
+          "4": 0.46
+        }
+      },
+      "usage": {
+        "input_tokens": 2608,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "c60efc39-75f2-c058-1a1b-e2eace673a4f",
+      "name": "TM Toys",
+      "domain": "tmtoys.pl",
+      "markdown_chars": 4276,
+      "latency_ms": 328,
+      "answer": {
+        "type": "score",
+        "score": 1.54,
+        "confidence": 0.27,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.16,
+          "1": 0.47,
+          "2": 0.11,
+          "3": 0.17,
+          "4": 0.09
+        }
+      },
+      "usage": {
+        "input_tokens": 4435,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "ba26c922-9f70-b47a-5503-c4d78cec758b",
+      "name": "McFarlane Toys",
+      "domain": "mcfarlane.com",
+      "markdown_chars": 116136,
+      "latency_ms": 384,
+      "answer": {
+        "type": "score",
+        "score": 2.09,
+        "confidence": 0,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.24,
+          "1": 0.17,
+          "2": 0.03,
+          "3": 0.37,
+          "4": 0.19
+        }
+      },
+      "usage": {
+        "input_tokens": 6622,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "d724eb2b-5f98-432f-9aba-ffc499613741",
+      "name": "Plasutil Industria e Comercio de Plasticos Ltd.",
+      "domain": "plasutil.com.br",
+      "markdown_chars": 7251,
+      "latency_ms": 828,
+      "answer": {
+        "type": "score",
+        "score": 2.74,
+        "confidence": 0.21,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.08,
+          "1": 0.17,
+          "2": 0.04,
+          "3": 0.37,
+          "4": 0.34
+        }
+      },
+      "usage": {
+        "input_tokens": 4404,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "333de280-bd33-4281-8128-ad992a9b7a79",
+      "name": "SURPRISE FURTINURE & HOUSEWARE",
+      "domain": "surprise.co.in",
+      "markdown_chars": 3408,
+      "latency_ms": 300,
+      "answer": {
+        "type": "score",
+        "score": 2.99,
+        "confidence": 0.53,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.02,
+          "1": 0.05,
+          "2": 0.13,
+          "3": 0.53,
+          "4": 0.27
+        }
+      },
+      "usage": {
+        "input_tokens": 3427,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "7c55ff1c-f330-4358-9b83-120b061b50e5",
+      "name": "Yeo Valley Production Ltd",
+      "domain": "yeovalley.co.uk",
+      "markdown_chars": 6096,
+      "latency_ms": 467,
+      "answer": {
+        "type": "score",
+        "score": 0.49,
+        "confidence": 0.59,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.75,
+          "1": 0.14,
+          "2": 0.02,
+          "3": 0.04,
+          "4": 0.05
+        }
+      },
+      "usage": {
+        "input_tokens": 4014,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "ca3526b4-4c93-4c30-917a-2bb2fc3e3965",
+      "name": "Fastik",
+      "domain": "fastik.com",
+      "markdown_chars": 2856,
+      "latency_ms": 315,
+      "answer": {
+        "type": "score",
+        "score": 2.89,
+        "confidence": 0.08,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.09,
+          "1": 0.13,
+          "2": 0.03,
+          "3": 0.27,
+          "4": 0.48
+        }
+      },
+      "usage": {
+        "input_tokens": 3027,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "3fe4e846-e41e-46bc-bc77-74b5d5c31721",
+      "name": "FAM Ti Inc.",
+      "domain": "famti.ca",
+      "markdown_chars": 3673,
+      "latency_ms": 324,
+      "answer": {
+        "type": "score",
+        "score": 3.26,
+        "confidence": 0.38,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.01,
+          "1": 0.14,
+          "2": 0.02,
+          "3": 0.22,
+          "4": 0.61
+        }
+      },
+      "usage": {
+        "input_tokens": 3150,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "ae8e2dd9-e5e3-4c2e-af39-316e9a4ea66b",
+      "name": "Associated Packaging, Inc.",
+      "domain": "associatedpackaging.com",
+      "markdown_chars": 3169,
+      "latency_ms": 310,
+      "answer": {
+        "type": "score",
+        "score": 1.05,
+        "confidence": 0.69,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.16,
+          "1": 0.68,
+          "2": 0.12,
+          "3": 0.03,
+          "4": 0.01
+        }
+      },
+      "usage": {
+        "input_tokens": 2960,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "c4c8724c-201d-8f59-7341-a13717ac8e7c",
+      "name": "Click Bond",
+      "domain": "clickbond.com",
+      "markdown_chars": 1482,
+      "latency_ms": 309,
+      "answer": {
+        "type": "score",
+        "score": 0.21,
+        "confidence": 0.82,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.83,
+          "1": 0.15,
+          "2": 0.02,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 2757,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "49f0e372-f0b4-7dbb-1fa4-e3a712729dad",
+      "name": "SIGMASOFT Virtual Molding Europe",
+      "domain": "sigmasoft.de",
+      "markdown_chars": 1752,
+      "latency_ms": 439,
+      "answer": {
+        "type": "score",
+        "score": 0.93,
+        "confidence": 0.56,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.3,
+          "1": 0.48,
+          "2": 0.22,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 2796,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "9af032e5-afc3-2b82-662f-98ea69187a8c",
+      "name": "Toke Cosmetics",
+      "domain": "tokecosmetics.com.ng",
+      "markdown_chars": 3283,
+      "latency_ms": 340,
+      "answer": {
+        "type": "score",
+        "score": 0.09,
+        "confidence": 0.93,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.95,
+          "1": 0.03,
+          "2": 0.01,
+          "3": 0.01,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 3485,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "5a1de707-c8ba-146b-fc50-ebed845fe2ee",
+      "name": "Seaway Plastics Engineering",
+      "domain": "seawayplastics.com",
+      "markdown_chars": 4109,
+      "latency_ms": 307,
+      "answer": {
+        "type": "score",
+        "score": 2.77,
+        "confidence": 0.6,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.06,
+          "1": 0.08,
+          "2": 0.02,
+          "3": 0.72,
+          "4": 0.12
+        }
+      },
+      "usage": {
+        "input_tokens": 3302,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "862c4194-0b85-424b-8e76-118c916f8526",
+      "name": "The Lubrizol Corporation",
+      "domain": "lubrizol.com",
+      "markdown_chars": 2873,
+      "latency_ms": 323,
+      "answer": {
+        "type": "score",
+        "score": 0.61,
+        "confidence": 0.49,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.61,
+          "1": 0.27,
+          "2": 0.05,
+          "3": 0.03,
+          "4": 0.04
+        }
+      },
+      "usage": {
+        "input_tokens": 3062,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "f375b42f-8786-441a-a398-56a70b5dd0a2",
+      "name": "AKELA",
+      "domain": "akelagroup.uz",
+      "markdown_chars": 5642,
+      "latency_ms": 313,
+      "answer": {
+        "type": "score",
+        "score": 1.05,
+        "confidence": 0.7,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.16,
+          "1": 0.71,
+          "2": 0.08,
+          "3": 0.02,
+          "4": 0.03
+        }
+      },
+      "usage": {
+        "input_tokens": 3911,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "2378666f-3518-4302-9e93-5cb6c12c174e",
+      "name": "INNOVATIVE SOLUTIONS",
+      "domain": "safic-alcan.com.tr",
+      "markdown_chars": 4134,
+      "latency_ms": 326,
+      "answer": {
+        "type": "score",
+        "score": 0.99,
+        "confidence": 0.98,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.02,
+          "1": 0.97,
+          "2": 0.01,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 3126,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "14743224-981f-43db-be40-5f5dbc2ac44a",
+      "name": "Gualapack S.p.A.",
+      "domain": "gualapack.com",
+      "markdown_chars": 5234,
+      "latency_ms": 313,
+      "answer": {
+        "type": "score",
+        "score": 3.77,
+        "confidence": 0.81,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.03,
+          "1": 0.02,
+          "2": 0,
+          "3": 0.05,
+          "4": 0.9
+        }
+      },
+      "usage": {
+        "input_tokens": 3799,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "fdc0a8cb-1c0d-44fc-b386-30ca23e8da74",
+      "name": "NES Shipping Ltd",
+      "domain": "nesshipping.com",
+      "markdown_chars": 1934,
+      "latency_ms": 411,
+      "answer": {
+        "type": "score",
+        "score": 0.02,
+        "confidence": 0.98,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.98,
+          "1": 0.02,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 2753,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "49625f7c-5b05-430e-87f9-568ef73fa16e",
+      "name": "Turners Shipping",
+      "domain": "turnersshipping.co.za",
+      "markdown_chars": 8140,
+      "latency_ms": 360,
+      "answer": {
+        "type": "score",
+        "score": 0.08,
+        "confidence": 0.94,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.9400000000000001,
+          "1": 0.06,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 3964,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "b4d463f8-c58b-4a67-a9f1-4fabde8cf060",
+      "name": "Atlanta Industries Inc.",
+      "domain": "atlanta.ph",
+      "markdown_chars": 5397,
+      "latency_ms": 304,
+      "answer": {
+        "type": "score",
+        "score": 3.83,
+        "confidence": 0.86,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.01,
+          "1": 0.01,
+          "2": 0.01,
+          "3": 0.09,
+          "4": 0.88
+        }
+      },
+      "usage": {
+        "input_tokens": 3723,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "499fdec5-46d8-4030-bb78-a9ed24aa3d96",
+      "name": "Addvanze AB",
+      "domain": "addvanze.com",
+      "markdown_chars": 650,
+      "latency_ms": 315,
+      "answer": {
+        "type": "score",
+        "score": 0.5,
+        "confidence": 0.58,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.8,
+          "1": 0.02,
+          "2": 0.08,
+          "3": 0.06,
+          "4": 0.04
+        }
+      },
+      "usage": {
+        "input_tokens": 2633,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "b7bdc6ea-5272-40ee-a88d-bc9d894d1832",
+      "name": "Pressco Technology",
+      "domain": "pressco.com",
+      "markdown_chars": 4557,
+      "latency_ms": 352,
+      "answer": {
+        "type": "score",
+        "score": 0.69,
+        "confidence": 0.43,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.47,
+          "1": 0.4,
+          "2": 0.1,
+          "3": 0.02,
+          "4": 0.01
+        }
+      },
+      "usage": {
+        "input_tokens": 3251,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "4569c6ee-e34c-49f7-a3a6-8b17dff7885e",
+      "name": "Kopempack Equipments",
+      "domain": "kopempack.com.br",
+      "markdown_chars": 2937,
+      "latency_ms": 419,
+      "answer": {
+        "type": "score",
+        "score": 0.35,
+        "confidence": 0.71,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.78,
+          "1": 0.14,
+          "2": 0.04,
+          "3": 0.02,
+          "4": 0.02
+        }
+      },
+      "usage": {
+        "input_tokens": 3106,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "f0de5f96-6d34-4d93-9a56-ebda1e6677c5",
+      "name": "Eldorado Indústrias Plásticas",
+      "domain": "plasticoseldorado.com.br",
+      "markdown_chars": 1659,
+      "latency_ms": 312,
+      "answer": {
+        "type": "score",
+        "score": 3.7,
+        "confidence": 0.75,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.01,
+          "1": 0,
+          "2": 0,
+          "3": 0.25,
+          "4": 0.74
+        }
+      },
+      "usage": {
+        "input_tokens": 2903,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "aabe5d3e-d0cc-4ba7-b0dd-5f0c88f24506",
+      "name": "Balcan Innovations Inc.",
+      "domain": "balcaninnovations.com",
+      "markdown_chars": 5422,
+      "latency_ms": 321,
+      "answer": {
+        "type": "score",
+        "score": 3.76,
+        "confidence": 0.8,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.03,
+          "1": 0.01,
+          "2": 0,
+          "3": 0.07,
+          "4": 0.89
+        }
+      },
+      "usage": {
+        "input_tokens": 3734,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "aff3fcf8-ab3c-4fe0-92c1-96cfa6e76eff",
+      "name": "Motisun Group",
+      "domain": "motisungroup.com",
+      "markdown_chars": 3135,
+      "latency_ms": 319,
+      "answer": {
+        "type": "score",
+        "score": 2.45,
+        "confidence": 0.29,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.03,
+          "1": 0.29,
+          "2": 0.03,
+          "3": 0.5,
+          "4": 0.15
+        }
+      },
+      "usage": {
+        "input_tokens": 2970,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "20a36349-fdbd-439d-aebd-2235d228520a",
+      "name": "GDM Plásticos",
+      "domain": "gdmplasticos.com.br",
+      "markdown_chars": 8648,
+      "latency_ms": 356,
+      "answer": {
+        "type": "score",
+        "score": 3.93,
+        "confidence": 0.94,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.01,
+          "1": 0,
+          "2": 0,
+          "3": 0.04,
+          "4": 0.95
+        }
+      },
+      "usage": {
+        "input_tokens": 4609,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "c561a33a-c705-4f1f-a091-5feca3954d9d",
+      "name": "Lorpon Labels Inc.",
+      "domain": "lorponlabels.com",
+      "markdown_chars": 2650,
+      "latency_ms": 335,
+      "answer": {
+        "type": "score",
+        "score": 0.86,
+        "confidence": 0.28,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.5,
+          "1": 0.32,
+          "2": 0.06,
+          "3": 0.07,
+          "4": 0.05
+        }
+      },
+      "usage": {
+        "input_tokens": 2930,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "cde8c698-26db-4aa6-b831-dfb953205498",
+      "name": "Stickershop",
+      "domain": "stickershop.cl",
+      "markdown_chars": 11988,
+      "latency_ms": 323,
+      "answer": {
+        "type": "score",
+        "score": 0.46,
+        "confidence": 0.61,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.5700000000000001,
+          "1": 0.42,
+          "2": 0.01,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 6934,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "9307757d-95dd-4a85-95f0-c488387fb77c",
+      "name": "Montebello Packaging",
+      "domain": "montebellopkg.com",
+      "markdown_chars": 3482,
+      "latency_ms": 433,
+      "answer": {
+        "type": "score",
+        "score": 1.29,
+        "confidence": 0.25,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.31,
+          "1": 0.42,
+          "2": 0.04,
+          "3": 0.13,
+          "4": 0.1
+        }
+      },
+      "usage": {
+        "input_tokens": 3090,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "ef964e89-4e2e-4399-944c-1b6b9bdb5d1f",
+      "name": "AGRAF Industrial S.A.S.",
+      "domain": "agraf.co",
+      "markdown_chars": 3468,
+      "latency_ms": 314,
+      "answer": {
+        "type": "score",
+        "score": 3.75,
+        "confidence": 0.8,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.01,
+          "1": 0.03,
+          "2": 0.01,
+          "3": 0.1,
+          "4": 0.85
+        }
+      },
+      "usage": {
+        "input_tokens": 3320,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "2e5e06ab-b0ba-4d8e-94c9-12dce9451a6c",
+      "name": "Sercon Shipping BV",
+      "domain": "sercon.nl",
+      "markdown_chars": 1258,
+      "latency_ms": 423,
+      "answer": {
+        "type": "score",
+        "score": 0.05,
+        "confidence": 0.96,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.95,
+          "1": 0.05,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 2783,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "47720f08-999c-4dc4-a070-98a3803c25a8",
+      "name": "Lindström",
+      "domain": "lindstromgroup.com",
+      "markdown_chars": 6840,
+      "latency_ms": 411,
+      "answer": {
+        "type": "score",
+        "score": 0.02,
+        "confidence": 0.99,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.99,
+          "1": 0.01,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 4033,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "9004c37a-173c-4669-a40d-2219bd5ad430",
+      "name": "Doves Farm Foods Ltd",
+      "domain": "dovesfarm.co.uk",
+      "markdown_chars": 10378,
+      "latency_ms": 332,
+      "answer": {
+        "type": "score",
+        "score": 0.04,
+        "confidence": 0.97,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.99,
+          "1": 0.01,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 5280,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "42277a8c-0572-4d7e-b0b8-40eb91cf9117",
+      "name": "FANOSA",
+      "domain": "fanosa.com",
+      "markdown_chars": 2040,
+      "latency_ms": 309,
+      "answer": {
+        "type": "score",
+        "score": 2.83,
+        "confidence": 0.23,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.13,
+          "1": 0.08,
+          "2": 0.02,
+          "3": 0.39,
+          "4": 0.38
+        }
+      },
+      "usage": {
+        "input_tokens": 2898,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "5300611d-cf93-4874-8e64-3ad0f6ea2027",
+      "name": "Achilles USA, Inc.",
+      "domain": "achillesusa.com",
+      "markdown_chars": 2579,
+      "latency_ms": 429,
+      "answer": {
+        "type": "score",
+        "score": 3.42,
+        "confidence": 0.52,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.11,
+          "1": 0.01,
+          "2": 0,
+          "3": 0.13,
+          "4": 0.75
+        }
+      },
+      "usage": {
+        "input_tokens": 2919,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "ea353b6c-6bbe-4351-a3d2-c8e019ab2e3a",
+      "name": "Tosca",
+      "domain": "toscaltd.com",
+      "markdown_chars": 3426,
+      "latency_ms": 538,
+      "answer": {
+        "type": "score",
+        "score": 2.63,
+        "confidence": 0,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.07,
+          "1": 0.18,
+          "2": 0.13,
+          "3": 0.27,
+          "4": 0.35000000000000003
+        }
+      },
+      "usage": {
+        "input_tokens": 3305,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "4fb29b14-de8e-483a-bb88-0a1371a9e5dd",
+      "name": "EDGE Industrial Technologies",
+      "domain": "edgeindtech.com",
+      "markdown_chars": 3767,
+      "latency_ms": 309,
+      "answer": {
+        "type": "score",
+        "score": 0.86,
+        "confidence": 0.29,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.45,
+          "1": 0.39,
+          "2": 0.07,
+          "3": 0.04,
+          "4": 0.05
+        }
+      },
+      "usage": {
+        "input_tokens": 3294,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "29ee7c24-3831-491a-bc60-55b2c3f54373",
+      "name": "Industrial Physics",
+      "domain": "industrialphysics.com",
+      "markdown_chars": 11148,
+      "latency_ms": 391,
+      "answer": {
+        "type": "score",
+        "score": 0.32,
+        "confidence": 0.74,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.77,
+          "1": 0.17,
+          "2": 0.06,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 4870,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "1f502344-2daf-44d1-8e56-60179792906e",
+      "name": "TUBEX Aluminium Tubes",
+      "domain": "tubex-tube.com",
+      "markdown_chars": 4391,
+      "latency_ms": 313,
+      "answer": {
+        "type": "score",
+        "score": 0.09,
+        "confidence": 0.92,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.96,
+          "1": 0.02,
+          "2": 0,
+          "3": 0.01,
+          "4": 0.01
+        }
+      },
+      "usage": {
+        "input_tokens": 3309,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "7b279eba-fa31-4680-8628-15ca2a6479b3",
+      "name": "SCITEQ -SMART TESTING. PROVEN EXCELLENCE",
+      "domain": "sciteq.com",
+      "markdown_chars": 5341,
+      "latency_ms": 463,
+      "answer": {
+        "type": "score",
+        "score": 0.96,
+        "confidence": 0.49,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.33,
+          "1": 0.44,
+          "2": 0.19,
+          "3": 0.02,
+          "4": 0.02
+        }
+      },
+      "usage": {
+        "input_tokens": 3748,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "cb3adf56-ceaa-4a90-9b68-9222aeb87344",
+      "name": "ChemiTek Solar",
+      "domain": "chemitek.pt",
+      "markdown_chars": 5941,
+      "latency_ms": 315,
+      "answer": {
+        "type": "score",
+        "score": 0.03,
+        "confidence": 0.98,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.98,
+          "1": 0.02,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 3758,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "013fb089-061d-47b1-a21b-b15e2986de8d",
+      "name": "Chint Solar Europe",
+      "domain": "chintsolar.com",
+      "markdown_chars": 2746,
+      "latency_ms": 379,
+      "answer": {
+        "type": "score",
+        "score": 0.08,
+        "confidence": 0.94,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.94,
+          "1": 0.05,
+          "2": 0.01,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 3006,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "72ae8778-85a1-4f11-b381-be46311a0ae4",
+      "name": "Newett Homes",
+      "domain": "newetthomes.co.uk",
+      "markdown_chars": 4164,
+      "latency_ms": 311,
+      "answer": {
+        "type": "score",
+        "score": 0.09,
+        "confidence": 0.93,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.92,
+          "1": 0.08,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 3558,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "7a75ebf1-c680-4ea7-9e30-c50f29b5eb68",
+      "name": "Zimmer + Rohde",
+      "domain": "zimmer-rohde.com",
+      "markdown_chars": 6420,
+      "latency_ms": 317,
+      "answer": {
+        "type": "score",
+        "score": 0.02,
+        "confidence": 0.99,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.99,
+          "1": 0.01,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 4223,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "25ff4905-e920-4c19-ad59-6bb52b57ae26",
+      "name": "CANPACK Group",
+      "domain": "canpack.com",
+      "markdown_chars": 2357,
+      "latency_ms": 291,
+      "answer": {
+        "type": "score",
+        "score": 0.88,
+        "confidence": 0.27,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.65,
+          "1": 0.14,
+          "2": 0.02,
+          "3": 0.08,
+          "4": 0.11
+        }
+      },
+      "usage": {
+        "input_tokens": 2985,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "652042e6-e293-4b04-bb33-ba615a4b81e6",
+      "name": "Corfal Poliuretano",
+      "domain": "corfalpoliuretano.com.br",
+      "markdown_chars": 571,
+      "latency_ms": 409,
+      "answer": {
+        "type": "score",
+        "score": 0.76,
+        "confidence": 0.36,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.62,
+          "1": 0.19,
+          "2": 0.05,
+          "3": 0.08,
+          "4": 0.06
+        }
+      },
+      "usage": {
+        "input_tokens": 2587,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "1fed048b-901c-4cad-92fb-1324002dd9bb",
+      "name": "Saudi Arabian Packaging Industry W.L.L - SAPIN",
+      "domain": "sapin.com.sa",
+      "markdown_chars": 2178,
+      "latency_ms": 443,
+      "answer": {
+        "type": "score",
+        "score": 2.07,
+        "confidence": 0,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.1,
+          "1": 0.38,
+          "2": 0.03,
+          "3": 0.3,
+          "4": 0.19
+        }
+      },
+      "usage": {
+        "input_tokens": 2934,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "878a0c4e-0254-4096-9b37-53cb028daead",
+      "name": "Premix Group",
+      "domain": "premixgroup.com",
+      "markdown_chars": 3937,
+      "latency_ms": 499,
+      "answer": {
+        "type": "score",
+        "score": 0.04,
+        "confidence": 0.97,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.99,
+          "1": 0,
+          "2": 0,
+          "3": 0.01,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 3216,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "4979cb39-1e26-4174-9699-ba5b88e9a493",
+      "name": "Germfree",
+      "domain": "germfree.com",
+      "markdown_chars": 7542,
+      "latency_ms": 308,
+      "answer": {
+        "type": "score",
+        "score": 0.18,
+        "confidence": 0.85,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.88,
+          "1": 0.09,
+          "2": 0.02,
+          "3": 0.01,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 3995,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "8116caf9-8f99-4c96-ba0e-f8fdbd533e6b",
+      "name": "ALLTUB GROUP",
+      "domain": "alltub.com",
+      "markdown_chars": 4679,
+      "latency_ms": 298,
+      "answer": {
+        "type": "score",
+        "score": 0.8,
+        "confidence": 0.34,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.65,
+          "1": 0.16,
+          "2": 0.02,
+          "3": 0.07,
+          "4": 0.1
+        }
+      },
+      "usage": {
+        "input_tokens": 3443,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "3a46b268-1a45-4d6c-9a1d-0aaa8562f3c0",
+      "name": "STADLER Group",
+      "domain": "w-stadler.de",
+      "markdown_chars": 12895,
+      "latency_ms": 504,
+      "answer": {
+        "type": "score",
+        "score": 0.26,
+        "confidence": 0.79,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.79,
+          "1": 0.17,
+          "2": 0.04,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 5916,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "220f65bd-ed86-4604-a2ad-8a32594c06b3",
+      "name": "AnazaoHealth",
+      "domain": "anazaohealth.com",
+      "markdown_chars": 1280,
+      "latency_ms": 305,
+      "answer": {
+        "type": "score",
+        "score": 0.05,
+        "confidence": 0.95,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.96,
+          "1": 0.03,
+          "2": 0.01,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 2712,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "39b28c7e-8064-4f04-b9a4-a9a5dc9957ec",
+      "name": "Viant Medical",
+      "domain": "viantmedical.com",
+      "markdown_chars": 8451,
+      "latency_ms": 427,
+      "answer": {
+        "type": "score",
+        "score": 2.25,
+        "confidence": 0.12,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.16,
+          "1": 0.2,
+          "2": 0.02,
+          "3": 0.47000000000000003,
+          "4": 0.15
+        }
+      },
+      "usage": {
+        "input_tokens": 4006,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "10c021e4-3d19-4f77-9a37-a75f86ee1f90",
+      "name": "BOTHNERS",
+      "domain": "bothner.co.za",
+      "markdown_chars": 35529,
+      "latency_ms": 331,
+      "answer": {
+        "type": "score",
+        "score": 0,
+        "confidence": 1,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 1,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 6007,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "52301f21-ae23-45c0-8ab1-3e564f0beb26",
+      "name": "Frasle Mobility",
+      "domain": "fraslemobility.com",
+      "markdown_chars": 5000,
+      "latency_ms": 354,
+      "answer": {
+        "type": "score",
+        "score": 1.87,
+        "confidence": 0.01,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.16,
+          "1": 0.36,
+          "2": 0.09,
+          "3": 0.23,
+          "4": 0.16
+        }
+      },
+      "usage": {
+        "input_tokens": 3952,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "846b11db-a078-4b82-aa17-cc2c95c6269d",
+      "name": "DRIZIT Environmental",
+      "domain": "drizit.com",
+      "markdown_chars": 8274,
+      "latency_ms": 311,
+      "answer": {
+        "type": "score",
+        "score": 0.04,
+        "confidence": 0.96,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.96,
+          "1": 0.03,
+          "2": 0.01,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 4041,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "3c90f1aa-9baf-42ef-aa29-1c5b4a9fe423",
+      "name": "CORDEX S.A.",
+      "domain": "cordex.com",
+      "markdown_chars": 2747,
+      "latency_ms": 299,
+      "answer": {
+        "type": "score",
+        "score": 2.68,
+        "confidence": 0,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.19,
+          "1": 0.13,
+          "2": 0.03,
+          "3": 0.12,
+          "4": 0.53
+        }
+      },
+      "usage": {
+        "input_tokens": 3068,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "4b3f7ffa-ee65-4bf6-9108-d08d1ea01334",
+      "name": "Paxxo",
+      "domain": "paxxo.com",
+      "markdown_chars": 3209,
+      "latency_ms": 433,
+      "answer": {
+        "type": "score",
+        "score": 2.41,
+        "confidence": 0.19,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.06,
+          "1": 0.26,
+          "2": 0.07,
+          "3": 0.42,
+          "4": 0.19
+        }
+      },
+      "usage": {
+        "input_tokens": 3096,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "4b85b89e-955d-4574-9b79-44e613a8771e",
+      "name": "Signet",
+      "domain": "signet.net.au",
+      "markdown_chars": 5548,
+      "latency_ms": 334,
+      "answer": {
+        "type": "score",
+        "score": 0.86,
+        "confidence": 0.85,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.16,
+          "1": 0.83,
+          "2": 0.01,
+          "3": 0,
+          "4": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 3687,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "6015758f-aa86-4911-b20c-226bb355a18b",
+      "name": "Wessex Packaging | Clever Packaging People",
+      "domain": "wessexpkg.co.uk",
+      "markdown_chars": 7178,
+      "latency_ms": 379,
+      "answer": {
+        "type": "score",
+        "score": 1.03,
+        "confidence": 0.87,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.06,
+          "1": 0.88,
+          "2": 0.03,
+          "3": 0.02,
+          "4": 0.01
+        }
+      },
+      "usage": {
+        "input_tokens": 4133,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "dd8c49c9-9da2-4654-a901-b9306e31258c",
+      "name": "LARPLAST PLASTİK AMBALAJ",
+      "domain": "larplast.com",
+      "markdown_chars": 3283,
+      "latency_ms": 296,
+      "answer": {
+        "type": "score",
+        "score": 3.92,
+        "confidence": 0.93,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0,
+          "1": 0,
+          "2": 0,
+          "3": 0.05,
+          "4": 0.95
+        }
+      },
+      "usage": {
+        "input_tokens": 3159,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "913ba282-9609-4469-b79c-3057f9010638",
+      "name": "Walki Group",
+      "domain": "walki.com",
+      "markdown_chars": 4082,
+      "latency_ms": 307,
+      "answer": {
+        "type": "score",
+        "score": 3.6,
+        "confidence": 0.67,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.05,
+          "1": 0.03,
+          "2": 0.01,
+          "3": 0.11,
+          "4": 0.8
+        }
+      },
+      "usage": {
+        "input_tokens": 3201,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "5c1eaf56-0b7f-4f3e-93f7-e4d1016af688",
+      "name": "Hazel 4D",
+      "domain": "hazel4d.com",
+      "markdown_chars": 3595,
+      "latency_ms": 347,
+      "answer": {
+        "type": "score",
+        "score": 0.99,
+        "confidence": 0.88,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.08,
+          "1": 0.88,
+          "2": 0.02,
+          "3": 0.01,
+          "4": 0.01
+        }
+      },
+      "usage": {
+        "input_tokens": 3252,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "bdfd0823-3bd8-461e-866e-38ccf070f2f3",
+      "name": "Hi-Technology Group Limited",
+      "domain": "hitechltd.com",
+      "markdown_chars": 7113,
+      "latency_ms": 339,
+      "answer": {
+        "type": "score",
+        "score": 2.99,
+        "confidence": 0.58,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.06,
+          "1": 0.04,
+          "2": 0.01,
+          "3": 0.65,
+          "4": 0.24
+        }
+      },
+      "usage": {
+        "input_tokens": 4019,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "1b63a2e4-a628-4305-a0f2-042c2107dc44",
+      "name": "Inteplast Engineered Films (IEF)",
+      "domain": "inteplastef.com",
+      "markdown_chars": 840,
+      "latency_ms": 399,
+      "answer": {
+        "type": "score",
+        "score": 3.83,
+        "confidence": 0.86,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.01,
+          "1": 0,
+          "2": 0,
+          "3": 0.1,
+          "4": 0.89
+        }
+      },
+      "usage": {
+        "input_tokens": 2515,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "e980bc85-fa2c-4061-94d7-89c319649c34",
+      "name": "shongai technologies ltd",
+      "domain": "shongaitechnologiesltd.com",
+      "markdown_chars": 1437,
+      "latency_ms": 327,
+      "answer": {
+        "type": "score",
+        "score": 3.6,
+        "confidence": 0.67,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.02,
+          "1": 0.04,
+          "2": 0.02,
+          "3": 0.17,
+          "4": 0.75
+        }
+      },
+      "usage": {
+        "input_tokens": 2750,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "92248a35-387c-4189-8a38-82329ba0e742",
+      "name": "Emirates Printing Press, DUBAI (EPP)",
+      "domain": "eppdubai.com",
+      "markdown_chars": 2943,
+      "latency_ms": 324,
+      "answer": {
+        "type": "score",
+        "score": 2.09,
+        "confidence": 0,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.27,
+          "1": 0.19,
+          "2": 0.06,
+          "3": 0.15,
+          "4": 0.33
+        }
+      },
+      "usage": {
+        "input_tokens": 3029,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "5f1bb51f-7e0f-4f74-9f17-94649cbc2cf4",
+      "name": "PMI KYOTO Packaging Systems",
+      "domain": "pmikyoto.com",
+      "markdown_chars": 3378,
+      "latency_ms": 336,
+      "answer": {
+        "type": "score",
+        "score": 0.44,
+        "confidence": 0.64,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.69,
+          "1": 0.23,
+          "2": 0.04,
+          "3": 0.03,
+          "4": 0.01
+        }
+      },
+      "usage": {
+        "input_tokens": 3056,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "ea5acea1-8b54-4fc7-a9b4-d288e3c25b21",
+      "name": "PetStar México",
+      "domain": "petstar.mx",
+      "markdown_chars": 3259,
+      "latency_ms": 330,
+      "answer": {
+        "type": "score",
+        "score": 2.27,
+        "confidence": 0,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.19,
+          "1": 0.17,
+          "2": 0.12,
+          "3": 0.2,
+          "4": 0.32
+        }
+      },
+      "usage": {
+        "input_tokens": 3336,
+        "output_tokens": 18
+      }
+    },
+    {
+      "org_id": "3939d080-3f24-470b-9681-9f1641de689b",
+      "name": "Hypofarma",
+      "domain": "hypofarma.com.br",
+      "markdown_chars": 1592,
+      "latency_ms": 307,
+      "answer": {
+        "type": "score",
+        "score": 0.18,
+        "confidence": 0.85,
+        "legend": {
+          "0": "Not a lead: the company is not in plastics, or it makes masterbatch or compounds itself.",
+          "1": "Unlikely lead: plastics is a small or indirect part of the business, or the company only trades or distributes plastic products.",
+          "2": "Possible lead: the company works with plastics, but it is unclear whether it manufactures products itself.",
+          "3": "Good lead: the company manufactures plastic products itself, such as film, packaging, pipes or moulded parts.",
+          "4": "Strong lead: the company manufactures plastic products in volume in areas Kuber serves, such as film, packaging, pipes, woven sacks or moulded parts."
+        },
+        "probabilities": {
+          "0": 0.9,
+          "1": 0.06,
+          "2": 0.01,
+          "3": 0.01,
+          "4": 0.02
+        }
+      },
+      "usage": {
+        "input_tokens": 2784,
+        "output_tokens": 18
+      }
+    }
+  ]
+}
