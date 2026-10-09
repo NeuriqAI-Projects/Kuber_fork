@@ -27,7 +27,7 @@ import { useApp } from "@/lib/app-context";
 import { Avatar, StatusBadge } from "@/components/leads/lead-ui";
 import { KanbanBoard } from "@/components/app/kanban-board";
 import {
-  EMPTY_SCORED_FILTER, GroupPill, RunningSearchesBar, ScoredFilterChips, ScoredFiltersDialog, ScoredOrgsKanban, ScoredOrgsTable,
+  EMPTY_SCORED_FILTER, GroupPill, RunningSearchesBar, scoredFilterCount, ScoredCompanyDrawer, type ScoredCompany, type DecideAction, ScoredFiltersDialog, ScoredOrgsKanban, ScoredOrgsTable,
   decideScored, scoredFilterActive, useScoredOrgs, type ScoredFilter,
 } from "@/components/app/scored-orgs";
 import { GROUPS, type Group } from "@/lib/services/prospects/groups";
@@ -37,6 +37,8 @@ import { SearchInput } from "@/components/ui/search-input";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { AppCheckbox } from "@/components/ui/app-checkbox";
 import { Pill } from "@/components/ui/pill";
+import { MultiSelectDropdown, type DropdownOption } from "@/components/ui/multi-select-dropdown";
+import { FilterModal } from "@/components/ui/filter-modal";
 import { AppRadio } from "@/components/ui/app-radio";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -53,7 +55,6 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   Pagination,
   PaginationContent,
@@ -62,8 +63,8 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import {
-  Users, Megaphone, Plus, List, Kanban, RefreshCw, Columns3, Check,
-  Search, Building2, SlidersHorizontal, X, Trash2, UserPlus, User,
+  Users, Megaphone, Plus, List, Kanban, RefreshCw, Columns3,
+  Building2, SlidersHorizontal, Trash2, UserPlus, User,
 } from "lucide-react";
 
 // ── Types & constants ─────────────────────────────────────────────────────────
@@ -312,130 +313,6 @@ function sortOrgs(rows: OrgRow[], sort: LeadsSort): OrgRow[] {
 
 const ALL_SOURCES: LeadSource[] = ["Apollo", "Excel", "Manual"];
 
-type DropdownOption<T extends string> = {
-  value: T;
-  label: string;
-  dot?: string;
-};
-
-function MultiSelectDropdown<T extends string>({
-  label,
-  options,
-  selected,
-  onChange,
-}: {
-  label: string;
-  options: DropdownOption<T>[];
-  selected: Set<T>;
-  onChange: (next: Set<T>) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  function toggle(val: T) {
-    const next = new Set(selected);
-    if (next.has(val)) next.delete(val); else next.add(val);
-    onChange(next);
-  }
-
-  const filtered = options.filter((o) =>
-    o.label.toLowerCase().includes(search.toLowerCase())
-  );
-
-  return (
-    <div ref={ref} className="relative">
-      <p className="eyebrow mb-2">{label}</p>
-      <Button
-        type="button"
-        variant="outline"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full h-auto min-h-9 flex-wrap justify-start gap-1.5 rounded-md px-3 py-1.5 text-left text-sm font-normal bg-field"
-      >
-        {selected.size === 0 ? (
-          <span className="text-muted-foreground text-xs">Select {label.toLowerCase()}…</span>
-        ) : (
-          options
-            .filter((o) => selected.has(o.value))
-            .map((o) => (
-              <span
-                key={o.value}
-                className="inline-flex items-center gap-1 bg-secondary border border-border rounded px-1.5 py-0.5 text-xs font-medium"
-              >
-                {o.dot && <span className={cn("size-1.5 rounded-full shrink-0", o.dot)} />}
-                {o.label}
-                <span
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => { e.stopPropagation(); toggle(o.value); }}
-                  onKeyDown={(e) => e.key === "Enter" && toggle(o.value)}
-                  className="ml-0.5 text-muted-foreground hover:text-foreground cursor-pointer"
-                >
-                  <X className="size-2.5" />
-                </span>
-              </span>
-            ))
-        )}
-        <span className="ml-auto text-muted-foreground shrink-0">
-          <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        </span>
-      </Button>
-
-      {open && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-md border border-border bg-card shadow-xl overflow-hidden">
-          <div className="px-2 py-1.5 border-b border-border">
-            <div className="flex items-center gap-2 px-1">
-              <Search className="size-3.5 text-muted-foreground shrink-0" />
-              <Input
-                autoFocus
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search or type to add…"
-                className="h-auto flex-1 border-0 bg-transparent px-0 py-0 text-xs shadow-none outline-none placeholder:text-muted-foreground/60"
-              />
-            </div>
-          </div>
-          <div className="max-h-48 overflow-y-auto py-1">
-            {filtered.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-muted-foreground">No results</p>
-            ) : (
-              filtered.map((o) => {
-                const active = selected.has(o.value);
-                return (
-                  <Button
-                    key={o.value}
-                    type="button"
-                    variant="ghost"
-                    onClick={() => toggle(o.value)}
-                    className={cn(
-                      "w-full h-auto justify-start gap-2.5 rounded-none px-3 py-2 text-sm font-normal",
-                      active && "bg-secondary"
-                    )}
-                  >
-                    {o.dot && <span className={cn("size-2 rounded-full shrink-0", o.dot)} />}
-                    <span className="flex-1 text-left">{o.label}</span>
-                    {active && <Check className="size-3.5 text-foreground shrink-0" />}
-                  </Button>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function DateRangePicker({
   from,
   to,
@@ -549,22 +426,11 @@ function FiltersModal({
   }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="swatch-bar-top relative z-10 w-full max-w-md rounded-xl border border-border bg-background shadow-xl flex flex-col max-h-[85vh]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
-          <div>
-            <p className="eyebrow">Refine</p>
-            <p className="font-display text-base font-semibold mt-0.5">Filters</p>
-          </div>
-          <Button
-            variant="ghost" size="icon" className="size-7 text-muted-foreground"
-            onClick={onClose}
-          >
-            <X className="size-4" />
-          </Button>
-        </div>
-        <div className="overflow-y-auto px-5 py-5 space-y-5 flex-1">
+    <FilterModal
+      onClose={onClose}
+      onClear={() => setDraft({ statuses: new Set(), assignees: new Set(), sources: new Set(), batchLabels: new Set(), createdFrom: undefined, createdTo: undefined })}
+      onApply={() => { onChange(draft); onClose(); }}
+    >
           <MultiSelectDropdown
             label="Status"
             options={statusOptions}
@@ -603,22 +469,7 @@ function FiltersModal({
             onFromChange={(d) => setDraft((prev) => ({ ...prev, createdFrom: d }))}
             onToChange={(d) => setDraft((prev) => ({ ...prev, createdTo: d }))}
           />
-        </div>
-        <div className="flex items-center justify-between px-5 py-4 border-t border-border shrink-0">
-          <Button
-            variant="ghost" size="sm"
-            onClick={() => setDraft({ statuses: new Set(), assignees: new Set(), sources: new Set(), batchLabels: new Set(), createdFrom: undefined, createdTo: undefined })}
-            className="h-auto p-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
-          >
-            Clear all
-          </Button>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-            <Button size="sm" onClick={() => { onChange(draft); onClose(); }}>Apply</Button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </FilterModal>
   );
 }
 
@@ -763,7 +614,15 @@ export default function LeadsPage() {
     for (const c of scored.data?.companies ?? []) if (c.organization_id) m.set(c.organization_id, { group: c.group, status: c.status });
     return m;
   }, [scored.data]);
-  async function handleScoredDecide(ids: string[], action: "approve" | "reject" | "retry") {
+  // Approved / contact-added companies have an organization: open the normal org
+  // drawer. Anything else opens the scored-company drawer with what we know.
+  const [scoredDrawerId, setScoredDrawerId] = useState<string | null>(null);
+  const scoredDrawerCompany = scored.data?.companies.find((c) => c.id === scoredDrawerId) ?? null;
+  function openScoredCompany(c: ScoredCompany) {
+    if (c.organization_id) setSelectedOrgId(c.organization_id);
+    else setScoredDrawerId(c.id);
+  }
+  async function handleScoredDecide(ids: string[], action: DecideAction) {
     try { await decideScored(ids, action); } catch (e) { toast.error((e as Error).message); }
     await scored.reload();
   }
@@ -1141,19 +1000,21 @@ export default function LeadsPage() {
               </Button>
             )}
             {leadsEntityMode === "orgs" && (
-              <>
-                <ScoredFilterChips value={scoredFilter} data={scored.data} onChange={setScoredFilter} />
-                <Button
-                  type="button"
-                  variant={scoredFilterActive(scoredFilter) ? "default" : "outline"}
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={() => setShowScoredFilters(true)}
-                >
-                  <SlidersHorizontal className="size-3.5" />
-                  Filters
-                </Button>
-              </>
+              <Button
+                type="button"
+                variant={scoredFilterActive(scoredFilter) ? "default" : "outline"}
+                size="sm"
+                className="relative gap-1.5"
+                onClick={() => setShowScoredFilters(true)}
+              >
+                <SlidersHorizontal className="size-3.5" />
+                Filters
+                {scoredFilterActive(scoredFilter) && (
+                  <span className="ml-0.5 size-4 rounded-full bg-primary-foreground/20 font-mono text-[9px] leading-none font-bold tabular-nums flex items-center justify-center">
+                    <span className="translate-y-px">{scoredFilterCount(scoredFilter)}</span>
+                  </span>
+                )}
+              </Button>
             )}
             {leadsEntityMode === "orgs" && !scoredView ? (
               <ColumnsDropdown
@@ -1215,11 +1076,12 @@ export default function LeadsPage() {
             error={scored.error}
             loading={scored.loading}
             onDecide={handleScoredDecide}
-            onShowHidden={() => { setLeadsViewMode("list"); setScoredFilter((f) => ({ ...f, groups: ["hidden"], hidden: true })); }}
-            onOpenOrg={(id) => setSelectedOrgId(id)}
+            groups={scoredFilter.groups}
+            showHidden={scoredFilter.hidden}
+            onOpenCompany={openScoredCompany}
           />
         ) : scoredView ? (
-          <ScoredOrgsTable data={scored.data} error={scored.error} loading={scored.loading} onDecide={handleScoredDecide} onOpenOrg={(id) => setSelectedOrgId(id)} />
+          <ScoredOrgsTable data={scored.data} error={scored.error} loading={scored.loading} onDecide={handleScoredDecide} onOpenCompany={openScoredCompany} />
         ) : leadsEntityMode === "orgs" ? (
             <div>
               <div className="rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden w-full">
@@ -1536,6 +1398,7 @@ export default function LeadsPage() {
         </div>
       )}
 
+      <ScoredCompanyDrawer company={scoredDrawerCompany} onClose={() => setScoredDrawerId(null)} onDecide={handleScoredDecide} onFilterBatch={(id) => { setScoredFilter((f) => ({ ...f, searchIds: [id] })); setScoredDrawerId(null); }} />
       <ScoredFiltersDialog open={showScoredFilters} onOpenChange={setShowScoredFilters} value={scoredFilter} onApply={setScoredFilter} data={scored.data} />
       {showFilters && (
         <FiltersModal

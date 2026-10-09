@@ -6,8 +6,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const DECISIONS = {
   approve: { from: ["review", "flagged", "hidden"], to: "approved" },             // reveal one contact (1 Apollo credit)
-  reject: { from: ["review", "flagged", "site_down", "good", "waiting_credits"], to: "rejected" },
+  reject: { from: ["review", "flagged", "site_down", "good", "waiting_credits", "hidden"], to: "rejected" },
   retry: { from: ["site_down"], to: "queued" },                                   // read the website again (1 Firecrawl credit)
+  // Take a decline back. The previous status is not stored, so the company returns to
+  // "Needs review" (the client decides again) rather than to where it came from.
+  undo: { from: ["rejected"], to: "review" },
 } as const;
 
 export type DecisionAction = keyof typeof DECISIONS;

@@ -41,7 +41,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .eq("organization_id", id)
     .order("created_at", { ascending: false });
 
-  return ok({ ...org, leads: leads ?? [] });
+  // Which scored-search batch found this company, if any — the Kanban card no
+  // longer carries the batch name, so the drawer is where it is shown. Managers
+  // only (the scored tables are manager-scoped); anyone else just gets null.
+  let scoredBatch: { name: string; color: string } | null = null;
+  if (user.role === "manager") {
+    const { data: pc } = await db
+      .from("prospect_companies")
+      .select("search_id")
+      .eq("organization_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (pc?.search_id) {
+      const { data: search } = await db.from("prospect_searches").select("filters").eq("id", pc.search_id).maybeSingle();
+      const f = (search?.filters ?? {}) as { batch_name?: string; color?: string };
+      scoredBatch = { name: f.batch_name ?? "Scored search", color: f.color ?? "green" };
+    }
+  }
+
+  return ok({ ...org, leads: leads ?? [], scored_batch: scoredBatch });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

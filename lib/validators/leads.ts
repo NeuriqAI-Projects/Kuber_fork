@@ -204,13 +204,13 @@ export const ProspectSearchSchema = z.object({
 });
 
 export const ProspectDecisionSchema = z.object({
-  action: z.enum(["approve", "reject", "retry"]),
+  action: z.enum(["approve", "reject", "retry", "undo"]),
 });
 
 /** "Approve all" / "Decline all" for one batch's review list. */
 export const ProspectBulkDecisionSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(500),
-  action: z.enum(["approve", "reject", "retry"]),
+  action: z.enum(["approve", "reject", "retry", "undo"]),
 });
 
 export const CompanyPeopleSchema = z.object({

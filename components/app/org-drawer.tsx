@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/ui/empty-state";
+import { getBatchColor } from "@/lib/constants";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,7 @@ interface OrgData {
   city: string | null;
   country: string | null;
   enrichment_stage: string | null;
+  scored_batch?: { name: string; color: string } | null;
   leads?: Array<{ id: string; first_name: string | null; last_name: string | null; title: string | null; email: string | null }>;
 }
 
@@ -214,6 +216,11 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
             <h2 className="font-display text-lg font-semibold truncate mt-0.5">
               {org?.name ?? (loading ? "Loading…" : "Organization")}
             </h2>
+            {org?.scored_batch && (
+              <span className={cn("mt-1 inline-flex max-w-full truncate rounded-full border px-2 py-0.5 text-[11px] font-semibold", getBatchColor(org.scored_batch.color).pill)} title="Scored-search batch">
+                Batch: {org.scored_batch.name}
+              </span>
+            )}
             {org?.domain && (
               <div className="flex items-center gap-1.5 min-w-0">
                 <a href={toUrl(org.domain)} target="_blank" rel="noopener noreferrer" className="font-mono text-xs text-blue-400 truncate hover:underline">{org.domain}</a>

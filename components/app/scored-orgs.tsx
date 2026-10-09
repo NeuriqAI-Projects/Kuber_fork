@@ -5,15 +5,15 @@
 // Kanban board. Data: GET /api/v1/prospects (lib/services/prospects/groups.ts
 // decides each company's column and status line).
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Building2, Check, ChevronDown, ChevronUp, ExternalLink, Loader2, RotateCcw, X } from "lucide-react";
+import { AlertTriangle, Building2, Check, ChevronDown, ChevronUp, ExternalLink, Loader2, RotateCcw, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { ApolloCostNote } from "@/components/app/apollo-cost-note";
 import { getToken } from "@/components/app/lead-forms";
-import { AppCheckbox } from "@/components/ui/app-checkbox";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FilterModal } from "@/components/ui/filter-modal";
+import { MultiSelectDropdown, type DropdownOption } from "@/components/ui/multi-select-dropdown";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Switch } from "@/components/ui/switch";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getBatchColor } from "@/lib/constants";
 import { GROUP_LABEL, GROUPS, statusLine, type Group, type Tone } from "@/lib/services/prospects/groups";
@@ -33,9 +33,12 @@ export interface ScoredCompany {
   contact: { first_name: string | null; title: string | null; email: string | null } | null;
 }
 export interface ScoredData { searches: ScoredSearch[]; counts: Record<Group, number>; companies: ScoredCompany[]; review_total: number }
+export type DecideAction = "approve" | "reject" | "retry" | "undo";
 export interface ScoredFilter { searchIds: string[]; groups: Group[]; hidden: boolean }
 export const EMPTY_SCORED_FILTER: ScoredFilter = { searchIds: [], groups: [], hidden: false };
 export const scoredFilterActive = (f: ScoredFilter) => f.searchIds.length > 0 || f.groups.length > 0 || f.hidden;
+/** Number shown on the Filters button: how many filters are set (Status, Batch), like the Leads button. */
+export const scoredFilterCount = (f: ScoredFilter) => (f.groups.length > 0 || f.hidden ? 1 : 0) + (f.searchIds.length > 0 ? 1 : 0);
 
 async function api<T>(url: string, body?: unknown): Promise<T> {
   const token = await getToken();
@@ -63,7 +66,10 @@ export function useScoredOrgs(filter: ScoredFilter, q: string, enabled = true) {
   const load = useCallback(async () => {
     const p = new URLSearchParams();
     if (filter.searchIds.length) p.set("search_ids", filter.searchIds.join(","));
-    if (filter.groups.length) p.set("groups", filter.groups.join(","));
+    // Hidden is just another Status option: the API returns ONLY the selected
+    // groups, so it has to be in the list (alone, or beside the others).
+    const groups = filter.hidden ? [...filter.groups, "hidden"] : filter.groups;
+    if (groups.length) p.set("groups", groups.join(","));
     if (filter.hidden) p.set("hidden", "1");
     if (q.trim()) p.set("q", q.trim());
     try {
@@ -95,9 +101,9 @@ export function useScoredOrgs(filter: ScoredFilter, q: string, enabled = true) {
   return { data, error, loading, reload: load };
 }
 
-export async function decideScored(ids: string[], action: "approve" | "reject" | "retry") {
+export async function decideScored(ids: string[], action: DecideAction) {
   const r = await api<{ changed: number; skipped: number }>("/api/v1/prospects/decide", { ids, action });
-  const verb = action === "approve" ? "Approved" : action === "reject" ? "Declined" : "Retrying";
+  const verb = action === "approve" ? "Approved" : action === "reject" ? "Declined" : action === "undo" ? "Restored" : "Retrying";
   toast.success(`${verb} ${r.changed} compan${r.changed === 1 ? "y" : "ies"}${r.skipped ? ` · ${r.skipped} had already moved on` : ""}`);
   return r;
 }
@@ -110,11 +116,22 @@ const TONE: Record<Tone, string> = {
   red: "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30",
   gray: "bg-secondary text-muted-foreground border-border",
 };
+const STATUS_DOT: Record<Group, string> = { checking: "bg-primary", review: "bg-amber-500", good: "bg-emerald-500", approved: "bg-blue-500", declined: "bg-muted-foreground", hidden: "bg-muted-foreground/50" };
 const GROUP_TONE: Record<Group, Tone> = { checking: "blue", review: "amber", good: "green", approved: "blue", declined: "gray", hidden: "gray" };
 
 export function GroupPill({ group, status }: { group: Group; status?: string }) {
   const label = status === "site_down" ? "Website down" : GROUP_LABEL[group];
   return <span className={cn("inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px] font-semibold whitespace-nowrap", TONE[status === "site_down" ? "red" : GROUP_TONE[group]])}>{label}</span>;
+}
+
+/** Short label for a problem pill; the exact message goes in the hover title. */
+function problemLabel(c: ScoredCompany, text: string): string {
+  if (c.status === "site_down") return "Website down";
+  if (text.startsWith("Retrying")) return "Retrying";
+  if (c.status === "flagged") return "Not enough info";
+  if (c.status === "review" && !c.last_error) return "AI unsure";
+  if (c.status === "waiting_credits") return "Waiting for credits";
+  return "Error";
 }
 
 function FitPill({ score }: { score: number | null }) {
@@ -126,24 +143,28 @@ function BatchPill({ name, color }: { name: string; color: string }) {
   return <span className={cn("inline-flex max-w-full truncate rounded-full border px-2 py-0.5 text-[11px] font-semibold", getBatchColor(color).pill)}>{name}</span>;
 }
 
-function Links({ c }: { c: ScoredCompany }) {
+function Links({ c, linkedin = true }: { c: ScoredCompany; linkedin?: boolean }) {
   const site = c.website_url ?? (c.domain ? `https://${c.domain}` : null);
   return (
     <span className="flex flex-wrap gap-x-2 text-[11px]">
-      {site ? <a href={site} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-0.5 text-primary hover:underline">{c.domain ?? "Website"}<ExternalLink className="size-2.5" /></a> : <span className="text-muted-foreground">No website</span>}
-      {c.linkedin_url && <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-0.5 text-primary hover:underline">LinkedIn<ExternalLink className="size-2.5" /></a>}
+      {site ? <a href={site} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex max-w-full items-center gap-0.5 text-primary hover:underline"><span className="truncate">{c.domain ?? "Website"}</span><ExternalLink className="size-2.5 shrink-0" /></a> : <span className="text-muted-foreground">No website</span>}
+      {linkedin && c.linkedin_url && <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-0.5 text-primary hover:underline">LinkedIn<ExternalLink className="size-2.5" /></a>}
     </span>
   );
 }
 
-function Decide({ c, busy, onDecide }: { c: ScoredCompany; busy: boolean; onDecide: (ids: string[], a: "approve" | "reject" | "retry") => void }) {
+function Decide({ c, busy, onDecide }: { c: ScoredCompany; busy: boolean; onDecide: (ids: string[], a: DecideAction) => void }) {
+  const act = (a: DecideAction) => (e: React.MouseEvent) => { e.stopPropagation(); onDecide([c.id], a); };
+  if (c.status === "rejected") {
+    return <span className="flex justify-end"><Button size="sm" variant="outline" disabled={busy} onClick={act("undo")} className="h-7 gap-1 border-amber-500/50 px-2 text-xs text-amber-500 hover:bg-amber-500/10 hover:text-amber-500"><Undo2 className="size-3" />Undo</Button></span>;
+  }
   if (c.group !== "review" && c.status !== "hidden") return null;
   return (
-    <span className="flex gap-1.5">
+    <span className="flex justify-end gap-1.5">
       {c.status === "site_down"
-        ? <Button size="sm" variant="outline" disabled={busy} onClick={(e) => { e.stopPropagation(); onDecide([c.id], "retry"); }} className="h-7 gap-1 px-2 text-xs"><RotateCcw className="size-3" />Retry</Button>
-        : <Button size="sm" disabled={busy} onClick={(e) => { e.stopPropagation(); onDecide([c.id], "approve"); }} className="h-7 gap-1 px-2 text-xs"><Check className="size-3" />Approve</Button>}
-      {c.status !== "hidden" && <Button size="sm" variant="outline" disabled={busy} onClick={(e) => { e.stopPropagation(); onDecide([c.id], "reject"); }} className="h-7 gap-1 px-2 text-xs"><X className="size-3" />Decline</Button>}
+        ? <Button size="sm" variant="outline" disabled={busy} onClick={act("retry")} className="h-7 gap-1 px-2 text-xs"><RotateCcw className="size-3" />Retry</Button>
+        : <Button size="sm" disabled={busy} onClick={act("approve")} className="h-7 gap-1 px-2 text-xs"><Check className="size-3" />Approve</Button>}
+      <Button size="sm" variant="outline" disabled={busy} onClick={act("reject")} className="h-7 gap-1 px-2 text-xs"><X className="size-3" />Decline</Button>
     </span>
   );
 }
@@ -221,71 +242,49 @@ export function ScoredFiltersDialog({ open, onOpenChange, value, onApply, data }
 }) {
   const [draft, setDraft] = useState<ScoredFilter>(value);
   useEffect(() => { if (open) setDraft(value); }, [open, value]);
-  const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
+  if (!open) return null;
   const allCounts = (data?.searches ?? []).reduce((acc, s) => { for (const g of GROUPS) acc[g] += s.groups[g]; return acc; }, { checking: 0, review: 0, good: 0, approved: 0, declined: 0, hidden: 0 } as Record<Group, number>);
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader><DialogTitle>Filter scored companies</DialogTitle></DialogHeader>
-        <div className="grid gap-6 sm:grid-cols-2">
-          <div className="space-y-2">
-            <p className="eyebrow">Status</p>
-            {GROUPS.filter((g) => g !== "hidden").map((g) => (
-              <label key={g} className="flex cursor-pointer items-center gap-2 text-sm">
-                <AppCheckbox checked={draft.groups.includes(g)} onClick={() => setDraft((d) => ({ ...d, groups: toggle(d.groups, g) }))} />
-                {GROUP_LABEL[g]}<span className="ml-auto font-mono text-xs text-muted-foreground">{allCounts[g]}</span>
-              </label>
-            ))}
-            <label className="flex items-center gap-2 pt-2 text-sm">
-              <Switch checked={draft.hidden} onCheckedChange={(v) => setDraft((d) => ({ ...d, hidden: v }))} />
-              Show hidden (not a plastic maker)<span className="ml-auto font-mono text-xs text-muted-foreground">{allCounts.hidden}</span>
-            </label>
-          </div>
-          <div className="space-y-2">
-            <p className="eyebrow">Batch</p>
-            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-              {(data?.searches ?? []).map((s) => (
-                <label key={s.id} className="flex cursor-pointer items-center gap-2 text-sm">
-                  <AppCheckbox checked={draft.searchIds.includes(s.id)} onClick={() => setDraft((d) => ({ ...d, searchIds: toggle(d.searchIds, s.id) }))} />
-                  <span className={cn("size-2 shrink-0 rounded-full", getBatchColor(s.color).bg)} />
-                  <span className="truncate">{s.batch_name}</span>
-                  <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">{s.in_progress > 0 ? "running" : s.total}</span>
-                </label>
-              ))}
-              {!data?.searches.length && <p className="text-sm text-muted-foreground">No scored searches yet.</p>}
-            </div>
-          </div>
-        </div>
-        <div className="flex justify-between border-t border-border pt-4">
-          <Button type="button" variant="ghost" onClick={() => setDraft(EMPTY_SCORED_FILTER)}>Clear all</Button>
-          <Button type="button" onClick={() => { onApply(draft); onOpenChange(false); }}>Apply</Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
+  // "Hidden" is one more Status option in the dropdown (same as the Leads
+  // filter's single Status list); it maps to the `hidden` flag, which adds the
+  // Hidden column to the Kanban.
+  const statusOptions: DropdownOption<Group>[] = GROUPS.map((g) => ({ value: g, label: `${GROUP_LABEL[g]} (${allCounts[g]})`, dot: STATUS_DOT[g] }));
+  const statusSelected = new Set<Group>([...draft.groups, ...(draft.hidden ? (["hidden"] as Group[]) : [])]);
+  const batchOptions: DropdownOption<string>[] = (data?.searches ?? []).map((s) => ({
+    value: s.id, label: `${s.batch_name} (${s.in_progress > 0 ? "running" : s.total})`, dot: getBatchColor(s.color).bg,
+  }));
 
-/** Removable chips for the active filter, shown in the toolbar. */
-export function ScoredFilterChips({ value, data, onChange }: { value: ScoredFilter; data: ScoredData | null; onChange: (f: ScoredFilter) => void }) {
-  const name = (id: string) => data?.searches.find((s) => s.id === id)?.batch_name ?? "Batch";
-  const chip = "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium";
   return (
-    <span className="flex flex-wrap gap-1.5">
-      {value.searchIds.map((id) => <Button key={id} type="button" variant="ghost" onClick={() => onChange({ ...value, searchIds: value.searchIds.filter((x) => x !== id) })} className={cn(chip, "h-auto border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400")}>Batch: {name(id)} <X className="size-3" /></Button>)}
-      {value.groups.map((g) => <Button key={g} type="button" variant="ghost" onClick={() => onChange({ ...value, groups: value.groups.filter((x) => x !== g) })} className={cn(chip, "h-auto border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400")}>Status: {GROUP_LABEL[g]} <X className="size-3" /></Button>)}
-      {value.hidden && <Button type="button" variant="ghost" onClick={() => onChange({ ...value, hidden: false })} className={cn(chip, "h-auto border-border text-muted-foreground")}>Showing hidden <X className="size-3" /></Button>}
-    </span>
+    <FilterModal
+      onClose={() => onOpenChange(false)}
+      onClear={() => setDraft(EMPTY_SCORED_FILTER)}
+      onApply={() => { onApply(draft); onOpenChange(false); }}
+    >
+      <MultiSelectDropdown
+        label="Status"
+        options={statusOptions}
+        selected={statusSelected}
+        onChange={(next) => setDraft((d) => ({ ...d, groups: [...next].filter((g) => g !== "hidden"), hidden: next.has("hidden") }))}
+      />
+      {batchOptions.length > 0 && (
+        <MultiSelectDropdown
+          label="Batch"
+          options={batchOptions}
+          selected={new Set(draft.searchIds)}
+          onChange={(next) => setDraft((d) => ({ ...d, searchIds: [...next] }))}
+        />
+      )}
+    </FilterModal>
   );
 }
 
 // ── list ─────────────────────────────────────────────────────────────────────
-export function ScoredOrgsTable({ data, error, loading, onDecide, onOpenOrg }: {
+export function ScoredOrgsTable({ data, error, loading, onDecide, onOpenCompany }: {
   data: ScoredData | null; error: string | null; loading: boolean;
-  onDecide: (ids: string[], a: "approve" | "reject" | "retry") => Promise<void>; onOpenOrg: (orgId: string) => void;
+  onDecide: (ids: string[], a: DecideAction) => Promise<void>; onOpenCompany: (c: ScoredCompany) => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const run = async (ids: string[], a: "approve" | "reject" | "retry") => { setBusy(true); try { await onDecide(ids, a); } finally { setBusy(false); } };
+  const run = async (ids: string[], a: DecideAction) => { setBusy(true); try { await onDecide(ids, a); } finally { setBusy(false); } };
   const rows = data?.companies ?? [];
   const reviewIds = rows.filter((c) => c.group === "review" && c.status !== "site_down").map((c) => c.id);
 
@@ -309,7 +308,7 @@ export function ScoredOrgsTable({ data, error, loading, onDecide, onOpenOrg }: {
             ) : rows.map((c) => {
               const line = statusLine(c);
               return (
-                <TableRow key={c.id} onClick={() => c.organization_id && onOpenOrg(c.organization_id)} className={cn("border-border", c.organization_id && "cursor-pointer hover:bg-secondary")}>
+                <TableRow key={c.id} onClick={() => onOpenCompany(c)} className="cursor-pointer border-border hover:bg-secondary">
                   <TableCell>
                     <div className="flex items-center gap-2.5">
                       <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-secondary"><Building2 className="size-3.5 text-muted-foreground" /></div>
@@ -343,26 +342,34 @@ const KANBAN_COLS: { id: Group; dot: string }[] = [
   { id: "checking", dot: "bg-primary" }, { id: "review", dot: "bg-amber-500" }, { id: "good", dot: "bg-emerald-500" },
   { id: "approved", dot: "bg-blue-500" }, { id: "declined", dot: "bg-muted-foreground" },
 ];
+// Only shown when "Hidden" is picked in Filters > Status.
+const HIDDEN_COL: { id: Group; dot: string } = { id: "hidden", dot: "bg-muted-foreground/50" };
 
-export function ScoredOrgsKanban({ data, error, loading, onDecide, onShowHidden, onOpenOrg }: {
-  data: ScoredData | null; error: string | null; loading: boolean;
-  onDecide: (ids: string[], a: "approve" | "reject" | "retry") => Promise<void>; onShowHidden: () => void; onOpenOrg: (orgId: string) => void;
+export function ScoredOrgsKanban({ data, error, loading, groups, showHidden, onDecide, onOpenCompany }: {
+  data: ScoredData | null; error: string | null; loading: boolean; groups: Group[]; showHidden: boolean;
+  onDecide: (ids: string[], a: DecideAction) => Promise<void>; onOpenCompany: (c: ScoredCompany) => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const run = async (ids: string[], a: "approve" | "reject" | "retry") => { setBusy(true); try { await onDecide(ids, a); } finally { setBusy(false); } };
+  const run = async (ids: string[], a: DecideAction) => { setBusy(true); try { await onDecide(ids, a); } finally { setBusy(false); } };
   if (!data && loading) return <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading scored companies…</div>;
   if (!data?.searches.length) return <EmptyState message="No scored searches yet. Use Add leads → Scored Companies to start one." />;
   const companies = data.companies;
   const checking = data.searches.filter((s) => s.in_progress > 0);
+  // Nothing picked in Status -> the five normal columns. Otherwise ONLY the
+  // picked ones (Hidden included if picked), so an unselected column never
+  // sits there empty under a header that still shows its real count.
+  const picked = [...KANBAN_COLS, HIDDEN_COL].filter((c) => (c.id === "hidden" ? showHidden : groups.includes(c.id)));
+  const cols = picked.length ? picked : KANBAN_COLS;
 
   return (
     <div className="space-y-3">
       {error && <p className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400"><AlertTriangle className="size-4" />Couldn&apos;t refresh: {error}. It retries on its own.</p>}
-      <div className="flex min-h-[500px] gap-2 overflow-x-auto pb-4">
-        {KANBAN_COLS.map((col) => {
+      {/* Fixed grid, no horizontal scroll: equal columns always fit the page width. */}
+      <div className="grid min-h-[500px] items-start gap-2 pb-4" style={{ gridTemplateColumns: `repeat(${cols.length}, minmax(0, 1fr))` }}>
+        {cols.map((col) => {
           const cards = companies.filter((c) => c.group === col.id);
           return (
-            <div key={col.id} className="flex shrink-0 flex-col gap-2" style={{ width: "calc((100% - 120px) / 5)", minWidth: "200px" }}>
+            <div key={col.id} className="flex min-w-0 flex-col gap-2">
               <div className="swatch-bar flex items-center gap-1.5 overflow-hidden rounded-lg border bg-field px-2.5 py-2">
                 <span className={cn("size-2 shrink-0 rounded-full", col.dot)} />
                 <span className="eyebrow truncate text-foreground/80!">{GROUP_LABEL[col.id]}</span>
@@ -378,12 +385,18 @@ export function ScoredOrgsKanban({ data, error, loading, onDecide, onShowHidden,
               <div className="flex flex-col gap-1.5">
                 {cards.slice(0, 60).map((c) => {
                   const line = statusLine(c);
+                  // Only say something when it needs the reader: a problem, a retry, or
+                  // a company still being checked. "Contact: …", "Declined", "Not a
+                  // plastic maker" just repeat the column or add noise.
+                  const showLine = col.id === "checking" || col.id === "review" || line.tone === "red" || line.tone === "amber";
                   return (
-                    <div key={c.id} onClick={() => c.organization_id && onOpenOrg(c.organization_id)} className={cn("space-y-1.5 rounded-lg border bg-field p-2.5 shadow-sm", c.status === "site_down" ? "border-red-500/30" : c.group === "review" ? "border-amber-500/30" : "border-border", c.organization_id && "cursor-pointer hover:border-muted-foreground/50")}>
+                    <div key={c.id} onClick={() => onOpenCompany(c)} className={cn("cursor-pointer space-y-1.5 rounded-lg border bg-field p-2.5 shadow-sm hover:border-muted-foreground/50", c.status === "site_down" ? "border-red-500/30" : c.group === "review" ? "border-amber-500/30" : "border-border")}>
                       <div className="flex items-start justify-between gap-2"><p className="text-xs font-semibold leading-snug">{c.name}</p><FitPill score={c.score} /></div>
-                      <Links c={c} />
-                      <BatchPill name={c.batch_name} color={c.batch_color} />
-                      <p className={cn("text-[11px] leading-snug", line.tone === "red" ? "text-red-600 dark:text-red-400" : line.tone === "amber" ? "text-amber-600 dark:text-amber-400" : line.tone === "green" ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>{line.text}</p>
+                      <Links c={c} linkedin={false} />
+                      {showLine && (line.tone === "amber" || line.tone === "red"
+                        // A problem is a small pill; the full message shows instantly on hover (InfoTip) and in the drawer.
+                        ? <InfoTip text={line.text} triggerClassName={cn("w-fit cursor-help gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-semibold", TONE[line.tone])}><AlertTriangle className="size-3 shrink-0" /><span className="truncate">{problemLabel(c, line.text)}</span></InfoTip>
+                        : <p className="text-[11px] leading-snug text-muted-foreground">{line.text}</p>)}
                       <Decide c={c} busy={busy} onDecide={run} />
                     </div>
                   );
@@ -394,12 +407,70 @@ export function ScoredOrgsKanban({ data, error, loading, onDecide, onShowHidden,
             </div>
           );
         })}
-        <div className="flex w-28 shrink-0 flex-col items-center gap-2 rounded-lg border border-dashed border-border px-2 py-3 text-center">
-          <span className="eyebrow">Hidden</span>
-          <span className="font-mono text-xl font-bold text-muted-foreground">{data.counts.hidden}</span>
-          <Button type="button" variant="link" onClick={onShowHidden} className="h-auto p-0 text-xs">Show</Button>
-        </div>
       </div>
     </div>
+  );
+}
+
+// ── drawer for a scored company that is not an organization yet ──────────────
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div className="space-y-0.5"><p className="eyebrow">{label}</p><div className="text-sm">{children}</div></div>;
+}
+
+/** Everything we know about a scored company, in the same right-hand drawer style
+ *  as an organization. Used for companies that have no organization yet (not
+ *  approved / no contact added) — approved ones open the normal org drawer. */
+export function ScoredCompanyDrawer({ company, onClose, onDecide, onFilterBatch }: {
+  company: ScoredCompany | null; onClose: () => void; onDecide: (ids: string[], a: DecideAction) => Promise<void>;
+  /** Clicking the batch filters the board to that batch. */
+  onFilterBatch: (searchId: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [onClose]);
+  const c = company;
+  const run = async (ids: string[], a: DecideAction) => { setBusy(true); try { await onDecide(ids, a); } finally { setBusy(false); } };
+  const site = c ? (c.website_url ?? (c.domain ? `https://${c.domain}` : null)) : null;
+  const line = c ? statusLine(c) : null;
+
+  return (
+    <>
+      <div className={cn("fixed inset-0 z-50 bg-black/40 transition-opacity duration-200", c ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0")} onClick={onClose} />
+      <div className={cn("fixed right-0 top-0 z-60 flex h-full w-[480px] max-w-[95vw] flex-col border-l border-border bg-card shadow-2xl transition-transform duration-300 ease-in-out", c ? "translate-x-0" : "translate-x-full")}>
+        {c && line && (
+          <>
+            <div className="swatch-bar-top flex shrink-0 items-center gap-3 border-b border-border p-5">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-secondary"><Building2 className="size-4 text-muted-foreground" /></div>
+              <div className="min-w-0 flex-1">
+                <p className="eyebrow">Scored company</p>
+                <h2 className="mt-0.5 truncate font-display text-lg font-semibold">{c.name}</h2>
+                <button type="button" onClick={() => onFilterBatch(c.search_id)} title="Show only this batch" className="mt-0.5 block max-w-full cursor-pointer text-left hover:opacity-80"><BatchPill name={`Batch: ${c.batch_name}`} color={c.batch_color} /></button>
+              </div>
+              <Button type="button" variant="ghost" size="icon" onClick={onClose} className="size-7 rounded-lg text-muted-foreground hover:text-foreground"><X className="size-4" /></Button>
+            </div>
+            <div className="flex-1 space-y-3 overflow-y-auto p-5">
+              <div className="flex flex-wrap items-center gap-2"><GroupPill group={c.group} status={c.status} /><FitPill score={c.score} /></div>
+              <div className="space-y-4 rounded-xl border border-border bg-field p-4 dark:bg-card">
+                <Row label="Status"><span className={cn(line.tone === "red" ? "text-red-600 dark:text-red-400" : line.tone === "amber" ? "text-amber-600 dark:text-amber-400" : "text-foreground")}>{line.text}</span></Row>
+                {c.reason && <Row label="Why this score"><span className="text-muted-foreground">{c.reason}</span></Row>}
+                <Row label="Batch"><button type="button" onClick={() => onFilterBatch(c.search_id)} title="Show only this batch" className="cursor-pointer text-left text-primary hover:underline">{c.batch_name}</button></Row>
+                {c.domain && <Row label="Domain">{site ? <a href={site} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">{c.domain}<ExternalLink className="size-3" /></a> : c.domain}</Row>}
+                {c.linkedin_url && <Row label="LinkedIn"><a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 break-all text-primary hover:underline">{c.linkedin_url}<ExternalLink className="size-3 shrink-0" /></a></Row>}
+                {c.text_source && <Row label="Read from"><span className="text-muted-foreground">{c.text_source}</span></Row>}
+                {c.contact && (c.contact.first_name || c.contact.email) && (
+                  <Row label="Contact"><span>{[c.contact.first_name, c.contact.title].filter(Boolean).join(", ")}</span>{c.contact.email && <span className="block text-xs text-muted-foreground">{c.contact.email}</span>}</Row>
+                )}
+                {c.last_error && c.status !== "review" && <Row label="Last error"><span className="text-xs text-amber-600 dark:text-amber-400">{c.last_error}</span></Row>}
+                {c.attempts > 0 && <Row label="Attempts"><span className="font-mono text-xs">{c.attempts}</span></Row>}
+              </div>
+            </div>
+            <div className="shrink-0 border-t border-border p-4"><Decide c={c} busy={busy} onDecide={run} /></div>
+          </>
+        )}
+      </div>
+    </>
   );
 }

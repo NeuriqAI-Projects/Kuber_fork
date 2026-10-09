@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -9,10 +9,15 @@ export function InfoTip({
   text,
   className,
   side = "top",
+  children,
+  triggerClassName,
 }: {
   text: string;
   className?: string;
   side?: "top" | "bottom" | "left" | "right";
+  /** Custom trigger (e.g. an error pill) instead of the round "i" icon. */
+  children?: ReactNode;
+  triggerClassName?: string;
 }) {
   const [open, setOpen]     = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
@@ -46,14 +51,14 @@ export function InfoTip({
         type="button"
         tabIndex={0}
         aria-label="More information"
-        className="relative z-10 inline-flex items-center justify-center size-5 rounded-full text-muted-foreground hover:text-foreground transition-colors"
+        className={children ? cn("relative z-10 inline-flex max-w-full items-center", triggerClassName) : "relative z-10 inline-flex items-center justify-center size-5 rounded-full text-muted-foreground hover:text-foreground transition-colors"}
         onMouseEnter={() => { recompute(); setOpen(true); }}
         onMouseLeave={() => setOpen(false)}
         onFocus={() => { recompute(); setOpen(true); }}
         onBlur={() => setOpen(false)}
         onClick={(e) => { e.stopPropagation(); recompute(); setOpen((v) => !v); }}
       >
-        <Info className="size-3" />
+        {children ?? <Info className="size-3" />}
       </button>
 
       {open && coords && mounted && createPortal(
