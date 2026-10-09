@@ -2,6 +2,7 @@
 
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tip";
 
 /** Shared chrome for every segmented tab bar in the app. */
 export const segmentedListClassName =
@@ -25,6 +26,8 @@ export type SegmentedTabOption<T extends string = string> = {
   icon?: LucideIcon;
   count?: number;
   disabled?: boolean;
+  /** Instant hover tooltip for this tab. */
+  tip?: string;
 };
 
 export function SegmentedTabs<T extends string>({
@@ -50,7 +53,7 @@ export function SegmentedTabs<T extends string>({
       {options.map((opt) => {
         const active = value === opt.value;
         const Icon = opt.icon;
-        return (
+        const tab = (
           <button
             key={opt.value}
             type="button"
@@ -79,6 +82,7 @@ export function SegmentedTabs<T extends string>({
             ) : null}
           </button>
         );
+        return opt.tip ? <Tip key={opt.value} text={opt.tip}>{tab}</Tip> : tab;
       })}
     </div>
   );

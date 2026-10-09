@@ -35,6 +35,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
+import { Tip } from "@/components/ui/tip";
 import { AppCheckbox } from "@/components/ui/app-checkbox";
 import { Pill } from "@/components/ui/pill";
 import { MultiSelectDropdown, type DropdownOption } from "@/components/ui/multi-select-dropdown";
@@ -854,28 +855,31 @@ export default function LeadsPage() {
             onValueChange={setLeadsEntityMode}
             className="shrink-0"
             options={[
-              { value: "individual", label: "Individual", icon: Users },
-              { value: "orgs", label: "Organization", icon: Building2 },
+              { value: "individual", label: "Individual", icon: Users, tip: "One row per person." },
+              { value: "orgs", label: "Organization", icon: Building2, tip: "One row per company, including scored companies waiting for review." },
             ]}
           />
 
           {role === "manager" && (
-            <Button
-              size="sm" variant="outline" className="gap-1.5"
-              disabled={checkedIds.size === 0}
-              onClick={() => { if (checkedIds.size > 0) { setAssignOverwriteConfirmed(false); setAssignSkipAssigned(false); setShowBulkAssign(true); } }}
-            >
-              <UserPlus className="size-3.5" /> Assign{checkedIds.size > 0 ? ` (${checkedIds.size})` : ""}
-            </Button>
+            <Tip text={checkedIds.size === 0 ? "Select leads first, then give them to a team member." : "Give the selected leads to a team member."}>
+              <Button
+                size="sm" variant="outline" className="gap-1.5"
+                disabled={checkedIds.size === 0}
+                onClick={() => { if (checkedIds.size > 0) { setAssignOverwriteConfirmed(false); setAssignSkipAssigned(false); setShowBulkAssign(true); } }}
+              >
+                <UserPlus className="size-3.5" /> Assign{checkedIds.size > 0 ? ` (${checkedIds.size})` : ""}
+              </Button>
+            </Tip>
           )}
-          <Button
-            size="sm" className="gap-1.5"
-            disabled={!canCreateCampaign}
-            title={!canCreateCampaign ? "Only enriched leads with a domain can be added to campaigns" : undefined}
-            onClick={() => { setShowCreateCampaign(true); }}
-          >
-            <Megaphone className="size-3.5" /> Create campaign{eligibleCheckedCount > 0 ? ` (${eligibleCheckedCount})` : ""}
-          </Button>
+          <Tip text={!canCreateCampaign ? "Only enriched leads with a domain can be added to campaigns. Select some first." : "Start a campaign from the selected leads."}>
+            <Button
+              size="sm" className="gap-1.5"
+              disabled={!canCreateCampaign}
+              onClick={() => { setShowCreateCampaign(true); }}
+            >
+              <Megaphone className="size-3.5" /> Create campaign{eligibleCheckedCount > 0 ? ` (${eligibleCheckedCount})` : ""}
+            </Button>
+          </Tip>
           {someChecked && (
             <Button
               type="button"
@@ -895,26 +899,30 @@ export default function LeadsPage() {
               value={leadsViewMode}
               onValueChange={setLeadsViewMode}
               options={[
-                { value: "list", label: "List", icon: List },
-                { value: "kanban", label: "Kanban", icon: Kanban },
+                { value: "list", label: "List", icon: List, tip: "Show as a table." },
+                { value: "kanban", label: "Kanban", icon: Kanban, tip: "Show as columns by stage." },
               ]}
             />
           )}
-          <Button
-            variant="outline" size="sm" className="gap-1.5"
-            disabled={loadingLeads}
-            onClick={() => {
-              if (!session) return;
-              void loadLeads(session.access_token);
-            }}
-          >
-            <RefreshCw className={cn("size-3.5", loadingLeads && "animate-spin")} />
-            Refresh
-          </Button>
-          {role === "manager" && (
-            <Button size="sm" onClick={() => setShowAddLeads(true)} className="gap-1.5">
-              <Plus className="size-3.5" /> Add leads
+          <Tip text="Reload the latest data.">
+            <Button
+              variant="outline" size="sm" className="gap-1.5"
+              disabled={loadingLeads}
+              onClick={() => {
+                if (!session) return;
+                void loadLeads(session.access_token);
+              }}
+            >
+              <RefreshCw className={cn("size-3.5", loadingLeads && "animate-spin")} />
+              Refresh
             </Button>
+          </Tip>
+          {role === "manager" && (
+            <Tip text="Import leads from Apollo, Excel or add one manually.">
+              <Button size="sm" onClick={() => setShowAddLeads(true)} className="gap-1.5">
+                <Plus className="size-3.5" /> Add leads
+              </Button>
+            </Tip>
           )}
         </div>
       </div>
@@ -936,14 +944,16 @@ export default function LeadsPage() {
       {/* ── Search + Columns toolbar ── */}
       {(leadsEntityMode === "orgs" || (leadsEntityMode === "individual" && (leadsViewMode === "list" || leadsViewMode === "kanban"))) && (
         <div className="flex items-center gap-3 px-8 py-3 border-b border-border shrink-0 bg-secondary">
-          <SearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder={leadsEntityMode === "orgs" ? "Search organizations…" : "Search leads or organization…"}
-            size="sm"
-            wrapperClassName="flex-1 max-w-xs"
-            className="bg-field"
-          />
+          <Tip block text={leadsEntityMode === "orgs" ? "Search by company name." : "Search by lead name, email or company."} className="flex-1 max-w-xs">
+            <SearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder={leadsEntityMode === "orgs" ? "Search organizations…" : "Search leads or organization…"}
+              size="sm"
+              wrapperClassName="w-full"
+              className="bg-field"
+            />
+          </Tip>
           {leadsEntityMode === "individual" && someChecked && role === "manager" && (
             <Button
               size="sm" variant="destructive" className="gap-1.5 text-white!"
@@ -953,6 +963,7 @@ export default function LeadsPage() {
             </Button>
           )}
           <div className="ml-auto flex items-center gap-3">
+            <Tip text="Order the list.">
             <Select value={leadsSort} onValueChange={(value) => setLeadsSort(value as LeadsSort)}>
               <SelectTrigger className="h-8 w-36 gap-2 rounded-md border-border bg-field px-3 text-xs shadow-sm">
                 <SelectValue placeholder="Sort by" />
@@ -964,7 +975,9 @@ export default function LeadsPage() {
                 <SelectItem value="za">Z – A</SelectItem>
               </SelectContent>
             </Select>
+            </Tip>
             {leadsEntityMode === "individual" && (
+              <Tip text="Filter by status, owner, source, batch and date.">
               <Button
                 type="button"
                 variant={isFiltersEmpty(filters) ? "outline" : "default"}
@@ -980,8 +993,10 @@ export default function LeadsPage() {
                   </span>
                 )}
               </Button>
+              </Tip>
             )}
             {leadsEntityMode === "orgs" && (
+              <Tip text="Filter companies by stage and batch.">
               <Button
                 type="button"
                 variant={scoredFilterActive(scoredFilter) ? "default" : "outline"}
@@ -997,6 +1012,7 @@ export default function LeadsPage() {
                   </span>
                 )}
               </Button>
+              </Tip>
             )}
             {leadsEntityMode === "orgs" && !scoredView ? (
               <ColumnsDropdown

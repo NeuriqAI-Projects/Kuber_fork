@@ -1339,6 +1339,8 @@ export async function saveCampaignSteps(
   published?: boolean;
   /** How many follow-ups are being written before the change goes live. */
   preparing?: number;
+  /** Per step whose default text changed: unsent default-text follow-ups rewritten. */
+  refreshed?: { step: number; updated: number; alreadySent: number; kept: number; pushFailed: number }[];
 }> {
   return apiFetch(`/api/v1/campaigns/${campaignId}/steps`, {
     method: "PUT",
