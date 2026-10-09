@@ -143,7 +143,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   if (loadingSession) {
     return (
       <div className="h-screen flex bg-background overflow-hidden">
-        <aside className="w-56 shrink-0 border-r border-border flex flex-col bg-card animate-pulse">
+        <aside className="w-60 shrink-0 border-r border-border flex flex-col bg-card animate-pulse">
           <div className="px-4 py-5 border-b border-border flex items-center gap-2.5">
             <div className="size-8 bg-secondary rounded-lg" />
             <div className="h-4 w-16 bg-secondary rounded" />
@@ -192,7 +192,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
         <aside
           className={cn(
             "shrink-0 border-r border-border flex flex-col bg-card transition-[width] duration-200",
-            sidebarCollapsed ? "w-16" : "w-56",
+            sidebarCollapsed ? "w-16" : "w-60",
           )}
         >
           <div
@@ -240,7 +240,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                   }}
                   className={cn(
                     "w-full flex items-center rounded-lg text-sm font-medium transition-colors relative",
-                    sidebarCollapsed ? "justify-center px-0 py-2.5" : "gap-2.5 px-3 py-2",
+                    sidebarCollapsed ? "justify-center px-0 py-2.5" : "gap-2 px-3 py-2",
                     active
                       ? "swatch-bar bg-primary/10 text-primary font-semibold"
                       : "text-muted-foreground hover:bg-secondary hover:text-foreground",
@@ -249,7 +249,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
                   <Icon className="size-4 shrink-0" />
                   {!sidebarCollapsed && <span className="flex-1 text-left">{label}</span>}
                   {label === "Leads" && scoredToReview > 0 && !sidebarCollapsed && (
-                    <span title={`${scoredToReview} scored companies need your review`} className="font-mono text-[10px] font-semibold rounded-full px-1.5 py-0.5 tabular-nums bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                    // One line: nowrap + the sans font (mono made "240 to review" ~30% wider)
+                    // + a slightly wider sidebar (w-60) so it fits beside the lead count.
+                    <span title={`${scoredToReview} scored companies need your review`} className="inline-flex shrink-0 items-center whitespace-nowrap text-[10px] font-semibold rounded-full px-1.5 py-0.5 tabular-nums bg-amber-500/15 text-amber-600 dark:text-amber-400">
                       {scoredToReview} to review
                     </span>
                   )}
@@ -257,7 +259,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                     sidebarCollapsed ? (
                       <span className="absolute top-1 right-1.5 size-1.5 rounded-full bg-primary" />
                     ) : (
-                      <span className="font-mono text-[10px] font-semibold bg-secondary rounded-full px-1.5 py-0.5 tabular-nums">
+                      <span className="shrink-0 whitespace-nowrap font-mono text-[10px] font-semibold bg-secondary rounded-full px-1.5 py-0.5 tabular-nums">
                         {badge}
                       </span>
                     )

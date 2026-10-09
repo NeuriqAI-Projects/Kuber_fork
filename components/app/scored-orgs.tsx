@@ -14,6 +14,7 @@ import { FilterModal } from "@/components/ui/filter-modal";
 import { MultiSelectDropdown, type DropdownOption } from "@/components/ui/multi-select-dropdown";
 import { EmptyState } from "@/components/ui/empty-state";
 import { InfoTip } from "@/components/ui/info-tip";
+import { Tip } from "@/components/ui/tip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getBatchColor } from "@/lib/constants";
 import { GROUP_LABEL, GROUPS, statusLine, type Group, type Tone } from "@/lib/services/prospects/groups";
@@ -135,20 +136,23 @@ function problemLabel(c: ScoredCompany, text: string): string {
 }
 
 function FitPill({ score }: { score: number | null }) {
-  if (score == null) return <span className="text-xs text-muted-foreground">–</span>;
-  return <span className={cn("inline-flex rounded-md border px-1.5 py-0.5 font-mono text-[11px] font-bold tabular-nums", TONE[score >= 7 ? "green" : "gray"])} title={score === 9 ? "Makes the searched products" : score === 7 ? "Other plastic products" : "Not a fit"}>{score}</span>;
+  if (score == null) return <Tip text="Not scored yet."><span className="text-xs text-muted-foreground">–</span></Tip>;
+  const tip = score === 9 ? "Fit score 9: makes the products you searched." : score === 7 ? "Fit score 7: makes other plastic products." : `Fit score ${score}: not a fit.`;
+  // A circle in the primary shade for a real fit (7+); neutral for the rest.
+  return <Tip text={tip}><span className={cn("inline-flex size-7 shrink-0 items-center justify-center rounded-full border font-mono text-xs font-bold tabular-nums", score >= 7 ? "border-primary/25 bg-primary/10 text-primary" : TONE.gray)}>{score}</span></Tip>;
 }
 
-function BatchPill({ name, color }: { name: string; color: string }) {
-  return <span className={cn("inline-flex max-w-full truncate rounded-full border px-2 py-0.5 text-[11px] font-semibold", getBatchColor(color).pill)}>{name}</span>;
+function BatchPill({ name, color, wide = false }: { name: string; color: string; wide?: boolean }) {
+  // Only as wide as its text; a long name is cut with "…" (full name on hover).
+  return <Tip text={`Batch: ${name.replace(/^Batch: /, "")}`} className={wide ? "max-w-full" : "max-w-[150px]"}><span className={cn("inline-flex w-fit min-w-0 max-w-full items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold", getBatchColor(color).pill)}><span className="truncate">{name}</span></span></Tip>;
 }
 
 function Links({ c, linkedin = true }: { c: ScoredCompany; linkedin?: boolean }) {
   const site = c.website_url ?? (c.domain ? `https://${c.domain}` : null);
   return (
     <span className="flex flex-wrap gap-x-2 text-[11px]">
-      {site ? <a href={site} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex max-w-full items-center gap-0.5 text-primary hover:underline"><span className="truncate">{c.domain ?? "Website"}</span><ExternalLink className="size-2.5 shrink-0" /></a> : <span className="text-muted-foreground">No website</span>}
-      {linkedin && c.linkedin_url && <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-0.5 text-primary hover:underline">LinkedIn<ExternalLink className="size-2.5" /></a>}
+      {site ? <Tip text="Open the company website in a new tab."><a href={site} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex max-w-full items-center gap-0.5 text-primary hover:underline"><span className="truncate">{c.domain ?? "Website"}</span><ExternalLink className="size-2.5 shrink-0" /></a></Tip> : <span className="text-muted-foreground">No website</span>}
+      {linkedin && c.linkedin_url && <Tip text="Open the LinkedIn page in a new tab."><a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-0.5 text-primary hover:underline">LinkedIn<ExternalLink className="size-2.5" /></a></Tip>}
     </span>
   );
 }
@@ -159,15 +163,15 @@ function Decide({ c, busy, onDecide, large = false }: { c: ScoredCompany; busy: 
   const btn = large ? "h-10 flex-1 gap-1.5 px-4 text-sm [&_svg]:size-4" : "h-7 gap-1 px-2 text-xs [&_svg]:size-3";
   const row = large ? "flex gap-2" : "flex justify-end gap-1.5";
   if (c.status === "rejected") {
-    return <span className={large ? "flex" : "flex justify-end"}><Button size="sm" variant="outline" disabled={busy} onClick={act("undo")} className={cn(btn, "border-amber-500/50 text-amber-500 hover:bg-amber-500/10 hover:text-amber-500")}><Undo2 />Undo</Button></span>;
+    return <span className={large ? "flex" : "flex justify-end"}><Tip text="Move back to Needs review." className={large ? "flex-1" : undefined}><Button size="sm" variant="outline" disabled={busy} onClick={act("undo")} className={cn(btn, "w-full border-amber-500/50 text-amber-500 hover:bg-amber-500/10 hover:text-amber-500")}><Undo2 />Undo</Button></Tip></span>;
   }
   if (c.group !== "review" && c.status !== "hidden") return null;
   return (
     <span className={row}>
       {c.status === "site_down"
-        ? <Button size="sm" variant="outline" disabled={busy} onClick={act("retry")} className={btn}><RotateCcw />Retry</Button>
-        : <Button size="sm" disabled={busy} onClick={act("approve")} className={btn}><Check />Approve</Button>}
-      <Button size="sm" variant="outline" disabled={busy} onClick={act("reject")} className={btn}><X />Decline</Button>
+        ? <Tip text="Read the website again (1 Firecrawl credit)." className={large ? "flex-1" : undefined}><Button size="sm" variant="outline" disabled={busy} onClick={act("retry")} className={cn(btn, "w-full")}><RotateCcw />Retry</Button></Tip>
+        : <Tip text="Reveal one contact at this company (1 Apollo credit)." className={large ? "flex-1" : undefined}><Button size="sm" disabled={busy} onClick={act("approve")} className={cn(btn, "w-full")}><Check />Approve</Button></Tip>}
+      <Tip text="Skip this company. You can undo it." className={large ? "flex-1" : undefined}><Button size="sm" variant="outline" disabled={busy} onClick={act("reject")} className={cn(btn, "w-full")}><X />Decline</Button></Tip>
     </span>
   );
 }
@@ -265,6 +269,7 @@ export function ScoredFiltersDialog({ open, onOpenChange, value, onApply, data }
     >
       <MultiSelectDropdown
         label="Status"
+        hint="Show only companies in these stages."
         options={statusOptions}
         selected={statusSelected}
         onChange={(next) => setDraft((d) => ({ ...d, groups: [...next].filter((g) => g !== "hidden"), hidden: next.has("hidden") }))}
@@ -272,6 +277,7 @@ export function ScoredFiltersDialog({ open, onOpenChange, value, onApply, data }
       {batchOptions.length > 0 && (
         <MultiSelectDropdown
           label="Batch"
+          hint="Show only companies from these searches."
           options={batchOptions}
           selected={new Set(draft.searchIds)}
           onChange={(next) => setDraft((d) => ({ ...d, searchIds: [...next] }))}
@@ -347,6 +353,14 @@ const KANBAN_COLS: { id: Group; dot: string }[] = [
 ];
 // Only shown when "Hidden" is picked in Filters > Status.
 const HIDDEN_COL: { id: Group; dot: string } = { id: "hidden", dot: "bg-muted-foreground/50" };
+const COL_TIP: Record<Group, string> = {
+  checking: "We're reading the company's website (or LinkedIn if the site is down) and an AI is scoring whether they make plastic products.",
+  review: "The AI wasn't sure, or couldn't read the site. Approve to add a contact, or Decline.",
+  good: "The AI is confident they make what you searched. A contact is found automatically.",
+  approved: "Approved, so one contact is revealed and added as a lead (uses 1 Apollo credit).",
+  declined: "You declined these. Nothing is spent. Undo sends one back to Needs review.",
+  hidden: "The AI thinks these aren't plastic makers. Approve one if it got it wrong.",
+};
 
 export function ScoredOrgsKanban({ data, error, loading, groups, showHidden, onDecide, onOpenCompany }: {
   data: ScoredData | null; error: string | null; loading: boolean; groups: Group[]; showHidden: boolean;
@@ -375,7 +389,7 @@ export function ScoredOrgsKanban({ data, error, loading, groups, showHidden, onD
             <div key={col.id} className="flex min-w-0 flex-col gap-2">
               <div className="swatch-bar flex items-center gap-1.5 overflow-hidden rounded-lg border bg-field px-2.5 py-2">
                 <span className={cn("size-2 shrink-0 rounded-full", col.dot)} />
-                <span className="eyebrow truncate text-foreground/80!">{GROUP_LABEL[col.id]}</span>
+                <span className="eyebrow truncate text-foreground/80!">{GROUP_LABEL[col.id]}</span><InfoTip text={COL_TIP[col.id]} />
                 <span className="ml-auto shrink-0 rounded-full bg-secondary px-1.5 py-0.5 font-mono text-[10px] font-medium tabular-nums text-muted-foreground">{data.counts[col.id]}</span>
               </div>
               {col.id === "checking" && checking.map((s) => (
@@ -393,14 +407,18 @@ export function ScoredOrgsKanban({ data, error, loading, groups, showHidden, onD
                   // plastic maker" just repeat the column or add noise.
                   const showLine = col.id === "checking" || col.id === "review" || line.tone === "red" || line.tone === "amber";
                   return (
-                    <div key={c.id} onClick={() => onOpenCompany(c)} className={cn("cursor-pointer space-y-1.5 rounded-lg border bg-field p-2.5 shadow-sm hover:border-muted-foreground/50", c.status === "site_down" ? "border-red-500/30" : c.group === "review" ? "border-amber-500/30" : "border-border")}>
+                    <div key={c.id} onClick={() => onOpenCompany(c)} className={cn("flex min-h-[130px] cursor-pointer flex-col gap-2.5 rounded-lg border bg-field p-3.5 shadow-sm hover:border-muted-foreground/50", c.status === "site_down" ? "border-red-500/30" : c.group === "review" ? "border-amber-500/30" : "border-border")}>
                       <div className="flex items-start justify-between gap-2"><p className="text-xs font-semibold leading-snug">{c.name}</p><FitPill score={c.score} /></div>
                       <Links c={c} linkedin={false} />
-                      {showLine && (line.tone === "amber" || line.tone === "red"
-                        // A problem is a small pill; the full message shows instantly on hover (InfoTip) and in the drawer.
-                        ? <InfoTip text={line.text} triggerClassName={cn("w-fit cursor-help gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-semibold", TONE[line.tone])}><AlertTriangle className="size-3 shrink-0" /><span className="truncate">{problemLabel(c, line.text)}</span></InfoTip>
-                        : <p className="text-[11px] leading-snug text-muted-foreground">{line.text}</p>)}
-                      <Decide c={c} busy={busy} onDecide={run} />
+                      {/* Batch and status/problem pill share one line (wrapping only when they must). */}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <BatchPill name={c.batch_name} color={c.batch_color} />
+                        {showLine && (line.tone === "amber" || line.tone === "red"
+                          // A problem is a small pill; the full message shows instantly on hover (InfoTip) and in the drawer.
+                          ? <InfoTip text={problemLabel(c, line.text) === "AI unsure" ? "The AI couldn't decide, so it's your call." : line.text} triggerClassName={cn("w-fit cursor-help gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-semibold", TONE[line.tone])}><AlertTriangle className="size-3 shrink-0" /><span className="truncate">{problemLabel(c, line.text)}</span></InfoTip>
+                          : <span className="text-[11px] leading-snug text-muted-foreground">{line.text}</span>)}
+                      </div>
+                      {(c.status === "rejected" || c.group === "review" || c.status === "hidden") && <div className="mt-auto"><Decide c={c} busy={busy} onDecide={run} /></div>}
                     </div>
                   );
                 })}
@@ -416,8 +434,8 @@ export function ScoredOrgsKanban({ data, error, loading, groups, showHidden, onD
 }
 
 // ── drawer for a scored company that is not an organization yet ──────────────
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div className="space-y-0.5"><p className="eyebrow">{label}</p><div className="text-sm">{children}</div></div>;
+function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return <div className="space-y-0.5"><p className="eyebrow flex items-center gap-1">{label}{hint && <InfoTip text={hint} side="right" />}</p><div className="text-sm">{children}</div></div>;
 }
 
 /** Everything we know about a scored company, in the same right-hand drawer style
@@ -450,7 +468,7 @@ export function ScoredCompanyDrawer({ company, onClose, onDecide, onFilterBatch 
               <div className="min-w-0 flex-1">
                 <p className="eyebrow">Scored company</p>
                 <h2 className="mt-0.5 truncate font-display text-lg font-semibold">{c.name}</h2>
-                <button type="button" onClick={() => onFilterBatch(c.search_id)} title="Show only this batch" className="mt-0.5 block max-w-full cursor-pointer text-left hover:opacity-80"><BatchPill name={`Batch: ${c.batch_name}`} color={c.batch_color} /></button>
+                <button type="button" onClick={() => onFilterBatch(c.search_id)} aria-label="Show only this batch" className="mt-0.5 block max-w-full cursor-pointer text-left hover:opacity-80"><BatchPill name={`Batch: ${c.batch_name}`} color={c.batch_color} wide /></button>
               </div>
               <Button type="button" variant="ghost" size="icon" onClick={onClose} className="size-7 rounded-lg text-muted-foreground hover:text-foreground"><X className="size-4" /></Button>
             </div>
@@ -458,16 +476,16 @@ export function ScoredCompanyDrawer({ company, onClose, onDecide, onFilterBatch 
               <div className="flex flex-wrap items-center gap-2"><GroupPill group={c.group} status={c.status} /><FitPill score={c.score} /></div>
               <div className="space-y-4 rounded-xl border border-border bg-field p-4 dark:bg-card">
                 <Row label="Status"><span className={cn(line.tone === "red" ? "text-red-600 dark:text-red-400" : line.tone === "amber" ? "text-amber-600 dark:text-amber-400" : "text-foreground")}>{line.text}</span></Row>
-                {c.reason && <Row label="Why this score"><span className="text-muted-foreground">{c.reason}</span></Row>}
-                <Row label="Batch"><button type="button" onClick={() => onFilterBatch(c.search_id)} title="Show only this batch" className="cursor-pointer text-left text-primary hover:underline">{c.batch_name}</button></Row>
+                {c.reason && <Row label="Why this score" hint="The AI's short reason for the score."><span className="text-muted-foreground">{c.reason}</span></Row>}
+                <Row label="Batch"><Tip text="Click to show only this batch."><button type="button" onClick={() => onFilterBatch(c.search_id)} className="cursor-pointer text-left text-primary hover:underline">{c.batch_name}</button></Tip></Row>
                 {c.domain && <Row label="Domain">{site ? <a href={site} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">{c.domain}<ExternalLink className="size-3" /></a> : c.domain}</Row>}
                 {c.linkedin_url && <Row label="LinkedIn"><a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 break-all text-primary hover:underline">{c.linkedin_url}<ExternalLink className="size-3 shrink-0" /></a></Row>}
-                {c.text_source && <Row label="Read from"><span className="text-muted-foreground">{c.text_source}</span></Row>}
+                {c.text_source && <Row label="Read from" hint="Where the text came from: the website or LinkedIn."><span className="text-muted-foreground">{c.text_source}</span></Row>}
                 {c.contact && (c.contact.first_name || c.contact.email) && (
                   <Row label="Contact"><span>{[c.contact.first_name, c.contact.title].filter(Boolean).join(", ")}</span>{c.contact.email && <span className="block text-xs text-muted-foreground">{c.contact.email}</span>}</Row>
                 )}
                 {c.last_error && c.status !== "review" && <Row label="Last error"><span className="text-xs text-amber-600 dark:text-amber-400">{c.last_error}</span></Row>}
-                {c.attempts > 0 && <Row label="Attempts"><span className="font-mono text-xs">{c.attempts}</span></Row>}
+                {c.attempts > 0 && <Row label="Attempts" hint="How many times we tried to read this company."><span className="font-mono text-xs">{c.attempts}</span></Row>}
               </div>
             </div>
             <div className="shrink-0 border-t border-border p-4"><Decide c={c} busy={busy} onDecide={run} large /></div>

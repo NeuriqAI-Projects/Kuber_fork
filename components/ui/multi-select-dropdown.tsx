@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/utils";
 
 // The multi-select used by every Filters modal (Leads, Organizations). Moved
@@ -20,8 +21,11 @@ export function MultiSelectDropdown<T extends string>({
   options,
   selected,
   onChange,
+  hint,
 }: {
   label: string;
+  /** Help text shown on a round "i" beside the label. */
+  hint?: string;
   options: DropdownOption<T>[];
   selected: Set<T>;
   onChange: (next: Set<T>) => void;
@@ -50,7 +54,7 @@ export function MultiSelectDropdown<T extends string>({
 
   return (
     <div ref={ref} className="relative">
-      <p className="eyebrow mb-2">{label}</p>
+      <p className="eyebrow mb-2 flex items-center gap-1">{label}{hint && <InfoTip text={hint} side="right" />}</p>
       <Button
         type="button"
         variant="outline"
