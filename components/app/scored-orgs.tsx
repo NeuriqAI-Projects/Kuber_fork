@@ -136,11 +136,13 @@ function problemLabel(c: ScoredCompany, text: string): string {
 
 function FitPill({ score }: { score: number | null }) {
   if (score == null) return <span className="text-xs text-muted-foreground">–</span>;
-  return <span className={cn("inline-flex rounded-md border px-1.5 py-0.5 font-mono text-[11px] font-bold tabular-nums", TONE[score >= 7 ? "green" : "gray"])} title={score === 9 ? "Makes the searched products" : score === 7 ? "Other plastic products" : "Not a fit"}>{score}</span>;
+  // A circle in the primary shade for a real fit (7+); neutral for the rest.
+  return <span className={cn("inline-flex size-7 shrink-0 items-center justify-center rounded-full border font-mono text-xs font-bold tabular-nums", score >= 7 ? "border-primary/25 bg-primary/10 text-primary" : TONE.gray)} title={score === 9 ? "Makes the searched products" : score === 7 ? "Other plastic products" : "Not a fit"}>{score}</span>;
 }
 
-function BatchPill({ name, color }: { name: string; color: string }) {
-  return <span className={cn("inline-flex max-w-full truncate rounded-full border px-2 py-0.5 text-[11px] font-semibold", getBatchColor(color).pill)}>{name}</span>;
+function BatchPill({ name, color, wide = false }: { name: string; color: string; wide?: boolean }) {
+  // Only as wide as its text; a long name is cut with "…" (full name on hover).
+  return <span title={name} className={cn("inline-flex w-fit items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold", wide ? "max-w-full" : "max-w-[150px]", getBatchColor(color).pill)}><span className="truncate">{name}</span></span>;
 }
 
 function Links({ c, linkedin = true }: { c: ScoredCompany; linkedin?: boolean }) {
@@ -393,14 +395,18 @@ export function ScoredOrgsKanban({ data, error, loading, groups, showHidden, onD
                   // plastic maker" just repeat the column or add noise.
                   const showLine = col.id === "checking" || col.id === "review" || line.tone === "red" || line.tone === "amber";
                   return (
-                    <div key={c.id} onClick={() => onOpenCompany(c)} className={cn("cursor-pointer space-y-1.5 rounded-lg border bg-field p-2.5 shadow-sm hover:border-muted-foreground/50", c.status === "site_down" ? "border-red-500/30" : c.group === "review" ? "border-amber-500/30" : "border-border")}>
+                    <div key={c.id} onClick={() => onOpenCompany(c)} className={cn("flex min-h-[130px] cursor-pointer flex-col gap-2.5 rounded-lg border bg-field p-3.5 shadow-sm hover:border-muted-foreground/50", c.status === "site_down" ? "border-red-500/30" : c.group === "review" ? "border-amber-500/30" : "border-border")}>
                       <div className="flex items-start justify-between gap-2"><p className="text-xs font-semibold leading-snug">{c.name}</p><FitPill score={c.score} /></div>
                       <Links c={c} linkedin={false} />
-                      {showLine && (line.tone === "amber" || line.tone === "red"
-                        // A problem is a small pill; the full message shows instantly on hover (InfoTip) and in the drawer.
-                        ? <InfoTip text={line.text} triggerClassName={cn("w-fit cursor-help gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-semibold", TONE[line.tone])}><AlertTriangle className="size-3 shrink-0" /><span className="truncate">{problemLabel(c, line.text)}</span></InfoTip>
-                        : <p className="text-[11px] leading-snug text-muted-foreground">{line.text}</p>)}
-                      <Decide c={c} busy={busy} onDecide={run} />
+                      {/* Batch and status/problem pill share one line (wrapping only when they must). */}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <BatchPill name={c.batch_name} color={c.batch_color} />
+                        {showLine && (line.tone === "amber" || line.tone === "red"
+                          // A problem is a small pill; the full message shows instantly on hover (InfoTip) and in the drawer.
+                          ? <InfoTip text={line.text} triggerClassName={cn("w-fit cursor-help gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-semibold", TONE[line.tone])}><AlertTriangle className="size-3 shrink-0" /><span className="truncate">{problemLabel(c, line.text)}</span></InfoTip>
+                          : <span className="text-[11px] leading-snug text-muted-foreground">{line.text}</span>)}
+                      </div>
+                      {(c.status === "rejected" || c.group === "review" || c.status === "hidden") && <div className="mt-auto"><Decide c={c} busy={busy} onDecide={run} /></div>}
                     </div>
                   );
                 })}
@@ -450,7 +456,7 @@ export function ScoredCompanyDrawer({ company, onClose, onDecide, onFilterBatch 
               <div className="min-w-0 flex-1">
                 <p className="eyebrow">Scored company</p>
                 <h2 className="mt-0.5 truncate font-display text-lg font-semibold">{c.name}</h2>
-                <button type="button" onClick={() => onFilterBatch(c.search_id)} title="Show only this batch" className="mt-0.5 block max-w-full cursor-pointer text-left hover:opacity-80"><BatchPill name={`Batch: ${c.batch_name}`} color={c.batch_color} /></button>
+                <button type="button" onClick={() => onFilterBatch(c.search_id)} title="Show only this batch" className="mt-0.5 block max-w-full cursor-pointer text-left hover:opacity-80"><BatchPill name={`Batch: ${c.batch_name}`} color={c.batch_color} wide /></button>
               </div>
               <Button type="button" variant="ghost" size="icon" onClick={onClose} className="size-7 rounded-lg text-muted-foreground hover:text-foreground"><X className="size-4" /></Button>
             </div>
