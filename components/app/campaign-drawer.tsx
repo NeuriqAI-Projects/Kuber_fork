@@ -4874,7 +4874,7 @@ export function CampaignDetail({
                           <p className="text-sm text-green-400 flex items-center gap-1.5 mr-1">
                             <CheckCircle2 className="size-4" /> Certified. Ready to send.
                           </p>
-                          <Button variant="outline" className="gap-1.5" disabled={certifying} onClick={handleReopen}>
+                          <Button variant="outline" className="gap-1.5 border-amber-500/50 text-amber-500 hover:bg-amber-500/10 hover:text-amber-500" disabled={certifying} onClick={handleReopen}>
                             <RotateCcw className="size-3.5" /> Undo certify
                           </Button>
                         </>
