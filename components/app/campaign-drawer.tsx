@@ -4784,7 +4784,6 @@ export function CampaignDetail({
                         onChange={setEditBody}
                         disabled={isPreviewingHistory || selected.email_drafts.status === "approved"}
                         templateVars={LEAD_TEMPLATE_VARS}
-                        tables
                         minHeight={360}
                       />
                     </div>
@@ -5496,7 +5495,7 @@ export function CampaignDetail({
 
                         {row.written ? (
                           seqEditingDraftId === row.draft?.id ? (
-                            <RichTextEditor value={seqEditBody} onChange={setSeqEditBody} templateVars={LEAD_TEMPLATE_VARS} tables />
+                            <RichTextEditor value={seqEditBody} onChange={setSeqEditBody} templateVars={LEAD_TEMPLATE_VARS} />
                           ) : (
                             <div
                               className="text-sm leading-relaxed [&_p]:mb-2"

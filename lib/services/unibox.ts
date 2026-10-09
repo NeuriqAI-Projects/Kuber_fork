@@ -475,6 +475,8 @@ function sanitizeBodyHtml(html: string | null): string | null {
     allowedAttributes: {
       a: ["href", "target", "rel"],
       img: ["src", "alt"],
+      // Keep the grid on a table we sent (see the border rule in globals.css).
+      table: ["border", "cellpadding", "cellspacing"],
     },
     allowedSchemes: ["http", "https", "mailto"],
     transformTags: {
