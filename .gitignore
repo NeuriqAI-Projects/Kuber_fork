@@ -20,3 +20,12 @@ TESTING_HANDOFF.md
 
 # Playwright run artifacts
 scripts/e2e-shots/
+
+# Local-only: deploy clone nested here, throwaway scripts, Supabase CLI cache
+Deployed/
+scripts/_*
+supabase/.temp/
+# Live-app e2e runs: hold team emails (PII) — never commit
+scripts/e2e-full-*.mjs
+scripts/e2e-net-probe.mjs
+scripts/e2e-reply-*.mjs

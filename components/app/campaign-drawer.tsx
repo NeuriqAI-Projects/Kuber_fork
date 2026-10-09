@@ -5,7 +5,7 @@ import {
   Megaphone, Users, Send, MessageSquare, Clock, Gauge, ArrowUp,
   Globe, Calendar, ExternalLink, Loader2, CheckCircle2, RotateCcw, RefreshCw, Check, Save, History, ChevronDown, ArrowLeft,
   List, LayoutGrid, BarChart2, Flame, Snowflake, ThumbsDown, Layers, Paperclip, X, Sparkles, Pencil, Reply, AlertTriangle,
-  Building2, MapPin, ReplyAll, CornerDownRight, UserPlus, UserMinus, ArrowRight, PauseCircle, PlayCircle, DollarSign,
+  Building2, MapPin, ReplyAll, CornerDownRight, UserPlus, UserMinus, ArrowRight, PauseCircle, PlayCircle, DollarSign, Eye, Activity,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -204,6 +204,10 @@ type CampaignLead = {
   crm_status: string;
   lead_temperature: string | null;
   created_at: string;
+  /** First time this lead opened one of our emails, from Instantly's
+   *  email_opened webhook. Null if never opened (or tracking is off). */
+  opened_at?: string | null;
+  opened_step?: number | null;
   leads: {
     first_name: string | null;
     last_name: string | null;
@@ -529,7 +533,7 @@ const AUTHOR_FILTERS = [
 type AuthorFilterId = (typeof AUTHOR_FILTERS)[number]["id"];
 const authorFilter = (id: string) => AUTHOR_FILTERS.find((f) => f.id === id);
 
-type CampaignViewTab = "analytics" | "leads" | "outbox" | "sequences" | "options" | "discussion";
+type CampaignViewTab = "analytics" | "leads" | "outbox" | "sequences" | "activity" | "options" | "discussion";
 
 function DraftStatusBadge({
   label,
@@ -938,6 +942,8 @@ export function CampaignDetail({
   // about a single step answered a question nobody was asking — and read as
   // nonsense next to it ("To be sent (0)" beside a lead with three still to go).
   const [seqLeadFilter, setSeqLeadFilter] = useState<"all" | "active" | "replied" | "bounced" | "template">("all");
+  const [activityFilter, setActivityFilter] = useState<"all" | "opened" | "not_opened">("all");
+  const [activitySearch, setActivitySearch] = useState("");
   const [seqLeadSearch, setSeqLeadSearch] = useState("");
   const [seqLeadRegenerating, setSeqLeadRegenerating] = useState<string | null>(null);
   /** Hold sending: campaign-wide, not per lead.
@@ -2750,6 +2756,15 @@ export function CampaignDetail({
   // fallback before the first load — never show campaign-wide totals once we
   // have the employee's own rows.
   const scopedStats = computeCampaignStats(campaignLeads);
+  // Computed straight from campaignLeads (not the report/scopedStats fallback
+  // chain the other tiles use) — this is a real count of a real column, not
+  // an estimate, so it should read as exactly right the moment leads load.
+  const campaignLeadsOpenedCount = campaignLeads.filter((cl) => !!cl.opened_at).length;
+  // A lead can only open what reached their inbox. first_sent_at is set by
+  // Instantly's email_sent webhook, so a lead without it (still a draft, or
+  // queued but not delivered) is "not sent yet", never "not opened".
+  const activityDelivered = (cl: CampaignLead) => !!cl.first_sent_at || !!cl.opened_at;
+  const campaignLeadsDeliveredCount = campaignLeads.filter(activityDelivered).length;
   const analyticsTotalLeads = report?.totals.leads ?? (!loading ? scopedStats.total_leads : (campaign.leads ?? 0));
   const analyticsSent = report?.totals.sent ?? (!loading ? scopedStats.sent_count : (campaign.sent ?? 0));
   const analyticsReplied = report?.totals.replied ?? (!loading ? scopedStats.replied_count : (campaign.replied ?? 0));
@@ -2948,6 +2963,7 @@ export function CampaignDetail({
     { value: "leads" as const,     label: "Leads",     icon: List,   count: analyticsTotalLeads },
     { value: "outbox" as const,    label: "Outbox",    icon: Send,   count: outboxActionableCount || undefined },
     { value: "sequences" as const, label: "Sequences", icon: Layers },
+    { value: "activity" as const,  label: "Activity",  icon: Activity, count: campaignLeadsOpenedCount || undefined },
     { value: "options" as const,   label: "Options",   icon: Gauge },
     { value: "discussion" as const, label: "Discussion", icon: MessageSquare, count: comments.length },
   ];
@@ -5927,6 +5943,135 @@ export function CampaignDetail({
               )}
             </div>
           </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Activity ──────────────────────────────────────────────────────── */}
+      {viewTab === "activity" && (
+        <div className="flex flex-col flex-1 min-h-0">
+          {/* Header row — same layout as the Leads tab's: search, then a
+              filter dropdown right next to it. */}
+          <div className="px-6 py-3 border-b border-border shrink-0 flex items-center gap-3 flex-wrap">
+            <SearchInput
+              value={activitySearch}
+              onChange={setActivitySearch}
+              placeholder="Search leads…"
+              size="sm"
+              wrapperClassName="flex-1 min-w-36 max-w-xs"
+            />
+            <Select value={activityFilter} onValueChange={(v) => setActivityFilter(v as typeof activityFilter)}>
+              <SelectTrigger className="h-8 w-40 gap-2 rounded-md px-3 text-xs shadow-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="start" className="min-w-40">
+                <SelectItem value="all">All ({campaignLeads.length})</SelectItem>
+                <SelectItem value="opened">Opened ({campaignLeadsOpenedCount})</SelectItem>
+                <SelectItem value="not_opened">Not opened yet ({campaignLeadsDeliveredCount - campaignLeadsOpenedCount})</SelectItem>
+              </SelectContent>
+            </Select>
+            <InfoTooltip text="Whether a lead has opened one of our emails, per Instantly's own open tracking. Requires open tracking to be turned on for this campaign in Instantly — if it's off, every lead here reads as not opened even if they read it." />
+          </div>
+
+          {/* Instantly only reports opens when open tracking is on for the
+              campaign, and Kuber creates campaigns with it off (Instantly's
+              own advice for cold email: the pixel can hurt inbox placement).
+              On 27 Sep 2026: 4,230 sends reported, 0 opens. Say so rather than
+              let "Not opened" read as nobody reading. */}
+          {campaignLeadsDeliveredCount > 0 && campaignLeadsOpenedCount === 0 && (
+            <div className="px-6 pt-3 shrink-0">
+              <p className="rounded-md border border-border bg-field px-3 py-2 text-xs text-muted-foreground">
+                No opens recorded yet. Open tracking is off in Instantly for this campaign, so opens aren&apos;t reported. Replies are the reliable signal.
+              </p>
+            </div>
+          )}
+
+          {/* Table — identical structure/classes to the Leads tab's table. */}
+          <div className="flex-1 min-h-0 overflow-y-auto bg-secondary px-6 py-4">
+            {(() => {
+              const q = activitySearch.trim().toLowerCase();
+              const rows = campaignLeads
+                .filter((cl) => {
+                  if (activityFilter === "opened" && !cl.opened_at) return false;
+                  if (activityFilter === "not_opened" && (cl.opened_at || !activityDelivered(cl))) return false;
+                  if (!q) return true;
+                  const lead = cl.leads;
+                  const name = [lead?.first_name, lead?.last_name].filter(Boolean).join(" ").toLowerCase();
+                  return name.includes(q) || (lead?.email ?? "").toLowerCase().includes(q) || (lead?.company_name ?? "").toLowerCase().includes(q);
+                })
+                // Most recently opened first, then everyone still unopened.
+                .sort((a, b) => {
+                  if (!a.opened_at && !b.opened_at) return 0;
+                  if (!a.opened_at) return 1;
+                  if (!b.opened_at) return -1;
+                  return new Date(b.opened_at).getTime() - new Date(a.opened_at).getTime();
+                });
+
+              return rows.length === 0 ? (
+                <EmptyState message={activitySearch ? "No leads match your search." : "No leads match this filter."} />
+              ) : (
+                <div className="block w-full rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-x-auto overflow-y-hidden">
+                <table className="w-full text-sm border-collapse">
+                  <thead className="sticky top-0 z-10 bg-secondary backdrop-blur-sm">
+                    <tr className="border-b border-border">
+                      <th className="w-8 px-6 py-2.5 text-left eyebrow border-r border-border">#</th>
+                      <th className="px-6 py-2.5 text-left eyebrow border-r border-border">Name</th>
+                      <th className="px-6 py-2.5 text-left eyebrow border-r border-border">Email</th>
+                      <th className="px-6 py-2.5 text-left eyebrow border-r border-border">Company</th>
+                      <th className="px-6 py-2.5 text-left eyebrow border-r border-border">Status</th>
+                      <th className="px-6 py-2.5 text-left eyebrow border-r border-border">First opened</th>
+                      <th className="px-6 py-2.5 text-left eyebrow">Step</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {rows.map((cl, index) => {
+                      const lead = cl.leads;
+                      const name = [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") || "Unknown";
+                      return (
+                        <tr
+                          key={cl.id}
+                          onClick={() => handleOpenInOutbox(cl.id)}
+                          className="group cursor-pointer transition-colors hover:bg-secondary"
+                        >
+                          <td className="w-8 px-6 py-3 font-mono text-xs text-muted-foreground tabular-nums border-r border-border">{index + 1}</td>
+                          <td className="px-6 py-3 border-r border-border">
+                            <div className="flex items-center gap-2">
+                              <Avatar name={name} size="sm" />
+                              <span className="font-medium truncate max-w-[140px]">{name}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-3 font-mono text-xs text-muted-foreground border-r border-border">
+                            <span className="whitespace-nowrap">{lead?.email}</span>
+                          </td>
+                          <td className="px-6 py-3 text-xs text-muted-foreground border-r border-border">
+                            <span className="truncate block max-w-[140px]">{lead?.company_name ?? "—"}</span>
+                          </td>
+                          <td className="px-6 py-3 border-r border-border">
+                            {cl.opened_at ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap bg-primary/15 text-primary border border-primary/30">
+                                <Eye className="size-3" /> Opened
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md font-mono text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap bg-muted text-muted-foreground border border-border">
+                                {activityDelivered(cl) ? "Not opened" : "Not sent yet"}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-3 font-mono text-xs text-muted-foreground border-r border-border">
+                            <span className="whitespace-nowrap">{cl.opened_at ? format(new Date(cl.opened_at), "d MMM, h:mm a") : "—"}</span>
+                          </td>
+                          <td className="px-6 py-3 font-mono text-xs text-muted-foreground tabular-nums">
+                            {/* opened_step is Instantly's step (1 = opening email). */}
+                            {cl.opened_step ? (cl.opened_step === 1 ? "Opening email" : `Follow-up ${sequenceDisplayStep(cl.opened_step)}`) : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

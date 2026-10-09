@@ -26,12 +26,19 @@ import {
 import { useApp } from "@/lib/app-context";
 import { Avatar, StatusBadge } from "@/components/leads/lead-ui";
 import { KanbanBoard } from "@/components/app/kanban-board";
+import {
+  EMPTY_SCORED_FILTER, GroupPill, RunningSearchesBar, scoredFilterCount, ScoredCompanyDrawer, type ScoredCompany, type DecideAction, ScoredFiltersDialog, ScoredOrgsKanban, ScoredOrgsTable,
+  decideScored, scoredFilterActive, useScoredOrgs, type ScoredFilter,
+} from "@/components/app/scored-orgs";
+import { GROUPS, type Group } from "@/lib/services/prospects/groups";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { AppCheckbox } from "@/components/ui/app-checkbox";
 import { Pill } from "@/components/ui/pill";
+import { MultiSelectDropdown, type DropdownOption } from "@/components/ui/multi-select-dropdown";
+import { FilterModal } from "@/components/ui/filter-modal";
 import { AppRadio } from "@/components/ui/app-radio";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -48,7 +55,6 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   Pagination,
   PaginationContent,
@@ -57,8 +63,8 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import {
-  Users, Megaphone, Plus, List, Kanban, RefreshCw, Columns3, Check,
-  Search, Building2, SlidersHorizontal, X, Trash2, UserPlus, User,
+  Users, Megaphone, Plus, List, Kanban, RefreshCw, Columns3,
+  Building2, SlidersHorizontal, Trash2, UserPlus, User,
 } from "lucide-react";
 
 // ── Types & constants ─────────────────────────────────────────────────────────
@@ -164,7 +170,7 @@ const DEFAULT_VISIBILITY: ColVisibility = Object.fromEntries(
 ) as ColVisibility;
 
 const ORG_COLUMN_DEFS = [
-  { key: "enrichment",  label: "Enrichment",  defaultVisible: true  },
+  { key: "fit_status",  label: "Status",      defaultVisible: true  },
   { key: "domain",      label: "Domain",      defaultVisible: true  },
   { key: "description", label: "Description", defaultVisible: true  },
   { key: "sells_to",    label: "Sells To",    defaultVisible: true  },
@@ -194,23 +200,6 @@ function StatusDot({ status }: { status: LeadStatus }) {
     <span
       className={cn("size-2 rounded-full inline-block", STATUS_DOT[status])}
       title={status}
-    />
-  );
-}
-
-// ── Enrichment pipeline dot ───────────────────────────────────────────────────
-
-function EnrichDot({ stage }: { stage: EnrichmentStage | null }) {
-  const styles: Record<EnrichmentStage, string> = {
-    queued:   "bg-muted-foreground/40",
-    scraping: "bg-yellow-400 animate-pulse",
-    done:     "bg-green-500",
-    failed:   "bg-red-500",
-  };
-  return (
-    <span
-      className={cn("size-2 rounded-full inline-block", stage ? styles[stage] : "bg-border")}
-      title={stage ?? "not queued"}
     />
   );
 }
@@ -305,130 +294,6 @@ function sortOrgs(rows: OrgRow[], sort: LeadsSort): OrgRow[] {
 // ── Filters modal helpers ─────────────────────────────────────────────────────
 
 const ALL_SOURCES: LeadSource[] = ["Apollo", "Excel", "Manual"];
-
-type DropdownOption<T extends string> = {
-  value: T;
-  label: string;
-  dot?: string;
-};
-
-function MultiSelectDropdown<T extends string>({
-  label,
-  options,
-  selected,
-  onChange,
-}: {
-  label: string;
-  options: DropdownOption<T>[];
-  selected: Set<T>;
-  onChange: (next: Set<T>) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  function toggle(val: T) {
-    const next = new Set(selected);
-    if (next.has(val)) next.delete(val); else next.add(val);
-    onChange(next);
-  }
-
-  const filtered = options.filter((o) =>
-    o.label.toLowerCase().includes(search.toLowerCase())
-  );
-
-  return (
-    <div ref={ref} className="relative">
-      <p className="eyebrow mb-2">{label}</p>
-      <Button
-        type="button"
-        variant="outline"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full h-auto min-h-9 flex-wrap justify-start gap-1.5 rounded-md px-3 py-1.5 text-left text-sm font-normal bg-field"
-      >
-        {selected.size === 0 ? (
-          <span className="text-muted-foreground text-xs">Select {label.toLowerCase()}…</span>
-        ) : (
-          options
-            .filter((o) => selected.has(o.value))
-            .map((o) => (
-              <span
-                key={o.value}
-                className="inline-flex items-center gap-1 bg-secondary border border-border rounded px-1.5 py-0.5 text-xs font-medium"
-              >
-                {o.dot && <span className={cn("size-1.5 rounded-full shrink-0", o.dot)} />}
-                {o.label}
-                <span
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => { e.stopPropagation(); toggle(o.value); }}
-                  onKeyDown={(e) => e.key === "Enter" && toggle(o.value)}
-                  className="ml-0.5 text-muted-foreground hover:text-foreground cursor-pointer"
-                >
-                  <X className="size-2.5" />
-                </span>
-              </span>
-            ))
-        )}
-        <span className="ml-auto text-muted-foreground shrink-0">
-          <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        </span>
-      </Button>
-
-      {open && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-md border border-border bg-card shadow-xl overflow-hidden">
-          <div className="px-2 py-1.5 border-b border-border">
-            <div className="flex items-center gap-2 px-1">
-              <Search className="size-3.5 text-muted-foreground shrink-0" />
-              <Input
-                autoFocus
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search or type to add…"
-                className="h-auto flex-1 border-0 bg-transparent px-0 py-0 text-xs shadow-none outline-none placeholder:text-muted-foreground/60"
-              />
-            </div>
-          </div>
-          <div className="max-h-48 overflow-y-auto py-1">
-            {filtered.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-muted-foreground">No results</p>
-            ) : (
-              filtered.map((o) => {
-                const active = selected.has(o.value);
-                return (
-                  <Button
-                    key={o.value}
-                    type="button"
-                    variant="ghost"
-                    onClick={() => toggle(o.value)}
-                    className={cn(
-                      "w-full h-auto justify-start gap-2.5 rounded-none px-3 py-2 text-sm font-normal",
-                      active && "bg-secondary"
-                    )}
-                  >
-                    {o.dot && <span className={cn("size-2 rounded-full shrink-0", o.dot)} />}
-                    <span className="flex-1 text-left">{o.label}</span>
-                    {active && <Check className="size-3.5 text-foreground shrink-0" />}
-                  </Button>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function DateRangePicker({
   from,
@@ -543,22 +408,11 @@ function FiltersModal({
   }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="swatch-bar-top relative z-10 w-full max-w-md rounded-xl border border-border bg-background shadow-xl flex flex-col max-h-[85vh]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
-          <div>
-            <p className="eyebrow">Refine</p>
-            <p className="font-display text-base font-semibold mt-0.5">Filters</p>
-          </div>
-          <Button
-            variant="ghost" size="icon" className="size-7 text-muted-foreground"
-            onClick={onClose}
-          >
-            <X className="size-4" />
-          </Button>
-        </div>
-        <div className="overflow-y-auto px-5 py-5 space-y-5 flex-1">
+    <FilterModal
+      onClose={onClose}
+      onClear={() => setDraft({ statuses: new Set(), assignees: new Set(), sources: new Set(), batchLabels: new Set(), createdFrom: undefined, createdTo: undefined })}
+      onApply={() => { onChange(draft); onClose(); }}
+    >
           <MultiSelectDropdown
             label="Status"
             options={statusOptions}
@@ -597,22 +451,7 @@ function FiltersModal({
             onFromChange={(d) => setDraft((prev) => ({ ...prev, createdFrom: d }))}
             onToChange={(d) => setDraft((prev) => ({ ...prev, createdTo: d }))}
           />
-        </div>
-        <div className="flex items-center justify-between px-5 py-4 border-t border-border shrink-0">
-          <Button
-            variant="ghost" size="sm"
-            onClick={() => setDraft({ statuses: new Set(), assignees: new Set(), sources: new Set(), batchLabels: new Set(), createdFrom: undefined, createdTo: undefined })}
-            className="h-auto p-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
-          >
-            Clear all
-          </Button>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-            <Button size="sm" onClick={() => { onChange(draft); onClose(); }}>Apply</Button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </FilterModal>
   );
 }
 
@@ -676,6 +515,13 @@ export default function LeadsPage() {
     };
   });
   const [showFilters,      setShowFilters     ] = useState(false);
+  // Scored companies (Add leads > Scored Companies): batch / status filters for the Organization view.
+  const [scoredFilter, setScoredFilter] = useState<ScoredFilter>(() => ({
+    searchIds: (searchParams.get("sbatch") ?? "").split(",").filter(Boolean),
+    groups: (searchParams.get("sgroups") ?? "").split(",").filter((g): g is Group => (GROUPS as readonly string[]).includes(g)),
+    hidden: searchParams.get("shidden") === "1",
+  }));
+  const [showScoredFilters, setShowScoredFilters] = useState(false);
   const [page,             setPage            ] = useState(1);
   const [pageSize,         setPageSize        ] = useState(50);
   const [importBatches,    setImportBatches   ] = useState<ImportBatch[]>([]);
@@ -726,6 +572,9 @@ export default function LeadsPage() {
     if (filters.batchLabels.size > 0)  params.set("batches",  [...filters.batchLabels].join(","));
     if (filters.createdFrom)          params.set("from", filters.createdFrom.toISOString().slice(0, 10));
     if (filters.createdTo)            params.set("to",   filters.createdTo.toISOString().slice(0, 10));
+    if (scoredFilter.searchIds.length) params.set("sbatch",  scoredFilter.searchIds.join(","));
+    if (scoredFilter.groups.length)    params.set("sgroups", scoredFilter.groups.join(","));
+    if (scoredFilter.hidden)           params.set("shidden", "1");
     const qs = params.toString();
     // Debounced. `searchQuery` is in the dep list and moves on every keystroke,
     // and Next 15 defaults staleTimes.dynamic to 0 — a dynamic route is never
@@ -737,7 +586,39 @@ export default function LeadsPage() {
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     }, 300);
     return () => clearTimeout(handle);
-  }, [searchQuery, leadsSort, leadsViewMode, leadsEntityMode, filters, pathname, router]);
+  }, [searchQuery, leadsSort, leadsViewMode, leadsEntityMode, filters, scoredFilter, pathname, router]);
+
+  const scored = useScoredOrgs(scoredFilter, searchQuery, leadsEntityMode === "orgs");
+  const scoredView = leadsEntityMode === "orgs" && (leadsViewMode === "kanban" || scoredFilterActive(scoredFilter));
+  // Status of each organization that came from a scored search, for the classic list's Status column.
+  const orgFitStatus = useMemo(() => {
+    const m = new Map<string, { group: Group; status: string }>();
+    for (const c of scored.data?.companies ?? []) if (c.organization_id) m.set(c.organization_id, { group: c.group, status: c.status });
+    return m;
+  }, [scored.data]);
+  // Approved / contact-added companies have an organization: open the normal org
+  // drawer. Anything else opens the scored-company drawer with what we know.
+  const [scoredDrawerId, setScoredDrawerId] = useState<string | null>(null);
+  const scoredDrawerCompany = scored.data?.companies.find((c) => c.id === scoredDrawerId) ?? null;
+  function openScoredCompany(c: ScoredCompany) {
+    if (c.organization_id) setSelectedOrgId(c.organization_id);
+    else setScoredDrawerId(c.id);
+  }
+  async function handleScoredDecide(ids: string[], action: DecideAction) {
+    try { await decideScored(ids, action); } catch (e) { toast.error((e as Error).message); }
+    await scored.reload();
+  }
+  // "Open in Organizations" from Add leads > Scored Companies lands here, on that batch.
+  useEffect(() => {
+    function onOpen(e: Event) {
+      const id = (e as CustomEvent<{ searchId: string }>).detail?.searchId;
+      setLeadsEntityMode("orgs");
+      setLeadsViewMode("list");
+      setScoredFilter({ ...EMPTY_SCORED_FILTER, searchIds: id ? [id] : [] });
+    }
+    window.addEventListener("kuber:open-scored-batch", onOpen);
+    return () => window.removeEventListener("kuber:open-scored-batch", onOpen);
+  }, []);
 
   // Reset to page 1 whenever the filtered result set changes
   useEffect(() => { setPage(1); }, [searchQuery, filters, leadsSort]);
@@ -1009,7 +890,7 @@ export default function LeadsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {leadsEntityMode === "individual" && (
+          {(leadsEntityMode === "individual" || leadsEntityMode === "orgs") && (
             <SegmentedTabs
               value={leadsViewMode}
               onValueChange={setLeadsViewMode}
@@ -1043,6 +924,14 @@ export default function LeadsPage() {
       <div className="px-8 pt-3">
         <ServiceHealthBanner />
       </div>
+      {leadsEntityMode === "orgs" && (
+        <div className="px-8 pt-3">
+          <RunningSearchesBar
+            data={scored.data}
+            onOpen={(searchId, group) => { setLeadsViewMode("list"); setScoredFilter({ ...EMPTY_SCORED_FILTER, searchIds: [searchId], groups: group ? [group] : [] }); }}
+          />
+        </div>
+      )}
 
       {/* ── Search + Columns toolbar ── */}
       {(leadsEntityMode === "orgs" || (leadsEntityMode === "individual" && (leadsViewMode === "list" || leadsViewMode === "kanban"))) && (
@@ -1092,7 +981,24 @@ export default function LeadsPage() {
                 )}
               </Button>
             )}
-            {leadsEntityMode === "orgs" ? (
+            {leadsEntityMode === "orgs" && (
+              <Button
+                type="button"
+                variant={scoredFilterActive(scoredFilter) ? "default" : "outline"}
+                size="sm"
+                className="relative gap-1.5"
+                onClick={() => setShowScoredFilters(true)}
+              >
+                <SlidersHorizontal className="size-3.5" />
+                Filters
+                {scoredFilterActive(scoredFilter) && (
+                  <span className="ml-0.5 size-4 rounded-full bg-primary-foreground/20 font-mono text-[9px] leading-none font-bold tabular-nums flex items-center justify-center">
+                    <span className="translate-y-px">{scoredFilterCount(scoredFilter)}</span>
+                  </span>
+                )}
+              </Button>
+            )}
+            {leadsEntityMode === "orgs" && !scoredView ? (
               <ColumnsDropdown
                 defs={ORG_COLUMN_DEFS}
                 visible={orgVisibleCols}
@@ -1111,7 +1017,7 @@ export default function LeadsPage() {
             )}
             <span className="font-mono text-xs text-muted-foreground tabular-nums">
               {leadsEntityMode === "orgs"
-                ? `${orgRows.length} orgs`
+                ? scoredView ? `${scored.data?.companies.length ?? 0} companies` : `${orgRows.length} orgs`
                 : searchLoading ? "…" : `${displayLeads.length} leads`}
             </span>
           </div>
@@ -1146,6 +1052,18 @@ export default function LeadsPage() {
               ))}
             </div>
           </div>
+        ) : scoredView && leadsViewMode === "kanban" ? (
+          <ScoredOrgsKanban
+            data={scored.data}
+            error={scored.error}
+            loading={scored.loading}
+            onDecide={handleScoredDecide}
+            groups={scoredFilter.groups}
+            showHidden={scoredFilter.hidden}
+            onOpenCompany={openScoredCompany}
+          />
+        ) : scoredView ? (
+          <ScoredOrgsTable data={scored.data} error={scored.error} loading={scored.loading} onDecide={handleScoredDecide} onOpenCompany={openScoredCompany} />
         ) : leadsEntityMode === "orgs" ? (
             <div>
               <div className="rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden w-full">
@@ -1153,8 +1071,8 @@ export default function LeadsPage() {
                   <TableHeader>
                     <TableRow className="border-border hover:bg-transparent">
                       <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Organization</TableHead>
-                      {orgVisibleCols.enrichment && (
-                        <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-8" title="Enrichment" />
+                      {orgVisibleCols.fit_status && (
+                        <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Status</TableHead>
                       )}
                       {orgVisibleCols.domain && (
                         <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Domain</TableHead>
@@ -1199,9 +1117,11 @@ export default function LeadsPage() {
                               <p className="text-sm font-semibold">{org.name || "—"}</p>
                             </div>
                           </TableCell>
-                          {orgVisibleCols.enrichment && (
-                            <TableCell className="text-center">
-                              <EnrichDot stage={org.enrichmentStage} />
+                          {orgVisibleCols.fit_status && (
+                            <TableCell>
+                              {orgFitStatus.has(org.id)
+                                ? <GroupPill group={orgFitStatus.get(org.id)!.group} status={orgFitStatus.get(org.id)!.status} />
+                                : <span className="text-xs text-muted-foreground">—</span>}
                             </TableCell>
                           )}
                           {orgVisibleCols.domain && (
@@ -1452,6 +1372,8 @@ export default function LeadsPage() {
         </div>
       )}
 
+      <ScoredCompanyDrawer company={scoredDrawerCompany} onClose={() => setScoredDrawerId(null)} onDecide={handleScoredDecide} onFilterBatch={(id) => { setScoredFilter((f) => ({ ...f, searchIds: [id] })); setScoredDrawerId(null); }} />
+      <ScoredFiltersDialog open={showScoredFilters} onOpenChange={setShowScoredFilters} value={scoredFilter} onApply={setScoredFilter} data={scored.data} />
       {showFilters && (
         <FiltersModal
           filters={filters}

@@ -183,6 +183,36 @@ export const CompanySearchSchema = z.object({
   advanced: CompanyAdvancedSchema,
 });
 
+/** Company-first scored search. Every page is one paid Apollo credit. */
+export const ProspectSearchSchema = z.object({
+  keywords: z.array(z.string().trim().min(1).max(100)).min(1).max(50),
+  locations: z.array(z.string().trim().min(1).max(100)).max(200).optional(),
+  employee_ranges: z.array(z.string().regex(/^\d+,\d+$/)).max(20).optional(),
+  lookalike_org_ids: z.array(z.string().trim().min(1)).max(5).optional(),
+  exclude_websites: z.array(z.string().trim().min(1).max(200)).max(1000).optional(),
+  page: z.number().int().min(1).max(500).default(1),
+  // The Leads-page batch the revealed contacts join, like every other import.
+  batch_name: z.string().trim().min(1).max(100),
+  color: z.string().default("green"),
+  // Every other Organization Search filter (same shape as Company Lookup's).
+  advanced: CompanyAdvancedSchema,
+  // Who the revealed leads go to — same choices as every other import.
+  assigned_to: dbId.nullable().optional(),
+  assignment_strategy: ImportAssignmentStrategy,
+  // Cap on automatic reveals for THIS search (1 Apollo credit each). Default: the company setting.
+  max_auto_reveals: z.number().int().min(0).max(100).optional(),
+});
+
+export const ProspectDecisionSchema = z.object({
+  action: z.enum(["approve", "reject", "retry", "undo"]),
+});
+
+/** "Approve all" / "Decline all" for one batch's review list. */
+export const ProspectBulkDecisionSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(500),
+  action: z.enum(["approve", "reject", "retry", "undo"]),
+});
+
 export const CompanyPeopleSchema = z.object({
   apollo_org_id: z.string().trim().min(1),
   page: z.number().int().min(1).max(20).default(1),

@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
     // (2) the cross-campaign echo check below.
     const { data: beforeState } = await cdb
       .from("campaign_leads")
-      .select("crm_status, interest_status, last_reply_at, first_sent_at")
+      .select("crm_status, interest_status, last_reply_at, first_sent_at, opened_at")
       .eq("id", campaignLeadId)
       .maybeSingle();
     const wasAlreadyReplied = beforeState?.crm_status === "replied";
@@ -254,6 +254,15 @@ export async function POST(req: NextRequest) {
     // now fills the real opening time from Instantly's own copy of the mail.
     if (p.event_type === "email_sent" && isFirstDelivery && !beforeState?.first_sent_at && isOpeningSignal(p.step)) {
       patch.first_sent_at = receivedAt;
+    }
+    // First open only — a lead re-opening the same thread five times is not
+    // five events worth surfacing anywhere yet (Instantly's webhook doesn't
+    // even give us a count, just one event per open), and overwriting the
+    // timestamp on every later open would make "first opened" drift forward
+    // every time they re-read the email.
+    if (p.event_type === "email_opened" && !beforeState?.opened_at) {
+      patch.opened_at = receivedAt;
+      patch.opened_step = p.step ?? null;
     }
     if (Object.keys(patch).length > 1) {
       await cdb.from("campaign_leads").update(patch).eq("id", campaignLeadId);

@@ -82,9 +82,19 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
     modelInputMode: "none",
     description: "Sends campaign email and reports replies back.",
   },
+  jev: {
+    id: "jev", category: "service", label: "Jev AI (TypeSafe)",
+    modelInputMode: "none",
+    description: "Scores each company 1–10 for fit before any email is revealed.",
+  },
+  tavily: {
+    id: "tavily", category: "service", label: "Tavily",
+    modelInputMode: "none",
+    description: "Reads LinkedIn pages and searches the web when a website says too little.",
+  },
 };
 
-export const SERVICE_PROVIDER_IDS = ["apollo", "instantly", "firecrawl"] as const;
+export const SERVICE_PROVIDER_IDS = ["apollo", "instantly", "firecrawl", "jev", "tavily"] as const;
 export type ServiceProviderId = (typeof SERVICE_PROVIDER_IDS)[number];
 
 export type LlmProviderId = Exclude<ProviderId, ServiceProviderId>;
