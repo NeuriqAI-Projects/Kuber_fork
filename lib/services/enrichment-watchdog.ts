@@ -35,7 +35,13 @@ export function triggerScrapeWatchdog(baseUrl: string) {
  *  Waiting up to a day costs nothing real: the import's own self-chain already
  *  handles the normal case within seconds, and this is only the safety net for
  *  when that chain dies. Leads that arrive a day later are still leads. */
-export async function triggerEnrichWatchdog(baseUrl: string, db: Db) {
+export async function triggerEnrichWatchdog(
+  baseUrl: string,
+  db: Db,
+  /** Start with one of these batches (scoring just added contacts to them).
+   *  Same one-at-a-time guard; a reveal already running picks them up next. */
+  preferImportIds?: string[],
+) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceKey) return;
 
@@ -64,7 +70,8 @@ export async function triggerEnrichWatchdog(baseUrl: string, db: Db) {
   // through the import's batches, and (service-role callers only) chains on to
   // the next pending import once this one is finished. A chain that dies is
   // resumed by tomorrow's pass — this is the safety net, not the fast path.
-  const importId = [...new Set((pending ?? []).map((r) => r.import_id as string))][0];
+  const pendingIds = [...new Set((pending ?? []).map((r) => r.import_id as string))];
+  const importId = preferImportIds?.length ? pendingIds.find((id) => preferImportIds.includes(id)) : pendingIds[0];
   if (!importId) return;
 
   // OVERLAP GUARD. Safe at 15 minutes, mandatory at 30: this job now runs often

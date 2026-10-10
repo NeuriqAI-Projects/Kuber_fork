@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ok, fail } from "@/lib/api-response";
 import { safeSecretEqual } from "@/lib/auth/secret";
-import { companiesWithWork, runProspectWorker, WORKER_BUDGET_MS } from "@/lib/services/prospects/worker";
+import { companiesWithWork, revealPromoted, runProspectWorker, WORKER_BUDGET_MS } from "@/lib/services/prospects/worker";
 
 export const maxDuration = 60;
 
@@ -21,13 +21,17 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient();
   const companies = await companiesWithWork(admin);
   const results: Record<string, number | string> = {};
+  const promoted: string[] = [];
   const share = companies.length ? Math.max(5_000, Math.floor(WORKER_BUDGET_MS / companies.length)) : 0;
   for (const companyId of companies) {
     try {
-      results[companyId] = (await runProspectWorker(admin, companyId, share)).advanced;
+      const r = await runProspectWorker(admin, companyId, share);
+      results[companyId] = r.advanced;
+      promoted.push(...r.promotedImports);
     } catch (err) {
       results[companyId] = `error: ${(err as Error).message.slice(0, 200)}`;
     }
   }
+  revealPromoted(req, admin, promoted);
   return ok({ companies: companies.length, results });
 }
