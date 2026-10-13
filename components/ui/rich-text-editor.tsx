@@ -9,7 +9,11 @@ import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Table, TableRow, TableHeader, TableCell } from "@tiptap/extension-table";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
+import { uploadCampaignAttachment } from "@/lib/api-client";
+import { replyAttachmentHtml, REPLY_ATTACH_ACCEPT, REPLY_ATTACH_MAX_BYTES } from "@/lib/reply-attachments";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { markdownInlineToHtml, convertResidualMarkdownInHtml } from "@/lib/utils/email-html";
@@ -75,7 +79,7 @@ const TemplateVarHighlight = Extension.create({
 import {
   Bold, Italic, Underline as UnderlineIcon,
   List, ListOrdered, Link as LinkIcon, Unlink,
-  Heading2, Copy, Table2, BetweenHorizontalStart, BetweenVerticalStart, Trash2,
+  Heading2, Copy, Table2, BetweenHorizontalStart, BetweenVerticalStart, Trash2, Paperclip, Loader2,
 } from "lucide-react";
 
 function normalizeToHtml(raw: string): string {
@@ -113,6 +117,10 @@ interface RichTextEditorProps {
    *  what Instantly sends). On everywhere by default — every email editor in
    *  the app is this component, so they all behave the same. */
   tables?: boolean;
+  /** Show "Attach file": uploads it and puts a download link in the text where
+   *  the cursor is. Instantly can't send real attachments, so a link is how a
+   *  file reaches the lead (same as the campaign attachment and replies). */
+  attachments?: boolean;
 }
 
 function ToolbarButton({
@@ -180,7 +188,10 @@ export function RichTextEditor({
   minHeight = 280,
   templateVars,
   tables = true,
+  attachments = false,
 }: RichTextEditorProps) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [attaching, setAttaching] = useState(false);
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -339,6 +350,41 @@ export function RichTextEditor({
         <ToolbarButton title="Add link" onClick={addLink} disabled={disabled}>
           <LinkIcon className="size-3.5" />
         </ToolbarButton>
+        {attachments && (
+          <>
+            <ToolbarButton title="Attach file (sent as a download link)" onClick={() => fileRef.current?.click()} disabled={disabled || attaching}>
+              {attaching ? <Loader2 className="size-3.5 animate-spin" /> : <Paperclip className="size-3.5" />}
+            </ToolbarButton>
+            <input
+              ref={fileRef}
+              type="file"
+              hidden
+              accept={REPLY_ATTACH_ACCEPT}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file) return;
+                if (file.size > REPLY_ATTACH_MAX_BYTES) { toast.error("File is over 10 MB"); return; }
+                setAttaching(true);
+                try {
+                  const { data: { session } } = await supabase.auth.getSession();
+                  if (!session) throw new Error("Please sign in again");
+                  const up = await uploadCampaignAttachment(session.access_token, file);
+                  if (!up.attachment_url) throw new Error("Upload worked but no link came back");
+                  // A link for every type: the editor keeps no images, and a link opens everywhere.
+                  // Never clicked into the text → put it at the end, not above "Dear …".
+                  const atStart = editor.state.selection.from <= 1;
+                  editor.chain().focus(atStart ? "end" : undefined).insertContent(replyAttachmentHtml({ name: up.attachment_name, mime: up.attachment_mime, size: up.attachment_size, url: up.attachment_url }, { inlineImages: false })).run();
+                  toast.success(`Attached ${file.name}`);
+                } catch (err) {
+                  toast.error(`Could not attach: ${(err as Error).message}`);
+                } finally {
+                  setAttaching(false);
+                }
+              }}
+            />
+          </>
+        )}
         {editor.isActive("link") && (
           <ToolbarButton
             title="Remove link"
