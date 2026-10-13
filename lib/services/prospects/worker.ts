@@ -1,10 +1,13 @@
 // One worker pass for one client company: load its fit rules, pick real or
 // mock services, advance prospects until the time budget is spent.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { after } from "next/server";
+import { internalAppBaseUrl } from "@/lib/internal-url";
+import { triggerEnrichWatchdog } from "@/lib/services/enrichment-watchdog";
 import { createScopedClient } from "@/lib/supabase/scoped";
 import { parseFitScoring } from "./fit-rules";
 import { isMockProspecting, mockDeps, realDeps } from "./deps";
-import { runBatch, WORKABLE } from "./pipeline";
+import { runBatch, WORKABLE, type Deps } from "./pipeline";
 import { supabaseStore } from "./store";
 
 /** Measured 9 Oct 2026 (200 real companies): a 45 s budget let runs reach 57–61 s,
@@ -54,12 +57,38 @@ export async function runProspectWorker(admin: SupabaseClient, companyId: string
   const { data: setting } = await scoped.from("settings").select("value").eq("key", "fit_scoring").maybeSingle();
   const cfg = parseFitScoring(setting?.value ?? null);
   const imp = batchFor(companyId);
-  const deps = isMockProspecting(companyId) ? mockDeps(companyId, imp) : realDeps(admin, companyId, imp);
-  return runBatch(deps, supabaseStore(admin, companyId), cfg, { budgetMs, lanes: WORKER_LANES, paidStartMs: budgetMs + (WORKER_PAID_START_MS - WORKER_BUDGET_MS) });
+  // Batches that got a real contact this pass: their emails are revealed right
+  // away (see revealPromoted) instead of waiting for the backup job.
+  const promotedImports = new Set<string>();
+  let deps: Deps;
+  if (isMockProspecting(companyId)) deps = mockDeps(companyId, imp);
+  else {
+    const real = realDeps(admin, companyId, imp);
+    deps = {
+      ...real,
+      promote: async (row, person) => {
+        const orgId = await real.promote(row, person);
+        const { importId } = await imp(row.search_id);
+        if (importId) promotedImports.add(importId);
+        return orgId;
+      },
+    };
+  }
+  const res = await runBatch(deps, supabaseStore(admin, companyId), cfg, { budgetMs, lanes: WORKER_LANES, paidStartMs: budgetMs + (WORKER_PAID_START_MS - WORKER_BUDGET_MS) });
+  return { ...res, promotedImports: [...promotedImports] };
 }
 
 /** Companies that currently have work waiting (for the cron pump). */
 export async function companiesWithWork(admin: SupabaseClient): Promise<string[]> {
   const { data } = await admin.from("prospect_companies").select("company_id").in("status", WORKABLE).limit(1000);
   return [...new Set((data ?? []).map((r) => r.company_id as string))];
+}
+
+/** Start the email reveal for batches that just got contacts — what Company
+ *  Import does — instead of leaving them for the backup job. Runs after the
+ *  response; one reveal at a time is enforced inside triggerEnrichWatchdog. */
+export function revealPromoted(req: Parameters<typeof internalAppBaseUrl>[0], admin: SupabaseClient, importIds: string[]) {
+  if (!importIds.length) return;
+  const base = internalAppBaseUrl(req);
+  after(() => triggerEnrichWatchdog(base, admin, importIds).catch(() => {}));
 }

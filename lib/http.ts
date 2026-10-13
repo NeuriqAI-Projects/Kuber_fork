@@ -34,10 +34,12 @@ const NON_RETRYABLE = new Set([400, 401, 402, 403, 404, 422]);
 export async function fetchWithRetry(
   service: "apollo" | "firecrawl" | "llm",
   url: string,
-  init: RequestInit
+  init: RequestInit,
+  /** Tighter limits for a caller with its own deadline (e.g. scoring's 60 s run). */
+  opts?: { timeoutMs?: number; retryDelays?: number[] }
 ): Promise<Response> {
-  const timeout = TIMEOUTS[service];
-  const retryDelays = RETRY_DELAYS_BY_SERVICE[service] ?? RETRY_DELAYS;
+  const timeout = opts?.timeoutMs ?? TIMEOUTS[service];
+  const retryDelays = opts?.retryDelays ?? RETRY_DELAYS_BY_SERVICE[service] ?? RETRY_DELAYS;
 
   for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
     const controller = new AbortController();

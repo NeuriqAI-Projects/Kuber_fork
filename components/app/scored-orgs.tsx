@@ -163,7 +163,7 @@ function Decide({ c, busy, onDecide, large = false }: { c: ScoredCompany; busy: 
   const btn = large ? "h-10 flex-1 gap-1.5 px-4 text-sm [&_svg]:size-4" : "h-7 gap-1 px-2 text-xs [&_svg]:size-3";
   const row = large ? "flex gap-2" : "flex justify-end gap-1.5";
   if (c.status === "rejected") {
-    return <span className={large ? "flex" : "flex justify-end"}><Tip text="Move back to Needs review." className={large ? "flex-1" : undefined}><Button size="sm" variant="outline" disabled={busy} onClick={act("undo")} className={cn(btn, "w-full border-amber-500/50 text-amber-500 hover:bg-amber-500/10 hover:text-amber-500")}><Undo2 />Undo</Button></Tip></span>;
+    return <span className={large ? "flex" : "flex justify-end"}><Tip text="Put it back where it was before the Decline." className={large ? "flex-1" : undefined}><Button size="sm" variant="outline" disabled={busy} onClick={act("undo")} className={cn(btn, "w-full border-amber-500/50 text-amber-500 hover:bg-amber-500/10 hover:text-amber-500")}><Undo2 />Undo</Button></Tip></span>;
   }
   if (c.group !== "review" && c.status !== "hidden") return null;
   return (

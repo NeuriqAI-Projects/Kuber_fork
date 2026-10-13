@@ -31,7 +31,12 @@ export interface FirecrawlResult {
  * 2026-08-29, the client's scraping was running on dev's key. Firecrawl credits
  * are bought per account, so this was spending the wrong company's money.
  */
-export async function scrapePage(url: string, companyId: string): Promise<FirecrawlResult> {
+export async function scrapePage(
+  url: string,
+  companyId: string,
+  /** Caller's deadline: wait at most this long, no retries (Firecrawl is told to give up too). */
+  opts?: { timeoutMs?: number },
+): Promise<FirecrawlResult> {
   const client = createScopedClient(companyId);
   const tried = new Set<string>();
 
@@ -42,8 +47,8 @@ export async function scrapePage(url: string, companyId: string): Promise<Firecr
     const res = await fetchWithRetry("firecrawl", `${BASE}/scrape`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${resolved.secret}` },
-      body: JSON.stringify({ url, formats: ["markdown"], onlyMainContent: true }),
-    });
+      body: JSON.stringify({ url, formats: ["markdown"], onlyMainContent: true, ...(opts?.timeoutMs ? { timeout: opts.timeoutMs - 2_000 } : {}) }),
+    }, opts?.timeoutMs ? { timeoutMs: opts.timeoutMs, retryDelays: [] } : undefined);
 
     if (res.ok) {
       if (resolved.keyId) await markKeySucceeded(client, resolved.keyId);

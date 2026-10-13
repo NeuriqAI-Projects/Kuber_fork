@@ -4792,6 +4792,7 @@ export function CampaignDetail({
                       <Label className="eyebrow">Body</Label>
                       <RichTextEditor
                         value={editBody}
+                        attachments
                         onChange={setEditBody}
                         disabled={isPreviewingHistory || selected.email_drafts.status === "approved"}
                         templateVars={LEAD_TEMPLATE_VARS}
@@ -5506,7 +5507,7 @@ export function CampaignDetail({
 
                         {row.written ? (
                           seqEditingDraftId === row.draft?.id ? (
-                            <RichTextEditor value={seqEditBody} onChange={setSeqEditBody} templateVars={LEAD_TEMPLATE_VARS} />
+                            <RichTextEditor value={seqEditBody} onChange={setSeqEditBody} templateVars={LEAD_TEMPLATE_VARS} attachments />
                           ) : (
                             <div
                               className="text-sm leading-relaxed [&_p]:mb-2"
@@ -5857,6 +5858,7 @@ export function CampaignDetail({
                         </div>
                         <RichTextEditor
                           value={st.fallback_body ?? ""}
+                          attachments
                           disabled={!canEditSettings}
                           onChange={(v) => setSeqStepEdits((prev) => prev.map((x, i) => (i === idx ? { ...x, fallback_body: v } : x)))}
                           templateVars={LEAD_TEMPLATE_VARS}

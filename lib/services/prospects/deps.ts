@@ -44,14 +44,25 @@ export function limiter(n: number) {
  *  4 here leaves one for the normal enrichment job, which shares the account. */
 const firecrawlSlot = limiter(4);
 
+/** One website read waits at most this long, with no retries. A paid read may
+ *  start up to 35 s into a run (worker.ts), so 35 + 18 (+ ~2 s key lookup) stays under Vercel's 60 s.
+ *  A slow site is simply tried again on a later run. */
+export const READ_TIMEOUT_MS = 18_000;
+
 async function readHomeFirecrawl(url: string, companyId: string, startBy: number): Promise<HomeRead> {
   // Checked AFTER waiting for a slot: the wait itself can eat the run's time.
   const r = await firecrawlSlot(() => {
     if (Date.now() > startBy) throw new OutOfTime();
-    return scrapePage(url, companyId);
+    return scrapePage(url, companyId, { timeoutMs: READ_TIMEOUT_MS }).catch((e: Error) => {
+      // Our 18 s wait ran out: retried on a later run (counts as a try).
+      if (e.name === "AbortError" || /abort/i.test(e.message)) throw new Error("Website took more than 18 s to load");
+      throw e;
+    });
   });
   if (!r.success) {
     if (PROVIDER_FAULT.test(r.error ?? "")) throw new Error(`Firecrawl: ${r.error}`);
+    // Firecrawl gave up on its side (408): the site is too slow, the client decides (Retry).
+    if (r.error === "HTTP 408") return { kind: "site_down", detail: "Website took too long to load" };
     return { kind: "site_down", detail: `Website could not be read (${r.error ?? "unknown"})` };
   }
   const code = r.data?.metadata?.statusCode ?? 200;
