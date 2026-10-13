@@ -4792,7 +4792,6 @@ export function CampaignDetail({
                       <Label className="eyebrow">Body</Label>
                       <RichTextEditor
                         value={editBody}
-                        attachments
                         onChange={setEditBody}
                         disabled={isPreviewingHistory || selected.email_drafts.status === "approved"}
                         templateVars={LEAD_TEMPLATE_VARS}

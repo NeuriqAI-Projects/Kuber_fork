@@ -117,8 +117,8 @@ interface RichTextEditorProps {
    *  what Instantly sends). On everywhere by default — every email editor in
    *  the app is this component, so they all behave the same. */
   tables?: boolean;
-  /** Show "Attach file": uploads it and puts a download link in the text where
-   *  the cursor is. Instantly can't send real attachments, so a link is how a
+  /** Show "Attach file" under the text: uploads it and adds a download link at
+   *  the end of the email. Instantly can't send real attachments, so a link is how a
    *  file reaches the lead (same as the campaign attachment and replies). */
   attachments?: boolean;
 }
@@ -350,41 +350,6 @@ export function RichTextEditor({
         <ToolbarButton title="Add link" onClick={addLink} disabled={disabled}>
           <LinkIcon className="size-3.5" />
         </ToolbarButton>
-        {attachments && (
-          <>
-            <ToolbarButton title="Attach file (sent as a download link)" onClick={() => fileRef.current?.click()} disabled={disabled || attaching}>
-              {attaching ? <Loader2 className="size-3.5 animate-spin" /> : <Paperclip className="size-3.5" />}
-            </ToolbarButton>
-            <input
-              ref={fileRef}
-              type="file"
-              hidden
-              accept={REPLY_ATTACH_ACCEPT}
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (!file) return;
-                if (file.size > REPLY_ATTACH_MAX_BYTES) { toast.error("File is over 10 MB"); return; }
-                setAttaching(true);
-                try {
-                  const { data: { session } } = await supabase.auth.getSession();
-                  if (!session) throw new Error("Please sign in again");
-                  const up = await uploadCampaignAttachment(session.access_token, file);
-                  if (!up.attachment_url) throw new Error("Upload worked but no link came back");
-                  // A link for every type: the editor keeps no images, and a link opens everywhere.
-                  // Never clicked into the text → put it at the end, not above "Dear …".
-                  const atStart = editor.state.selection.from <= 1;
-                  editor.chain().focus(atStart ? "end" : undefined).insertContent(replyAttachmentHtml({ name: up.attachment_name, mime: up.attachment_mime, size: up.attachment_size, url: up.attachment_url }, { inlineImages: false })).run();
-                  toast.success(`Attached ${file.name}`);
-                } catch (err) {
-                  toast.error(`Could not attach: ${(err as Error).message}`);
-                } finally {
-                  setAttaching(false);
-                }
-              }}
-            />
-          </>
-        )}
         {editor.isActive("link") && (
           <ToolbarButton
             title="Remove link"
@@ -451,6 +416,51 @@ export function RichTextEditor({
           disabled && "opacity-60",
         )}
       />
+      {/* Attach: below the text, like the campaign attachment, and the link
+          always goes at the very end of the email. */}
+      {attachments && (
+        <div className="flex items-center gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground">
+          {/* eslint-disable-next-line no-restricted-syntax -- hidden file picker; the visible control is the button beside it */}
+          <input
+            ref={fileRef}
+            type="file"
+            hidden
+            accept={REPLY_ATTACH_ACCEPT}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (!file) return;
+              if (file.size > REPLY_ATTACH_MAX_BYTES) { toast.error("File is over 10 MB"); return; }
+              setAttaching(true);
+              try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) throw new Error("Please sign in again");
+                const up = await uploadCampaignAttachment(session.access_token, file);
+                if (!up.attachment_url) throw new Error("Upload worked but no link came back");
+                // A link for every type: the editor keeps no images, and a link opens everywhere.
+                editor.chain().focus("end").insertContent(replyAttachmentHtml({ name: up.attachment_name, mime: up.attachment_mime, size: up.attachment_size, url: up.attachment_url }, { inlineImages: false })).run();
+                toast.success(`Attached ${file.name}`);
+              } catch (err) {
+                toast.error(`Could not attach: ${(err as Error).message}`);
+              } finally {
+                setAttaching(false);
+              }
+            }}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => fileRef.current?.click()}
+            disabled={disabled || attaching}
+            className="h-7 gap-1.5 px-2 text-xs"
+          >
+            {attaching ? <Loader2 className="size-3.5 animate-spin" /> : <Paperclip className="size-3.5" />}
+            {attaching ? "Attaching…" : "Attach file"}
+          </Button>
+          <span>· added at the end as a download link</span>
+        </div>
+      )}
     </div>
   );
 }
