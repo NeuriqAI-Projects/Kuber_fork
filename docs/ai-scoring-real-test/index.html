@@ -196,42 +196,6 @@ a{color:var(--accent)}
   </ol>
 </section>
 
-<section>
-  <h2>What we did in the code</h2>
-  <p>No application code was changed for this test. Everything lives in <code>docs/ai-scoring-real-test/</code>, and the only edit outside it is excluding <code>docs</code> from <code>tsconfig.json</code> so these scripts are not type-checked with the app. The scripts call the real services directly and write only to files.</p>
-  <div class="scroll"><table>
-    <thead><tr><th>File</th><th>What it does</th><th>Cost</th></tr></thead>
-    <tbody>
-      <tr><td><code>scripts/lib.ts</code></td><td>Shared helpers: loads <code>.env.local</code>, the Apollo hard stop (48), the ledger, balances, and <code>saveApollo</code> which writes each full Apollo response to disk.</td><td>free</td></tr>
-      <tr><td><code>scripts/recon.ts</code></td><td>Preflight: Apollo, Firecrawl and Tavily balances, key presence, keyword settings.</td><td>free</td></tr>
-      <tr><td><code>scripts/tc2.ts</code></td><td>One Apollo company search per keyword; counts known/new companies.</td><td>1 Apollo credit each</td></tr>
-      <tr><td><code>scripts/tc3.ts</code></td><td>One search per keyword group (all words together).</td><td>1 each</td></tr>
-      <tr><td><code>scripts/tc45.ts</code></td><td>Empty-page test, pages 2/5/10, country filters. Saves the full response.</td><td>1 each (0 for empty)</td></tr>
-      <tr><td><code>scripts/tc6.ts</code></td><td>Scores real companies with the real pipeline (<code>runBatch</code>, production settings) and an in-memory store. Reveal functions are made to throw.</td><td>Firecrawl 1 per site</td></tr>
-      <tr><td><code>scripts/tc4score.ts</code></td><td>Same scoring for the deeper pages.</td><td>Firecrawl 1 per site</td></tr>
-      <tr><td><code>scripts/tc7.ts</code></td><td>Free People Search for every good company. No reveal.</td><td>free</td></tr>
-      <tr><td><code>scripts/build_report.py</code></td><td>Builds <code>report-data.js</code> for this page from the data files.</td><td>free</td></tr>
-    </tbody></table></div>
-  <p class="small muted" style="margin-top:8px">Data files are in <code>data/</code>. Raw Apollo payloads (company lists and People Search results) and full website texts are kept locally on the tester's machine and are not in git: this repository is public and the data is paid or personal. Re-run the scripts to regenerate them.</p>
-  <h3>How to re-run</h3>
-  <pre>cd Kuber
-npx tsx docs/ai-scoring-real-test/scripts/recon.ts      # free
-npx tsx docs/ai-scoring-real-test/scripts/tc2.ts        # paid, edit the SELECT list first
-npx tsx docs/ai-scoring-real-test/scripts/tc6.ts        # Firecrawl credits
-python3 docs/ai-scoring-real-test/scripts/build_report.py</pre>
-</section>
-
-<section>
-  <h2>Limits of this test</h2>
-  <ul class="small">
-    <li>Sample sizes are small: 4 to 5 companies per keyword, 129 in total. The overall precision has a 95% range of about <span id="ci"></span>.</li>
-    <li>One reviewer, and an AI. Labels came from page excerpts, not from opening each website.</li>
-    <li>Scope: 28 keywords (every keyword group covered), 4 keyword groups, and the India and United States filters.</li>
-    <li>The test used the code on the <code>dev</code> branch from 16 Oct.</li>
-    <li>Companies the client already had were skipped, as in production. The share of new companies depends on today's database.</li>
-  </ul>
-</section>
-
 </div>
 <script src="report-data.js"></script>
 <script>
@@ -241,7 +205,6 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const t6 = R.tc6;
 $("v-prec").textContent = t6.precision_excl_U + "% (" + t6.good_Y + " of " + (t6.good_Y + t6.good_N) + " judged)";
 $("v-unsure").textContent = t6.unsure_pct + "%";
-$("ci").textContent = t6.precision_ci[0] + "% to " + t6.precision_ci[1] + "%";
 
 // spend
 const apollo = R.ledger.filter((l) => l.service === "apollo").reduce((n, l) => n + Number(l.credits_expected || 0), 0);
