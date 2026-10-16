@@ -1,0 +1,149 @@
+[
+ {
+  "id": "G01",
+  "group": "Film Extrusion",
+  "words": [
+   "stretch film",
+   "shrink film",
+   "plastic film",
+   "film extrusion",
+   "blown film",
+   "packaging film",
+   "polyethylene film",
+   "cast film",
+   "HDPE PIPES"
+  ]
+ },
+ {
+  "id": "G02",
+  "group": "PET Bottles & Closures",
+  "words": [
+   "pet bottles",
+   "pet preform",
+   "cosmetic packaging",
+   "pharmaceutical packaging",
+   "caps and closures"
+  ]
+ },
+ {
+  "id": "G03",
+  "group": "Blown Film & Flexible Packaging",
+  "words": [
+   "flexible packaging",
+   "blown film",
+   "packaging film",
+   "barrier film",
+   "shrink film",
+   "plastic film",
+   "agricultural film",
+   "plastic bags"
+  ]
+ },
+ {
+  "id": "G04",
+  "group": "Blow Molding",
+  "words": [
+   "industrial packaging",
+   "rotomoulding",
+   "automotive components"
+  ]
+ },
+ {
+  "id": "G05",
+  "group": "Injection & Roto Molding",
+  "words": [
+   "injection molding",
+   "thermoforming",
+   "plastic pallets"
+  ]
+ },
+ {
+  "id": "G06",
+  "group": "Compounders",
+  "words": [
+   "polymers",
+   "engineering plastics",
+   "compounding"
+  ]
+ },
+ {
+  "id": "G07",
+  "group": "Recyclers",
+  "words": [
+   "plastic recycling"
+  ]
+ },
+ {
+  "id": "G08",
+  "group": "Specialty",
+  "words": [
+   "masterbatch",
+   "masterbatch",
+   "pipe",
+   "extrusion"
+  ]
+ },
+ {
+  "id": "G09",
+  "group": "PIPE EXTRUSION",
+  "words": [
+   "HDPE PIPES",
+   "PE PIPES",
+   "PPR Pipes",
+   "Pipe Extrusions",
+   "Irrigation Pipes",
+   "Drainage Pipes",
+   "Corrugated Pipes"
+  ]
+ },
+ {
+  "id": "G10",
+  "group": "Rotomolding / Rotational Molding",
+  "words": [
+   "Rotational Molding ",
+   "Plastic Tanks",
+   "Water Tanks",
+   "Plastic Storage Tanks",
+   "Plastic Bins",
+   "Large Plastic Containers",
+   "Plastic Pallets",
+   "Industrial Plastic Tanks",
+   "Agricultural Tanks"
+  ]
+ },
+ {
+  "id": "G11",
+  "group": "Thermoforming",
+  "words": [
+   "Thermoformings",
+   "Plastic Thermoformings",
+   "Thermoformed Packaging",
+   "Food Containers",
+   "Plastic Trays",
+   "Plastic Packagings",
+   "Disposable Plastic Products",
+   "Plastic Cups",
+   "Plastic Plates"
+  ]
+ },
+ {
+  "id": "G12",
+  "group": "Sheet Extrusion",
+  "words": [
+   "Plastic Sheets",
+   "Plastic Sheet Extrusions",
+   "Thermoplastic Sheets",
+   "PP Sheets",
+   "PE Sheets"
+  ]
+ },
+ {
+  "id": "G13",
+  "group": "Injection Molding",
+  "words": [
+   "Plastic Injection MoldingS",
+   "Plastic Products ",
+   "Injection Molded Plastic Products"
+  ]
+ }
+]

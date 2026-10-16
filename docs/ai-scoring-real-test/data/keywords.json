@@ -1,0 +1,640 @@
+[
+ {
+  "id": "K01",
+  "word": "stretch film",
+  "labels": [
+   "Stretch & Cling Film"
+  ],
+  "groups": [
+   "Film Extrusion"
+  ]
+ },
+ {
+  "id": "K02",
+  "word": "shrink film",
+  "labels": [
+   "Shrink Film"
+  ],
+  "groups": [
+   "Film Extrusion",
+   "Blown Film & Flexible Packaging"
+  ]
+ },
+ {
+  "id": "K03",
+  "word": "plastic film",
+  "labels": [
+   "Plastic Film (general)",
+   "Milk Pouch & Food Films"
+  ],
+  "groups": [
+   "Film Extrusion",
+   "Blown Film & Flexible Packaging"
+  ]
+ },
+ {
+  "id": "K04",
+  "word": "film extrusion",
+  "labels": [
+   "Film Extrusion"
+  ],
+  "groups": [
+   "Film Extrusion"
+  ]
+ },
+ {
+  "id": "K05",
+  "word": "blown film",
+  "labels": [
+   "Blown Film"
+  ],
+  "groups": [
+   "Film Extrusion",
+   "Blown Film & Flexible Packaging"
+  ]
+ },
+ {
+  "id": "K06",
+  "word": "packaging film",
+  "labels": [
+   "Packaging Film"
+  ],
+  "groups": [
+   "Film Extrusion",
+   "Blown Film & Flexible Packaging"
+  ]
+ },
+ {
+  "id": "K07",
+  "word": "polyethylene film",
+  "labels": [
+   "Polyethylene (PE) Film"
+  ],
+  "groups": [
+   "Film Extrusion"
+  ]
+ },
+ {
+  "id": "K08",
+  "word": "cast film",
+  "labels": [
+   "Cast Film"
+  ],
+  "groups": [
+   "Film Extrusion"
+  ]
+ },
+ {
+  "id": "K09",
+  "word": "HDPE PIPES",
+  "labels": [
+   "HDPE PIPES",
+   "HDPE Pipe Manufacturer"
+  ],
+  "groups": [
+   "Film Extrusion",
+   "PIPE EXTRUSION"
+  ]
+ },
+ {
+  "id": "K10",
+  "word": "pet bottles",
+  "labels": [
+   "Beverage Bottles (Water/Juice/CSD)"
+  ],
+  "groups": [
+   "PET Bottles & Closures"
+  ]
+ },
+ {
+  "id": "K11",
+  "word": "pet preform",
+  "labels": [
+   "PET Preforms"
+  ],
+  "groups": [
+   "PET Bottles & Closures"
+  ]
+ },
+ {
+  "id": "K12",
+  "word": "cosmetic packaging",
+  "labels": [
+   "Cosmetic & Personal Care Bottles"
+  ],
+  "groups": [
+   "PET Bottles & Closures"
+  ]
+ },
+ {
+  "id": "K13",
+  "word": "pharmaceutical packaging",
+  "labels": [
+   "Pharma & Agrochemical Bottles"
+  ],
+  "groups": [
+   "PET Bottles & Closures"
+  ]
+ },
+ {
+  "id": "K14",
+  "word": "caps and closures",
+  "labels": [
+   "Caps & Closures"
+  ],
+  "groups": [
+   "PET Bottles & Closures"
+  ]
+ },
+ {
+  "id": "K15",
+  "word": "flexible packaging",
+  "labels": [
+   "Packaging Films (Pouches/Lamination)"
+  ],
+  "groups": [
+   "Blown Film & Flexible Packaging"
+  ]
+ },
+ {
+  "id": "K16",
+  "word": "barrier film",
+  "labels": [
+   "Barrier & Multilayer Film"
+  ],
+  "groups": [
+   "Blown Film & Flexible Packaging"
+  ]
+ },
+ {
+  "id": "K17",
+  "word": "agricultural film",
+  "labels": [
+   "Agricultural Films (Mulch/Silage/Greenhouse)"
+  ],
+  "groups": [
+   "Blown Film & Flexible Packaging"
+  ]
+ },
+ {
+  "id": "K18",
+  "word": "plastic bags",
+  "labels": [
+   "Courier Bags & Industrial Bags"
+  ],
+  "groups": [
+   "Blown Film & Flexible Packaging"
+  ]
+ },
+ {
+  "id": "K19",
+  "word": "industrial packaging",
+  "labels": [
+   "Industrial Drums & IBCs"
+  ],
+  "groups": [
+   "Blow Molding"
+  ]
+ },
+ {
+  "id": "K20",
+  "word": "rotomoulding",
+  "labels": [
+   "Water Tanks & Storage"
+  ],
+  "groups": [
+   "Blow Molding"
+  ]
+ },
+ {
+  "id": "K21",
+  "word": "automotive components",
+  "labels": [
+   "Automotive Blow Molded Parts"
+  ],
+  "groups": [
+   "Blow Molding"
+  ]
+ },
+ {
+  "id": "K22",
+  "word": "injection molding",
+  "labels": [
+   "Injection Molding (general)"
+  ],
+  "groups": [
+   "Injection & Roto Molding"
+  ]
+ },
+ {
+  "id": "K23",
+  "word": "thermoforming",
+  "labels": [
+   "Thermoforming"
+  ],
+  "groups": [
+   "Injection & Roto Molding"
+  ]
+ },
+ {
+  "id": "K24",
+  "word": "plastic pallets",
+  "labels": [
+   "Industrial Parts (Crates/Pallets)"
+  ],
+  "groups": [
+   "Injection & Roto Molding"
+  ]
+ },
+ {
+  "id": "K25",
+  "word": "polymers",
+  "labels": [
+   "PE/PP Commodity Compounders (PE100)"
+  ],
+  "groups": [
+   "Compounders"
+  ]
+ },
+ {
+  "id": "K26",
+  "word": "engineering plastics",
+  "labels": [
+   "Engineering Plastic Compounders (ABS/PC/Nylon)"
+  ],
+  "groups": [
+   "Compounders"
+  ]
+ },
+ {
+  "id": "K27",
+  "word": "compounding",
+  "labels": [
+   "Compounding (general)"
+  ],
+  "groups": [
+   "Compounders"
+  ]
+ },
+ {
+  "id": "K28",
+  "word": "plastic recycling",
+  "labels": [
+   "PE/PP Recyclers & Reclaimers"
+  ],
+  "groups": [
+   "Recyclers"
+  ]
+ },
+ {
+  "id": "K29",
+  "word": "masterbatch",
+  "labels": [
+   "Masterbatch Buyers & Users",
+   "Masterbatch Distributors"
+  ],
+  "groups": [
+   "Specialty"
+  ]
+ },
+ {
+  "id": "K30",
+  "word": "pipe",
+  "labels": [
+   "Pipe Manufacturers (HDPE/PPR/PVC)"
+  ],
+  "groups": [
+   "Specialty"
+  ]
+ },
+ {
+  "id": "K31",
+  "word": "extrusion",
+  "labels": [
+   "Extrusion (any process)"
+  ],
+  "groups": [
+   "Specialty"
+  ]
+ },
+ {
+  "id": "K32",
+  "word": "PE PIPES",
+  "labels": [
+   "PE Pipe Manufacturer"
+  ],
+  "groups": [
+   "PIPE EXTRUSION"
+  ]
+ },
+ {
+  "id": "K33",
+  "word": "PPR Pipes",
+  "labels": [
+   "PPR Pipe Manufacturer"
+  ],
+  "groups": [
+   "PIPE EXTRUSION"
+  ]
+ },
+ {
+  "id": "K34",
+  "word": "Pipe Extrusions",
+  "labels": [
+   "Pipe Extrusion Manufacturer"
+  ],
+  "groups": [
+   "PIPE EXTRUSION"
+  ]
+ },
+ {
+  "id": "K35",
+  "word": "Irrigation Pipes",
+  "labels": [
+   "Irrigation Pipe Manufacturer"
+  ],
+  "groups": [
+   "PIPE EXTRUSION"
+  ]
+ },
+ {
+  "id": "K36",
+  "word": "Drainage Pipes",
+  "labels": [
+   "Drainage Pipe Manufacturer"
+  ],
+  "groups": [
+   "PIPE EXTRUSION"
+  ]
+ },
+ {
+  "id": "K37",
+  "word": "Corrugated Pipes",
+  "labels": [
+   "Corrugated Pipe Manufacturer"
+  ],
+  "groups": [
+   "PIPE EXTRUSION"
+  ]
+ },
+ {
+  "id": "K38",
+  "word": "Rotational Molding",
+  "labels": [
+   "Rotomolding Manufacturer"
+  ],
+  "groups": [
+   "Rotomolding / Rotational Molding"
+  ]
+ },
+ {
+  "id": "K39",
+  "word": "Plastic Tanks",
+  "labels": [
+   "Plastic Tank Manufacturer"
+  ],
+  "groups": [
+   "Rotomolding / Rotational Molding"
+  ]
+ },
+ {
+  "id": "K40",
+  "word": "Water Tanks",
+  "labels": [
+   "Water Tank Manufacturer"
+  ],
+  "groups": [
+   "Rotomolding / Rotational Molding"
+  ]
+ },
+ {
+  "id": "K41",
+  "word": "Plastic Storage Tanks",
+  "labels": [
+   "Plastic Storage Tank Manufacturer"
+  ],
+  "groups": [
+   "Rotomolding / Rotational Molding"
+  ]
+ },
+ {
+  "id": "K42",
+  "word": "Plastic Bins",
+  "labels": [
+   "Plastic Bin Manufacturer"
+  ],
+  "groups": [
+   "Rotomolding / Rotational Molding"
+  ]
+ },
+ {
+  "id": "K43",
+  "word": "Large Plastic Containers",
+  "labels": [
+   "Large Plastic Container Manufacturer"
+  ],
+  "groups": [
+   "Rotomolding / Rotational Molding"
+  ]
+ },
+ {
+  "id": "K44",
+  "word": "Plastic Pallets",
+  "labels": [
+   "Plastic Pallet Manufacturer"
+  ],
+  "groups": [
+   "Rotomolding / Rotational Molding"
+  ]
+ },
+ {
+  "id": "K45",
+  "word": "Industrial Plastic Tanks",
+  "labels": [
+   "Industrial Plastic Tank Manufacturer"
+  ],
+  "groups": [
+   "Rotomolding / Rotational Molding"
+  ]
+ },
+ {
+  "id": "K46",
+  "word": "Agricultural Tanks",
+  "labels": [
+   "Agricultural Tank Manufacturer"
+  ],
+  "groups": [
+   "Rotomolding / Rotational Molding"
+  ]
+ },
+ {
+  "id": "K47",
+  "word": "Thermoformings",
+  "labels": [
+   "Thermoforming Manufacturer"
+  ],
+  "groups": [
+   "Thermoforming"
+  ]
+ },
+ {
+  "id": "K48",
+  "word": "Plastic Thermoformings",
+  "labels": [
+   "Plastic Thermoforming Manufacturer"
+  ],
+  "groups": [
+   "Thermoforming"
+  ]
+ },
+ {
+  "id": "K49",
+  "word": "Thermoformed Packaging",
+  "labels": [
+   "Thermoformed Packaging "
+  ],
+  "groups": [
+   "Thermoforming"
+  ]
+ },
+ {
+  "id": "K50",
+  "word": "Food Containers",
+  "labels": [
+   "Food Container Manufacturer"
+  ],
+  "groups": [
+   "Thermoforming"
+  ]
+ },
+ {
+  "id": "K51",
+  "word": "Plastic Trays",
+  "labels": [
+   "Plastic Tray Manufacturer"
+  ],
+  "groups": [
+   "Thermoforming"
+  ]
+ },
+ {
+  "id": "K52",
+  "word": "Plastic Packagings",
+  "labels": [
+   "Plastic Packaging Manufacturer"
+  ],
+  "groups": [
+   "Thermoforming"
+  ]
+ },
+ {
+  "id": "K53",
+  "word": "Disposable Plastic Products",
+  "labels": [
+   "Disposable Plastic Products Manufacturer"
+  ],
+  "groups": [
+   "Thermoforming"
+  ]
+ },
+ {
+  "id": "K54",
+  "word": "Plastic Cups",
+  "labels": [
+   "Plastic Cup Manufacturer"
+  ],
+  "groups": [
+   "Thermoforming"
+  ]
+ },
+ {
+  "id": "K55",
+  "word": "Plastic Plates",
+  "labels": [
+   "Plastic Plate Manufacturer"
+  ],
+  "groups": [
+   "Thermoforming"
+  ]
+ },
+ {
+  "id": "K56",
+  "word": "Plastic Sheets",
+  "labels": [
+   "Plastic Sheet Manufacturer"
+  ],
+  "groups": [
+   "Sheet Extrusion"
+  ]
+ },
+ {
+  "id": "K57",
+  "word": "Plastic Sheet Extrusions",
+  "labels": [
+   "Plastic Sheet Extrusion Manufacturer"
+  ],
+  "groups": [
+   "Sheet Extrusion"
+  ]
+ },
+ {
+  "id": "K58",
+  "word": "Thermoplastic Sheets",
+  "labels": [
+   "Thermoplastic Sheet Manufacturer"
+  ],
+  "groups": [
+   "Sheet Extrusion"
+  ]
+ },
+ {
+  "id": "K59",
+  "word": "PP Sheets",
+  "labels": [
+   "PP Sheet  Manufacturer"
+  ],
+  "groups": [
+   "Sheet Extrusion"
+  ]
+ },
+ {
+  "id": "K60",
+  "word": "PE Sheets",
+  "labels": [
+   "PE Sheet  Manufacturer"
+  ],
+  "groups": [
+   "Sheet Extrusion"
+  ]
+ },
+ {
+  "id": "K61",
+  "word": "Plastic Injection MoldingS",
+  "labels": [
+   "Plastic Injection Molding Manufacturer"
+  ],
+  "groups": [
+   "Injection Molding"
+  ]
+ },
+ {
+  "id": "K62",
+  "word": "Plastic Products",
+  "labels": [
+   "Plastic Products Manufacturer"
+  ],
+  "groups": [
+   "Injection Molding"
+  ]
+ },
+ {
+  "id": "K63",
+  "word": "Injection Molded Plastic Products",
+  "labels": [
+   "Injection Molded Plastic Products Manufacturer"
+  ],
+  "groups": [
+   "Injection Molding"
+  ]
+ }
+]

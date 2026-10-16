@@ -1,0 +1,254 @@
+[
+ {
+  "word": "stretch film",
+  "total_entries": 1781,
+  "new_page1": 59,
+  "ai_good_rate": 0.75,
+  "reviewer_plastic_rate": 0.75,
+  "leads_one_search": 28.5,
+  "leads_whole_pool": 861
+ },
+ {
+  "word": "plastic film",
+  "total_entries": 822,
+  "new_page1": 48,
+  "ai_good_rate": 0.75,
+  "reviewer_plastic_rate": 0.75,
+  "leads_one_search": 23.2,
+  "leads_whole_pool": 397
+ },
+ {
+  "word": "blown film",
+  "total_entries": 450,
+  "new_page1": 64,
+  "ai_good_rate": 0.0,
+  "reviewer_plastic_rate": 0.0,
+  "leads_one_search": 0.0,
+  "leads_whole_pool": 0
+ },
+ {
+  "word": "cast film",
+  "total_entries": 177,
+  "new_page1": 78,
+  "ai_good_rate": 0.6,
+  "reviewer_plastic_rate": 0.6,
+  "leads_one_search": 30.2,
+  "leads_whole_pool": 68
+ },
+ {
+  "word": "pet bottles",
+  "total_entries": 1341,
+  "new_page1": 46,
+  "ai_good_rate": 0.5,
+  "reviewer_plastic_rate": 0.5,
+  "leads_one_search": 14.8,
+  "leads_whole_pool": 432
+ },
+ {
+  "word": "pet preform",
+  "total_entries": 287,
+  "new_page1": 80,
+  "ai_good_rate": 0.6,
+  "reviewer_plastic_rate": 0.6,
+  "leads_one_search": 30.9,
+  "leads_whole_pool": 111
+ },
+ {
+  "word": "caps and closures",
+  "total_entries": 302,
+  "new_page1": 61,
+  "ai_good_rate": 0.6,
+  "reviewer_plastic_rate": 0.6,
+  "leads_one_search": 23.6,
+  "leads_whole_pool": 117
+ },
+ {
+  "word": "agricultural film",
+  "total_entries": 98,
+  "new_page1": 84,
+  "ai_good_rate": 0.0,
+  "reviewer_plastic_rate": 0.0,
+  "leads_one_search": 0.0,
+  "leads_whole_pool": 0
+ },
+ {
+  "word": "plastic bags",
+  "total_entries": 1205,
+  "new_page1": 73,
+  "ai_good_rate": 0.6,
+  "reviewer_plastic_rate": 0.6,
+  "leads_one_search": 28.2,
+  "leads_whole_pool": 466
+ },
+ {
+  "word": "industrial packaging",
+  "total_entries": 7580,
+  "new_page1": 43,
+  "ai_good_rate": 0.5,
+  "reviewer_plastic_rate": 0.5,
+  "leads_one_search": 13.9,
+  "leads_whole_pool": 2442
+ },
+ {
+  "word": "rotomoulding",
+  "total_entries": 202,
+  "new_page1": 85,
+  "ai_good_rate": 0.6,
+  "reviewer_plastic_rate": 0.4,
+  "leads_one_search": 32.9,
+  "leads_whole_pool": 78
+ },
+ {
+  "word": "injection molding",
+  "total_entries": 13461,
+  "new_page1": 82,
+  "ai_good_rate": 0.8,
+  "reviewer_plastic_rate": 0.2,
+  "leads_one_search": 42.3,
+  "leads_whole_pool": 6939
+ },
+ {
+  "word": "thermoforming",
+  "total_entries": 2920,
+  "new_page1": 63,
+  "ai_good_rate": 0.4,
+  "reviewer_plastic_rate": 0.4,
+  "leads_one_search": 16.2,
+  "leads_whole_pool": 753
+ },
+ {
+  "word": "polymers",
+  "total_entries": 10133,
+  "new_page1": 63,
+  "ai_good_rate": 0.4,
+  "reviewer_plastic_rate": 0.2,
+  "leads_one_search": 16.2,
+  "leads_whole_pool": 2612
+ },
+ {
+  "word": "engineering plastics",
+  "total_entries": 3898,
+  "new_page1": 63,
+  "ai_good_rate": 0.4,
+  "reviewer_plastic_rate": 0.2,
+  "leads_one_search": 16.2,
+  "leads_whole_pool": 1005
+ },
+ {
+  "word": "compounding",
+  "total_entries": 5171,
+  "new_page1": 65,
+  "ai_good_rate": 0.0,
+  "reviewer_plastic_rate": 0.0,
+  "leads_one_search": 0.0,
+  "leads_whole_pool": 0
+ },
+ {
+  "word": "plastic recycling",
+  "total_entries": 4544,
+  "new_page1": 71,
+  "ai_good_rate": 0.4,
+  "reviewer_plastic_rate": 0.2,
+  "leads_one_search": 18.3,
+  "leads_whole_pool": 1171
+ },
+ {
+  "word": "masterbatch",
+  "total_entries": 1353,
+  "new_page1": 70,
+  "ai_good_rate": 0.2,
+  "reviewer_plastic_rate": 0.0,
+  "leads_one_search": 9.0,
+  "leads_whole_pool": 174
+ },
+ {
+  "word": "pipe",
+  "total_entries": 39806,
+  "new_page1": 79,
+  "ai_good_rate": 0.0,
+  "reviewer_plastic_rate": 0.0,
+  "leads_one_search": 0.0,
+  "leads_whole_pool": 0
+ },
+ {
+  "word": "extrusion",
+  "total_entries": 12191,
+  "new_page1": 74,
+  "ai_good_rate": 0.2,
+  "reviewer_plastic_rate": 0.2,
+  "leads_one_search": 9.5,
+  "leads_whole_pool": 1571
+ },
+ {
+  "word": "PE PIPES",
+  "total_entries": 272,
+  "new_page1": 65,
+  "ai_good_rate": 0.6,
+  "reviewer_plastic_rate": 0.6,
+  "leads_one_search": 25.1,
+  "leads_whole_pool": 105
+ },
+ {
+  "word": "Drainage Pipes",
+  "total_entries": 380,
+  "new_page1": 64,
+  "ai_good_rate": 0.8,
+  "reviewer_plastic_rate": 0.6,
+  "leads_one_search": 33.0,
+  "leads_whole_pool": 196
+ },
+ {
+  "word": "Rotational Molding",
+  "total_entries": 507,
+  "new_page1": 66,
+  "ai_good_rate": 0.8,
+  "reviewer_plastic_rate": 0.8,
+  "leads_one_search": 34.0,
+  "leads_whole_pool": 261
+ },
+ {
+  "word": "Water Tanks",
+  "total_entries": 3799,
+  "new_page1": 69,
+  "ai_good_rate": 0.6,
+  "reviewer_plastic_rate": 0.2,
+  "leads_one_search": 26.7,
+  "leads_whole_pool": 1469
+ },
+ {
+  "word": "Thermoformings",
+  "total_entries": 2,
+  "new_page1": 2,
+  "ai_good_rate": 0.5,
+  "reviewer_plastic_rate": 0.5,
+  "leads_one_search": 0.6,
+  "leads_whole_pool": 1
+ },
+ {
+  "word": "Plastic Sheets",
+  "total_entries": 623,
+  "new_page1": 68,
+  "ai_good_rate": 0.6,
+  "reviewer_plastic_rate": 0.6,
+  "leads_one_search": 26.3,
+  "leads_whole_pool": 241
+ },
+ {
+  "word": "PP Sheets",
+  "total_entries": 55,
+  "new_page1": 54,
+  "ai_good_rate": 1.0,
+  "reviewer_plastic_rate": 1.0,
+  "leads_one_search": 34.8,
+  "leads_whole_pool": 35
+ },
+ {
+  "word": "Plastic Injection MoldingS",
+  "total_entries": 6,
+  "new_page1": 6,
+  "ai_good_rate": 0.5,
+  "reviewer_plastic_rate": 0.5,
+  "leads_one_search": 1.9,
+  "leads_whole_pool": 2
+ }
+]

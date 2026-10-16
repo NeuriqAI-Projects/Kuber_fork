@@ -1,0 +1,5 @@
+id,group,words,total_entries,returned,known_orgs,new
+G06,"Compounders","polymers; engineering plastics; compounding",18414,100,38,62
+G08,"Specialty","masterbatch; pipe; extrusion",52245,99,30,69
+G12,"Sheet Extrusion","Plastic Sheets; Plastic Sheet Extrusions; Thermoplastic Sheets; PP Sheets; PE Sheets",703,100,31,69
+G01,"Film Extrusion","stretch film; shrink film; plastic film; film extrusion; blown film; packaging film; polyethylene film; cast film; HDPE PIPES",5226,100,22,78

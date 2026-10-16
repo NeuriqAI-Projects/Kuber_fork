@@ -20,7 +20,7 @@ export function InfoTip({
   triggerClassName?: string;
 }) {
   const [open, setOpen]     = useState(false);
-  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number; below?: boolean } | null>(null);
   const [mounted, setMounted] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
 
@@ -34,6 +34,7 @@ export function InfoTip({
     if (side === "bottom") setCoords({ top: r.bottom + 6, left: cx });
     else if (side === "left")  setCoords({ top: cy, left: r.left - 6 });
     else if (side === "right") setCoords({ top: cy, left: r.right + 6 });
+    else if (r.top < 130)       setCoords({ top: r.bottom + 6, left: cx, below: true }); // no room above
     else                        setCoords({ top: r.top - 6, left: cx });
   }
 
@@ -68,7 +69,7 @@ export function InfoTip({
             position: "fixed",
             top: coords.top,
             left: coords.left,
-            transform: transformMap[side],
+            transform: coords.below ? transformMap.bottom : transformMap[side],
             zIndex: 9999,
           }}
           className="w-64 rounded-lg border border-border bg-card px-2.5 py-2 text-[11px] leading-relaxed text-foreground shadow-lg pointer-events-none"
