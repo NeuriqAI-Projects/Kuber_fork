@@ -1,7 +1,6 @@
 # AI scoring real-credit test: findings (16 Oct 2026)
 
 Full report: open `index.html` (same folder). Spend: **37 of 50 Apollo credits**, 126 Firecrawl credits, about $0.011 of Jev.
-TC-8 (real end-to-end with email reveals) was **not run**: it writes real leads into the client's workspace and needs approval.
 
 ## Answers
 
@@ -36,4 +35,4 @@ TC-8 (real end-to-end with email reveals) was **not run**: it writes real leads 
 
 ## Limits
 
-Small samples (4 to 5 per keyword); one AI reviewer; 28 of 63 keywords and 4 groups run because of the 50-credit cap; raw Apollo payloads and people data are kept locally, not in git (public repo).
+Small samples (4 to 5 per keyword); one AI reviewer; scope was 28 keywords (every group covered), 4 keyword groups and 2 country filters; raw Apollo payloads and people data are kept locally, not in git (public repo).

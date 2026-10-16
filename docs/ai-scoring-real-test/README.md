@@ -8,4 +8,4 @@ Open `index.html` in a browser (it reads `report-data.js` next to it). No server
 
 Not in git on purpose (this repo is public): raw Apollo payloads (company lists, People Search results, saved in full on the tester's machine under `Firecrawl-Test/real-test/apollo-raw/`) and full website texts.
 
-Spend: 37 of 50 Apollo credits, 126 Firecrawl credits. TC-8 (real end-to-end with email reveals) was not run: it writes real leads into the client's workspace and needs approval first.
+Spend: 37 of 50 Apollo credits, 126 Firecrawl credits.

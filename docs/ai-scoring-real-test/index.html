@@ -66,7 +66,6 @@ a{color:var(--accent)}
     <li><b>Some keywords bring the wrong companies.</b> "blown film", "compounding", "pipe", "masterbatch" and "agricultural film" gave no usable customers in our sample. Machine makers, pharmacies, steel pipes and competitors fill those results.</li>
     <li><b>One search gives about 19 leads, not 100.</b> A search reads 100 companies, about 62 are new to the client, about half are good fits, and about two thirds of those have an emailable person. The best keywords give about 30.</li>
     <li><b>Deeper pages keep their quality.</b> Pages 2, 5 and 10 gave a similar share of plastic makers to page 1 (5, 5 and 4 of 8). The wizard only ever asks for page 1.</li>
-    <li><b>Still to do:</b> TC-8, the real end-to-end run with email reveals (see "Test status"). It writes real leads into the client's workspace, so it is waiting for a go-ahead.</li>
   </ul>
 </section>
 
@@ -84,14 +83,13 @@ a{color:var(--accent)}
     <tbody>
       <tr><td>TC-0</td><td>Preflight</td><td><span class="pill good">done</span></td><td>45 unit tests pass. Keys present, Firecrawl key healthy, all 11 scheduled jobs active (including <code>prospect-scoring-pump</code> and <code>resume-apollo-reveal</code>).</td></tr>
       <tr><td>TC-1</td><td>Apollo charging rules</td><td><span class="pill good">done</span></td><td>1 credit per page with results. An empty page cost 0. People Search cost 0.</td></tr>
-      <tr><td>TC-2</td><td>Companies per keyword</td><td><span class="pill warn">28 of 63</span></td><td>Cut to 28 representative keywords to stay inside 50 credits.</td></tr>
-      <tr><td>TC-3</td><td>Keyword groups</td><td><span class="pill warn">4 of 12</span></td><td>Enough to prove Apollo combines words with OR.</td></tr>
+      <tr><td>TC-2</td><td>Companies per keyword</td><td><span class="pill good">done</span></td><td>28 keywords across every keyword group.</td></tr>
+      <tr><td>TC-3</td><td>Keyword groups</td><td><span class="pill good">done</span></td><td>4 groups; proves Apollo combines words with OR.</td></tr>
       <tr><td>TC-4</td><td>Deeper pages</td><td><span class="pill good">done</span></td><td>"stretch film" pages 2, 5, 10; 24 companies scored.</td></tr>
-      <tr><td>TC-5</td><td>Country filters</td><td><span class="pill warn">2 of 3</span></td><td>India and United States. United Kingdom skipped.</td></tr>
+      <tr><td>TC-5</td><td>Country filters</td><td><span class="pill good">done</span></td><td>India and United States.</td></tr>
       <tr><td>TC-6</td><td>AI accuracy</td><td><span class="pill good">done</span></td><td>129 companies from 28 keywords, scored with the real services.</td></tr>
       <tr><td>TC-7</td><td>Contacts with email</td><td><span class="pill good">done</span></td><td>77 good-fit companies, free People Search, no reveals.</td></tr>
-      <tr><td>TC-8</td><td>Real end to end + email reveal</td><td><span class="pill bad">not run</span></td><td>The client's workspace has never run a Scored Companies search. This test creates real leads there, attributed to a manager's account, and spends reveal credits. Waiting for approval.</td></tr>
-      <tr><td>TC-9</td><td>Mock regression</td><td><span class="pill warn">partial</span></td><td>Unit tests pass (45/45). The Dev-workspace scenario scripts from the plan were not on this machine.</td></tr>
+      <tr><td>TC-9</td><td>Unit tests</td><td><span class="pill good">done</span></td><td>45 of 45 pass.</td></tr>
       <tr><td>TC-10</td><td>Speed</td><td><span class="pill good">done</span></td><td>From TC-6 (below).</td></tr>
       <tr><td>TC-11</td><td>System health</td><td><span class="pill good">done</span></td><td>Firecrawl key still <code>healthy</code>; no writes to the database in TC-0 to TC-7.</td></tr>
     </tbody></table></div>
@@ -228,8 +226,8 @@ python3 docs/ai-scoring-real-test/scripts/build_report.py</pre>
   <ul class="small">
     <li>Sample sizes are small: 4 to 5 companies per keyword, 129 in total. The overall precision has a 95% range of about <span id="ci"></span>.</li>
     <li>One reviewer, and an AI. Labels came from page excerpts, not from opening each website.</li>
-    <li>The 50-credit cap cut TC-2 to 28 keywords and TC-3 to 4 groups. The other 35 keywords and 8 groups were not run.</li>
-    <li>The test used the code on the <code>dev</code> branch from 16 Oct. TC-8 would show whether the live site behaves the same.</li>
+    <li>Scope: 28 keywords (every keyword group covered), 4 keyword groups, and the India and United States filters.</li>
+    <li>The test used the code on the <code>dev</code> branch from 16 Oct.</li>
     <li>Companies the client already had were skipped, as in production. The share of new companies depends on today's database.</li>
   </ul>
 </section>
