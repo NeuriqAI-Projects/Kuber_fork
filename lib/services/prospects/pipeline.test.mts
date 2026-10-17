@@ -401,3 +401,20 @@ test("30. a buyer exists alongside IT / sales: the buyer is revealed automatical
   assert.equal(store.get("a").status, "promoted");
   assert.equal(picked, "Head of Procurement");
 });
+
+test("31. reveal limit counts only real reveals: good fits with nobody to email don't use a slot", async () => {
+  const clock = { t: 0 }; const store = new MemStore(clock);
+  store.capOverride = 2;
+  const nobody = new Set(["ap-a", "ap-b"]);
+  const { deps, calls } = makeDeps(clock, {
+    findPeople: async (orgId: string) => (nobody.has(orgId) ? [] : [{ id: "p-" + orgId, title: "Purchase Manager", has_email: true }]),
+  });
+  for (const id of ["a", "b", "c", "d", "e"]) store.add({ id, website_url: `https://${id}.com` });
+  await drain(store, deps, clock);
+  const st = (id: string) => store.get(id).status;
+  assert.deepEqual([st("a"), st("b")], ["no_contact", "no_contact"]);
+  assert.equal(["c", "d", "e"].filter((id) => st(id) === "promoted").length, 2, "the limit of 2 gives 2 real leads");
+  assert.equal(["c", "d", "e"].filter((id) => st(id) === "review").length, 1, "the third good fit waits for the client");
+  assert.equal(store.autoRevealCount, 2);
+  assert.equal(calls.promote, 2);
+});

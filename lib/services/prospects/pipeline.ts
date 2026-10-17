@@ -51,6 +51,8 @@ export interface ProspectRow {
   page_markdown: string | null;
   text_source: string | null;
   attempts: number;
+  /** Set when the client decided (approved); an automatic good fit has none. */
+  decided_by?: string | null;
 }
 
 export type ProspectPatch = Partial<{
@@ -143,7 +145,7 @@ async function stage(row: ProspectRow, deps: Deps, store: Store, cfg: FitScoring
     case "queued": return readStage(row, deps, startBy);
     case "read_social": return socialStage(row, deps);
     case "read": return scoreStage(row, deps, store, cfg);
-    case "good": case "approved": case "waiting_credits": return promoteStage(row, deps);
+    case "good": case "approved": case "waiting_credits": return promoteStage(row, deps, store, cfg);
     default: throw new Error(`not workable: ${row.status}`);
   }
 }
@@ -237,12 +239,9 @@ ${found}`);
   if (decided === "unsure" && row.text_source !== "website") return { ...scored, status: "flagged", last_error: "Unsure from the LinkedIn page alone" };
   if (decided === "hidden") return { ...scored, status: "hidden" };
   if (decided === "unsure") return { ...scored, status: "review" };
-  // One atomic step, so parallel lanes can never overshoot the cap. If we crash
-  // after taking a slot, that slot is simply lost: fewer reveals, never more.
-  if (!(await store.reserveAutoReveal(row.search_id, cfg.max_auto_reveals_per_search))) {
-    return { ...scored, status: "review", last_error: "Good fit, but this search already used all its automatic reveals" };
-  }
-  return { ...scored, status: "good", auto_reveal: true };
+  // The automatic-reveal slot is taken later, only when a buyer is found
+  // (promoteStage): a good fit with nobody to reveal must not use one up.
+  return { ...scored, status: "good" };
 }
 
 async function freeSecondPage(row: ProspectRow, deps: Deps): Promise<{ url: string; text: string } | null> {
@@ -267,7 +266,9 @@ async function freeSecondPage(row: ProspectRow, deps: Deps): Promise<{ url: stri
   return wordCount(text) >= MIN_WORDS ? { url: page, text } : null;
 }
 
-async function promoteStage(row: ProspectRow, deps: Deps): Promise<ProspectPatch> {
+async function promoteStage(row: ProspectRow, deps: Deps, store: Store, cfg: FitScoring): Promise<ProspectPatch> {
+  // Automatic = the AI chose it; the client's approval skips the buyer check and the cap.
+  const automatic = !(row.status === "approved" || row.decided_by);
   const free = await deps.apolloCreditsFree(row);
   if (free !== null && free < 1) {
     // Not a failure: no attempt is used up. Checked again every 10 minutes.
@@ -281,11 +282,18 @@ async function promoteStage(row: ProspectRow, deps: Deps): Promise<ProspectPatch
   // unclear title (9 of 50 companies on 17 Oct 2026), the client decides
   // instead of a credit going to someone who can't buy masterbatch. A company
   // the client approved gets the best person anyway — they already chose.
-  if (row.status !== "approved" && !BUYER_TIERS.has(titleTier(best.title))) {
+  if (automatic && !BUYER_TIERS.has(titleTier(best.title))) {
     return { status: "review", last_error: `No buyer found: only ${best.title || "a person with no title"} has an email` };
   }
+  // The automatic-reveal cap, counted only on real reveals (17 Oct 2026 live test:
+  // slots taken at scoring time were used up by companies with no contact, so a
+  // cap of 5 gave 2–3 leads). One atomic step, so parallel lanes never overshoot.
+  // A crash after taking the slot loses it: fewer reveals, never more.
+  if (automatic && !(await store.reserveAutoReveal(row.search_id, cfg.max_auto_reveals_per_search))) {
+    return { status: "review", last_error: "Good fit, but this search already used all its automatic reveals" };
+  }
   const orgId = await deps.promote(row, best);
-  return { status: "promoted", organization_id: orgId, contact_apollo_id: best.id, last_error: null };
+  return { status: "promoted", organization_id: orgId, contact_apollo_id: best.id, last_error: null, ...(automatic ? { auto_reveal: true } : {}) };
 }
 
 /** One worker run: `lanes` loops side by side, each taking the next company the
