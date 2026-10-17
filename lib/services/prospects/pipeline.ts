@@ -17,7 +17,7 @@
 import { displayScore, reasonFor, verdict, type FitScoring } from "./fit-rules";
 import type { JevVerdict } from "./jev";
 import { cleanText, dropCookieText, htmlToText, linksFromMarkdown, pickSecondPage, sitemapLocs, wordCount } from "./text";
-import { pickBestContact } from "../lead-ranking";
+import { pickBestContact, titleTier } from "../lead-ranking";
 
 export type ProspectStatus =
   | "queued"          // waiting to be read
@@ -118,6 +118,8 @@ export const MAX_ATTEMPTS = 3;
 const MIN_WORDS = 20;
 const WAIT_FOR_CREDITS_MS = 10 * 60_000;
 const backoffMs = (attempt: number) => attempt * 2 * 60_000;
+/** Contact types worth an automatic reveal (lead-ranking.ts tiers). */
+const BUYER_TIERS = new Set(["procurement", "owner", "technical", "leadership"]);
 
 export async function advance(row: ProspectRow, deps: Deps, store: Store, cfg: FitScoring, startBy = Infinity): Promise<void> {
   try {
@@ -274,6 +276,14 @@ async function promoteStage(row: ProspectRow, deps: Deps): Promise<ProspectPatch
   const people = (await deps.findPeople(row.apollo_org_id)).filter((p) => p.has_email);
   const best = pickBestContact(people);
   if (!best) return { status: "no_contact", last_error: "Apollo has no one with an email at this company" };
+  // Automatic reveals only buy a buyer: purchase, owner, production/plant or a
+  // director. When the only emailable people are IT, sales, marketing or an
+  // unclear title (9 of 50 companies on 17 Oct 2026), the client decides
+  // instead of a credit going to someone who can't buy masterbatch. A company
+  // the client approved gets the best person anyway — they already chose.
+  if (row.status !== "approved" && !BUYER_TIERS.has(titleTier(best.title))) {
+    return { status: "review", last_error: `No buyer found: only ${best.title || "a person with no title"} has an email` };
+  }
   const orgId = await deps.promote(row, best);
   return { status: "promoted", organization_id: orgId, contact_apollo_id: best.id, last_error: null };
 }

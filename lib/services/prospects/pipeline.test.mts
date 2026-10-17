@@ -374,3 +374,30 @@ test("28. cookie-only home page, no About page, LinkedIn given: LinkedIn is read
   assert.equal(calls.tavilyExtract, 1);
   assert.equal(r.text_source, "linkedin");
 });
+
+test("29. only IT / sales people have an email: no automatic reveal, the client decides; approving reveals anyway", async () => {
+  const clock = { t: 0 }; const store = new MemStore(clock);
+  const { deps, calls } = makeDeps(clock, { findPeople: async () => [{ id: "p1", title: "Information Technology Manager", has_email: true }, { id: "p2", title: "Sales Manager", has_email: true }] });
+  store.add({ id: "a", website_url: "https://a.com" });
+  await drain(store, deps, clock);
+  assert.equal(store.get("a").status, "review");
+  assert.match(String(store.get("a").last_error), /No buyer found: only Information Technology Manager/);
+  assert.equal(calls.promote, 0, "no credit spent");
+  store.get("a").status = "approved";
+  await drain(store, deps, clock);
+  assert.equal(store.get("a").status, "promoted");
+  assert.equal(calls.promote, 1);
+});
+
+test("30. a buyer exists alongside IT / sales: the buyer is revealed automatically", async () => {
+  const clock = { t: 0 }; const store = new MemStore(clock);
+  let picked = "";
+  const { deps } = makeDeps(clock, {
+    findPeople: async () => [{ id: "p1", title: "IT Manager", has_email: true }, { id: "p2", title: "Head of Procurement", has_email: true }],
+    promote: async (_r: ProspectRow, p) => { picked = p.title ?? ""; return "org-a"; },
+  });
+  store.add({ id: "a", website_url: "https://a.com" });
+  await drain(store, deps, clock);
+  assert.equal(store.get("a").status, "promoted");
+  assert.equal(picked, "Head of Procurement");
+});
