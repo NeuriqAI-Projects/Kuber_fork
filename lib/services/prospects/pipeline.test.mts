@@ -335,3 +335,42 @@ test("25. no paid read starts once the run is nearly over: the company waits for
   const r = store.get("a");
   assert.equal(r.status, "queued"); assert.equal(r.attempts, 0); assert.equal(r.locked_until, null, "released for the next run");
 });
+
+const COOKIE_ONLY = "We use cookies to improve your experience.\nAccept all\nReject all\nManage preferences";
+
+test("26. cookie-only home page: the free About page is read instead; Firecrawl paid once", async () => {
+  const clock = { t: 0 }; const store = new MemStore(clock);
+  let scoredText = "";
+  const { deps, calls } = makeDeps(clock, {
+    readHome: async () => { calls.readHome++; return { kind: "ok", markdown: COOKIE_ONLY }; },
+    freeGet: async (u: string) => (u.endsWith("/sitemap.xml") ? "<loc>https://a.com/about-us</loc>" : u.includes("about") ? `<p>${RICH}</p>` : null),
+    score: async (_r: ProspectRow, text: string) => { scoredText = text; return jev(0.9); },
+  });
+  store.add({ id: "a", website_url: "https://a.com" });
+  await drain(store, deps, clock);
+  const r = store.get("a");
+  assert.equal(calls.readHome, 1, "no second paid read");
+  assert.ok(!/cookie/i.test(scoredText) && /blown film/.test(scoredText), "the AI read the About page, not the banner");
+  assert.equal(r.status, "promoted");
+});
+
+test("27. cookie-only home page, no About page, no social page: website down with the reason, nothing guessed", async () => {
+  const clock = { t: 0 }; const store = new MemStore(clock);
+  const { deps, calls } = makeDeps(clock, { readHome: async () => { calls.readHome++; return { kind: "ok", markdown: COOKIE_ONLY }; } });
+  store.add({ id: "a", website_url: "https://a.com" });
+  await drain(store, deps, clock);
+  const r = store.get("a");
+  assert.equal(calls.score, 0, "the AI never guesses from a banner");
+  assert.equal(r.status, "site_down");
+  assert.equal(r.last_error, "website shows only a cookie notice");
+});
+
+test("28. cookie-only home page, no About page, LinkedIn given: LinkedIn is read", async () => {
+  const clock = { t: 0 }; const store = new MemStore(clock);
+  const { deps, calls } = makeDeps(clock, { readHome: async () => { calls.readHome++; return { kind: "ok", markdown: COOKIE_ONLY }; } });
+  store.add({ id: "a", website_url: "https://a.com", linkedin_url: "https://linkedin.com/company/a" });
+  await drain(store, deps, clock);
+  const r = store.get("a");
+  assert.equal(calls.tavilyExtract, 1);
+  assert.equal(r.text_source, "linkedin");
+});

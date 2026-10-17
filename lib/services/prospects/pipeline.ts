@@ -16,7 +16,7 @@
 // Jev and Tavily calls cost fractions of a cent and are safe to repeat.
 import { displayScore, reasonFor, verdict, type FitScoring } from "./fit-rules";
 import type { JevVerdict } from "./jev";
-import { cleanText, htmlToText, linksFromMarkdown, pickSecondPage, sitemapLocs, wordCount } from "./text";
+import { cleanText, dropCookieText, htmlToText, linksFromMarkdown, pickSecondPage, sitemapLocs, wordCount } from "./text";
 import { pickBestContact } from "../lead-ranking";
 
 export type ProspectStatus =
@@ -154,18 +154,28 @@ async function readStage(row: ProspectRow, deps: Deps, startBy: number): Promise
 
   const home = await deps.readHome(site, startBy, row); // the one paid call; saved right after
   if (home.kind === "ok") {
-    const text = cleanText(home.markdown);
+    const { text, hadCookies } = dropCookieText(cleanText(home.markdown));
     if (wordCount(text) >= MIN_WORDS) {
       return { status: "read", page_text: text, page_markdown: home.markdown.slice(0, 100_000), text_source: "website", last_error: null };
     }
+    // Too little real text (often just a cookie banner). Save the page we paid
+    // for now; the next stage tries its free About page, then LinkedIn.
+    return {
+      status: "read_social", page_markdown: home.markdown.slice(0, 100_000),
+      last_error: hadCookies ? "website shows only a cookie notice" : "website has almost no text",
+    };
   }
-  const why = home.kind === "site_down" ? home.detail : "website has almost no text";
   return socials(row).length
-    ? { status: "read_social", last_error: why }
-    : { status: "site_down", last_error: why };
+    ? { status: "read_social", last_error: home.detail }
+    : { status: "site_down", last_error: home.detail };
 }
 
 async function socialStage(row: ProspectRow, deps: Deps): Promise<ProspectPatch> {
+  // The home page was read but said too little: its own About page first (free, capped at 12 s).
+  if (row.page_markdown) {
+    const about = await Promise.race([freeSecondPage(row, deps), new Promise<null>((r) => setTimeout(() => r(null), 12_000))]);
+    if (about) return { status: "read", page_text: about.text, text_source: "website", extra_sources: [about.url], last_error: null };
+  }
   const urls = socials(row);
   if (!urls.length) {
     // Website was there but down → the client decides. Never had one → nothing to go on.
