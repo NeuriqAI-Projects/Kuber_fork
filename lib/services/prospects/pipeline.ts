@@ -16,8 +16,8 @@
 // Jev and Tavily calls cost fractions of a cent and are safe to repeat.
 import { displayScore, reasonFor, verdict, type FitScoring } from "./fit-rules";
 import type { JevVerdict } from "./jev";
-import { cleanText, htmlToText, linksFromMarkdown, pickSecondPage, sitemapLocs, wordCount } from "./text";
-import { pickBestContact } from "../lead-ranking";
+import { cleanText, dropCookieText, htmlToText, linksFromMarkdown, pickSecondPage, sitemapLocs, wordCount } from "./text";
+import { pickBestContact, titleTier } from "../lead-ranking";
 
 export type ProspectStatus =
   | "queued"          // waiting to be read
@@ -51,6 +51,8 @@ export interface ProspectRow {
   page_markdown: string | null;
   text_source: string | null;
   attempts: number;
+  /** Set when the client decided (approved); an automatic good fit has none. */
+  decided_by?: string | null;
 }
 
 export type ProspectPatch = Partial<{
@@ -118,6 +120,8 @@ export const MAX_ATTEMPTS = 3;
 const MIN_WORDS = 20;
 const WAIT_FOR_CREDITS_MS = 10 * 60_000;
 const backoffMs = (attempt: number) => attempt * 2 * 60_000;
+/** Contact types worth an automatic reveal (lead-ranking.ts tiers). */
+const BUYER_TIERS = new Set(["procurement", "owner", "technical", "leadership"]);
 
 export async function advance(row: ProspectRow, deps: Deps, store: Store, cfg: FitScoring, startBy = Infinity): Promise<void> {
   try {
@@ -141,7 +145,7 @@ async function stage(row: ProspectRow, deps: Deps, store: Store, cfg: FitScoring
     case "queued": return readStage(row, deps, startBy);
     case "read_social": return socialStage(row, deps);
     case "read": return scoreStage(row, deps, store, cfg);
-    case "good": case "approved": case "waiting_credits": return promoteStage(row, deps);
+    case "good": case "approved": case "waiting_credits": return promoteStage(row, deps, store, cfg);
     default: throw new Error(`not workable: ${row.status}`);
   }
 }
@@ -154,18 +158,28 @@ async function readStage(row: ProspectRow, deps: Deps, startBy: number): Promise
 
   const home = await deps.readHome(site, startBy, row); // the one paid call; saved right after
   if (home.kind === "ok") {
-    const text = cleanText(home.markdown);
+    const { text, hadCookies } = dropCookieText(cleanText(home.markdown));
     if (wordCount(text) >= MIN_WORDS) {
       return { status: "read", page_text: text, page_markdown: home.markdown.slice(0, 100_000), text_source: "website", last_error: null };
     }
+    // Too little real text (often just a cookie banner). Save the page we paid
+    // for now; the next stage tries its free About page, then LinkedIn.
+    return {
+      status: "read_social", page_markdown: home.markdown.slice(0, 100_000),
+      last_error: hadCookies ? "website shows only a cookie notice" : "website has almost no text",
+    };
   }
-  const why = home.kind === "site_down" ? home.detail : "website has almost no text";
   return socials(row).length
-    ? { status: "read_social", last_error: why }
-    : { status: "site_down", last_error: why };
+    ? { status: "read_social", last_error: home.detail }
+    : { status: "site_down", last_error: home.detail };
 }
 
 async function socialStage(row: ProspectRow, deps: Deps): Promise<ProspectPatch> {
+  // The home page was read but said too little: its own About page first (free, capped at 12 s).
+  if (row.page_markdown) {
+    const about = await Promise.race([freeSecondPage(row, deps), new Promise<null>((r) => setTimeout(() => r(null), 12_000))]);
+    if (about) return { status: "read", page_text: about.text, text_source: "website", extra_sources: [about.url], last_error: null };
+  }
   const urls = socials(row);
   if (!urls.length) {
     // Website was there but down → the client decides. Never had one → nothing to go on.
@@ -225,12 +239,9 @@ ${found}`);
   if (decided === "unsure" && row.text_source !== "website") return { ...scored, status: "flagged", last_error: "Unsure from the LinkedIn page alone" };
   if (decided === "hidden") return { ...scored, status: "hidden" };
   if (decided === "unsure") return { ...scored, status: "review" };
-  // One atomic step, so parallel lanes can never overshoot the cap. If we crash
-  // after taking a slot, that slot is simply lost: fewer reveals, never more.
-  if (!(await store.reserveAutoReveal(row.search_id, cfg.max_auto_reveals_per_search))) {
-    return { ...scored, status: "review", last_error: "Good fit, but this search already used all its automatic reveals" };
-  }
-  return { ...scored, status: "good", auto_reveal: true };
+  // The automatic-reveal slot is taken later, only when a buyer is found
+  // (promoteStage): a good fit with nobody to reveal must not use one up.
+  return { ...scored, status: "good" };
 }
 
 async function freeSecondPage(row: ProspectRow, deps: Deps): Promise<{ url: string; text: string } | null> {
@@ -255,7 +266,9 @@ async function freeSecondPage(row: ProspectRow, deps: Deps): Promise<{ url: stri
   return wordCount(text) >= MIN_WORDS ? { url: page, text } : null;
 }
 
-async function promoteStage(row: ProspectRow, deps: Deps): Promise<ProspectPatch> {
+async function promoteStage(row: ProspectRow, deps: Deps, store: Store, cfg: FitScoring): Promise<ProspectPatch> {
+  // Automatic = the AI chose it; the client's approval skips the buyer check and the cap.
+  const automatic = !(row.status === "approved" || row.decided_by);
   const free = await deps.apolloCreditsFree(row);
   if (free !== null && free < 1) {
     // Not a failure: no attempt is used up. Checked again every 10 minutes.
@@ -264,8 +277,23 @@ async function promoteStage(row: ProspectRow, deps: Deps): Promise<ProspectPatch
   const people = (await deps.findPeople(row.apollo_org_id)).filter((p) => p.has_email);
   const best = pickBestContact(people);
   if (!best) return { status: "no_contact", last_error: "Apollo has no one with an email at this company" };
+  // Automatic reveals only buy a buyer: purchase, owner, production/plant or a
+  // director. When the only emailable people are IT, sales, marketing or an
+  // unclear title (9 of 50 companies on 17 Oct 2026), the client decides
+  // instead of a credit going to someone who can't buy masterbatch. A company
+  // the client approved gets the best person anyway — they already chose.
+  if (automatic && !BUYER_TIERS.has(titleTier(best.title))) {
+    return { status: "review", last_error: `No buyer found: only ${best.title || "a person with no title"} has an email` };
+  }
+  // The automatic-reveal cap, counted only on real reveals (17 Oct 2026 live test:
+  // slots taken at scoring time were used up by companies with no contact, so a
+  // cap of 5 gave 2–3 leads). One atomic step, so parallel lanes never overshoot.
+  // A crash after taking the slot loses it: fewer reveals, never more.
+  if (automatic && !(await store.reserveAutoReveal(row.search_id, cfg.max_auto_reveals_per_search))) {
+    return { status: "review", last_error: "Good fit, but this search already used all its automatic reveals" };
+  }
   const orgId = await deps.promote(row, best);
-  return { status: "promoted", organization_id: orgId, contact_apollo_id: best.id, last_error: null };
+  return { status: "promoted", organization_id: orgId, contact_apollo_id: best.id, last_error: null, ...(automatic ? { auto_reveal: true } : {}) };
 }
 
 /** One worker run: `lanes` loops side by side, each taking the next company the

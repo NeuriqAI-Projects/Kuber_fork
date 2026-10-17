@@ -23,6 +23,35 @@ export function cleanText(md: string): string {
 
 export const wordCount = (t: string): number => (t.match(/\p{L}{2,}/gu) ?? []).length;
 
+// Cookie / consent banner lines, in the languages the client's markets use.
+// A page that is only a banner then reads as "almost no text" instead of
+// letting the AI guess from the company name (16 Oct 2026 test: Karina
+// Plásticos, UpSolv, Kanaflex were all "good fit" from a cookie panel alone).
+const COOKIE_LINE = /(cookie|consent|consentimento|consentimiento|einwilligung|gdpr|lgpd|datenschutz|privacy (settings|preferences|center|centre)|política de privacidad|política de privacidade|accept all|reject all|manage preferences|aceitar|aceptar|akzeptieren|tout accepter)/i;
+
+/** Drop cookie and consent lines. Returns the rest, and whether any were dropped. */
+export function dropCookieText(text: string): { text: string; hadCookies: boolean } {
+  const lines = text.split("\n");
+  const kept = lines.filter((l) => !COOKIE_LINE.test(l));
+  return { text: kept.join("\n"), hadCookies: kept.length < lines.length };
+}
+
+// Apollo sometimes stores a LinkedIn notice as the company name, e.g.
+// "This page is closed. Please see Trioworld Group page" (16 Oct 2026 test).
+const JUNK_NAME = /(this page is (closed|no longer)|please see .+ page|page (is )?(not available|unavailable))/i;
+
+/** The company name to use: Apollo's, unless it is a notice — then the company
+ *  it points to ("Please see X page"), else the website name, marked as such. */
+export function companyName(raw: string | null | undefined, domain: string | null | undefined): string {
+  const n = (raw ?? "").trim();
+  if (n && !JUNK_NAME.test(n)) return n;
+  const pointed = n.match(/please see (.+?) page/i)?.[1]?.trim();
+  if (pointed) return pointed;
+  const base = (domain ?? "").replace(/^www\./, "").split(".")[0];
+  if (base) return `${base.charAt(0).toUpperCase()}${base.slice(1)} (name from website)`;
+  return n || "Unknown company";
+}
+
 export function htmlToText(html: string): string {
   return html
     .replace(/<(script|style|noscript|svg)[\s\S]*?<\/\1>/gi, " ")

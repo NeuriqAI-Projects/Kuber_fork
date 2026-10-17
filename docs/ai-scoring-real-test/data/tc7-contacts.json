@@ -1,0 +1,622 @@
+{
+ "balance_before": 3963,
+ "balance_after": 3963,
+ "rows": [
+  {
+   "apollo_id": "60483f6e1072980001bed032",
+   "name": "DENELPACK",
+   "label": "Y",
+   "people": 6,
+   "emailable": 6,
+   "best_title": "Production Manager"
+  },
+  {
+   "apollo_id": "54a11ba469702d84c5274b00",
+   "name": "This page is closed. Please see Trioworld Group page",
+   "label": "Y",
+   "people": 2,
+   "emailable": 2,
+   "best_title": "Process Operator"
+  },
+  {
+   "apollo_id": "5b13f249a6da98dcc675d19b",
+   "name": "Hipac Romania srl",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "5f44e230ad72b00001ac9c4a",
+   "name": "Berry Global, Inc.",
+   "label": "Y",
+   "people": 100,
+   "emailable": 100,
+   "best_title": "Supply Chain Director"
+  },
+  {
+   "apollo_id": "5e56765ded06f70001d5f7dd",
+   "name": "Toyobo MC U.S.A., Inc.",
+   "label": "Y",
+   "people": 9,
+   "emailable": 9,
+   "best_title": "Senior Technical Manager"
+  },
+  {
+   "apollo_id": "5e5734f64130a20001c89087",
+   "name": "PENTA PACKAGING\u00ae",
+   "label": "Y",
+   "people": 1,
+   "emailable": 1,
+   "best_title": "Operations Manager"
+  },
+  {
+   "apollo_id": "640abd5cd2f7f000a3fed4c2",
+   "name": "Figaro for plastics",
+   "label": "Y",
+   "people": 2,
+   "emailable": 2,
+   "best_title": "General Manager"
+  },
+  {
+   "apollo_id": "6378f590de5241000140a421",
+   "name": "Zhongsu New Materials Technology(Hangzhou)Co.,Ltd",
+   "label": "Y",
+   "people": 2,
+   "emailable": 2,
+   "best_title": "Sinoplast Regi\u00f3n Las Am\u00e9ricas y Europa."
+  },
+  {
+   "apollo_id": "61ad659d0a246a0001b11b78",
+   "name": "Spiltag",
+   "label": "Y",
+   "people": 53,
+   "emailable": 53,
+   "best_title": "Purchasing Manager"
+  },
+  {
+   "apollo_id": "5a9decb0a6da98d9a15c2f57",
+   "name": "Pharmaplast (Pvt.) Limited",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "55f03afbf3e5bb0a78000d30",
+   "name": "PET PREFORM AND CLOSURES",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "66417088affa570001510533",
+   "name": "Maa Pet Preform",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "5f4545287f6cfc0001a74f9d",
+   "name": "Ociplex Com\u00e9rcio e Ind\u00fastria de Embalagens",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "55693a4873696421ab011300",
+   "name": "Sawa for Plastic Industries",
+   "label": "Y",
+   "people": 3,
+   "emailable": 3,
+   "best_title": "Deputy General Manager"
+  },
+  {
+   "apollo_id": "57c4f892a6da986a1b283776",
+   "name": "Skanem Bergen",
+   "label": "Y",
+   "people": 2,
+   "emailable": 2,
+   "best_title": "Quality Lead"
+  },
+  {
+   "apollo_id": "5d32555380f93e752fbfa67a",
+   "name": "Retail Leader",
+   "label": "Y",
+   "people": 1,
+   "emailable": 1,
+   "best_title": "Information Technology Manager"
+  },
+  {
+   "apollo_id": "5e55e2fa96cd410001ff12b5",
+   "name": "Multibolsas Pl\u00e1sticas",
+   "label": "Y",
+   "people": 11,
+   "emailable": 11,
+   "best_title": "Process Engineer"
+  },
+  {
+   "apollo_id": "5d32c4cbf651251a0a256a00",
+   "name": "Vitruplastik SA de CV",
+   "label": "Y",
+   "people": 1,
+   "emailable": 1,
+   "best_title": "Sales Manager"
+  },
+  {
+   "apollo_id": "57c4dc86a6da986a4f4b5471",
+   "name": "Kautex Textron",
+   "label": "Y",
+   "people": 100,
+   "emailable": 100,
+   "best_title": "Director Program Procurement EU"
+  },
+  {
+   "apollo_id": "5b1310e1a6da98dcae5a6082",
+   "name": "Printech Packages (Pvt) Ltd",
+   "label": "Y",
+   "people": 21,
+   "emailable": 21,
+   "best_title": "Manager Supply Chain"
+  },
+  {
+   "apollo_id": "6a09ca370979a00001d3aff9",
+   "name": "Vision Plastics NZ",
+   "label": "Y",
+   "people": 1,
+   "emailable": 1,
+   "best_title": "Marketing and Communications Specialist"
+  },
+  {
+   "apollo_id": "61416b33828d1b0001fbc032",
+   "name": "Pauline  Group",
+   "label": "U",
+   "people": 2,
+   "emailable": 2,
+   "best_title": "\u270512 Years CEO Product Development Solution |Molding Solutions Expert |Sustainable Packing Solutions"
+  },
+  {
+   "apollo_id": "67e371481bfc4000013e8161",
+   "name": "Polymerlink Australia Pty Ltd",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "5e5709f194c49d0001689e1d",
+   "name": "Injection Molding",
+   "label": "N",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "5da144e56a35ec00013f9e04",
+   "name": "Jabil",
+   "label": "U",
+   "people": 100,
+   "emailable": 100,
+   "best_title": "Director Sustainability Supply Chain"
+  },
+  {
+   "apollo_id": "66819b9386ce300001283e27",
+   "name": "Octagon Injection Molding & Assembly",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "54a11bc269702d8ed4b75900",
+   "name": "Sanmina",
+   "label": "N",
+   "people": 100,
+   "emailable": 100,
+   "best_title": "Senior Director Supply Chain"
+  },
+  {
+   "apollo_id": "54a127fa69702d9313f7db00",
+   "name": "ARPLAST | Ecopackaging y Thermoforming",
+   "label": "Y",
+   "people": 1,
+   "emailable": 1,
+   "best_title": "CEO"
+  },
+  {
+   "apollo_id": "55f0e458f3e5bb16d700205d",
+   "name": "Team Plastique",
+   "label": "Y",
+   "people": 39,
+   "emailable": 39,
+   "best_title": "Responsable Supply Chain"
+  },
+  {
+   "apollo_id": "55923fe073696418bcaef400",
+   "name": "Sasol",
+   "label": "N",
+   "people": 100,
+   "emailable": 100,
+   "best_title": "Director Supply Chain Management"
+  },
+  {
+   "apollo_id": "5d0a7ce0a3ae61be65370d7d",
+   "name": "INEOS Styrolution",
+   "label": "Y",
+   "people": 100,
+   "emailable": 100,
+   "best_title": "Vice President, SM Business & Procurement APAC"
+  },
+  {
+   "apollo_id": "5e0971f494359c008cf64780",
+   "name": "TAFE - Tractors and Farm Equipment Limited",
+   "label": "N",
+   "people": 100,
+   "emailable": 100,
+   "best_title": "Manager SBU Purchase"
+  },
+  {
+   "apollo_id": "54a1358169702d4255d4a800",
+   "name": "Victrex",
+   "label": "Y",
+   "people": 100,
+   "emailable": 100,
+   "best_title": "Category Manager"
+  },
+  {
+   "apollo_id": "64d4a821f8894d00011fcce2",
+   "name": "IPL Brightgreen",
+   "label": "Y",
+   "people": 7,
+   "emailable": 7,
+   "best_title": "Head of Technical and Quality"
+  },
+  {
+   "apollo_id": "54a1342b69702d2db4b86700",
+   "name": "UpSolv",
+   "label": "U",
+   "people": 13,
+   "emailable": 13,
+   "best_title": "Vice-President Research and Development"
+  },
+  {
+   "apollo_id": "5b855bf6324d44433246fe18",
+   "name": "Karina Pl\u00e1sticos",
+   "label": "U",
+   "people": 100,
+   "emailable": 100,
+   "best_title": "Senior Procurement Specialist"
+  },
+  {
+   "apollo_id": "54a1346069702d333d594700",
+   "name": "SKIPPER LIMITED",
+   "label": "Y",
+   "people": 100,
+   "emailable": 100,
+   "best_title": "General Manager - Purchase"
+  },
+  {
+   "apollo_id": "62b43f0d4e250e00016f8672",
+   "name": "EGFCO",
+   "label": "Y",
+   "people": 8,
+   "emailable": 8,
+   "best_title": "Procurement Specialist"
+  },
+  {
+   "apollo_id": "64210a460495b80001313b04",
+   "name": "Delta Irrigation and Fertilizer Pvt Ltd",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "56daee27f3e5bb2ed4000b6d",
+   "name": "Westf\u00e4lische Kunststofftechnik GmbH",
+   "label": "Y",
+   "people": 11,
+   "emailable": 11,
+   "best_title": "Buyer"
+  },
+  {
+   "apollo_id": "5e56ea78b42ee60001025092",
+   "name": "Kanaflex\u00ae",
+   "label": "U",
+   "people": 50,
+   "emailable": 50,
+   "best_title": "Procurement Specialist | Technical Buyer"
+  },
+  {
+   "apollo_id": "556d8e6c736964121f304201",
+   "name": "Ibotec - Ind\u00fastria de Tubagens, S.A.",
+   "label": "Y",
+   "people": 3,
+   "emailable": 3,
+   "best_title": "Production Director"
+  },
+  {
+   "apollo_id": "5da41e6dea9a2b0001c63ddb",
+   "name": "GEMAPLAST,SARL",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "645e1e4984943c00da394f61",
+   "name": "Kanaflex Corporation - USA",
+   "label": "Y",
+   "people": 15,
+   "emailable": 15,
+   "best_title": "Materials and Operations Lead"
+  },
+  {
+   "apollo_id": "5592396173696419d86ddb00",
+   "name": "Rotational Molding Inc",
+   "label": "Y",
+   "people": 1,
+   "emailable": 1,
+   "best_title": "PPM"
+  },
+  {
+   "apollo_id": "64203d50abdc0200015cbf45",
+   "name": "DS PLASTICS GROUP",
+   "label": "Y",
+   "people": 2,
+   "emailable": 2,
+   "best_title": "CEO"
+  },
+  {
+   "apollo_id": "54a1271369702d9313176c00",
+   "name": "ANVI Plasturgie",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "674827de19ce930001936901",
+   "name": "Rotek Plastics and Custom Molding",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "5e0062678daed101468886ad",
+   "name": "Pioneer Water Tanks America",
+   "label": "U",
+   "people": 4,
+   "emailable": 4,
+   "best_title": "Senior Project Manager/ Estimator"
+  },
+  {
+   "apollo_id": "60af3452873e330001625a73",
+   "name": "ROTO Slovenija d.o.o.",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "67cf79b5ff2f780021a52a94",
+   "name": "Big Water Tanks",
+   "label": "N",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "674c78558439970001da3a88",
+   "name": "SCATOLIFICIO GONDOLA - TRIVENETO S.R.L.",
+   "label": "Y",
+   "people": 3,
+   "emailable": 3,
+   "best_title": "Technical Manager"
+  },
+  {
+   "apollo_id": "5fc81f0c682153000100988a",
+   "name": "PDM Extrusions Private Limited",
+   "label": "Y",
+   "people": 5,
+   "emailable": 5,
+   "best_title": "Managing Director & CEO"
+  },
+  {
+   "apollo_id": "55923fc07369640b18658b00",
+   "name": "Grupo Plastilit",
+   "label": "Y",
+   "people": 46,
+   "emailable": 46,
+   "best_title": "Purchasing Specialist"
+  },
+  {
+   "apollo_id": "54a2425c746869331816521a",
+   "name": "LAMINEX\u00ae | Laminados Extru\u00eddos Pl\u00e1sticos SA de CV",
+   "label": "Y",
+   "people": 17,
+   "emailable": 17,
+   "best_title": "Production Manager"
+  },
+  {
+   "apollo_id": "63d5ac83d9dfab0001f7308d",
+   "name": "Neo Plastic Industries | PP Sheet Manufacturer",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "640efb6a321ae00001e907d3",
+   "name": "NY Polymers",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "64532f24056c030001f5bdaa",
+   "name": "Rainbow Plastics India Ltd.",
+   "label": "Y",
+   "people": 2,
+   "emailable": 2,
+   "best_title": "Director"
+  },
+  {
+   "apollo_id": "66ea802b5c2e4a0001ebeae4",
+   "name": "Suzhou Huiyuan Plastic Products Co., Ltd. (\u82cf\u5dde\u6c47\u6e90\u5851\u80f6\u5236\u54c1\u6709\u9650\u516c\u53f8)",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "5d36c761f6512522281a0d3b",
+   "name": "B\u00fclte Group - Germany | France \ud83d\udd29 Specialist for plastic fasteners",
+   "label": "Y",
+   "people": 10,
+   "emailable": 10,
+   "best_title": "General Manager"
+  },
+  {
+   "apollo_id": "54a1296d69702d90a227c001",
+   "name": "Trioworld UK Ltd",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "55f6b9c4f3e5bb1961016811",
+   "name": "Theodorou Group",
+   "label": "U",
+   "people": 15,
+   "emailable": 15,
+   "best_title": "Supply Chain Manager"
+  },
+  {
+   "apollo_id": "5e581c694a6b11000175c338",
+   "name": "EB Packaging",
+   "label": "Y",
+   "people": 1,
+   "emailable": 1,
+   "best_title": "International Business Development"
+  },
+  {
+   "apollo_id": "640d9c38e038b90001fecd44",
+   "name": "Wrap-Tite Canada",
+   "label": "Y",
+   "people": 2,
+   "emailable": 2,
+   "best_title": "President"
+  },
+  {
+   "apollo_id": "5e564e3c440ea50001796ebc",
+   "name": "Soft Film Ind\u00fastria e Com\u00e9rcio de Pl\u00e1sticos Ltda",
+   "label": "Y",
+   "people": 37,
+   "emailable": 37,
+   "best_title": "Production Supervisor"
+  },
+  {
+   "apollo_id": "60af29e075d63800015b4618",
+   "name": "Pl\u00e1sticos ENRES SA de CV",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "61ec7ce2f2a47b0001b385b2",
+   "name": "Termopl\u00e1sticos Ant\u00e1rtida | Fabricamos Film Stretch, todo tipo de bolsas y l\u00e1minas industriales",
+   "label": "Y",
+   "people": 11,
+   "emailable": 11,
+   "best_title": "General Manager"
+  },
+  {
+   "apollo_id": "636ca38ae2a8430001e29a19",
+   "name": "Arax Chemistry",
+   "label": "N",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "64c217dfac5f97000101b64b",
+   "name": "CRIPLAST EMBALAGENS PLASTICAS",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "636f4a3eba2a640001f022e2",
+   "name": "PT. Plastin Eka Prakarsa",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "5fcaeb5efdb89600017884f3",
+   "name": "Flex Embalagens Pl\u00e1sticas",
+   "label": "Y",
+   "people": 4,
+   "emailable": 4,
+   "best_title": "Production Supervisor"
+  },
+  {
+   "apollo_id": "5569c3aa7369642525208b00",
+   "name": "Shrink Pack Limited",
+   "label": "Y",
+   "people": 1,
+   "emailable": 1,
+   "best_title": "Director"
+  },
+  {
+   "apollo_id": "631d71a45a304700a31260ed",
+   "name": "Niyo Packaging",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "63bbe05e39c49b0001d072bd",
+   "name": "Uniqube International",
+   "label": "U",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "66e9116dba65b70001416390",
+   "name": "Proverpack Industria E Comercio De Produtos Plasticos",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "61ec0d89a97fe90001ded887",
+   "name": "Arupri\u00ae Compostable Packaging",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  },
+  {
+   "apollo_id": "67d8f828a74c750001c99410",
+   "name": "Amaral&Souza",
+   "label": "Y",
+   "people": 0,
+   "emailable": 0,
+   "best_title": null
+  }
+ ]
+}

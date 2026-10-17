@@ -335,3 +335,86 @@ test("25. no paid read starts once the run is nearly over: the company waits for
   const r = store.get("a");
   assert.equal(r.status, "queued"); assert.equal(r.attempts, 0); assert.equal(r.locked_until, null, "released for the next run");
 });
+
+const COOKIE_ONLY = "We use cookies to improve your experience.\nAccept all\nReject all\nManage preferences";
+
+test("26. cookie-only home page: the free About page is read instead; Firecrawl paid once", async () => {
+  const clock = { t: 0 }; const store = new MemStore(clock);
+  let scoredText = "";
+  const { deps, calls } = makeDeps(clock, {
+    readHome: async () => { calls.readHome++; return { kind: "ok", markdown: COOKIE_ONLY }; },
+    freeGet: async (u: string) => (u.endsWith("/sitemap.xml") ? "<loc>https://a.com/about-us</loc>" : u.includes("about") ? `<p>${RICH}</p>` : null),
+    score: async (_r: ProspectRow, text: string) => { scoredText = text; return jev(0.9); },
+  });
+  store.add({ id: "a", website_url: "https://a.com" });
+  await drain(store, deps, clock);
+  const r = store.get("a");
+  assert.equal(calls.readHome, 1, "no second paid read");
+  assert.ok(!/cookie/i.test(scoredText) && /blown film/.test(scoredText), "the AI read the About page, not the banner");
+  assert.equal(r.status, "promoted");
+});
+
+test("27. cookie-only home page, no About page, no social page: website down with the reason, nothing guessed", async () => {
+  const clock = { t: 0 }; const store = new MemStore(clock);
+  const { deps, calls } = makeDeps(clock, { readHome: async () => { calls.readHome++; return { kind: "ok", markdown: COOKIE_ONLY }; } });
+  store.add({ id: "a", website_url: "https://a.com" });
+  await drain(store, deps, clock);
+  const r = store.get("a");
+  assert.equal(calls.score, 0, "the AI never guesses from a banner");
+  assert.equal(r.status, "site_down");
+  assert.equal(r.last_error, "website shows only a cookie notice");
+});
+
+test("28. cookie-only home page, no About page, LinkedIn given: LinkedIn is read", async () => {
+  const clock = { t: 0 }; const store = new MemStore(clock);
+  const { deps, calls } = makeDeps(clock, { readHome: async () => { calls.readHome++; return { kind: "ok", markdown: COOKIE_ONLY }; } });
+  store.add({ id: "a", website_url: "https://a.com", linkedin_url: "https://linkedin.com/company/a" });
+  await drain(store, deps, clock);
+  const r = store.get("a");
+  assert.equal(calls.tavilyExtract, 1);
+  assert.equal(r.text_source, "linkedin");
+});
+
+test("29. only IT / sales people have an email: no automatic reveal, the client decides; approving reveals anyway", async () => {
+  const clock = { t: 0 }; const store = new MemStore(clock);
+  const { deps, calls } = makeDeps(clock, { findPeople: async () => [{ id: "p1", title: "Information Technology Manager", has_email: true }, { id: "p2", title: "Sales Manager", has_email: true }] });
+  store.add({ id: "a", website_url: "https://a.com" });
+  await drain(store, deps, clock);
+  assert.equal(store.get("a").status, "review");
+  assert.match(String(store.get("a").last_error), /No buyer found: only Information Technology Manager/);
+  assert.equal(calls.promote, 0, "no credit spent");
+  store.get("a").status = "approved";
+  await drain(store, deps, clock);
+  assert.equal(store.get("a").status, "promoted");
+  assert.equal(calls.promote, 1);
+});
+
+test("30. a buyer exists alongside IT / sales: the buyer is revealed automatically", async () => {
+  const clock = { t: 0 }; const store = new MemStore(clock);
+  let picked = "";
+  const { deps } = makeDeps(clock, {
+    findPeople: async () => [{ id: "p1", title: "IT Manager", has_email: true }, { id: "p2", title: "Head of Procurement", has_email: true }],
+    promote: async (_r: ProspectRow, p) => { picked = p.title ?? ""; return "org-a"; },
+  });
+  store.add({ id: "a", website_url: "https://a.com" });
+  await drain(store, deps, clock);
+  assert.equal(store.get("a").status, "promoted");
+  assert.equal(picked, "Head of Procurement");
+});
+
+test("31. reveal limit counts only real reveals: good fits with nobody to email don't use a slot", async () => {
+  const clock = { t: 0 }; const store = new MemStore(clock);
+  store.capOverride = 2;
+  const nobody = new Set(["ap-a", "ap-b"]);
+  const { deps, calls } = makeDeps(clock, {
+    findPeople: async (orgId: string) => (nobody.has(orgId) ? [] : [{ id: "p-" + orgId, title: "Purchase Manager", has_email: true }]),
+  });
+  for (const id of ["a", "b", "c", "d", "e"]) store.add({ id, website_url: `https://${id}.com` });
+  await drain(store, deps, clock);
+  const st = (id: string) => store.get(id).status;
+  assert.deepEqual([st("a"), st("b")], ["no_contact", "no_contact"]);
+  assert.equal(["c", "d", "e"].filter((id) => st(id) === "promoted").length, 2, "the limit of 2 gives 2 real leads");
+  assert.equal(["c", "d", "e"].filter((id) => st(id) === "review").length, 1, "the third good fit waits for the client");
+  assert.equal(store.autoRevealCount, 2);
+  assert.equal(calls.promote, 2);
+});

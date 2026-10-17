@@ -16,6 +16,7 @@ import { checkApolloCredits } from "@/lib/services/provider-credits";
 import { DEV_COMPANY_ID, parseIndustryKeywordGroups, resolveApolloKeyword } from "@/lib/constants";
 import type { ApolloOrgAdvancedFilters } from "@/lib/services/apollo";
 import { normalizeDomain } from "@/lib/utils/domain";
+import { companyName } from "./text";
 
 export interface ProspectSearchInput {
   keywords: string[];
@@ -151,7 +152,7 @@ export async function runProspectSearch(db: SupabaseClient, companyId: string, u
       fresh.map((o) => ({
         search_id: searchId,
         apollo_org_id: o.id,
-        name: o.name ?? "Unknown company",
+        name: companyName(o.name, safeDomain(o.primary_domain)),
         domain: safeDomain(o.primary_domain),
         website_url: o.website_url,
         linkedin_url: o.linkedin_url,

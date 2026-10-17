@@ -1,0 +1,44 @@
+time_iso,test,service,action,detail,credits_expected,balance_before,balance_after
+2026-10-16T17:05:50.205Z,TC-2,apollo,org_search,"K05 blown film total=450 returned=100",1,4000,3999
+2026-10-16T17:05:54.126Z,TC-2,apollo,org_search,"K01 stretch film total=1781 returned=100",1,,
+2026-10-16T17:05:57.306Z,TC-2,apollo,org_search,"K03 plastic film total=822 returned=100",1,,
+2026-10-16T17:05:59.870Z,TC-2,apollo,org_search,"K08 cast film total=177 returned=100",1,,
+2026-10-16T17:06:03.193Z,TC-2,apollo,org_search,"K17 agricultural film total=98 returned=98",1,,
+2026-10-16T17:06:06.116Z,TC-2,apollo,org_search,"K18 plastic bags total=1205 returned=100",1,,
+2026-10-16T17:06:09.187Z,TC-2,apollo,org_search,"K10 pet bottles total=1341 returned=100",1,,
+2026-10-16T17:06:13.766Z,TC-2,apollo,org_search,"K11 pet preform total=287 returned=100",1,3999,3992
+2026-10-16T17:06:17.804Z,TC-2,apollo,org_search,"K14 caps and closures total=302 returned=100",1,,
+2026-10-16T17:06:21.123Z,TC-2,apollo,org_search,"K19 industrial packaging total=7580 returned=100",1,,
+2026-10-16T17:06:24.077Z,TC-2,apollo,org_search,"K20 rotomoulding total=202 returned=100",1,,
+2026-10-16T17:06:26.549Z,TC-2,apollo,org_search,"K38 Rotational Molding total=507 returned=100",1,,
+2026-10-16T17:06:29.588Z,TC-2,apollo,org_search,"K40 Water Tanks total=3799 returned=100",1,,
+2026-10-16T17:06:32.130Z,TC-2,apollo,org_search,"K22 injection molding total=13461 returned=100",1,,
+2026-10-16T17:06:36.116Z,TC-2,apollo,org_search,"K23 thermoforming total=2920 returned=100",1,3992,3985
+2026-10-16T17:06:38.536Z,TC-2,apollo,org_search,"K47 Thermoformings total=2 returned=2",1,,
+2026-10-16T17:06:40.921Z,TC-2,apollo,org_search,"K61 Plastic Injection MoldingS total=6 returned=6",1,,
+2026-10-16T17:06:43.941Z,TC-2,apollo,org_search,"K25 polymers total=10133 returned=100",1,,
+2026-10-16T17:06:46.481Z,TC-2,apollo,org_search,"K26 engineering plastics total=3898 returned=100",1,,
+2026-10-16T17:06:49.449Z,TC-2,apollo,org_search,"K27 compounding total=5171 returned=100",1,,
+2026-10-16T17:06:52.093Z,TC-2,apollo,org_search,"K28 plastic recycling total=4544 returned=100",1,,
+2026-10-16T17:06:55.907Z,TC-2,apollo,org_search,"K29 masterbatch total=1353 returned=99",1,3985,3978
+2026-10-16T17:06:59.286Z,TC-2,apollo,org_search,"K30 pipe total=39806 returned=100",1,,
+2026-10-16T17:07:02.334Z,TC-2,apollo,org_search,"K31 extrusion total=12191 returned=100",1,,
+2026-10-16T17:07:05.614Z,TC-2,apollo,org_search,"K32 PE PIPES total=272 returned=100",1,,
+2026-10-16T17:07:08.429Z,TC-2,apollo,org_search,"K36 Drainage Pipes total=380 returned=100",1,,
+2026-10-16T17:07:11.573Z,TC-2,apollo,org_search,"K56 Plastic Sheets total=623 returned=100",1,,
+2026-10-16T17:07:14.142Z,TC-2,apollo,org_search,"K59 PP Sheets total=55 returned=55",1,,
+2026-10-16T17:08:00.871Z,TC-3,apollo,group_search,"G06 Compounders words=3 total=18414",1,3972,3971
+2026-10-16T17:08:07.520Z,TC-3,apollo,group_search,"G08 Specialty words=3 total=52245",1,3971,3970
+2026-10-16T17:08:24.199Z,TC-3,apollo,group_search,"G12 Sheet Extrusion words=5 total=703",1,3970,3969
+2026-10-16T17:08:31.274Z,TC-3,apollo,group_search,"G01 Film Extrusion words=9 total=5226",1,3969,3968
+2026-10-16T17:12:33.057Z,TC-1,apollo,org_search,"K59-p3-empty page=3 loc= total=55 returned=0",0,3968,3968
+2026-10-16T17:12:49.711Z,TC-4,apollo,org_search,"K01-p2 page=2 loc= total=1781 returned=100",1,3968,3967
+2026-10-16T17:12:55.279Z,TC-4,apollo,org_search,"K01-p5 page=5 loc= total=1781 returned=100",1,3967,3966
+2026-10-16T17:13:01.437Z,TC-4,apollo,org_search,"K01-p10 page=10 loc= total=1781 returned=100",1,3966,3965
+2026-10-16T17:13:07.469Z,TC-5,apollo,org_search,"K01-India page=1 loc=India total=173 returned=100",1,3965,3964
+2026-10-16T17:13:12.931Z,TC-5,apollo,org_search,"K01-UnitedStates page=1 loc=United States total=350 returned=100",1,3964,3963
+2026-10-16T17:13:41.231Z,TC-6,firecrawl,scoring_run,"129 rows, 119 reads, 3 reused",119,4725,4618
+2026-10-16T17:13:41.231Z,TC-6,tavily,calls,"extract=23 search=5",28,,
+2026-10-16T17:17:56.506Z,TC-4,firecrawl,scoring_run,"24 rows, 23 reads, 0 reused",23,4618,4599
+2026-10-16T17:17:56.506Z,TC-4,tavily,calls,"extract=8 search=0",8,,
+2026-10-16T17:22:05.787Z,TC-7,apollo,people_search_free,"77 companies",0,3963,3963

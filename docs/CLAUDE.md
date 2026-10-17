@@ -6,6 +6,7 @@
 - `*-prd.html` — feature specs (company lookup, CC/BCC, follow-up status).
 - `apollo-*` — Apollo filter / credit research.
 - `notes/` — older audits & how-tos: `EDGE_CASES.md` (cited from code as §x.y), `ASSUMPTIONS.md`, `UI_ISSUES.md`, `run.md` (run locally), `watchdog-setup.md`, `ideas.md`, decks.
+- `ai-scoring-real-test/` — 16 Oct 2026 real-credit test of Scored Companies: open `index.html`; scripts + data inside.
 - `legacy/` — old schema (`kuber_schema.dbml`), early migrations, backend notes.
 
 Docs can be stale; the code and live DB win.
