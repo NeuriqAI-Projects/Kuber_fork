@@ -57,6 +57,10 @@ export async function GET(req: NextRequest) {
       status: s.status, error: s.error, credits_spent: s.credits_spent, returned: s.returned, new_companies: s.new_companies,
       mock: s.mock, created_at: s.created_at, max_auto_reveals: f.max_auto_reveals ?? null, auto_reveals_used: s.auto_reveals_used,
       total: rs.length,
+      // Apollo credits this batch has really used: the search page + 1 per contact revealed.
+      credits_used: (s.credits_spent ?? 0) + (s.mock ? 0 : n("promoted")),
+      // The limit chosen on the search screen (search + automatic reveals); approvals add 1 each.
+      max_credits: f.max_auto_reveals != null ? f.max_auto_reveals + 1 : null,
       in_progress: rs.filter((r) => isWorking(r as never)).length,
       groups: g,
       stages: {

@@ -1150,6 +1150,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
                         className="h-6 px-2 text-[11px] gap-1"
                         onClick={handleRetry}
                         disabled={retrying}
+                        title="Reads the company website again: about 1 Firecrawl credit, plus a few cents of AI for the company profile"
                       >
                         <RotateCcw className={cn("size-3", retrying && "animate-spin")} />
                         {currentStage === "failed" || (currentStage === "done" && !enrichHasData) ? "Retry" : "Enrich"}

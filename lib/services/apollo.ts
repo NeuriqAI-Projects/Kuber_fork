@@ -370,6 +370,25 @@ export function normalizeOrg(row: RawOrg): ApolloOrganization {
 
 /** Apollo's own page ceiling. Asking for less does NOT cost less — the credit
  *  is charged per page — so the request always uses the maximum. */
+/**
+ * FREE size check for a company search: how many PEOPLE Apollo has at
+ * companies matching these filters (People Search costs 0 credits; per_page 1,
+ * we only read the total). lib/services/prospects/estimate.ts turns it into a
+ * company range. Company Search itself costs 1 credit per page, so this is how
+ * the screen can show "about N companies" before anything is spent.
+ */
+export async function countPeopleAtCompanies(f: { keywordTags: string[]; locations?: string[]; employeeRanges?: string[] }): Promise<number> {
+  const body: Record<string, unknown> = { page: 1, per_page: 1, q_organization_keyword_tags: f.keywordTags };
+  const locs = mapLocations(f.locations);
+  if (locs) body.organization_locations = locs;
+  const sizes = employeeRanges(f.employeeRanges);
+  if (sizes) body.organization_num_employees_ranges = sizes;
+  const res = await fetchWithRetry("apollo", `${BASE}/mixed_people/api_search`, { method: "POST", headers: await headers(), body: JSON.stringify(body) });
+  if (!res.ok) throw Object.assign(new Error(`Apollo people count ${res.status}`), { status: res.status });
+  const j = await res.json() as { total_entries?: number; pagination?: { total_entries?: number } };
+  return j.total_entries ?? j.pagination?.total_entries ?? 0;
+}
+
 export const APOLLO_ORG_PER_PAGE = 100;
 
 export async function searchOrganizations(opts: {

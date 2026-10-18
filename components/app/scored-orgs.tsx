@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 export interface ScoredSearch {
   id: string; batch_name: string; color: string; keywords: string[]; status: string; error: string | null;
   credits_spent: number; returned: number | null; new_companies: number | null; mock: boolean; created_at: string;
-  max_auto_reveals: number | null; total: number; in_progress: number; groups: Record<Group, number>;
+  max_auto_reveals: number | null; credits_used: number; max_credits: number | null; total: number; in_progress: number; groups: Record<Group, number>;
   stages: { found: number; read: number; scored: number; to_reveal: number; revealed: number; waiting_credits: number };
 }
 export interface ScoredCompany {
@@ -169,8 +169,8 @@ function Decide({ c, busy, onDecide, large = false }: { c: ScoredCompany; busy: 
   return (
     <span className={row}>
       {c.status === "site_down"
-        ? <Tip text="Read the website again (1 Firecrawl credit)." className={large ? "flex-1" : undefined}><Button size="sm" variant="outline" disabled={busy} onClick={act("retry")} className={cn(btn, "w-full")}><RotateCcw />Retry</Button></Tip>
-        : <Tip text="Reveal one contact at this company (1 Apollo credit)." className={large ? "flex-1" : undefined}><Button size="sm" disabled={busy} onClick={act("approve")} className={cn(btn, "w-full")}><Check />Approve</Button></Tip>}
+        ? <Tip text="Read the website again (1 Firecrawl credit)." className={large ? "flex-1" : undefined}><Button size="sm" variant="outline" disabled={busy} onClick={act("retry")} className={cn(btn, "w-full")}><RotateCcw />Retry{large ? " · 1 Firecrawl credit" : ""}</Button></Tip>
+        : <Tip text="Reveal one contact at this company: 1 Apollo credit, only if Apollo has a person with an email there." className={large ? "flex-1" : undefined}><Button size="sm" disabled={busy} onClick={act("approve")} className={cn(btn, "w-full")}><Check />Approve{large ? " · 1 credit" : ""}</Button></Tip>}
       <Tip text="Skip this company. You can undo it." className={large ? "flex-1" : undefined}><Button size="sm" variant="outline" disabled={busy} onClick={act("reject")} className={cn(btn, "w-full")}><X />Decline</Button></Tip>
     </span>
   );
@@ -222,7 +222,7 @@ export function RunningSearchesBar({ data, onOpen }: { data: ScoredData | null; 
               <div className="min-w-0">
                 <BatchPill name={s.batch_name} color={s.color} />
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  {new Date(s.created_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {s.credits_spent} Apollo credit{s.credits_spent === 1 ? "" : "s"}{s.mock ? " · test" : ""}
+                  {new Date(s.created_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {s.credits_used} Apollo credit{s.credits_used === 1 ? "" : "s"} used{s.max_credits != null ? ` (limit ${s.max_credits})` : ""}{s.mock ? " · test, nothing charged" : ""}
                 </p>
                 {s.status === "failed" && <p className="text-[11px] font-medium text-red-600 dark:text-red-400">Search failed: {s.error}</p>}
                 {s.status === "paying" && <p className="text-[11px] font-medium text-red-600 dark:text-red-400">{s.error ?? "Apollo didn't answer — charge unknown"}</p>}
@@ -338,7 +338,7 @@ export function ScoredOrgsTable({ data, error, loading, onDecide, onOpenCompany 
         {reviewIds.length > 1 && (
           <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-2.5">
             <Button size="sm" variant="outline" disabled={busy} onClick={() => run(reviewIds, "reject")}>Decline all {reviewIds.length}</Button>
-            <Button size="sm" disabled={busy} onClick={() => run(reviewIds, "approve")}>Approve all {reviewIds.length}</Button>
+            <Button size="sm" disabled={busy} onClick={() => run(reviewIds, "approve")}>Approve all {reviewIds.length} · up to {reviewIds.length} credit{reviewIds.length === 1 ? "" : "s"}</Button>
           </div>
         )}
       </div>

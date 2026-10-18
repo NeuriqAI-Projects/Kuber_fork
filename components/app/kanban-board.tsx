@@ -56,7 +56,7 @@ export function KanbanBoard({
                   variant="ghost"
                   onClick={onRetryAllFailed}
                   disabled={retryingAll}
-                  title="Retry enrichment for every failed company in this list"
+                  title={`Retry enrichment for every failed company in this list: about ${failedCount} Firecrawl credit${failedCount === 1 ? "" : "s"} (1 per company) plus a few cents of AI`}
                   className="ml-auto h-auto shrink-0 flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-yellow-500 hover:text-yellow-400 hover:bg-transparent disabled:opacity-50"
                 >
                   <RotateCcw className={cn("size-3", retryingAll && "animate-spin")} />
