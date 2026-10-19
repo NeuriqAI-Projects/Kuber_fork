@@ -11,25 +11,38 @@ import {
 } from "@/lib/api-client";
 import { CampaignsSkeleton } from "@/components/app/page-skeletons";
 import type { Campaign } from "@/components/app/create-campaign-modal";
-import { Pause, Play, Trash2, User, UserPlus } from "lucide-react";
+import { Megaphone, Pause, Play, Plus, Trash2 } from "lucide-react";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SearchInput } from "@/components/ui/search-input";
 import { ServiceHealthBanner } from "@/components/app/service-health-banner";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
-import { Card } from "@/components/ui/card";
+import { PageHeader, Toolbar } from "@/components/ui/page-header";
+import { Pill } from "@/components/ui/pill";
+import { Avatar } from "@/components/leads/lead-ui";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 
 type CampaignStatus = "Draft" | "Live" | "Paused";
 
+// Attio tag pairs: pale fill + dark text in light mode, low-alpha fill + light
+// text in dark mode (see root CLAUDE.md "Tags / status pills").
 const CAMPAIGN_STATUS_STYLES: Record<string, { badge: string; dot: string }> = {
-  Draft:  { badge: "bg-zinc-500/15 text-zinc-400 border-zinc-500/25",   dot: "bg-zinc-400"  },
-  Live:   { badge: "bg-green-500/15 text-green-400 border-green-500/25", dot: "bg-green-400" },
-  Paused: { badge: "bg-amber-500/15 text-amber-400 border-amber-500/25", dot: "bg-amber-400" },
+  Draft:     { badge: "bg-secondary text-muted-foreground border-border", dot: "bg-zinc-400" },
+  Scheduled: { badge: "bg-blue-100 text-blue-800 border-blue-200/70 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/25", dot: "bg-blue-500" },
+  Live:      { badge: "bg-green-100 text-green-800 border-green-200/70 dark:bg-green-500/15 dark:text-green-300 dark:border-green-500/25", dot: "bg-green-500" },
+  Paused:    { badge: "bg-amber-100 text-amber-800 border-amber-200/70 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25", dot: "bg-amber-500" },
 };
+
+/** createdAt is a yyyy-mm-dd day; show it the way the rest of the app does. */
+function formatCreated(day: string): string {
+  const d = new Date(`${day}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? day : format(d, "d MMM yyyy");
+}
 
 export function CampaignsClient() {
   const router = useRouter();
@@ -104,25 +117,33 @@ export function CampaignsClient() {
   // First visit only — afterwards the cached list renders immediately.
   if (!campaignsLoaded) return <CampaignsSkeleton />;
 
+  const isManager = role === "manager";
+
   return (
-    <div className="max-w-6xl mx-auto p-8 space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <p className="eyebrow">Outreach · Campaigns</p>
-      </div>
+    <div className="flex h-full flex-col">
+      <PageHeader
+        title="Campaigns"
+        icon={<Megaphone />}
+        actions={
+          // A campaign is created from a lead selection, so this starts there:
+          // the Leads screen's "Create campaign" opens the modal with the
+          // ticked leads (the modal can't create a campaign with none).
+          <Button size="sm" onClick={() => router.push("/leads")} title="Pick leads on the Leads screen, then Create campaign">
+            <Plus />
+            New campaign
+          </Button>
+        }
+      />
 
       {/* Drafts are written here, so a dead LLM key has to be visible here. It
           was only on Leads and Dashboard, which is why a whole campaign could
-          show "No draft" on every row with no explanation anywhere. */}
-      <ServiceHealthBanner />
+          show "No draft" on every row with no explanation anywhere. The banner
+          renders nothing when healthy, so empty:hidden drops the spacing. */}
+      <div className="shrink-0 px-4 pt-3 empty:hidden">
+        <ServiceHealthBanner />
+      </div>
 
-      <div className="flex items-center gap-3 flex-wrap rounded-lg bg-secondary p-2">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search campaigns…"
-          wrapperClassName="flex-1 min-w-[200px] max-w-xs"
-          className="bg-field"
-        />
+      <Toolbar>
         <SegmentedTabs
           value={statusFilter}
           onValueChange={setStatusFilter}
@@ -130,9 +151,9 @@ export function CampaignsClient() {
             value: s, label: s, count: counts[s],
           }))}
         />
-        {role === "manager" && users.length > 0 && (
+        {isManager && users.length > 0 && (
           <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-            <SelectTrigger className="h-9 w-40 border-border bg-field shadow-sm">
+            <SelectTrigger className="h-8 w-40">
               <SelectValue placeholder="Owner" />
             </SelectTrigger>
             <SelectContent>
@@ -143,128 +164,145 @@ export function CampaignsClient() {
             </SelectContent>
           </Select>
         )}
-      </div>
-
-      {filtered.length === 0 ? (
-        <EmptyState
-          message={
-            list.length === 0
-              ? "No campaigns yet. Create one to start sending outreach emails."
-              : "No campaigns match your filters."
-          }
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search campaigns…"
+          size="sm"
+          wrapperClassName="ml-auto w-56"
         />
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map((c) => {
-            const style = CAMPAIGN_STATUS_STYLES[c.status] ?? CAMPAIGN_STATUS_STYLES.Draft;
-            // c.sent deliberately EXCLUDES anyone who has since replied or
-            // bounced (see campaignOutcomes) — a narrower "no reply yet"
-            // figure, not the delivered total. The card should read the same
-            // as the Analytics tab: Sent = delivered (reached an inbox,
-            // replies/bounces included), reply rate against that same total.
-            const replyRate = c.delivered > 0 ? Math.round((c.replied / c.delivered) * 100) : 0;
-            const assigneeName = role === "manager" ? displayName(c.assignedTo) : null;
-            return (
-              <Card
-                key={c.id}
-                swatch="left"
-                className="enter relative group/card flex flex-col p-5 transition-all hover:bg-secondary hover:border-border/80 hover:shadow-sm"
-              >
-                <div className="absolute right-3 top-3 flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 transition-all z-10">
-                  {c.status === "Live" && (
-                    <Button
-                      type="button" variant="ghost" size="icon"
-                      title="Pause campaign (stops all sending, incl. follow-ups)"
-                      onClick={() => setPausingCampaign(c)}
-                      className="size-8 text-muted-foreground/50 hover:text-amber-400 hover:bg-amber-500/10"
-                    >
-                      <Pause className="size-4" />
-                    </Button>
-                  )}
-                  {c.status === "Paused" && (
-                    <Button
-                      type="button" variant="ghost" size="icon"
-                      title="Resume campaign"
-                      disabled={resumingId === c.id}
-                      onClick={() => void handleResume(c)}
-                      className="size-8 text-muted-foreground/50 hover:text-green-400 hover:bg-green-500/10 disabled:opacity-50"
-                    >
-                      <Play className="size-4" />
-                    </Button>
-                  )}
-                  <Button
-                    type="button" variant="ghost" size="icon"
-                    title="Delete campaign"
-                    onClick={() => setDeletingCampaign(c)}
-                    className="size-8 text-muted-foreground/50 hover:text-red-400 hover:bg-red-500/10"
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
+      </Toolbar>
 
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => router.push(`/campaigns/${c.id}`)}
-                  onMouseEnter={() => { prefetchCampaign(c.id); router.prefetch(`/campaigns/${c.id}`); }}
-                  className="h-auto flex-1 flex flex-col items-stretch justify-start p-0 text-left font-normal hover:bg-transparent"
-                >
-                  <div className="flex items-start gap-2 mb-1.5 pr-20">
-                    <div className={cn("size-2 rounded-full shrink-0 mt-1.5", style.dot)} />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-display font-semibold truncate">{c.name}</p>
-                      <span className={cn(
-                        "inline-block mt-1 font-mono text-[10px] font-semibold uppercase tracking-wider border rounded-md px-1.5 py-0.5 shrink-0",
-                        style.badge,
-                      )}>
-                        {c.status}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 flex-wrap mb-4">
-                    <span className={cn(
-                      "text-[11px] px-1.5 py-0.5 rounded border",
-                      c.humanInLoop
-                        ? "text-blue-400 bg-blue-500/10 border-blue-500/20"
-                        : "text-muted-foreground bg-secondary border-border",
-                    )}>
-                      {c.humanInLoop ? "Human review" : "Auto-send"}
-                    </span>
-                    {role === "manager" && c.createdBy && userMap.has(c.createdBy) && (
-                      <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                        <User className="size-3" />
-                        {displayName(c.createdBy)}
-                      </span>
-                    )}
-                    {assigneeName && (
-                      <span className="flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded border text-primary bg-primary/10 border-primary/20">
-                        <UserPlus className="size-3" />
-                        {assigneeName}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-4 gap-1 mt-auto pt-3 border-t border-border">
-                    {[
-                      { label: "Leads", value: c.leads, color: "text-foreground" },
-                      { label: "Sent", value: c.delivered, color: "text-foreground" },
-                      { label: "Replied", value: c.replied, color: "text-green-400" },
-                      { label: "Reply rate", value: `${replyRate}%`, color: replyRate > 0 ? "text-green-400" : "text-muted-foreground" },
-                    ].map(({ label, value, color }) => (
-                      <div key={label} className="text-center">
-                        <p className={cn("font-mono text-sm font-bold tabular-nums", color)}>{value}</p>
-                        <p className="eyebrow mt-0.5">{label}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="font-mono text-[10px] text-muted-foreground mt-3">Created {c.createdAt}</p>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {filtered.length === 0 ? (
+          <div className="p-6">
+            <EmptyState
+              icon={Megaphone}
+              title={list.length === 0 ? "No campaigns yet" : "No campaigns found"}
+              message={
+                list.length === 0
+                  ? "Create one from the Leads screen to start sending outreach emails."
+                  : "No campaigns match your filters."
+              }
+            >
+              {list.length === 0 && (
+                <Button size="sm" onClick={() => router.push("/leads")}>
+                  <Plus />
+                  New campaign
                 </Button>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+              )}
+            </EmptyState>
+          </div>
+        ) : (
+          <Table className="border-b border-border">
+            <TableHeader className="sticky top-0 z-10 bg-background">
+              <TableRow>
+                <TableHead className="min-w-[220px]">Campaign</TableHead>
+                <TableHead className="w-24">Status</TableHead>
+                <TableHead className="w-28">Mode</TableHead>
+                {isManager && <TableHead className="w-44">Owner</TableHead>}
+                <TableHead className="w-20 text-right">Leads</TableHead>
+                <TableHead className="w-20 text-right">Sent</TableHead>
+                <TableHead className="w-20 text-right">Replied</TableHead>
+                <TableHead className="w-24 text-right">Reply rate</TableHead>
+                <TableHead className="w-28">Created</TableHead>
+                <TableHead className="w-[88px]"><span className="sr-only">Actions</span></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((c) => {
+                const style = CAMPAIGN_STATUS_STYLES[c.status] ?? CAMPAIGN_STATUS_STYLES.Draft;
+                // c.sent deliberately EXCLUDES anyone who has since replied or
+                // bounced (see campaignOutcomes) — a narrower "no reply yet"
+                // figure, not the delivered total. The row should read the same
+                // as the Analytics tab: Sent = delivered (reached an inbox,
+                // replies/bounces included), reply rate against that same total.
+                const replyRate = c.delivered > 0 ? Math.round((c.replied / c.delivered) * 100) : 0;
+                const ownerName = displayName(c.assignedTo) ?? displayName(c.createdBy);
+                const open = () => router.push(`/campaigns/${c.id}`);
+                return (
+                  <TableRow
+                    key={c.id}
+                    role="link"
+                    tabIndex={0}
+                    onClick={open}
+                    onKeyDown={(e) => { if (e.key === "Enter") open(); }}
+                    onMouseEnter={() => { prefetchCampaign(c.id); router.prefetch(`/campaigns/${c.id}`); }}
+                    className="group/row cursor-pointer"
+                  >
+                    <TableCell>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className={cn("size-2 shrink-0 rounded-full", style.dot)} />
+                        <span className="truncate font-medium text-foreground">{c.name}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Pill shape="sm" className={style.badge}>{c.status}</Pill>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
+                      {c.humanInLoop ? "Human review" : "Auto-send"}
+                    </TableCell>
+                    {isManager && (
+                      <TableCell>
+                        {ownerName ? (
+                          <span className="flex min-w-0 items-center gap-2">
+                            <Avatar name={ownerName} size="sm" />
+                            <span className="truncate">{ownerName}</span>
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    )}
+                    <TableCell className="text-right tabular-nums">{c.leads}</TableCell>
+                    <TableCell className="text-right tabular-nums">{c.delivered}</TableCell>
+                    <TableCell className="text-right tabular-nums">{c.replied}</TableCell>
+                    <TableCell className={cn("text-right tabular-nums", replyRate > 0 ? "text-green-700 dark:text-green-400" : "text-muted-foreground")}>
+                      {replyRate}%
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">
+                      {formatCreated(c.createdAt)}
+                    </TableCell>
+                    <TableCell className="py-0" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100">
+                        {c.status === "Live" && (
+                          <Button
+                            type="button" variant="ghost" size="icon-sm"
+                            title="Pause campaign (stops all sending, incl. follow-ups)"
+                            onClick={() => setPausingCampaign(c)}
+                            className="text-muted-foreground hover:text-amber-700 dark:hover:text-amber-400"
+                          >
+                            <Pause className="size-3.5" />
+                          </Button>
+                        )}
+                        {c.status === "Paused" && (
+                          <Button
+                            type="button" variant="ghost" size="icon-sm"
+                            title="Resume campaign"
+                            disabled={resumingId === c.id}
+                            onClick={() => void handleResume(c)}
+                            className="text-muted-foreground hover:text-green-700 dark:hover:text-green-400"
+                          >
+                            <Play className="size-3.5" />
+                          </Button>
+                        )}
+                        <Button
+                          type="button" variant="ghost" size="icon-sm"
+                          title="Delete campaign"
+                          onClick={() => setDeletingCampaign(c)}
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </div>
 
       <ConfirmDialog
         open={!!deletingCampaign}

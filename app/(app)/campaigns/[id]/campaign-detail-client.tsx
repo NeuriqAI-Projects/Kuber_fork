@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { CampaignDetail } from "@/components/app/campaign-drawer";
 import { useApp } from "@/lib/app-context";
 import CampaignDetailLoading from "./loading";
+import { Megaphone } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 
 interface Props {
   campaignId: string;
@@ -38,15 +41,17 @@ export function CampaignDetailClient({ campaignId }: Props) {
 
   if (!campaign) {
     return (
-      <div className="flex flex-col items-center justify-center h-full py-24 gap-4">
-        <p className="text-sm text-muted-foreground">Campaign not found.</p>
-        <button
-          type="button"
-          onClick={() => router.push("/campaigns")}
-          className="text-xs underline text-muted-foreground hover:text-foreground transition-colors"
+      <div className="flex h-full items-center justify-center p-6">
+        <EmptyState
+          boxed={false}
+          icon={Megaphone}
+          title="Campaign not found"
+          message="It may have been deleted, or you no longer have access to it."
         >
-          Back to campaigns
-        </button>
+          <Button size="sm" variant="outline" onClick={() => router.push("/campaigns")}>
+            Back to campaigns
+          </Button>
+        </EmptyState>
       </div>
     );
   }

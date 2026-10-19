@@ -9,7 +9,8 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AppRadio } from "@/components/ui/app-radio";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
@@ -69,9 +70,9 @@ function DayPill({ day, active, onClick }: { day: string; active: boolean; onCli
       variant={active ? "default" : "outline"}
       size="icon"
       onClick={onClick}
-      className="size-8 rounded-full text-xs leading-none font-semibold"
+      className="size-8 rounded-md text-xs leading-none font-semibold"
     >
-      <span className="translate-y-px">{day[0].toUpperCase()}</span>
+      <span>{day[0].toUpperCase()}</span>
     </Button>
   );
 }
@@ -349,34 +350,34 @@ export function CreateCampaignModal({
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent className="max-w-3xl overflow-hidden p-0">
-        <DialogHeader className="swatch-bar-top border-b border-border px-6 pt-6 pb-4 text-left">
-          <p className="eyebrow mb-1">
-            New campaign · <span className="tabular-nums">{leads.length}</span> lead{leads.length !== 1 ? "s" : ""} ready for outreach
-          </p>
-          <DialogTitle className="font-display text-xl">Configure campaign</DialogTitle>
+        <DialogHeader className="border-b border-border px-5 py-4 text-left">
+          <DialogTitle>New campaign</DialogTitle>
+          <DialogDescription>
+            <span className="tabular-nums">{leads.length}</span> lead{leads.length !== 1 ? "s" : ""} ready for outreach
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[68vh] min-h-96 space-y-6 overflow-y-auto px-6 py-5">
+        <div className="max-h-[68vh] min-h-96 space-y-5 overflow-y-auto px-5 py-4">
           <Stepper steps={STEPS} current={step} className="pb-4 border-b border-border" />
 
           {/* ── Step 1: Identity ─────────────────────────────────────────── */}
           {step === 0 && (<>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label className="text-sm font-medium">
+              <Label className="text-[13px] font-medium">
                 Campaign name <span className="text-destructive">*</span>
               </Label>
               <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Q3 Plastics Outreach" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-sm font-medium">Sender name</Label>
+              <Label className="text-[13px] font-medium">Sender name</Label>
               <Input value={senderName} onChange={(e) => setSenderName(e.target.value)} placeholder="Kuber Polyplast" />
             </div>
           </div>
 
           {role === "manager" && (
             <div className="space-y-1.5">
-              <Label className="text-sm font-medium">Assign entire campaign to (optional)</Label>
+              <Label className="text-[13px] font-medium">Assign entire campaign to (optional)</Label>
               <Select value={assignTo || "keep"} onValueChange={(v) => setAssignTo(v === "keep" ? "" : v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -400,7 +401,7 @@ export function CreateCampaignModal({
           {/* ── Step 2: AI & Review ──────────────────────────────────────── */}
           {step === 1 && (<>
           <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Additional context for AI</Label>
+            <Label className="text-[13px] font-medium">Additional context for AI</Label>
             <Textarea
               value={aiPromptContext}
               onChange={(e) => setAiPromptContext(e.target.value)}
@@ -409,11 +410,11 @@ export function CreateCampaignModal({
             />
           </div>
 
-          <div className="rounded-lg border border-border bg-secondary shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between gap-4 px-5 py-4">
+          <div className="rounded-lg border border-border bg-card overflow-hidden">
+            <div className="flex items-center justify-between gap-4 px-4 py-3">
               <div className="flex items-start gap-2">
                 <div>
-                  <p className="text-sm font-medium leading-none">Human in the loop</p>
+                  <p className="text-[13px] font-medium leading-none">Human in the loop</p>
                   <p className="text-xs text-muted-foreground mt-1">Certify each draft before it can be sent to Instantly.</p>
                 </div>
                 <InfoTip text={CAMPAIGN_ACTION_HELP.humanInLoop} className="mt-0.5" />
@@ -425,12 +426,12 @@ export function CreateCampaignModal({
 
           {/* ── Step 3: Schedule ─────────────────────────────────────────── */}
           {step === 2 && (
-          <div className="rounded-lg border border-border bg-secondary shadow-sm overflow-hidden divide-y divide-border">
-              <div className="flex items-center justify-between gap-4 px-5 py-4">
+          <div className="rounded-lg border border-border bg-card overflow-hidden divide-y divide-border">
+              <div className="flex items-center justify-between gap-4 px-4 py-3">
                 <div className="flex items-center gap-2.5">
                   <Clock className="size-4 text-muted-foreground shrink-0" />
                   <div>
-                    <p className="text-sm font-medium leading-none">Sending window</p>
+                    <p className="text-[13px] font-medium leading-none">Sending window</p>
                     <p className="text-xs text-muted-foreground">Local time of recipient</p>
                   </div>
                 </div>
@@ -441,7 +442,7 @@ export function CreateCampaignModal({
                 </div>
               </div>
 
-            <div className="flex flex-col gap-2 px-5 py-4">
+            <div className="flex flex-col gap-2 px-4 py-3">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-2.5">
                   <Globe className="size-4 text-muted-foreground shrink-0" />
@@ -453,9 +454,9 @@ export function CreateCampaignModal({
                         plain "Timezone" read as "the timezone this campaign
                         sends in", which is what led to it being pushed over
                         every country's schedule. See docs/campaign-timezone-rca.md. */}
-                    <p className="text-sm font-medium leading-none">Fallback timezone</p>
+                    <p className="text-[13px] font-medium leading-none">Fallback timezone</p>
                     <p className="text-xs text-muted-foreground">
-                      Leads send in their own country&apos;s time. Used only for leads with no country: <span className="font-mono">{timezone}</span>
+                      Leads send in their own country&apos;s time. Used only for leads with no country: <span className="font-medium text-foreground">{timezone}</span>
                     </p>
                   </div>
                 </div>
@@ -465,7 +466,7 @@ export function CreateCampaignModal({
                   </Button>
                 ) : (
                   <Select value={timezone} onValueChange={setTimezone}>
-                    <SelectTrigger className="h-9 w-45">
+                    <SelectTrigger className="h-8 w-45">
                       <SelectValue placeholder="Select timezone" />
                     </SelectTrigger>
                     <SelectContent align="end" className="min-w-45">
@@ -478,22 +479,22 @@ export function CreateCampaignModal({
               </div>
             </div>
 
-            <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2.5">
                 <Calendar className="size-4 text-muted-foreground shrink-0" />
                 <div>
-                  <p className="text-sm font-medium leading-none">Send date</p>
+                  <p className="text-[13px] font-medium leading-none">Send date</p>
                   <p className="text-xs text-muted-foreground">Optional — leave empty to send when ready</p>
                 </div>
               </div>
               <DatePicker date={scheduleDate} onChangeDate={setScheduleDate} placeholder="Pick send date" className="w-auto" />
             </div>
 
-            <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2.5">
                 <Calendar className="size-4 text-muted-foreground shrink-0" />
                 <div>
-                  <p className="text-sm font-medium leading-none">Send days</p>
+                  <p className="text-[13px] font-medium leading-none">Send days</p>
                   <p className="text-xs text-muted-foreground">Days emails will be sent</p>
                 </div>
               </div>
@@ -513,18 +514,19 @@ export function CreateCampaignModal({
 
           {/* ── Step 4: Follow-ups ───────────────────────────────────────── */}
           {step === 3 && (
-          <div className="rounded-lg border border-border bg-secondary shadow-sm overflow-hidden">
-            <div className="px-5 py-4 space-y-3">
+          <div className="rounded-lg border border-border bg-card overflow-hidden">
+            <div className="px-4 py-3 space-y-3">
               <div className="flex items-center gap-2.5">
                 <Clock className="size-4 text-muted-foreground shrink-0" />
                 <div>
-                  <p className="text-sm font-medium leading-none">Follow-up schedule</p>
+                  <p className="text-[13px] font-medium leading-none">Follow-up schedule</p>
                   <p className="text-xs text-muted-foreground">Wait time after the previous email before each follow-up sends</p>
                 </div>
               </div>
               <div className="space-y-2">
                 {followupSteps.map((fu, idx) => (
-                  <div key={idx} className="flex items-center gap-2 rounded-lg border border-border bg-secondary px-3 py-2">
+                  <div key={idx} className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-1.5">
+                    <span className="grid size-5 shrink-0 place-items-center rounded-full border border-border bg-field text-[11px] font-semibold tabular-nums text-muted-foreground" aria-hidden>{idx + 1}</span>
                     <span className="text-xs text-muted-foreground shrink-0 w-24">Follow-up {idx + 1} after</span>
                     <Input
                       type="number"
@@ -535,7 +537,7 @@ export function CreateCampaignModal({
                         const v = Math.max(1, Math.min(365, Number(e.target.value) || 1));
                         setFollowupSteps((prev) => prev.map((s, i) => (i === idx ? { ...s, delay: v } : s)));
                       }}
-                      className="h-7 w-14 rounded-md border border-border bg-field px-1 py-0 text-center text-sm font-mono font-medium tabular-nums"
+                      className="h-7 w-14 px-1 py-0 text-center tabular-nums"
                     />
                     <Select
                       value={fu.delay_unit}
@@ -558,7 +560,7 @@ export function CreateCampaignModal({
                         GAP from the previous email, so they stack — 7/14/21 is
                         days 7, 21 and 42, not 7, 14 and 21. Showing the total
                         here is what stops that being discovered months later. */}
-                    <span className="font-mono text-[10px] tabular-nums text-muted-foreground shrink-0">
+                    <span className="text-[11px] tabular-nums text-muted-foreground shrink-0">
                       {dayLabel(followupDays[idx] ?? 0)}
                     </span>
                     <div className="flex-1" />
@@ -603,11 +605,11 @@ export function CreateCampaignModal({
 
           {/* ── Step 5: Attachment ───────────────────────────────────────── */}
           {step === 4 && (<>
-          <div className="rounded-xl border border-border bg-secondary p-4 space-y-3">
+          <div className="rounded-lg border border-border bg-card p-4 space-y-3">
             <div className="flex items-start gap-2">
               <Paperclip className="size-4 text-muted-foreground mt-0.5" />
               <div>
-                <p className="font-medium text-sm">Attachment (optional)</p>
+                <p className="font-medium text-[13px]">Attachment (optional)</p>
                 <p className="text-xs text-muted-foreground">
                   Sent with every email in this campaign. PDF, DOC, XLS, PNG, JPG — max 10MB.
                 </p>
@@ -637,24 +639,25 @@ export function CreateCampaignModal({
                   <div className="flex items-center gap-2 min-w-0">
                     <FileText className="size-4 text-muted-foreground shrink-0" />
                     <span className="text-sm truncate">{attachment.attachment_name}</span>
-                    <span className="font-mono text-xs text-muted-foreground shrink-0 tabular-nums">
+                    <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
                       ({attachment.attachment_size >= 1024 * 1024
         ? (attachment.attachment_size / 1024 / 1024).toFixed(1) + " MB"
         : Math.round(attachment.attachment_size / 1024) + " KB"})
                     </span>
                   </div>
-                  <Button type="button" variant="ghost" size="icon" onClick={removeAttachment}
-                          className="size-7 text-muted-foreground hover:text-foreground">
-                    <X className="size-4" />
+                  <Button type="button" variant="ghost" size="icon-sm" onClick={removeAttachment}
+                          aria-label="Remove attachment"
+                          className="text-muted-foreground hover:text-foreground">
+                    <X />
                   </Button>
                 </div>
-                <p className="text-xs text-green-500 flex items-center gap-1">
+                <p className="text-xs text-green-700 dark:text-green-400 flex items-center gap-1">
                   <Check className="size-3" /> The AI will mention the attachment in each email.
                 </p>
               </div>
             )}
 
-            {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
+            {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
           </div>
 
           <p className="text-xs text-muted-foreground">
@@ -663,9 +666,9 @@ export function CreateCampaignModal({
           </>)}
 
           {aiDownModel !== null && (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 space-y-3">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3 dark:border-amber-500/30 dark:bg-amber-500/10">
               <div>
-                <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">AI credits are not available</p>
+                <p className="text-[13px] font-semibold text-amber-800 dark:text-amber-300">AI credits are not available</p>
                 <p className="text-xs text-foreground">{aiDownModel} is out of credits, so personalised emails can&apos;t be written right now. You can still create the campaign.</p>
               </div>
               <div className="grid gap-2" role="radiogroup" aria-label="What to do without AI credits">
@@ -680,23 +683,19 @@ export function CreateCampaignModal({
                     aria-checked={aiChoice === o.id}
                     onClick={() => setAiChoice(o.id)}
                     className={cn(
-                      "flex items-start gap-3 text-left rounded-md border-2 px-3 py-2 transition-colors",
+                      // Choice card (root CLAUDE.md): bg-field unselected,
+                      // primary tint selected, with the shared radio dot.
+                      "flex items-start gap-3 text-left rounded-md border px-3 py-2 transition-colors",
                       aiChoice === o.id
-                        ? "border-amber-500 bg-amber-500/15"
-                        : "border-border bg-field hover:border-muted-foreground/40",
+                        ? "border-primary/50 bg-primary/5"
+                        : "border-border bg-field hover:bg-hover",
                     )}
                   >
-                    <span
-                      aria-hidden
-                      className={cn(
-                        "mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border-2",
-                        aiChoice === o.id ? "border-amber-500" : "border-muted-foreground/60",
-                      )}
-                    >
-                      {aiChoice === o.id && <span className="size-2 rounded-full bg-amber-500" />}
+                    <span aria-hidden className="mt-0.5">
+                      <AppRadio checked={aiChoice === o.id} />
                     </span>
                     <span>
-                      <span className="block text-sm font-medium">{o.title}</span>
+                      <span className="block text-[13px] font-medium">{o.title}</span>
                       <span className="block text-xs text-muted-foreground">{o.help}</span>
                     </span>
                   </button>
@@ -708,20 +707,20 @@ export function CreateCampaignModal({
           {error && <p className="text-xs text-destructive">{error}</p>}
         </div>
 
-        <div className="border-t border-border bg-card px-6 py-4 flex items-center justify-between">
+        <div className="border-t border-border px-5 py-3 flex items-center justify-end gap-2">
           <Button type="button" variant="outline" onClick={goBack} disabled={step === 0}>
             Back
           </Button>
           {step < STEPS.length - 1 ? (
-            <Button type="button" onClick={goNext} className="gap-1.5">
-              Continue <ChevronRight className="size-3.5" />
+            <Button type="button" onClick={goNext}>
+              Continue <ChevronRight />
             </Button>
           ) : (
             <Button disabled={!name.trim() || creating || uploading || leads.length === 0} onClick={handleCreate} className="gap-1.5">
               {creating ? (
-                <><Loader2 className="size-3.5 animate-spin" /> Creating…</>
+                <><Loader2 className="animate-spin" /> Creating…</>
               ) : (
-                <>Create campaign <ChevronRight className="size-3.5" /></>
+                <>Create campaign <ChevronRight /></>
               )}
             </Button>
           )}

@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { StatTile } from "@/components/ui/stat-tile";
+import { Pill } from "@/components/ui/pill";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatTileGridSkeleton } from "@/components/app/usage-skeletons";
 import { fetchCampaignCredits, type CampaignCreditsData } from "@/lib/api-client";
 
@@ -40,21 +42,21 @@ export function CampaignCredits({ campaignId }: { campaignId: string }) {
   ] : [];
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-secondary px-6 py-5 space-y-5">
+    <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="eyebrow flex items-center gap-1.5">
+        <h3 className="flex items-center gap-1.5 text-[15px] font-semibold text-foreground">
           Credits used
           <InfoTip side="bottom" text="What this campaign has used on each service. Only the AI number is recorded against the campaign. Apollo, Firecrawl, Jev and Tavily are worked out from this campaign's leads and their companies, so they are estimates." />
         </h3>
-        <Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={() => void load(true)} className="gap-1.5">
-          <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
+        <Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={() => void load(true)}>
+          <RefreshCw className={cn(refreshing && "animate-spin")} />
           {refreshing ? "Checking…" : "Refresh"}
         </Button>
       </div>
 
       {!data ? <StatTileGridSkeleton count={6} /> : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2">
             <StatTile label="Apollo" value={data.apollo.credits.toLocaleString()} icon={Coins} tone="sky" sub={`credits · ${data.leads} leads`} />
             <StatTile label="Firecrawl" value={data.firecrawl.credits.toLocaleString()} icon={Globe2} sub={`credits · ${data.companies} companies`} />
             <StatTile label="AI" value={usd(data.ai.usd)} icon={Sparkles} sub={`${data.ai.calls.toLocaleString()} calls${data.ai.failed ? ` · ${data.ai.failed} failed` : ""}`} />
@@ -63,32 +65,36 @@ export function CampaignCredits({ campaignId }: { campaignId: string }) {
             <StatTile label="Instantly" value={data.instantly.emailsSent.toLocaleString()} icon={Send} sub={`${data.instantly.openings.toLocaleString()} first + ${data.instantly.followUps.toLocaleString()} follow-ups`} />
           </div>
 
-          <div className="rounded-xl border border-border bg-field dark:bg-card overflow-hidden">
-            <table className="w-full text-xs">
-              <thead className="bg-secondary text-muted-foreground">
-                <tr>
-                  <th className="text-left font-medium px-4 py-2">Service</th>
-                  <th className="text-left font-medium px-4 py-2">Used</th>
-                  <th className="text-left font-medium px-4 py-2">What it covers</th>
-                  <th className="text-left font-medium px-4 py-2">Figure</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+          <div className="rounded-lg border border-border bg-card overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-32">Service</TableHead>
+                  <TableHead className="w-56">Used</TableHead>
+                  <TableHead>What it covers</TableHead>
+                  <TableHead className="w-28">Figure</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {rows.map((r) => (
-                  <tr key={r.name}>
-                    <td className="px-4 py-2.5 font-medium">{r.name}</td>
-                    <td className="px-4 py-2.5 font-mono tabular-nums">{r.used}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{r.how}</td>
-                    <td className="px-4 py-2.5">
-                      <span className={cn("inline-flex rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                        r.exact ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400")}>
+                  <TableRow key={r.name} className="hover:bg-transparent">
+                    <TableCell className="font-medium">{r.name}</TableCell>
+                    <TableCell className="tabular-nums">{r.used}</TableCell>
+                    <TableCell className="text-muted-foreground">{r.how}</TableCell>
+                    <TableCell>
+                      <Pill
+                        shape="sm"
+                        className={r.exact
+                          ? "bg-green-100 text-green-800 border-green-200/70 dark:bg-green-500/15 dark:text-green-300 dark:border-green-500/25"
+                          : "bg-amber-100 text-amber-800 border-amber-200/70 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25"}
+                      >
                         {r.exact ? "Counted" : "Estimated"}
-                      </span>
-                    </td>
-                  </tr>
+                      </Pill>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </>
       )}

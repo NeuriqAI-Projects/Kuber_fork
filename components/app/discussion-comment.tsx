@@ -78,17 +78,21 @@ export function DiscussionComment({
     }
   }
 
+  // Attio comment thread: avatar in a left gutter, name + time on one line,
+  // the body under it. No card per comment — rows separate by spacing and a
+  // hover tint, so a long discussion reads as one thread.
   return (
     <div
       className={cn(
-        "group relative w-full cursor-pointer border border-border bg-field dark:bg-secondary transition-colors",
-        compact ? "rounded-lg px-3 py-2.5" : "rounded-xl px-4 py-3",
+        "group relative flex w-full gap-2.5 rounded-lg transition-colors hover:bg-hover",
+        compact ? "px-2 py-2" : "px-3 py-2.5",
+        isOwn && "bg-primary/5 hover:bg-primary/10",
       )}
     >
         {/* Hover reaction picker */}
         <div
           className={cn(
-            "absolute -top-3 right-3 z-10 flex items-center gap-0.5 rounded-full border border-border bg-field px-1 py-0.5 shadow-md",
+            "absolute -top-3 right-3 z-10 flex items-center gap-0.5 rounded-md border border-border bg-popover px-1 py-0.5 shadow-md",
             "opacity-0 pointer-events-none transition-opacity",
             "group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto",
           )}
@@ -105,8 +109,8 @@ export function DiscussionComment({
                   void handleToggle(emoji);
                 }}
                 className={cn(
-                  "cursor-pointer rounded-full px-1.5 py-0.5 text-sm leading-none transition-colors hover:bg-secondary",
-                  active && "bg-primary/10 ring-1 ring-primary/30",
+                  "cursor-pointer rounded-[5px] px-1.5 py-0.5 text-sm leading-none transition-colors hover:bg-hover",
+                  active && "bg-primary/10",
                   pendingEmoji === emoji && "opacity-50",
                 )}
                 aria-label={active ? `Remove ${emoji} reaction` : `React with ${emoji}`}
@@ -118,17 +122,14 @@ export function DiscussionComment({
           })}
         </div>
 
-        <div className={cn("mb-1.5 flex items-center gap-2.5", compact && "mb-1 gap-2")}>
-          <Avatar name={comment.author_name} size="sm" />
-          <span className={cn("font-semibold truncate", compact ? "text-[11px]" : "text-xs")}>
+        <Avatar name={comment.author_name} size="sm" />
+
+        <div className="min-w-0 flex-1">
+        <div className={cn("flex items-baseline gap-2", compact ? "mb-0.5" : "mb-1")}>
+          <span className={cn("font-semibold truncate text-foreground", compact ? "text-xs" : "text-[13px]")}>
             {isOwn ? "You" : comment.author_name}
           </span>
-          <span
-            className={cn(
-              "text-muted-foreground whitespace-nowrap",
-              compact ? "text-[9px]" : "text-[10px]",
-            )}
-          >
+          <span className="text-[11px] text-muted-foreground whitespace-nowrap tabular-nums">
             {formatChatTime(comment.created_at)}
           </span>
         </div>
@@ -154,10 +155,10 @@ export function DiscussionComment({
                     void handleToggle(group.emoji);
                   }}
                   className={cn(
-                    "inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] leading-none transition-colors",
+                    "inline-flex cursor-pointer items-center gap-1 rounded-[5px] border px-1.5 py-[3px] text-[11px] leading-none transition-colors",
                     group.reacted_by_me
-                      ? "border-primary/40 bg-primary/10 text-foreground"
-                      : "border-border bg-background/60 text-muted-foreground hover:bg-secondary",
+                      ? "border-primary/30 bg-primary/10 text-foreground"
+                      : "border-border bg-field text-muted-foreground hover:bg-hover",
                   )}
                   aria-label={`${group.emoji} ${group.count} — ${group.users.map((u) => u.name).join(", ")}`}
                 >
@@ -168,13 +169,13 @@ export function DiscussionComment({
                 {/* Hover popup — who reacted with this emoji */}
                 <div
                   className={cn(
-                    "absolute bottom-full left-0 z-20 mb-1.5 w-max max-w-52 rounded-lg border border-border bg-popover px-2.5 py-2 shadow-lg",
-                    "opacity-0 pointer-events-none transition-opacity duration-100",
+                    "absolute bottom-full left-0 z-20 mb-1.5 w-max max-w-52 rounded-md border border-border bg-popover px-2.5 py-2 shadow-lg",
+                    "opacity-0 pointer-events-none",
                     "group-hover/reaction:opacity-100",
                   )}
                   role="tooltip"
                 >
-                  <div className="mb-1 flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+                  <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
                     <span className="text-xs leading-none">{group.emoji}</span>
                     {group.count} {group.count === 1 ? "person" : "people"}
                   </div>
@@ -182,7 +183,7 @@ export function DiscussionComment({
                     {group.users.map((user) => (
                       <li key={user.id} className="flex items-center gap-1.5">
                         <Avatar name={user.name} size="sm" />
-                        <span className="text-[11px] font-medium text-popover-foreground truncate">
+                        <span className="text-xs font-medium text-popover-foreground truncate">
                           {user.id === currentUserId ? "You" : user.name}
                         </span>
                       </li>
@@ -193,6 +194,7 @@ export function DiscussionComment({
             ))}
           </div>
         )}
+        </div>
     </div>
   );
 }
