@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Pencil, Check, X, RefreshCw, Coins, CalendarDays, TrendingDown, Zap } from "lucide-react";
+import { Pencil, Coins, CalendarDays, TrendingDown, Zap } from "lucide-react";
 import { useApp } from "@/lib/app-context";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Paged } from "@/components/ui/paged";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { StatTile } from "@/components/ui/stat-tile";
+import { UsageHeader } from "@/components/app/usage-header";
 import { UsageBarChart } from "@/components/app/usage-bar-chart";
 import {
   UsageHeaderSkeleton, StatTileGridSkeleton, ChartCardSkeleton, RowsCardSkeleton, ProgressRowSkeleton,
@@ -87,63 +90,60 @@ function CreditPoolRow({ label, w: raw }: { label: string; w: Partial<ApolloCred
 
 /** Editable "monthly credit budget" — the only way "remaining" can be shown
  *  at all, since Apollo's API has no balance endpoint (see the route's own
- *  comment). Inline edit rather than a modal; this is a single number. */
+ *  comment). A primary button opens a small dialog for the single number. */
 function AllowanceEditor({
   allowance, onSave,
 }: {
   allowance: number | null;
   onSave: (value: number | null) => Promise<void>;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [open, setOpen] = useState(false);
   const [value, setValue] = useState(allowance != null ? String(allowance) : "");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { setValue(allowance != null ? String(allowance) : ""); }, [allowance]);
+  useEffect(() => { if (open) setValue(allowance != null ? String(allowance) : ""); }, [open, allowance]);
 
-  if (!editing) {
-    return (
-      <button
-        type="button"
-        onClick={() => setEditing(true)}
-        className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <Pencil className="size-3" />
-        {allowance != null ? `Budget: ${allowance.toLocaleString()}/mo` : "Set a monthly budget"}
-      </button>
-    );
+  async function save(next: number | null) {
+    setSaving(true);
+    try { await onSave(next); setOpen(false); }
+    catch (e) { toast.error((e as Error).message); }
+    finally { setSaving(false); }
   }
 
+  const n = value.trim() === "" ? null : Number(value);
+  const valid = n === null || (Number.isFinite(n) && n >= 0);
+
   return (
-    <div className="flex items-center gap-1.5">
-      <Input
-        type="number"
-        min={0}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="e.g. 10000"
-        className="h-7 w-28 text-xs"
-        autoFocus
-      />
-      <Button
-        type="button" size="icon" variant="ghost" className="size-7"
-        disabled={saving}
-        onClick={async () => {
-          setSaving(true);
-          try {
-            const n = value.trim() === "" ? null : Number(value);
-            await onSave(Number.isFinite(n as number) || n === null ? n : null);
-            setEditing(false);
-          } finally {
-            setSaving(false);
-          }
-        }}
-      >
-        <Check className="size-3.5" />
+    <>
+      <Button type="button" size="sm" className="gap-1.5" onClick={() => setOpen(true)}>
+        <Pencil className="size-3.5" />
+        {allowance != null ? `Budget: ${allowance.toLocaleString()}/mo` : "Set monthly budget"}
       </Button>
-      <Button type="button" size="icon" variant="ghost" className="size-7" onClick={() => setEditing(false)}>
-        <X className="size-3.5" />
-      </Button>
-    </div>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Monthly credit budget</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Apollo has no balance to read for this app, so set the credits you plan to use each month. The remaining-vs-budget tile is worked out from it.
+            </p>
+            <Input
+              type="number" min={0} value={value} autoFocus
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="e.g. 10000"
+            />
+            <div className="flex items-center justify-between gap-2">
+              <Button type="button" variant="ghost" size="sm" disabled={saving || allowance == null} onClick={() => void save(null)}>
+                Clear budget
+              </Button>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
+                <Button type="button" size="sm" disabled={saving || !valid} onClick={() => void save(n)}>Save</Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -250,19 +250,11 @@ export function ApolloUsageView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-xs text-muted-foreground max-w-2xl">
-            Team credit numbers below come live from Apollo&apos;s account (same figures as Apollo&apos;s own Settings &gt;
-            Usage page). The activity ledger further down is this app&apos;s own record, kept in Supabase, of what it
-            specifically has spent — useful if the account is shared with other tools or seats.
-          </p>
-        </div>
-        <div className="shrink-0 flex flex-col items-end gap-1.5">
-          <Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={() => void load(true)} className="gap-1.5">
-            <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
-            {refreshing ? "Checking…" : "Refresh"}
-          </Button>
+      <UsageHeader
+        info="Team credits come live from Apollo (the same figures as Apollo's own Settings > Usage page). The activity below is this app's own record of what it spent, which is useful if the account is shared with other tools or seats."
+        refreshing={refreshing}
+        onRefresh={() => void load(true)}
+        extra={
           <AllowanceEditor
             allowance={allowanceMonthly}
             onSave={async (v) => {
@@ -271,8 +263,8 @@ export function ApolloUsageView() {
               await load(false);
             }}
           />
-        </div>
-      </div>
+        }
+      />
 
       {!key.ok && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
@@ -286,7 +278,7 @@ export function ApolloUsageView() {
           this app&apos;s own ledger below.
         </div>
       ) : creditUsage && creditCycle ? (
-        <Card className="p-5 space-y-4">
+        <div className="space-y-4">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
               <p className="eyebrow">Billing cycle</p>
@@ -331,7 +323,7 @@ export function ApolloUsageView() {
               ))}
             </div>
           </div>
-        </Card>
+        </div>
       ) : (
         <p className="text-xs text-muted-foreground">Loading live team credits…</p>
       )}
@@ -402,6 +394,7 @@ export function ApolloUsageView() {
         {history.length === 0 ? (
           <p className="text-xs text-muted-foreground py-6 text-center">No Apollo activity recorded yet.</p>
         ) : (
+          <Paged items={history}>{(rows) => (
           <div className="rounded-lg border border-border overflow-hidden">
             <table className="w-full text-xs">
               <thead className="bg-secondary text-muted-foreground">
@@ -415,7 +408,7 @@ export function ApolloUsageView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {history.map((h) => (
+                {rows.map((h) => (
                   <tr key={h.id} className={cn(h.credits_consumed === 0 && h.event !== "CREDITS_CONSUMED" ? "text-muted-foreground" : "")}>
                     <td className="px-3 py-2 whitespace-nowrap font-mono">{formatDateTime(h.created_at)}</td>
                     <td className="px-3 py-2">
@@ -441,6 +434,7 @@ export function ApolloUsageView() {
               </tbody>
             </table>
           </div>
+          )}</Paged>
         )}
       </Card>
     </div>

@@ -119,7 +119,7 @@ export async function complete<T = object>(
   }
 
   if (errors.length) throw new Error(errors.join(" | "));
-  throw new Error("No LLM provider configured — add a key in Settings > Keys, or set an env var like OPENROUTER_API_KEY");
+  throw new Error("No LLM provider configured — add a key in Credits, or set an env var like OPENROUTER_API_KEY");
 }
 
 /**

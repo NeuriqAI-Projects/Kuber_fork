@@ -120,7 +120,51 @@ function useFlip(order: string[]) {
   return registerNode;
 }
 
-export function KeysView() {
+/** One service tab (Apollo, Instantly, Firecrawl, Jev, Tavily): just that provider's key(s). */
+export function ServiceKeysPanel({ providerId }: { providerId: string }) {
+  const { session } = useApp();
+  const [providers, setProviders] = useState<ProviderConfig[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<ProviderConfig | null>(null);
+
+  const load = useCallback(async (initial = false) => {
+    if (!session) return;
+    if (initial) setLoading(true);
+    try {
+      setProviders((await fetchProviderKeys(session.access_token)).providers);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      if (initial) setLoading(false);
+    }
+  }, [session]);
+  useEffect(() => { void load(true); }, [load]);
+
+  const provider = providers.find((p) => p.id === providerId);
+  // Same height in every state (loading, missing, loaded), so the Usage section below
+  // never jumps when you switch tabs or the key finishes loading.
+  const slot = "min-h-[84px] rounded-xl border border-border bg-field dark:bg-card";
+  if (loading) return <div className={`${slot} animate-pulse`} />;
+  if (!provider) return <div className={`${slot} flex items-center px-5 text-sm text-muted-foreground`}>This provider is not available.</div>;
+
+  return (
+    <>
+      <div className={`${slot} overflow-hidden flex flex-col justify-center`}>
+        <ProviderRow provider={provider} onManage={() => setEditing(provider)} onChanged={load} />
+      </div>
+      {editing && (
+        <ManageProviderModal
+          provider={providers.find((p) => p.id === editing.id) ?? editing}
+          onClose={() => setEditing(null)}
+          onChanged={load}
+        />
+      )}
+    </>
+  );
+}
+
+/** The AI tab: OpenRouter, OpenAI and Anthropic share one try-order (Primary, then Fallback). */
+export function LlmKeysPanel() {
   const { session } = useApp();
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [tierOrder, setTierOrder] = useState<string[]>([]);
@@ -153,7 +197,6 @@ export function KeysView() {
       .filter((p): p is ProviderConfig => !!p),
     [providers],
   );
-  const serviceProviders = useMemo(() => providers.filter((p) => p.category === "service"), [providers]);
 
   // Only providers the admin has actually set up appear in the list; the rest
   // live behind "Add provider".
@@ -210,36 +253,7 @@ export function KeysView() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-8 enter">
-      <div className="space-y-1">
-        <p className="eyebrow px-1">Settings · Keys · Credentials</p>
-        <h2 className="font-display text-lg font-semibold px-1">API keys</h2>
-        <p className="text-xs text-muted-foreground px-1">
-          Credentials for the external services this app calls. Anything left unset
-          falls back to the matching value in <code className="font-mono">.env.local</code>.
-        </p>
-      </div>
-
-      {/* ── Services ─────────────────────────────────────────────────────── */}
-      <section className="space-y-3">
-        <div className="px-1">
-          <p className="eyebrow">Services</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Each one powers a specific feature — they are not interchangeable.
-          </p>
-        </div>
-        <div className="rounded-xl border border-border bg-card overflow-hidden divide-y divide-border">
-          {serviceProviders.map((p) => (
-            <ProviderRow
-              key={p.id}
-              provider={p}
-              onManage={() => setEditing(p)}
-              onChanged={load}
-            />
-          ))}
-        </div>
-      </section>
-
+    <div className="space-y-8">
       {/* ── LLM providers ────────────────────────────────────────────────── */}
       <section className="space-y-3">
         <div className="flex items-end justify-between gap-4 px-1">
@@ -278,7 +292,7 @@ export function KeysView() {
             </p>
           </button>
         ) : (
-          <div className="rounded-xl border border-border bg-card overflow-hidden divide-y divide-border relative">
+          <div className="rounded-xl border border-border bg-field dark:bg-card overflow-hidden divide-y divide-border relative">
             {orderedConfiguredLlm.map((p, i) => (
               <ProviderRow
                 key={p.id}
@@ -386,9 +400,7 @@ function ProviderRow({
             <ArrowDown className="size-3.5" />
           </button>
         </span>
-      ) : (
-        <span className="size-4 shrink-0" aria-hidden />
-      )}
+      ) : null}
 
       <div className={cn(
         "shrink-0 size-8 rounded-md flex items-center justify-center",
@@ -915,7 +927,7 @@ function ManageProviderModal({ provider, onClose, onChanged }: {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>API keys</Label>
-                <Button size="sm" variant="ghost" className="h-7" onClick={() => setShowAdd((v) => !v)}>
+                <Button size="sm" className="h-7" onClick={() => setShowAdd((v) => !v)}>
                   <Plus className="size-3.5 mr-1.5" /> Add key
                 </Button>
               </div>
@@ -1053,7 +1065,7 @@ function ManageProviderModal({ provider, onClose, onChanged }: {
             </div>
 
             <div className="flex justify-end">
-              <Button variant="outline" onClick={onClose}>Done</Button>
+              <Button onClick={onClose}>Done</Button>
             </div>
           </div>
         </DialogContent>

@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     daily: companies.daily.map((d, i) => ({ date: d.date, companies: d.value, usd: Number(usd.daily[i].value.toFixed(5)) })),
     decisions,
     avgTokens: rows.length ? Math.round(tokens.allTime / rows.length) : 0,
-    history: rows.slice(0, 50).map((r) => ({ id: r.id, created_at: r.updated_at, name: r.name, status: r.status, score: r.score, tokens: r.jev_tokens, extra: (r.extra_sources ?? []).length })),
+    history: rows.slice(0, 200).map((r) => ({ id: r.id, created_at: r.updated_at, name: r.name, status: r.status, score: r.score, tokens: r.jev_tokens, extra: (r.extra_sources ?? []).length })),
     ledgerWindowDays: LOOKBACK_DAYS,
   });
 }

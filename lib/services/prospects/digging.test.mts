@@ -1,7 +1,7 @@
 // npx tsx --test lib/services/prospects/digging.test.mts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nextStep, suggestedMaxCredits, revealCap, filterKey, type RunState } from "./digging.ts";
+import { nextStep, minCredits, suggestedMaxCredits, revealCap, filterKey, type RunState } from "./digging.ts";
 
 const base: RunState = { target: 200, maxCredits: 230, creditsUsed: 0, leads: 0, working: 0, pagesRead: 0, leadsPerPage: [], totalPages: null, nextPage: 1, lastPageEmpty: false };
 const step = (o: Partial<RunState>) => nextStep({ ...base, ...o });
@@ -22,6 +22,7 @@ test("stops when Apollo runs out, the credit limit is reached, or pages dry up",
 });
 
 test("credit maths", () => {
+  assert.equal(minCredits(100), 104);
   assert.equal(suggestedMaxCredits(100), 115); // 100 leads + 4 pages = 104, +10%
   assert.equal(suggestedMaxCredits(200), 228); // 200 + 7 pages = 207, +10%
   assert.equal(revealCap(200, 230, 3), 200);

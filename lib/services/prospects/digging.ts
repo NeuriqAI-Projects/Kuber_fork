@@ -47,10 +47,14 @@ export function nextStep(s: RunState): DigStep {
   return { action: "fetch" };
 }
 
-/** Credit limit to suggest for a lead target: 1 per lead + 1 per page, plus 10% room. */
+/** Fewest credits that can buy a lead target: 1 per lead + 1 per page of 100 companies. */
+export function minCredits(target: number): number {
+  return target + Math.ceil(target / LEADS_PER_PAGE);
+}
+
+/** Credit limit to suggest for a lead target: the minimum plus 10% room. */
 export function suggestedMaxCredits(target: number): number {
-  const pages = Math.ceil(target / LEADS_PER_PAGE);
-  return Math.ceil((target + pages) * 1.1);
+  return Math.ceil(minCredits(target) * 1.1);
 }
 
 /** Cap on automatic reveals: never past the target, never past what the credit limit leaves after pages. */

@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
         service: "LLM API key",
         kind: "credits",
         severity: "critical",
-        message: "No configured LLM provider can generate company profiles right now — add or top up a key in Settings > Keys.",
+        message: "No configured LLM provider can generate company profiles right now — add or top up a key in Credits.",
       });
     } else if (row.event === "DRAFT_LLM_UNAVAILABLE") {
       // Drafts have their own branch because the two rules above are worded for
@@ -103,10 +103,10 @@ export async function GET(req: NextRequest) {
         kind: why.code === "bad_key" ? "auth" : "credits",
         severity: "critical",
         message: why.code === "bad_key"
-          ? "The AI provider is rejecting the API key, so email drafts are paused. A manager needs to check or replace it in Settings > Keys — this is not a billing problem."
+          ? "The AI provider is rejecting the API key, so email drafts are paused. A manager needs to check or replace it in Credits — this is not a billing problem."
           : why.code === "service_busy"
             ? "The AI provider is temporarily unavailable, so email drafts are paused. This usually clears on its own; drafting resumes automatically."
-            : "Out of credits — email drafts are paused and no new ones will be generated. A manager needs to top up or replace the key in Settings > Keys.",
+            : "Out of credits — email drafts are paused and no new ones will be generated. A manager needs to top up or replace the key in Credits.",
       });
     } else if (row.source === "llm" && err.includes("openai") && (err.includes("401") || err.includes("403") || err.includes("insufficient_quota") || err.includes("429"))) {
       add({ service: "OpenAI", kind: "credits", severity: "critical", message: "OpenAI is rejecting requests — check its API key / billing." });
@@ -124,7 +124,7 @@ export async function GET(req: NextRequest) {
         service: "Apollo",
         kind: "credits",
         severity: "critical",
-        message: "Apollo is out of lead credits — imported contacts can't get emails revealed. Top up credits or update the Apollo key in Settings > Keys.",
+        message: "Apollo is out of lead credits — imported contacts can't get emails revealed. Top up credits or update the Apollo key in Credits.",
       });
     } else if (row.source === "apollo" && (err.includes("401") || err.includes("403"))) {
       add({ service: "Apollo", kind: "auth", severity: "critical", message: "Apollo rejected the API key — lead emails can't be revealed. Update the Apollo master key." });

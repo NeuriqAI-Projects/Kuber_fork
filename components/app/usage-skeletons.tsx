@@ -5,13 +5,12 @@ import { Card } from "@/components/ui/card";
  *  shaped to match each tab's real layout so content doesn't jump around
  *  once data arrives. */
 
+/** The Usage heading is real text (not a bar) so it is on screen from the first frame and
+ *  sits where UsageHeader puts it; only the Refresh button is a placeholder. */
 export function UsageHeaderSkeleton() {
   return (
-    <div className="flex items-start justify-between gap-4">
-      <div className="space-y-1.5 max-w-2xl w-full">
-        <Skeleton className="h-3 w-full max-w-md" />
-        <Skeleton className="h-3 w-2/3 max-w-xs" />
-      </div>
+    <div className="flex items-center justify-between gap-3 px-1">
+      <h3 className="font-display text-2xl font-bold tracking-tight">Usage</h3>
       <Skeleton className="h-8 w-24 shrink-0" />
     </div>
   );

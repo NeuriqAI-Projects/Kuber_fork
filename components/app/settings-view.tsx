@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   User, Bot, LogOut, Plus,
   ChevronRight, PenLine, Type, Palette, Check, Sun, Moon,
-  Building2, Package, FileText, X, KeyRound, Gauge, Lock, Tags, Pencil, Loader2,
+  Building2, Package, FileText, X, Lock, Tags, Pencil, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,20 +33,10 @@ import { MANDATORY_FORMATTING_RULES, parseIndustryKeywordGroups, type IndustryKe
 import { useTheme } from "@/lib/theme-context";
 import { useApp } from "@/lib/app-context";
 import dynamic from "next/dynamic";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 
 const TeamView = dynamic(
   () => import("@/components/app/team-view").then((m) => m.TeamView),
-  { ssr: false, loading: () => <div className="p-8 animate-pulse"><div className="h-40 rounded-xl bg-secondary" /></div> },
-);
-
-const KeysView = dynamic(
-  () => import("@/components/app/keys-view").then((m) => m.KeysView),
-  { ssr: false, loading: () => <div className="p-8 animate-pulse"><div className="h-40 rounded-xl bg-secondary" /></div> },
-);
-
-const KeysUsageView = dynamic(
-  () => import("@/components/app/keys-usage-view").then((m) => m.KeysUsageView),
   { ssr: false, loading: () => <div className="p-8 animate-pulse"><div className="h-40 rounded-xl bg-secondary" /></div> },
 );
 
@@ -55,10 +45,9 @@ const EmailSendingView = dynamic(
   { ssr: false, loading: () => <div className="p-8 animate-pulse"><div className="h-40 rounded-xl bg-secondary" /></div> },
 );
 
-type Section = "profile" | "ai" | "knowledge" | "appearance" | "account" | "team" | "email" | "keys";
+type Section = "profile" | "ai" | "knowledge" | "appearance" | "account" | "team" | "email";
 type AiSection = "my-writing" | "my-signature" | "template" | "default" | "followup" | "html" | "replies" | "footer";
 type KnowledgeSection = "company" | "products" | "industry-segments";
-type KeysSection = "credentials" | "usage";
 type ProductOffering = { name: string; description: string };
 
 // Only first_name — lib/services/settings.ts's renderFollowupFallback (the
@@ -103,11 +92,6 @@ const COMPANY_AI_NAV_ITEMS: { id: AiSection; label: string; icon: React.Componen
   { id: "html",     label: "HTML emails",     icon: FileText },
   { id: "replies",  label: "Reply AI",        icon: Bot },
   { id: "footer",   label: "Email Footer",    icon: Type },
-];
-
-const KEYS_NAV_ITEMS: { id: KeysSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: "credentials", label: "Credentials", icon: KeyRound },
-  { id: "usage",       label: "Usage",       icon: Gauge },
 ];
 
 const KNOWLEDGE_NAV_ITEMS: { id: KnowledgeSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -248,7 +232,7 @@ export function SettingsView() {
   // runs unconditionally on every render.
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const navItems = isManager
-    ? [...MANAGER_NAV_ITEMS, { id: "email" as const, label: "Email & Sending" }, { id: "keys" as const, label: "Keys" }]
+    ? [...MANAGER_NAV_ITEMS, { id: "email" as const, label: "Email & Sending" }]
     : NAV_ITEMS;
   const aiNavItems = isManager ? [...PERSONAL_AI_NAV_ITEMS, ...COMPANY_AI_NAV_ITEMS] : PERSONAL_AI_NAV_ITEMS;
   // Company Details is company identity (sender name, context, logo) — manager /
@@ -258,15 +242,17 @@ export function SettingsView() {
   const [section, setSection] = useState<Section>("profile");
   const [aiSection, setAiSection] = useState<AiSection>("my-writing");
   const [knowledgeSection, setKnowledgeSection] = useState<KnowledgeSection>("company");
-  const [keysSection, setKeysSection] = useState<KeysSection>("credentials");
 
   // Deep-link support, e.g. /settings?section=knowledge&knowledge=industry-segments
   // (used by the "Manage groups in Settings" link in the Apollo import dropdown)
   // so it lands directly on the tab it's pointing at rather than the default.
   const searchParams = useSearchParams();
+  const router = useRouter();
   useEffect(() => {
     const s = searchParams.get("section");
-    if (s === "knowledge" || s === "ai" || s === "appearance" || s === "account" || s === "team" || s === "email" || s === "keys" || s === "profile") {
+    // Keys and Usage moved to their own Credits page; old links still land there.
+    if (s === "keys") { router.replace("/credits"); return; }
+    if (s === "knowledge" || s === "ai" || s === "appearance" || s === "account" || s === "team" || s === "email" || s === "profile") {
       setSection(s);
     }
     const k = searchParams.get("knowledge");
@@ -334,14 +320,12 @@ export function SettingsView() {
   // to "products" if they land on the one tab hidden from them.
   const activeKnowledgeSection: KnowledgeSection = (!isManager && knowledgeSection === "company") ? "products" : knowledgeSection;
   const activeKnowledgeNavItem = KNOWLEDGE_NAV_ITEMS.find((i) => i.id === activeKnowledgeSection);
-  const activeKeysNavItem      = KEYS_NAV_ITEMS.find((i) => i.id === keysSection);
 
   // The breadcrumb shows the ancestor trail; the deepest active item becomes the page title.
   const sectionLabel = navItems.find((n) => n.id === section)?.label ?? "Settings";
   const pageTitle =
     (section === "ai" && activeAiNavItem?.label) ||
     (section === "knowledge" && activeKnowledgeNavItem?.label) ||
-    (section === "keys" && activeKeysNavItem?.label) ||
     sectionLabel;
 
   useEffect(() => {
@@ -766,20 +750,6 @@ export function SettingsView() {
               <Button key={id} type="button" variant="ghost" onClick={() => setKnowledgeSection(id)}
                 className={cn("h-auto w-full justify-start gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium",
                   activeKnowledgeSection === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary")}>
-                <Icon className="size-4 shrink-0" /><span className="truncate">{label}</span>
-              </Button>
-            ))}
-          </aside>
-        )}
-
-        {/* Keys secondary sidebar — Credentials (manage secrets) vs Usage (balances / validity) */}
-        {section === "keys" && isManager && (
-          <aside className="w-56 shrink-0 border-r border-border p-4 flex flex-col gap-1 overflow-y-auto">
-            <p className="eyebrow px-2 mb-1">Keys</p>
-            {KEYS_NAV_ITEMS.map(({ id, label, icon: Icon }) => (
-              <Button key={id} type="button" variant="ghost" onClick={() => setKeysSection(id)}
-                className={cn("h-auto w-full justify-start gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium",
-                  keysSection === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary")}>
                 <Icon className="size-4 shrink-0" /><span className="truncate">{label}</span>
               </Button>
             ))}
@@ -1514,18 +1484,6 @@ export function SettingsView() {
               {section === "email" && isManager && (
                 <div className="-m-8">
                   <EmailSendingView />
-                </div>
-              )}
-
-              {section === "keys" && isManager && keysSection === "credentials" && (
-                <div className="-m-8">
-                  <KeysView />
-                </div>
-              )}
-
-              {section === "keys" && isManager && keysSection === "usage" && (
-                <div className="-m-8">
-                  <KeysUsageView />
                 </div>
               )}
 

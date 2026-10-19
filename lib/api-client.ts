@@ -597,6 +597,19 @@ export async function fetchTavilyUsage(token: string, refresh = false): Promise<
   return apiFetch(`/api/v1/settings/keys/usage/tavily${refresh ? "?refresh=1" : ""}`, {}, token);
 }
 
+export type CampaignCreditsData = {
+  leads: number; companies: number;
+  apollo: { credits: number; exact: boolean };
+  firecrawl: { credits: number; exact: boolean };
+  jev: { companies: number; tokens: number; usd: number; exact: boolean };
+  tavily: { linkedinReads: number; webSearches: number; calls: number; exact: boolean };
+  ai: { calls: number; usd: number; tokens: number; failed: number; exact: boolean };
+  instantly: { emailsSent: number; exact: boolean };
+};
+export async function fetchCampaignCredits(token: string, campaignId: string): Promise<CampaignCreditsData> {
+  return apiFetch(`/api/v1/campaigns/${campaignId}/credits`, {}, token);
+}
+
 export async function setProviderModel(token: string, provider: string, model: string | null): Promise<void> {
   await apiFetch("/api/v1/settings/keys/model", { method: "PUT", body: JSON.stringify({ provider, model }) }, token);
 }

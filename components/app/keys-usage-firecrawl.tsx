@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { RefreshCw, Coins, CalendarDays, TrendingDown, Flame, CheckCircle2 } from "lucide-react";
+import { Coins, CalendarDays, TrendingDown, Flame, CheckCircle2 } from "lucide-react";
 import { useApp } from "@/lib/app-context";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Paged } from "@/components/ui/paged";
 import { Card } from "@/components/ui/card";
 import { StatTile } from "@/components/ui/stat-tile";
+import { UsageHeader } from "@/components/app/usage-header";
 import { UsageBarChart } from "@/components/app/usage-bar-chart";
 import {
   UsageHeaderSkeleton, StatTileGridSkeleton, ChartCardSkeleton, RowsCardSkeleton,
@@ -76,17 +77,7 @@ export function FirecrawlUsageView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <p className="text-xs text-muted-foreground max-w-2xl">
-          Credit balance below comes live from Firecrawl&apos;s account (same figures as their dashboard). The scrape
-          activity further down is this app&apos;s own record of org enrichment scrapes — useful if the key is shared
-          with other tools.
-        </p>
-        <Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={() => void load(true)} className="shrink-0 gap-1.5">
-          <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
-          {refreshing ? "Checking…" : "Refresh"}
-        </Button>
-      </div>
+      <UsageHeader info="The balance comes live from Firecrawl (the same figures as their dashboard). The scrape activity below is this app's own record of company scrapes, which is useful if the key is shared with other tools." refreshing={refreshing} onRefresh={() => void load(true)} />
 
       {!key.ok && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
@@ -94,7 +85,7 @@ export function FirecrawlUsageView() {
         </div>
       )}
 
-      <Card className="p-5 space-y-4">
+      <div className="space-y-4">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <p className="eyebrow">Billing cycle</p>
@@ -168,7 +159,7 @@ export function FirecrawlUsageView() {
             </div>
           </div>
         )}
-      </Card>
+      </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatTile label="Scrapes today" value={activity.today} icon={Flame} />
@@ -213,6 +204,7 @@ export function FirecrawlUsageView() {
         {history.length === 0 ? (
           <p className="text-xs text-muted-foreground py-6 text-center">No Firecrawl activity recorded yet.</p>
         ) : (
+          <Paged items={history}>{(rows) => (
           <div className="rounded-lg border border-border overflow-hidden">
             <table className="w-full text-xs">
               <thead className="bg-secondary text-muted-foreground">
@@ -225,7 +217,7 @@ export function FirecrawlUsageView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {history.map((h) => {
+                {rows.map((h) => {
                   const tone =
                     h.event === "SCRAPE_SUCCESS" || h.event === "SCRAPE_CACHE_HIT"
                       ? "ok"
@@ -260,6 +252,7 @@ export function FirecrawlUsageView() {
               </tbody>
             </table>
           </div>
+          )}</Paged>
         )}
       </Card>
     </div>

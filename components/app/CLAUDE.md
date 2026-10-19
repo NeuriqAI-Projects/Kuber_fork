@@ -10,7 +10,7 @@ Group by feature (find the file by prefix):
   `campaign-config-modal`, `campaign-kanban`, `campaign-report`, `regenerate-drafts-modal`,
   `hold-sending-modal`, `replace-lead-modal`, `email-sending-view`.
 - **Replies:** `reply-draft-box`, `manual-reply-box`, `reply-recipients`, `reply-cc-bcc-fields`, `reply-attach-controls`.
-- **Settings:** `settings-view`, `keys-view`, `keys-usage-*`, `team-view`, `usage-bar-chart`.
+- **Settings:** `settings-view`, `team-view`. **Credits** (sidebar, managers): `credits-view` (one tab per provider: key + usage), `keys-view` (key panels), `keys-usage-*`, `usage-bar-chart`.
 - **Other:** `dashboard`, `model-lab-view`, `discussion-comment`, `service-health-banner`,
   `apollo-cost-note` (required wherever Apollo credits are spent), `page-skeletons`, `usage-skeletons`, `tag-input`.
 
