@@ -23,6 +23,8 @@ export function DatePicker({
   disabled,
   size = "default",
   showQuickActions = false,
+  minDate,
+  maxDate,
 }: {
   date: Date | undefined;
   onChangeDate: (date: Date | undefined) => void;
@@ -34,8 +36,15 @@ export function DatePicker({
   size?: "default" | "sm";
   /** Adds a Today / Clear footer row under the calendar. */
   showQuickActions?: boolean;
+  /** Days before this are greyed out and can't be picked (e.g. a To date's From). */
+  minDate?: Date;
+  /** Days after this are greyed out and can't be picked (e.g. a From date's To). */
+  maxDate?: Date;
 }) {
   const [open, setOpen] = React.useState(false);
+  const outOfRange = (d: Date) => (minDate ? d < minDate : false) || (maxDate ? d > maxDate : false);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -59,6 +68,7 @@ export function DatePicker({
         <Calendar
           mode="single"
           selected={date}
+          disabled={minDate || maxDate ? outOfRange : undefined}
           onSelect={(d) => {
             onChangeDate(d);
             setOpen(false);
@@ -80,6 +90,7 @@ export function DatePicker({
               variant="ghost"
               size="sm"
               className="h-7 px-2 text-xs"
+              disabled={outOfRange(today)}
               onClick={() => { onChangeDate(new Date()); setOpen(false); }}
             >
               Today

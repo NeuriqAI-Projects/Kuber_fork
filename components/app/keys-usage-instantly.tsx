@@ -4,7 +4,8 @@ import { Send, MailOpen, Reply, MailX, Inbox } from "lucide-react";
 import { Paged } from "@/components/ui/paged";
 import { StatTile } from "@/components/ui/stat-tile";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { UsageHeader, UsagePanel, UsageEmpty, UsageNotice, UsageStatus, useCachedUsage } from "@/components/app/usage-header";
+import { UsageHeader, UsageEmpty, UsageNotice, UsageStatus, useCachedUsage } from "@/components/app/usage-header";
+import { Panel } from "@/components/ui/panel";
 import { UsageBarChart, CHART_COLORS } from "@/components/app/usage-bar-chart";
 import { UsageHeaderSkeleton, StatTileGridSkeleton, ChartCardSkeleton, RowsCardSkeleton } from "@/components/app/usage-skeletons";
 import { fetchInstantlyUsage, type InstantlyUsageData } from "@/lib/api-client";
@@ -55,7 +56,7 @@ export function InstantlyUsageView() {
         <p className="text-[13px] text-muted-foreground">Campaign analytics overview unavailable: {overview.error}</p>
       )}
 
-      <UsagePanel title="Send activity" description="Last 14 days across every campaign.">
+      <Panel title="Send activity" description="Last 14 days across every campaign.">
         {daily.error ? (
           <p className="text-[13px] text-muted-foreground">Daily analytics unavailable: {daily.error}</p>
         ) : chartData.every((d) => d.sent === 0 && d.opened === 0 && d.replied === 0) ? (
@@ -70,9 +71,9 @@ export function InstantlyUsageView() {
             ]}
           />
         )}
-      </UsagePanel>
+      </Panel>
 
-      <UsagePanel
+      <Panel
         title="Sending accounts"
         description="Mailboxes available to campaigns and their daily send caps."
         aside={
@@ -113,7 +114,7 @@ export function InstantlyUsageView() {
           </div>
           )}</Paged>
         )}
-      </UsagePanel>
+      </Panel>
     </div>
   );
 }

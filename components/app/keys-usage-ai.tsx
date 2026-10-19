@@ -3,7 +3,8 @@
 import { Sparkles, MessageSquareReply, ArrowRightLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatTile } from "@/components/ui/stat-tile";
-import { UsageHeader, UsagePanel, UsageEmpty, useCachedUsage } from "@/components/app/usage-header";
+import { UsageHeader, UsageEmpty, useCachedUsage } from "@/components/app/usage-header";
+import { Panel } from "@/components/ui/panel";
 import { UsageBarChart, CHART_COLORS } from "@/components/app/usage-bar-chart";
 import { UsageHeaderSkeleton, StatTileGridSkeleton, ChartCardSkeleton } from "@/components/app/usage-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -72,11 +73,11 @@ export function AiUsageView() {
         Try order: <span className="font-medium text-foreground">{primaryLabel}</span> primary, <span className="font-medium text-foreground">{fallbackLabel}</span> fallback.
       </div>
 
-      <UsagePanel title="Key health" description="Every configured LLM, checked live.">
+      <Panel title="Key health" description="Every configured LLM, checked live.">
         <div className="-m-4 divide-y divide-border">
           {providers.map((p) => <ProviderRow key={p.id} provider={p} />)}
         </div>
-      </UsagePanel>
+      </Panel>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <StatTile label="Drafts generated" value={volume.totalDrafts} icon={Sparkles} sub={`last ${volume.windowDays}d`} />
@@ -84,7 +85,7 @@ export function AiUsageView() {
         <StatTile label="Total generations" value={volume.totalGenerations} icon={ArrowRightLeft} sub={`last ${volume.windowDays}d`} tone="amber" />
       </div>
 
-      <UsagePanel title="Generation volume" description={`Drafts and replies produced per day, last ${volume.windowDays} days.`}>
+      <Panel title="Generation volume" description={`Drafts and replies produced per day, last ${volume.windowDays} days.`}>
         {volume.daily.every((d) => d.drafts === 0 && d.replies === 0) ? (
           <UsageEmpty>No drafts or replies generated recently.</UsageEmpty>
         ) : (
@@ -96,7 +97,7 @@ export function AiUsageView() {
             ]}
           />
         )}
-      </UsagePanel>
+      </Panel>
     </div>
   );
 }

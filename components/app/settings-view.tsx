@@ -17,9 +17,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { AvailabilityToggle } from "@/components/ui/availability-toggle";
 import { LEAD_TEMPLATE_VARS } from "@/components/ui/template-var-textarea";
-import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageShell } from "@/components/ui/page-shell";
+import { ChoiceCard } from "@/components/ui/choice-card";
+import { SettingsNav, SettingsPageTitle, SettingsRow, SettingsSectionHeader } from "@/components/ui/settings";
 import { EmptyState } from "@/components/ui/empty-state";
 // Aliased: this file also declares its own local RichTextEditor further down
 // (a plain-text-output contentEditable wrapper, correct for prompt fields fed
@@ -114,49 +115,6 @@ const KNOWLEDGE_NAV_ITEMS: { id: KnowledgeSection; label: string; icon: React.Co
 // needed the same control — one shared component per control type (CLAUDE.md).
 // Aliased to RichTextEditor so the ~15 call sites below read unchanged.
 import { PromptEditor as RichTextEditor } from "@/components/ui/prompt-editor";
-
-// A single settings field laid out as label+description on the left and the
-// actual control on the right, instead of label-above-control stacked in one
-// column. Used throughout Profile / Knowledge Sources / Appearance / Account
-// for compact fields; large canvases (rich-text prompts, textareas) stay
-// full-width below their own header since cramming them into a narrow right
-// column would hurt usability.
-function SettingsRow({
-  label, description, children, htmlFor,
-}: {
-  label: string; description?: React.ReactNode; children: React.ReactNode; htmlFor?: string;
-}) {
-  return (
-    <div className="grid grid-cols-1 gap-2 py-4 border-b border-border last:border-0 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] sm:gap-8">
-      <div>
-        <Label htmlFor={htmlFor} className="text-[13px] font-medium text-foreground">{label}</Label>
-        {description && <p className="text-[13px] text-muted-foreground mt-0.5">{description}</p>}
-      </div>
-      <div className="min-w-0">{children}</div>
-    </div>
-  );
-}
-
-// Attio settings section header: title + muted description, a 1px rule under
-// it, optional tag/action on the right.
-function SectionHeader({
-  title, description, aside, info,
-}: {
-  title: string; description?: React.ReactNode; aside?: React.ReactNode; info?: string;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3 border-b border-border pb-3">
-      <div className="min-w-0">
-        <div className="flex items-center gap-1.5">
-          <h3 className="text-[15px] font-semibold leading-tight">{title}</h3>
-          {info && <InfoTooltip text={info} />}
-        </div>
-        {description && <p className="mt-1 text-[13px] text-muted-foreground">{description}</p>}
-      </div>
-      {aside && <div className="shrink-0">{aside}</div>}
-    </div>
-  );
-}
 
 // "Personal" vs "Using company default" tag next to a personal prompt.
 function OverrideTag({ personal }: { personal: boolean }) {
@@ -797,639 +755,613 @@ export function SettingsView() {
   const showSaveBar = !loading && (section === "ai" || (section === "knowledge" && activeKnowledgeSection !== "industry-segments"));
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <PageHeader
-        crumbs={[
-          { label: "Settings", icon: <SettingsIcon /> },
-          ...(activeGroupLabel ? [{ label: activeGroupLabel }] : []),
-          { label: pageTitle },
-        ]}
-      />
+    <PageShell
+      crumbs={[
+        { label: "Settings", icon: <SettingsIcon /> },
+        ...(activeGroupLabel ? [{ label: activeGroupLabel }] : []),
+        { label: pageTitle },
+      ]}
+      nav={
+        <SettingsNav
+          groups={navGroups.map((g) => ({
+            label: g.label,
+            items: g.items.map((entry) => ({
+              key: entry.key,
+              label: entry.label,
+              icon: entry.icon,
+              active: isActiveEntry(entry),
+              onSelect: () => openEntry(entry),
+            })),
+          }))}
+        />
+      }
+      width="none"
+    >
+      {contentSkeleton}
 
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Settings nav */}
-        <aside className="w-56 shrink-0 border-r border-border overflow-y-auto px-2 py-3">
-          {navGroups.filter((g) => g.items.length > 0).map((group, gi) => (
-            <div key={group.label} className={cn(gi > 0 && "mt-4")}>
-              <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">{group.label}</p>
-              <div className="space-y-px">
-                {group.items.map((entry) => {
-                  const active = isActiveEntry(entry);
-                  const Icon = entry.icon;
-                  return (
-                    <button
-                      key={entry.key}
-                      type="button"
-                      onClick={() => openEntry(entry)}
-                      aria-current={active ? "page" : undefined}
-                      className={cn(
-                        "flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium transition-colors",
-                        active ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-hover hover:text-foreground",
-                      )}
-                    >
-                      <Icon className="size-4 shrink-0" />
-                      <span className="truncate">{entry.label}</span>
-                    </button>
-                  );
-                })}
+      {!loading && (
+        <div className={cn("mx-auto w-full px-8 py-6", section === "team" || section === "email" ? "max-w-5xl" : "max-w-3xl space-y-8")}>
+          {section !== "team" && section !== "email" && (
+            <SettingsPageTitle title={pageTitle} className="mb-6" />
+          )}
+
+          {/* ── Profile ── */}
+          {section === "profile" && (
+            <div>
+              <div className="flex items-center gap-3 py-4 border-b border-border">
+                <div className="size-10 rounded-md bg-secondary border border-border flex items-center justify-center shrink-0">
+                  <User className="size-4 text-muted-foreground" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-sm">{userName || "Admin"}</p>
+                  <p className="text-[13px] text-muted-foreground truncate">{userEmail}</p>
+                </div>
+                <span className="shrink-0 rounded-[5px] bg-primary/10 px-1.5 py-[3px] text-xs font-medium leading-none text-primary">
+                  {isSuperAdmin ? "Super Admin" : role === "manager" ? "Manager" : role === "employee" ? "Employee" : "—"}
+                </span>
               </div>
+
+              <div>
+                <SettingsRow label="Display name" description="Managed through your Supabase auth account.">
+                  <Input value={userName} onChange={(e) => setUserName(e.target.value)} placeholder="Admin" disabled className="max-w-sm" />
+                </SettingsRow>
+                <SettingsRow label="Email address" description="Managed through your Supabase auth account.">
+                  <Input value={userEmail} disabled className="max-w-sm" />
+                </SettingsRow>
+              </div>
+
+              {/* Employees can mark themselves away (spec §2B). */}
+              {role === "employee" && (
+                <div className="mt-6">
+                  <SettingsSectionHeader title="Assignment" />
+                  <AvailabilityCard />
+                </div>
+              )}
             </div>
-          ))}
-        </aside>
+          )}
 
-        {/* Content */}
-        <div className="relative flex-1 overflow-y-auto">
-          {contentSkeleton}
+          {/* ── AI & Outreach ── */}
+          {section === "ai" && (
+            <div className="space-y-10">
+              {aiSection === "my-writing" && (
+                <>
+                  <section className="space-y-4">
+                    <SettingsSectionHeader
+                      title="My cold-email writing style"
+                      description={<>Campaigns <strong>you create</strong> generate their emails with this prompt. Leave it empty to write with the company default — other people&apos;s campaigns are never affected by what you put here.</>}
+                      aside={<OverrideTag personal={!!myDraftPrompt.trim()} />}
+                    />
+                    <RichTextEditor
+                      label="My email template"
+                      value={myDraftTemplate}
+                      onChange={setMyDraftTemplate}
+                      minHeight={260}
+                      placeholder={"Paste the exact email you want sent, for example:\n\nI'm reaching out from Kuber Polyplast, an ISO 9001:2015 certified manufacturer with 30 years of experience...\n\nI came across (write about their company and what they make)\n\n- 18,000 MT annual production capacity\n- 6,670+ clients across 40+ countries\n\nPlease let us know if you have any current requirements."}
+                      helper="Paste a finished email exactly as you want it sent. Every paragraph, bullet, number and closing line is reproduced as written; only the customer-specific parts change per lead. Put an instruction in round brackets — (write about their company and products) — wherever you want a sentence written about that specific customer; the bracket is replaced, never printed. Leave empty to use the drafting prompt below instead."
+                    />
 
-          {!loading && (
-            <div className={cn("mx-auto w-full px-8 py-6", section === "team" || section === "email" ? "max-w-5xl" : "max-w-3xl space-y-8")}>
-              {section !== "team" && section !== "email" && (
-                <h1 className="mb-6 text-lg font-semibold leading-tight">{pageTitle}</h1>
+                    <RichTextEditor
+                      label="My drafting prompt"
+                      value={myDraftPrompt}
+                      onChange={setMyDraftPrompt}
+                      minHeight={320}
+                      placeholder="Leave empty to use the company default, or write your own subject patterns, openings, offerings and tone here..."
+                      helper="Company details, the product library and campaign context are appended automatically. Structure, length and tone come from this prompt, so anything you want changed you change here."
+                    />
+                    <MandatoryFormattingNotice />
+                    {!myDraftPrompt.trim() && myDefaults.draft_prompt && <InheritedDefault text={myDefaults.draft_prompt} />}
+                  </section>
+
+                  <section className="space-y-4">
+                    <SettingsSectionHeader
+                      title="My reply writing style"
+                      description={<>AI reply suggestions for <strong>your campaigns&apos;</strong> conversations follow this prompt. Empty = company default.</>}
+                      aside={<OverrideTag personal={!!myReplyPrompt.trim()} />}
+                    />
+                    <RichTextEditor
+                      label="My reply prompt"
+                      value={myReplyPrompt}
+                      onChange={setMyReplyPrompt}
+                      minHeight={220}
+                      placeholder="Leave empty to use the company default reply prompt..."
+                      helper="Must return JSON with subject and body. Safety rules are appended automatically."
+                    />
+                    <MandatoryFormattingNotice />
+                    {!myReplyPrompt.trim() && myDefaults.reply_prompt && <InheritedDefault text={myDefaults.reply_prompt} />}
+                  </section>
+                </>
               )}
 
-              {/* ── Profile ── */}
-              {section === "profile" && (
-                <div>
-                  <div className="flex items-center gap-3 py-4 border-b border-border">
-                    <div className="size-10 rounded-md bg-secondary border border-border flex items-center justify-center shrink-0">
-                      <User className="size-4 text-muted-foreground" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-sm">{userName || "Admin"}</p>
-                      <p className="text-[13px] text-muted-foreground truncate">{userEmail}</p>
-                    </div>
-                    <span className="shrink-0 rounded-[5px] bg-primary/10 px-1.5 py-[3px] text-xs font-medium leading-none text-primary">
-                      {isSuperAdmin ? "Super Admin" : role === "manager" ? "Manager" : role === "employee" ? "Employee" : "—"}
-                    </span>
+              {aiSection === "my-signature" && (
+                <>
+                  <section className="space-y-4">
+                    <SettingsSectionHeader
+                      title="My signature"
+                      description={<>Appended to every email of campaigns <strong>you create</strong> (cold emails and replies). A campaign&apos;s own signature override still wins. Empty = company footer.</>}
+                      aside={<OverrideTag personal={!!mySignature.trim()} />}
+                    />
+                    <RichTextEditor
+                      label="Sign-off block"
+                      value={mySignature}
+                      onChange={setMySignature}
+                      minHeight={160}
+                      singleLineBreaks
+                      placeholder={"Your Name\nYour Title\nKuber Polyplast\n+91-XXXXXXXXXX"}
+                    />
+                    {!mySignature.trim() && myDefaults.signature && <InheritedDefault text={myDefaults.signature} maxH="max-h-40" />}
+                  </section>
+
+                  <section>
+                    <SettingsSectionHeader title="My sender name" />
+                    <SettingsRow
+                      label="Sender name"
+                      description={<>Pre-filled as the &quot;From&quot; name when you create a campaign. Empty = company default{myDefaults.sender_name ? ` (“${myDefaults.sender_name}”)` : ""}.</>}
+                    >
+                      <Input value={mySenderName} onChange={(e) => setMySenderName(e.target.value)} placeholder={myDefaults.sender_name || "Kuber Polyplast"} maxLength={200} className="max-w-sm" />
+                    </SettingsRow>
+                  </section>
+                </>
+              )}
+
+              {isManager && aiSection === "template" && (
+                <section className="space-y-4">
+                  <SettingsSectionHeader
+                    title="AI writing instructions"
+                    description={<>The <strong>company default</strong> prompt for outreach emails — used by every campaign whose owner hasn&apos;t set a personal writing style. Put subject-line patterns, opening/closing options, offerings, key strengths, and tone here.</>}
+                  />
+                  <RichTextEditor
+                    label="Base prompt"
+                    value={systemPrompt}
+                    onChange={setSystemPrompt}
+                    minHeight={400}
+                    placeholder="Write the full email template here including subject patterns, intro options, offerings, closing..."
+                    helper="Campaign-level context and matched product details are appended automatically."
+                  />
+                  <MandatoryFormattingNotice />
+                </section>
+              )}
+
+              {isManager && aiSection === "default" && (
+                <section className="space-y-4">
+                  <SettingsSectionHeader
+                    title="Fallback email"
+                    description="Sent as-is to leads with no company profile to personalise from."
+                    info="Exact subject and body sent to unenriched / Input Required leads (no company profile to personalise). Enriched leads still use AI Writing Instructions. A greeting and signature are added automatically."
+                  />
+                  <SettingsRow label="Subject">
+                    <Input
+                      value={genericSubject}
+                      onChange={(e) => setGenericSubject(e.target.value)}
+                      placeholder="Reliable masterbatch for {{company}}"
+                      maxLength={300}
+                      className="max-w-md"
+                    />
+                  </SettingsRow>
+                  <div className="space-y-2">
+                    <Label>Body</Label>
+                    <HtmlRichTextEditor
+                      value={genericBody}
+                      onChange={setGenericBody}
+                      templateVars={LEAD_TEMPLATE_VARS}
+                      minHeight={220}
+                      placeholder="Write the exact email body"
+                    />
                   </div>
+                </section>
+              )}
+
+              {isManager && aiSection === "followup" && (
+                <section className="space-y-4">
+                  <SettingsSectionHeader title="Fallback follow-up" />
+                  <p className="text-[13px] text-muted-foreground">
+                    Sent for any follow-up step (2, 3, …) whose lead has no AI-personalized
+                    follow-up drafted yet — e.g. an AI provider outage, or a follow-up simply
+                    not written before it&apos;s due. Without this, that follow-up would send
+                    blank. Every lead is seeded with this text the moment a campaign sends;
+                    it&apos;s automatically replaced once a personalized follow-up is drafted
+                    and approved for that lead. No subject — a follow-up always threads as a
+                    reply to the opening email. Placeholder:{" "}
+                    <code className="rounded bg-secondary px-1 py-0.5 text-xs">{"{{first_name}}"}</code>.
+                  </p>
+                  <div className="space-y-2">
+                    <Label>Body</Label>
+                    <HtmlRichTextEditor
+                      value={followupFallbackBody}
+                      onChange={setFollowupFallbackBody}
+                      minHeight={200}
+                      templateVars={FOLLOWUP_FALLBACK_TEMPLATE_VARS}
+                      placeholder="Hi {{first_name}}, Just following up on my previous note — would love your thoughts. Best regards"
+                    />
+                    <p className="text-xs text-muted-foreground">Left blank, this default text is used. This text is sent as-is — the AI does not rewrite it.</p>
+                  </div>
+                </section>
+              )}
+
+              {isManager && aiSection === "html" && (
+                <section className="space-y-4">
+                  <SettingsSectionHeader title="Tables in emails" />
+                  <SettingsRow
+                    label="Allow HTML in emails"
+                    description="Lets the AI include an HTML table in an email when it is explicitly asked for."
+                  >
+                    <Switch checked={allowHtmlEmails} onCheckedChange={setAllowHtmlEmails} />
+                  </SettingsRow>
+                  <p className="text-[13px] text-muted-foreground">
+                    <strong>Off (default):</strong> every email is plain text with bold/italic/links, exactly as today.{" "}
+                    <strong>On:</strong> nothing changes for ordinary emails. The AI only adds a table when a
+                    campaign instruction or a regenerate request clearly asks for one (e.g. &ldquo;add a
+                    comparison table of our grades&rdquo;). The table is cleaned up (no scripts or styles) and
+                    Instantly sends it as HTML. Applies to newly written or regenerated drafts; existing drafts are unchanged.
+                  </p>
+                </section>
+              )}
+
+              {isManager && aiSection === "replies" && (
+                <section className="space-y-5">
+                  <SettingsSectionHeader
+                    title="Reply drafting"
+                    description="Controls how follow-up replies are drafted after a prospect responds."
+                  />
+
+                  <RichTextEditor label="Reply drafter prompt" value={replyDrafterPrompt} onChange={setReplyDrafterPrompt} minHeight={220}
+                    helper="Must return JSON with subject and body. Still in active use — this is what writes our human-reviewed reply drafts." />
+                  <MandatoryFormattingNotice />
+                </section>
+              )}
+
+              {isManager && aiSection === "footer" && (
+                <section className="space-y-4">
+                  <SettingsSectionHeader title="Contact footer" description="Contact lines appended at the end of every generated email." />
+                  <RichTextEditor label="Contact footer" value={sigContact} onChange={setSigContact} minHeight={160} singleLineBreaks
+                    placeholder={"Kuber Polyplast\n+91-XXXXXXXXXX\nsales@kuberpolyplast.com"} />
+                </section>
+              )}
+
+              {error && <p className="text-xs text-destructive">{error}</p>}
+            </div>
+          )}
+
+          {/* ── Knowledge Sources (everyone) ── */}
+          {section === "knowledge" && (
+            <div className="space-y-8">
+
+              {/* Company Details */}
+              {activeKnowledgeSection === "company" && (
+                <section className="space-y-5">
+                  <SettingsSectionHeader title="Identity" description="Who the emails come from and what the AI knows about your company." />
 
                   <div>
-                    <SettingsRow label="Display name" description="Managed through your Supabase auth account.">
-                      <Input value={userName} onChange={(e) => setUserName(e.target.value)} placeholder="Admin" disabled className="max-w-sm" />
+                    <SettingsRow label="Default sender name" description={'Used as the "From" name in outreach emails.'}>
+                      <Input value={senderName} onChange={(e) => setSenderName(e.target.value)} placeholder="Kuber Polyplast" className="max-w-sm" />
                     </SettingsRow>
-                    <SettingsRow label="Email address" description="Managed through your Supabase auth account.">
-                      <Input value={userEmail} disabled className="max-w-sm" />
+                    <SettingsRow label="Client industry">
+                      <Input value={clientIndustry} onChange={(e) => setClientIndustry(e.target.value)} placeholder="Plastics & Polymer Manufacturing" className="max-w-sm" />
+                    </SettingsRow>
+                    <SettingsRow label="Logo" description="PNG/JPG/WebP, up to 2 MB. Appears in the sidebar.">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {logoUrl
+                          ? <img src={logoUrl} alt="Brand logo" className="size-10 rounded-md border border-border bg-card object-contain shrink-0" />
+                          : <div className="size-10 rounded-md border border-border bg-card flex items-center justify-center shrink-0"><span className="text-xs font-semibold text-muted-foreground">K</span></div>
+                        }
+                        <Input
+                          ref={logoInputRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          className="hidden"
+                          onChange={(e) => void handleLogoPick(e.target.files?.[0] ?? null)}
+                        />
+                        <Button type="button" variant="outline" disabled={logoUploading} onClick={() => logoInputRef.current?.click()}>
+                          {logoUploading ? "Uploading..." : (logoUrl ? "Replace logo" : "Upload logo")}
+                        </Button>
+                        {logoPath && (
+                          <Button type="button" variant="outline" disabled={logoUploading} onClick={() => void handleLogoRemove()}>Remove</Button>
+                        )}
+                      </div>
                     </SettingsRow>
                   </div>
 
-                  {/* Employees can mark themselves away (spec §2B). */}
-                  {role === "employee" && (
-                    <div className="mt-6">
-                      <SectionHeader title="Assignment" />
-                      <AvailabilityCard />
-                    </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[13px] font-medium">Company context</Label>
+                    <Textarea
+                      value={companyContext}
+                      onChange={(e) => setCompanyContext(e.target.value)}
+                      placeholder="Who Kuber Polyplast is, what makes it credible, key accolades — background the AI can draw on in every email and reply."
+                      className="min-h-32 text-sm resize-y"
+                    />
+                    <p className="text-[13px] text-muted-foreground">
+                      Given to the AI as background for every draft and reply. Products belong in the Product Offerings tab — the AI reads that library directly.
+                    </p>
+                  </div>
+                </section>
+              )}
+
+              {/* Product Offerings */}
+              {activeKnowledgeSection === "products" && (
+                <div className="space-y-4">
+                  <SettingsSectionHeader
+                    title="Products"
+                    description="The AI picks the best-matching product for each lead and uses its description as context."
+                    aside={
+                      <Button type="button" size="sm" variant="outline" onClick={addProduct}>
+                        <Plus className="size-3.5" /> Add product
+                      </Button>
+                    }
+                  />
+
+                  {productOfferings.length === 0 && (
+                    <EmptyState icon={Package} message={<>No products yet — click &quot;Add product&quot; to get started.</>} />
                   )}
+
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {productOfferings.map((product, idx) => (
+                      <div key={idx} className="rounded-lg border border-border bg-card p-3 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="w-5 shrink-0 text-center text-xs tabular-nums text-muted-foreground">{idx + 1}</span>
+                          <Input
+                            value={product.name}
+                            onChange={(e) => updateProduct(idx, "name", e.target.value)}
+                            placeholder="Product name"
+                            className="font-medium flex-1"
+                          />
+                          <Button type="button" variant="ghost" size="icon-sm" onClick={() => removeProduct(idx)}
+                            className="shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                            <X className="size-3.5" />
+                          </Button>
+                        </div>
+                        <Textarea
+                          value={product.description}
+                          onChange={(e) => updateProduct(idx, "description", e.target.value)}
+                          placeholder="Describe this product — what it is, who it fits, key benefits..."
+                          className="min-h-32 resize-y"
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
-              {/* ── AI & Outreach ── */}
-              {section === "ai" && (
-                <div className="space-y-10">
-                  {aiSection === "my-writing" && (
-                    <>
-                      <section className="space-y-4">
-                        <SectionHeader
-                          title="My cold-email writing style"
-                          description={<>Campaigns <strong>you create</strong> generate their emails with this prompt. Leave it empty to write with the company default — other people&apos;s campaigns are never affected by what you put here.</>}
-                          aside={<OverrideTag personal={!!myDraftPrompt.trim()} />}
-                        />
-                        <RichTextEditor
-                          label="My email template"
-                          value={myDraftTemplate}
-                          onChange={setMyDraftTemplate}
-                          minHeight={260}
-                          placeholder={"Paste the exact email you want sent, for example:\n\nI'm reaching out from Kuber Polyplast, an ISO 9001:2015 certified manufacturer with 30 years of experience...\n\nI came across (write about their company and what they make)\n\n- 18,000 MT annual production capacity\n- 6,670+ clients across 40+ countries\n\nPlease let us know if you have any current requirements."}
-                          helper="Paste a finished email exactly as you want it sent. Every paragraph, bullet, number and closing line is reproduced as written; only the customer-specific parts change per lead. Put an instruction in round brackets — (write about their company and products) — wherever you want a sentence written about that specific customer; the bracket is replaced, never printed. Leave empty to use the drafting prompt below instead."
-                        />
+              {/* Industry Segments — the taxonomy behind the Apollo import dropdown */}
+              {activeKnowledgeSection === "industry-segments" && (
+                <div className="space-y-4">
+                  <SettingsSectionHeader
+                    title="Groups and keywords"
+                    description={<>Shown in the Apollo import dropdown. Each keyword&apos;s &quot;Apollo search term&quot; is the actual text sent to Apollo — keep it short and plain, since Apollo matches it near-literally.</>}
+                    aside={
+                      <Button type="button" size="sm" variant="outline" onClick={addGroup} disabled={savingGroupIds.size > 0}>
+                        {savingGroupIds.size > 0 ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />} Add group
+                      </Button>
+                    }
+                  />
 
-                        <RichTextEditor
-                          label="My drafting prompt"
-                          value={myDraftPrompt}
-                          onChange={setMyDraftPrompt}
-                          minHeight={320}
-                          placeholder="Leave empty to use the company default, or write your own subject patterns, openings, offerings and tone here..."
-                          helper="Company details, the product library and campaign context are appended automatically. Structure, length and tone come from this prompt, so anything you want changed you change here."
-                        />
-                        <MandatoryFormattingNotice />
-                        {!myDraftPrompt.trim() && myDefaults.draft_prompt && <InheritedDefault text={myDefaults.draft_prompt} />}
-                      </section>
-
-                      <section className="space-y-4">
-                        <SectionHeader
-                          title="My reply writing style"
-                          description={<>AI reply suggestions for <strong>your campaigns&apos;</strong> conversations follow this prompt. Empty = company default.</>}
-                          aside={<OverrideTag personal={!!myReplyPrompt.trim()} />}
-                        />
-                        <RichTextEditor
-                          label="My reply prompt"
-                          value={myReplyPrompt}
-                          onChange={setMyReplyPrompt}
-                          minHeight={220}
-                          placeholder="Leave empty to use the company default reply prompt..."
-                          helper="Must return JSON with subject and body. Safety rules are appended automatically."
-                        />
-                        <MandatoryFormattingNotice />
-                        {!myReplyPrompt.trim() && myDefaults.reply_prompt && <InheritedDefault text={myDefaults.reply_prompt} />}
-                      </section>
-                    </>
+                  {industryKeywordGroups.length === 0 && (
+                    <EmptyState icon={Tags} message={<>No groups yet — click &quot;Add group&quot; to get started.</>} />
                   )}
 
-                  {aiSection === "my-signature" && (
-                    <>
-                      <section className="space-y-4">
-                        <SectionHeader
-                          title="My signature"
-                          description={<>Appended to every email of campaigns <strong>you create</strong> (cold emails and replies). A campaign&apos;s own signature override still wins. Empty = company footer.</>}
-                          aside={<OverrideTag personal={!!mySignature.trim()} />}
-                        />
-                        <RichTextEditor
-                          label="Sign-off block"
-                          value={mySignature}
-                          onChange={setMySignature}
-                          minHeight={160}
-                          singleLineBreaks
-                          placeholder={"Your Name\nYour Title\nKuber Polyplast\n+91-XXXXXXXXXX"}
-                        />
-                        {!mySignature.trim() && myDefaults.signature && <InheritedDefault text={myDefaults.signature} maxH="max-h-40" />}
-                      </section>
 
-                      <section>
-                        <SectionHeader title="My sender name" />
-                        <SettingsRow
-                          label="Sender name"
-                          description={<>Pre-filled as the &quot;From&quot; name when you create a campaign. Empty = company default{myDefaults.sender_name ? ` (“${myDefaults.sender_name}”)` : ""}.</>}
-                        >
-                          <Input value={mySenderName} onChange={(e) => setMySenderName(e.target.value)} placeholder={myDefaults.sender_name || "Kuber Polyplast"} maxLength={200} className="max-w-sm" />
-                        </SettingsRow>
-                      </section>
-                    </>
-                  )}
 
-                  {isManager && aiSection === "template" && (
-                    <section className="space-y-4">
-                      <SectionHeader
-                        title="AI writing instructions"
-                        description={<>The <strong>company default</strong> prompt for outreach emails — used by every campaign whose owner hasn&apos;t set a personal writing style. Put subject-line patterns, opening/closing options, offerings, key strengths, and tone here.</>}
-                      />
-                      <RichTextEditor
-                        label="Base prompt"
-                        value={systemPrompt}
-                        onChange={setSystemPrompt}
-                        minHeight={400}
-                        placeholder="Write the full email template here including subject patterns, intro options, offerings, closing..."
-                        helper="Campaign-level context and matched product details are appended automatically."
-                      />
-                      <MandatoryFormattingNotice />
-                    </section>
-                  )}
-
-                  {isManager && aiSection === "default" && (
-                    <section className="space-y-4">
-                      <SectionHeader
-                        title="Fallback email"
-                        description="Sent as-is to leads with no company profile to personalise from."
-                        info="Exact subject and body sent to unenriched / Input Required leads (no company profile to personalise). Enriched leads still use AI Writing Instructions. A greeting and signature are added automatically."
-                      />
-                      <SettingsRow label="Subject">
-                        <Input
-                          value={genericSubject}
-                          onChange={(e) => setGenericSubject(e.target.value)}
-                          placeholder="Reliable masterbatch for {{company}}"
-                          maxLength={300}
-                          className="max-w-md"
-                        />
-                      </SettingsRow>
-                      <div className="space-y-2">
-                        <Label>Body</Label>
-                        <HtmlRichTextEditor
-                          value={genericBody}
-                          onChange={setGenericBody}
-                          templateVars={LEAD_TEMPLATE_VARS}
-                          minHeight={220}
-                          placeholder="Write the exact email body"
-                        />
-                      </div>
-                    </section>
-                  )}
-
-                  {isManager && aiSection === "followup" && (
-                    <section className="space-y-4">
-                      <SectionHeader title="Fallback follow-up" />
-                      <p className="text-[13px] text-muted-foreground">
-                        Sent for any follow-up step (2, 3, …) whose lead has no AI-personalized
-                        follow-up drafted yet — e.g. an AI provider outage, or a follow-up simply
-                        not written before it&apos;s due. Without this, that follow-up would send
-                        blank. Every lead is seeded with this text the moment a campaign sends;
-                        it&apos;s automatically replaced once a personalized follow-up is drafted
-                        and approved for that lead. No subject — a follow-up always threads as a
-                        reply to the opening email. Placeholder:{" "}
-                        <code className="rounded bg-secondary px-1 py-0.5 text-xs">{"{{first_name}}"}</code>.
-                      </p>
-                      <div className="space-y-2">
-                        <Label>Body</Label>
-                        <HtmlRichTextEditor
-                          value={followupFallbackBody}
-                          onChange={setFollowupFallbackBody}
-                          minHeight={200}
-                          templateVars={FOLLOWUP_FALLBACK_TEMPLATE_VARS}
-                          placeholder="Hi {{first_name}}, Just following up on my previous note — would love your thoughts. Best regards"
-                        />
-                        <p className="text-xs text-muted-foreground">Left blank, this default text is used. This text is sent as-is — the AI does not rewrite it.</p>
-                      </div>
-                    </section>
-                  )}
-
-                  {isManager && aiSection === "html" && (
-                    <section className="space-y-4">
-                      <SectionHeader title="Tables in emails" />
-                      <SettingsRow
-                        label="Allow HTML in emails"
-                        description="Lets the AI include an HTML table in an email when it is explicitly asked for."
-                      >
-                        <Switch checked={allowHtmlEmails} onCheckedChange={setAllowHtmlEmails} />
-                      </SettingsRow>
-                      <p className="text-[13px] text-muted-foreground">
-                        <strong>Off (default):</strong> every email is plain text with bold/italic/links, exactly as today.{" "}
-                        <strong>On:</strong> nothing changes for ordinary emails. The AI only adds a table when a
-                        campaign instruction or a regenerate request clearly asks for one (e.g. &ldquo;add a
-                        comparison table of our grades&rdquo;). The table is cleaned up (no scripts or styles) and
-                        Instantly sends it as HTML. Applies to newly written or regenerated drafts; existing drafts are unchanged.
-                      </p>
-                    </section>
-                  )}
-
-                  {isManager && aiSection === "replies" && (
-                    <section className="space-y-5">
-                      <SectionHeader
-                        title="Reply drafting"
-                        description="Controls how follow-up replies are drafted after a prospect responds."
-                      />
-
-                      <RichTextEditor label="Reply drafter prompt" value={replyDrafterPrompt} onChange={setReplyDrafterPrompt} minHeight={220}
-                        helper="Must return JSON with subject and body. Still in active use — this is what writes our human-reviewed reply drafts." />
-                      <MandatoryFormattingNotice />
-                    </section>
-                  )}
-
-                  {isManager && aiSection === "footer" && (
-                    <section className="space-y-4">
-                      <SectionHeader title="Contact footer" description="Contact lines appended at the end of every generated email." />
-                      <RichTextEditor label="Contact footer" value={sigContact} onChange={setSigContact} minHeight={160} singleLineBreaks
-                        placeholder={"Kuber Polyplast\n+91-XXXXXXXXXX\nsales@kuberpolyplast.com"} />
-                    </section>
-                  )}
-
-                  {error && <p className="text-xs text-destructive">{error}</p>}
-                </div>
-              )}
-
-              {/* ── Knowledge Sources (everyone) ── */}
-              {section === "knowledge" && (
-                <div className="space-y-8">
-
-                  {/* Company Details */}
-                  {activeKnowledgeSection === "company" && (
-                    <section className="space-y-5">
-                      <SectionHeader title="Identity" description="Who the emails come from and what the AI knows about your company." />
-
-                      <div>
-                        <SettingsRow label="Default sender name" description={'Used as the "From" name in outreach emails.'}>
-                          <Input value={senderName} onChange={(e) => setSenderName(e.target.value)} placeholder="Kuber Polyplast" className="max-w-sm" />
-                        </SettingsRow>
-                        <SettingsRow label="Client industry">
-                          <Input value={clientIndustry} onChange={(e) => setClientIndustry(e.target.value)} placeholder="Plastics & Polymer Manufacturing" className="max-w-sm" />
-                        </SettingsRow>
-                        <SettingsRow label="Logo" description="PNG/JPG/WebP, up to 2 MB. Appears in the sidebar.">
-                          <div className="flex items-center gap-3 flex-wrap">
-                            {logoUrl
-                              ? <img src={logoUrl} alt="Brand logo" className="size-10 rounded-md border border-border bg-card object-contain shrink-0" />
-                              : <div className="size-10 rounded-md border border-border bg-card flex items-center justify-center shrink-0"><span className="text-xs font-semibold text-muted-foreground">K</span></div>
-                            }
-                            <Input
-                              ref={logoInputRef}
-                              type="file"
-                              accept="image/png,image/jpeg,image/webp"
-                              className="hidden"
-                              onChange={(e) => void handleLogoPick(e.target.files?.[0] ?? null)}
-                            />
-                            <Button type="button" variant="outline" disabled={logoUploading} onClick={() => logoInputRef.current?.click()}>
-                              {logoUploading ? "Uploading..." : (logoUrl ? "Replace logo" : "Upload logo")}
+                  <div className="space-y-3">
+                    {industryKeywordGroups.map((group, groupIdx) => {
+                      const groupEditing = editingGroupIds.has(group.id);
+                      const groupSaving = savingGroupIds.has(group.id);
+                      return (
+                        <div key={group.id} className="rounded-lg border border-border bg-card overflow-hidden">
+                          {/* Header bar — the card's one pencil toggles the whole card between view and edit, and doubles as "save" on the way out */}
+                          <div className="flex min-h-11 items-center gap-2 border-b border-border px-3 py-1.5">
+                            {groupEditing ? (
+                              <Input
+                                value={group.label}
+                                onChange={(e) => updateGroup(groupIdx, e.target.value)}
+                                placeholder="Group name"
+                                className="font-medium flex-1"
+                                disabled={groupSaving}
+                                autoFocus
+                              />
+                            ) : (
+                              <span className="text-sm font-semibold flex-1 px-1">{group.label || "Untitled group"}</span>
+                            )}
+                            <Button type="button" variant="ghost" size="icon-sm" onClick={() => toggleGroupEdit(group.id)}
+                              disabled={groupSaving} className="shrink-0 text-muted-foreground hover:text-foreground">
+                              {groupSaving ? <Loader2 className="size-3.5 animate-spin" /> : groupEditing ? <Check className="size-3.5" /> : <Pencil className="size-3.5" />}
                             </Button>
-                            {logoPath && (
-                              <Button type="button" variant="outline" disabled={logoUploading} onClick={() => void handleLogoRemove()}>Remove</Button>
+                            <Button type="button" variant="ghost" size="icon-sm" onClick={() => setGroupPendingDelete({ idx: groupIdx, label: group.label || "this group" })}
+                              disabled={groupSaving} className="shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                              <X className="size-3.5" />
+                            </Button>
+                          </div>
+
+                          <div className="p-3 space-y-2">
+                            <div className="space-y-2">
+                              {group.keywords.map((kw, kwIdx) => (
+                                <div key={kw.id} className="flex items-center gap-2">
+                                  {groupEditing ? (
+                                    <>
+                                      <div className="grid grid-cols-2 gap-2 flex-1">
+                                        <Input
+                                          value={kw.label}
+                                          onChange={(e) => updateKeyword(groupIdx, kwIdx, "label", e.target.value)}
+                                          placeholder="Label shown in the dropdown"
+                                          disabled={groupSaving}
+                                        />
+                                        <Input
+                                          value={kw.query}
+                                          onChange={(e) => updateKeyword(groupIdx, kwIdx, "query", e.target.value)}
+                                          placeholder="Apollo search term"
+                                          disabled={groupSaving}
+                                        />
+                                      </div>
+                                      <Button type="button" variant="ghost" size="icon-sm" onClick={() => removeKeyword(groupIdx, kwIdx)}
+                                        disabled={groupSaving} className="shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                                        <X className="size-3.5" />
+                                      </Button>
+                                    </>
+                                  ) : (
+                                    <span className="text-[13px] flex-1 px-1">
+                                      {kw.label || "Untitled keyword"}
+                                      <span className="text-muted-foreground text-xs"> — searches &quot;{kw.query || kw.label}&quot;</span>
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+
+                            {groupEditing && (
+                              <Button type="button" variant="outline" size="sm" onClick={() => addKeyword(groupIdx)} disabled={groupSaving}>
+                                <Plus className="size-3.5" /> Add keyword
+                              </Button>
                             )}
                           </div>
-                        </SettingsRow>
-                      </div>
+                        </div>
+                      );
+                    })}
+                  </div>
 
-                      <div className="space-y-1.5">
-                        <Label className="text-[13px] font-medium">Company context</Label>
-                        <Textarea
-                          value={companyContext}
-                          onChange={(e) => setCompanyContext(e.target.value)}
-                          placeholder="Who Kuber Polyplast is, what makes it credible, key accolades — background the AI can draw on in every email and reply."
-                          className="min-h-32 text-sm resize-y"
-                        />
-                        <p className="text-[13px] text-muted-foreground">
-                          Given to the AI as background for every draft and reply. Products belong in the Product Offerings tab — the AI reads that library directly.
-                        </p>
-                      </div>
-                    </section>
-                  )}
-
-                  {/* Product Offerings */}
-                  {activeKnowledgeSection === "products" && (
-                    <div className="space-y-4">
-                      <SectionHeader
-                        title="Products"
-                        description="The AI picks the best-matching product for each lead and uses its description as context."
-                        aside={
-                          <Button type="button" size="sm" variant="outline" onClick={addProduct}>
-                            <Plus className="size-3.5" /> Add product
-                          </Button>
-                        }
-                      />
-
-                      {productOfferings.length === 0 && (
-                        <EmptyState icon={Package} message={<>No products yet — click &quot;Add product&quot; to get started.</>} />
-                      )}
-
-                      <div className="grid gap-3 lg:grid-cols-2">
-                        {productOfferings.map((product, idx) => (
-                          <div key={idx} className="rounded-lg border border-border bg-card p-3 space-y-2">
-                            <div className="flex items-center gap-2">
-                              <span className="w-5 shrink-0 text-center text-xs tabular-nums text-muted-foreground">{idx + 1}</span>
-                              <Input
-                                value={product.name}
-                                onChange={(e) => updateProduct(idx, "name", e.target.value)}
-                                placeholder="Product name"
-                                className="font-medium flex-1"
-                              />
-                              <Button type="button" variant="ghost" size="icon-sm" onClick={() => removeProduct(idx)}
-                                className="shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
-                                <X className="size-3.5" />
-                              </Button>
-                            </div>
-                            <Textarea
-                              value={product.description}
-                              onChange={(e) => updateProduct(idx, "description", e.target.value)}
-                              placeholder="Describe this product — what it is, who it fits, key benefits..."
-                              className="min-h-32 resize-y"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Industry Segments — the taxonomy behind the Apollo import dropdown */}
-                  {activeKnowledgeSection === "industry-segments" && (
-                    <div className="space-y-4">
-                      <SectionHeader
-                        title="Groups and keywords"
-                        description={<>Shown in the Apollo import dropdown. Each keyword&apos;s &quot;Apollo search term&quot; is the actual text sent to Apollo — keep it short and plain, since Apollo matches it near-literally.</>}
-                        aside={
-                          <Button type="button" size="sm" variant="outline" onClick={addGroup} disabled={savingGroupIds.size > 0}>
-                            {savingGroupIds.size > 0 ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />} Add group
-                          </Button>
-                        }
-                      />
-
-                      {industryKeywordGroups.length === 0 && (
-                        <EmptyState icon={Tags} message={<>No groups yet — click &quot;Add group&quot; to get started.</>} />
-                      )}
-
-
-
-                      <div className="space-y-3">
-                        {industryKeywordGroups.map((group, groupIdx) => {
-                          const groupEditing = editingGroupIds.has(group.id);
-                          const groupSaving = savingGroupIds.has(group.id);
-                          return (
-                            <div key={group.id} className="rounded-lg border border-border bg-card overflow-hidden">
-                              {/* Header bar — the card's one pencil toggles the whole card between view and edit, and doubles as "save" on the way out */}
-                              <div className="flex min-h-11 items-center gap-2 border-b border-border px-3 py-1.5">
-                                {groupEditing ? (
-                                  <Input
-                                    value={group.label}
-                                    onChange={(e) => updateGroup(groupIdx, e.target.value)}
-                                    placeholder="Group name"
-                                    className="font-medium flex-1"
-                                    disabled={groupSaving}
-                                    autoFocus
-                                  />
-                                ) : (
-                                  <span className="text-sm font-semibold flex-1 px-1">{group.label || "Untitled group"}</span>
-                                )}
-                                <Button type="button" variant="ghost" size="icon-sm" onClick={() => toggleGroupEdit(group.id)}
-                                  disabled={groupSaving} className="shrink-0 text-muted-foreground hover:text-foreground">
-                                  {groupSaving ? <Loader2 className="size-3.5 animate-spin" /> : groupEditing ? <Check className="size-3.5" /> : <Pencil className="size-3.5" />}
-                                </Button>
-                                <Button type="button" variant="ghost" size="icon-sm" onClick={() => setGroupPendingDelete({ idx: groupIdx, label: group.label || "this group" })}
-                                  disabled={groupSaving} className="shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
-                                  <X className="size-3.5" />
-                                </Button>
-                              </div>
-
-                              <div className="p-3 space-y-2">
-                                <div className="space-y-2">
-                                  {group.keywords.map((kw, kwIdx) => (
-                                    <div key={kw.id} className="flex items-center gap-2">
-                                      {groupEditing ? (
-                                        <>
-                                          <div className="grid grid-cols-2 gap-2 flex-1">
-                                            <Input
-                                              value={kw.label}
-                                              onChange={(e) => updateKeyword(groupIdx, kwIdx, "label", e.target.value)}
-                                              placeholder="Label shown in the dropdown"
-                                              disabled={groupSaving}
-                                            />
-                                            <Input
-                                              value={kw.query}
-                                              onChange={(e) => updateKeyword(groupIdx, kwIdx, "query", e.target.value)}
-                                              placeholder="Apollo search term"
-                                              disabled={groupSaving}
-                                            />
-                                          </div>
-                                          <Button type="button" variant="ghost" size="icon-sm" onClick={() => removeKeyword(groupIdx, kwIdx)}
-                                            disabled={groupSaving} className="shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
-                                            <X className="size-3.5" />
-                                          </Button>
-                                        </>
-                                      ) : (
-                                        <span className="text-[13px] flex-1 px-1">
-                                          {kw.label || "Untitled keyword"}
-                                          <span className="text-muted-foreground text-xs"> — searches &quot;{kw.query || kw.label}&quot;</span>
-                                        </span>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-
-                                {groupEditing && (
-                                  <Button type="button" variant="outline" size="sm" onClick={() => addKeyword(groupIdx)} disabled={groupSaving}>
-                                    <Plus className="size-3.5" /> Add keyword
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <ConfirmDialog
-                        open={!!groupPendingDelete}
-                        title={`Delete "${groupPendingDelete?.label ?? ""}"?`}
-                        description="This removes the group and every keyword in it from the Apollo import dropdown for everyone. This can't be undone."
-                        confirmLabel="Delete group"
-                        loading={deletingGroup}
-                        onClose={() => setGroupPendingDelete(null)}
-                        onConfirm={() => void confirmRemoveGroup()}
-                      />
-                    </div>
-                  )}
-
-                  {error && <p className="text-xs text-destructive">{error}</p>}
+                  <ConfirmDialog
+                    open={!!groupPendingDelete}
+                    title={`Delete "${groupPendingDelete?.label ?? ""}"?`}
+                    description="This removes the group and every keyword in it from the Apollo import dropdown for everyone. This can't be undone."
+                    confirmLabel="Delete group"
+                    loading={deletingGroup}
+                    onClose={() => setGroupPendingDelete(null)}
+                    onConfirm={() => void confirmRemoveGroup()}
+                  />
                 </div>
               )}
 
-              {/* ── Appearance ── */}
-              {section === "appearance" && (
-                <div>
-                  <section>
-                    <SectionHeader title="Mode" />
-                    <SettingsRow label="Workspace mode" description="Switch between a dark or light workspace ">
-                      <div className="grid grid-cols-2 gap-3 max-w-sm">
-                        {(["dark", "light"] as const).map((m) => {
-                          const active = mode === m;
-                          const Icon = m === "dark" ? Moon : Sun;
-                          return (
-                            <Button key={m} type="button" variant="outline" onClick={() => void setMode(m)} disabled={savingTheme}
-                              className={cn("h-auto justify-start gap-2.5 p-3 font-medium shadow-none",
-                                active ? "border-primary/50 bg-primary/5 hover:bg-primary/5" : "border-border bg-field")}>
-                              <Icon className="size-4 shrink-0 text-muted-foreground" />
-                              <span className="flex-1 text-[13px] font-medium capitalize">{m}</span>
-                              {active && <Check className="size-4 text-primary shrink-0" />}
-                            </Button>
-                          );
-                        })}
-                      </div>
-                    </SettingsRow>
-                  </section>
-
-                  {/* Color theme — the literal "masterbatch color chip" this whole
-                      design language is inspired by. The one place a larger, more
-                      expressive swatch presentation is warranted. Logic/COLORS list
-                      untouched — visual chrome only. */}
-                  <section className="mt-8">
-                    <SectionHeader title="Color theme" />
-                    <SettingsRow label="Accent color" description="Choose an accent color for the workspace — like picking a pellet reference chip.">
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                        {COLORS.map((t) => {
-                          const active = theme === t.id;
-                          return (
-                            <Button key={t.id} type="button" variant="outline" onClick={() => void setTheme(t.id)} disabled={savingTheme}
-                              className={cn(
-                                "h-auto flex-col items-stretch gap-2.5 p-2.5 text-left overflow-hidden shadow-none",
-                                active ? "border-primary/50 bg-primary/5 hover:bg-primary/5" : "border-border bg-field",
-                              )}>
-                              <span
-                                className="block h-10 w-full rounded shrink-0 border border-black/10 dark:border-white/10"
-                                style={{ backgroundColor: t.swatch }}
-                                aria-hidden
-                              />
-                              <span className="flex items-center justify-between gap-2">
-                                <span className="text-[13px] font-medium">{t.label}</span>
-                                {active && <Check className="size-4 text-primary shrink-0" />}
-                              </span>
-                            </Button>
-                          );
-                        })}
-                      </div>
-                    </SettingsRow>
-                  </section>
-                </div>
-              )}
-
-              {/* ── Account ── */}
-              {section === "account" && (
-                <div>
-                  <section>
-                    <SectionHeader title="Change password" />
-                    <form onSubmit={handleChangePassword}>
-                      <SettingsRow label="Current password">
-                        <Input
-                          type="password"
-                          value={currentPassword}
-                          onChange={(e) => setCurrentPassword(e.target.value)}
-                          required
-                          autoComplete="current-password"
-                          className="max-w-sm"
-                        />
-                      </SettingsRow>
-                      <SettingsRow label="New password" description="At least 8 characters.">
-                        <Input
-                          type="password"
-                          value={newPassword}
-                          onChange={(e) => setNewPassword(e.target.value)}
-                          required
-                          minLength={8}
-                          autoComplete="new-password"
-                          className="max-w-sm"
-                        />
-                      </SettingsRow>
-                      <SettingsRow label="Confirm password">
-                        <Input
-                          type="password"
-                          value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                          required
-                          minLength={8}
-                          autoComplete="new-password"
-                          className="max-w-sm"
-                        />
-                      </SettingsRow>
-                      <div className="flex justify-end pt-4">
-                        <Button type="submit" disabled={savingPassword}>
-                          {savingPassword ? "Updating…" : "Update password"}
-                        </Button>
-                      </div>
-                    </form>
-                  </section>
-
-                  <section className="mt-8">
-                    <SectionHeader title="Session" />
-                    <SettingsRow label="Signed in as" description={userEmail}>
-                      <span className="rounded-[5px] px-1.5 py-[3px] text-xs font-medium leading-none bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300">Active</span>
-                    </SettingsRow>
-                    <SettingsRow label="Sign out" description="End your current session on this device.">
-                      <Button type="button" variant="outline" onClick={() => supabase.auth.signOut()}
-                        className="text-muted-foreground hover:text-red-600 hover:border-red-500/30 hover:bg-red-500/5 dark:hover:text-red-400">
-                        <LogOut className="size-3.5" /> Sign out
-                      </Button>
-                    </SettingsRow>
-                  </section>
-                </div>
-              )}
-
-              {section === "team" && role === "manager" && <TeamView />}
-
-              {section === "email" && isManager && <EmailSendingView />}
-
+              {error && <p className="text-xs text-destructive">{error}</p>}
             </div>
           )}
 
-          {showSaveBar && (
-            <div className="sticky bottom-0 border-t border-border bg-background">
-              <div className="mx-auto flex w-full max-w-3xl justify-end px-8 py-3">
-                <Button onClick={handleSave} disabled={saving} className="min-w-20">
-                  {saving ? "Saving..." : "Save"}
-                </Button>
-              </div>
+          {/* ── Appearance ── */}
+          {section === "appearance" && (
+            <div>
+              <section>
+                <SettingsSectionHeader title="Mode" />
+                <SettingsRow label="Workspace mode" description="Switch between a dark or light workspace ">
+                  <div className="grid grid-cols-2 gap-3 max-w-sm">
+                    {(["dark", "light"] as const).map((m) => {
+                      const active = mode === m;
+                      const Icon = m === "dark" ? Moon : Sun;
+                      return (
+                        <ChoiceCard key={m} selected={active} onSelect={() => void setMode(m)} disabled={savingTheme}
+                          className="items-center gap-2.5 rounded-md text-center text-[13px] font-medium leading-none whitespace-nowrap">
+                          <Icon className="size-4 shrink-0 text-muted-foreground" />
+                          <span className="flex-1 text-[13px] font-medium capitalize">{m}</span>
+                          {active && <Check className="size-4 text-primary shrink-0" />}
+                        </ChoiceCard>
+                      );
+                    })}
+                  </div>
+                </SettingsRow>
+              </section>
+
+              {/* Color theme — the literal "masterbatch color chip" this whole
+                  design language is inspired by. The one place a larger, more
+                  expressive swatch presentation is warranted. Logic/COLORS list
+                  untouched — visual chrome only. */}
+              <section className="mt-8">
+                <SettingsSectionHeader title="Color theme" />
+                <SettingsRow label="Accent color" description="Choose an accent color for the workspace — like picking a pellet reference chip.">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {COLORS.map((t) => {
+                      const active = theme === t.id;
+                      return (
+                        <ChoiceCard key={t.id} selected={active} onSelect={() => void setTheme(t.id)} disabled={savingTheme}
+                          className="flex-col items-stretch justify-center gap-2.5 overflow-hidden rounded-md p-2.5 text-[13px] font-medium leading-none whitespace-nowrap">
+                          <span
+                            className="block h-10 w-full rounded shrink-0 border border-black/10 dark:border-white/10"
+                            style={{ backgroundColor: t.swatch }}
+                            aria-hidden
+                          />
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="text-[13px] font-medium">{t.label}</span>
+                            {active && <Check className="size-4 text-primary shrink-0" />}
+                          </span>
+                        </ChoiceCard>
+                      );
+                    })}
+                  </div>
+                </SettingsRow>
+              </section>
             </div>
           )}
+
+          {/* ── Account ── */}
+          {section === "account" && (
+            <div>
+              <section>
+                <SettingsSectionHeader title="Change password" />
+                <form onSubmit={handleChangePassword}>
+                  <SettingsRow label="Current password">
+                    <Input
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      required
+                      autoComplete="current-password"
+                      className="max-w-sm"
+                    />
+                  </SettingsRow>
+                  <SettingsRow label="New password" description="At least 8 characters.">
+                    <Input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      autoComplete="new-password"
+                      className="max-w-sm"
+                    />
+                  </SettingsRow>
+                  <SettingsRow label="Confirm password">
+                    <Input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      autoComplete="new-password"
+                      className="max-w-sm"
+                    />
+                  </SettingsRow>
+                  <div className="flex justify-end pt-4">
+                    <Button type="submit" disabled={savingPassword}>
+                      {savingPassword ? "Updating…" : "Update password"}
+                    </Button>
+                  </div>
+                </form>
+              </section>
+
+              <section className="mt-8">
+                <SettingsSectionHeader title="Session" />
+                <SettingsRow label="Signed in as" description={userEmail}>
+                  <span className="rounded-[5px] px-1.5 py-[3px] text-xs font-medium leading-none bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300">Active</span>
+                </SettingsRow>
+                <SettingsRow label="Sign out" description="End your current session on this device.">
+                  <Button type="button" variant="outline" onClick={() => supabase.auth.signOut()}
+                    className="text-muted-foreground hover:text-red-600 hover:border-red-500/30 hover:bg-red-500/5 dark:hover:text-red-400">
+                    <LogOut className="size-3.5" /> Sign out
+                  </Button>
+                </SettingsRow>
+              </section>
+            </div>
+          )}
+
+          {section === "team" && role === "manager" && <TeamView />}
+
+          {section === "email" && isManager && <EmailSendingView />}
+
         </div>
-      </div>
-    </div>
+      )}
+
+      {showSaveBar && (
+        <div className="sticky bottom-0 border-t border-border bg-background">
+          <div className="mx-auto flex w-full max-w-3xl justify-end px-8 py-3">
+            <Button onClick={handleSave} disabled={saving} className="min-w-20">
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </PageShell>
   );
 }

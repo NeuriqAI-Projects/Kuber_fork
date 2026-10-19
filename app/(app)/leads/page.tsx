@@ -42,11 +42,8 @@ import { AppCheckbox } from "@/components/ui/app-checkbox";
 import { Pill } from "@/components/ui/pill";
 import { MultiSelectDropdown, type DropdownOption } from "@/components/ui/multi-select-dropdown";
 import { FilterModal } from "@/components/ui/filter-modal";
-import { AppRadio } from "@/components/ui/app-radio";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { format } from "date-fns";
-import { CalendarIcon } from "lucide-react";
+import { ChoiceCard } from "@/components/ui/choice-card";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Select,
   SelectContent,
@@ -305,8 +302,7 @@ function sortOrgs(rows: OrgRow[], sort: LeadsSort): OrgRow[] {
 
 const ALL_SOURCES: LeadSource[] = ["Apollo", "Excel", "Manual"];
 
-// Kept as Popover + Calendar rather than the shared DatePicker: DatePicker has
-// no disabled-days matcher, and the From/To pair must stop From > To.
+// From can't be after To and To can't be before From (DatePicker min/max).
 function DateRangePicker({
   from,
   to,
@@ -324,53 +320,11 @@ function DateRangePicker({
       <div className="grid grid-cols-2 gap-2">
         <div>
           <p className="mb-1 text-xs text-muted-foreground">From</p>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  "h-8 w-full justify-start px-2.5 text-left text-[13px] font-normal",
-                  !from && "text-muted-foreground"
-                )}
-              >
-                <CalendarIcon className="size-3.5 shrink-0" />
-                {from ? format(from, "MMM d, yyyy") : "Pick a date"}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={from}
-                onSelect={onFromChange}
-                disabled={(d: Date) => (to ? d > to : false)}
-              />
-            </PopoverContent>
-          </Popover>
+          <DatePicker date={from} onChangeDate={onFromChange} maxDate={to} displayFormat="MMM d, yyyy" />
         </div>
         <div>
           <p className="mb-1 text-xs text-muted-foreground">To</p>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  "h-8 w-full justify-start px-2.5 text-left text-[13px] font-normal",
-                  !to && "text-muted-foreground"
-                )}
-              >
-                <CalendarIcon className="size-3.5 shrink-0" />
-                {to ? format(to, "MMM d, yyyy") : "Pick a date"}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={to}
-                onSelect={onToChange}
-                disabled={(d: Date) => (from ? d < from : false)}
-              />
-            </PopoverContent>
-          </Popover>
+          <DatePicker date={to} onChangeDate={onToChange} minDate={from} displayFormat="MMM d, yyyy" />
         </div>
       </div>
     </div>
@@ -1503,20 +1457,14 @@ export default function LeadsPage() {
               {ASSIGN_STRATEGIES.map((s) => {
                 const checked = assignStrategy === s.value;
                 return (
-                  <label
+                  <ChoiceCard
                     key={s.value}
-                    onClick={() => setAssignStrategy(s.value)}
-                    className={cn(
-                      "flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors",
-                      checked ? "border-primary/50 bg-primary/5" : "border-border bg-field hover:bg-hover",
-                    )}
-                  >
-                    <AppRadio checked={checked} className="mt-0.5" />
-                    <div>
-                      <p className="text-[13px] font-medium">{s.label}</p>
-                      <p className="text-xs text-muted-foreground">{s.description}</p>
-                    </div>
-                  </label>
+                    indicator="radio"
+                    selected={checked}
+                    onSelect={() => setAssignStrategy(s.value)}
+                    title={s.label}
+                    description={s.description}
+                  />
                 );
               })}
             </div>
@@ -1539,23 +1487,18 @@ export default function LeadsPage() {
 
             {alreadyAssignedCount > 0 && (
               <div className="space-y-2">
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setAssignSkipAssigned((v) => !v)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setAssignSkipAssigned((v) => !v); } }}
-                  className={cn(
-                    "flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 text-xs transition-colors",
-                    assignSkipAssigned ? "border-primary/50 bg-primary/5" : "border-border bg-field hover:bg-hover",
-                  )}
+                <ChoiceCard
+                  indicator="checkbox"
+                  selected={assignSkipAssigned}
+                  onSelect={() => setAssignSkipAssigned((v) => !v)}
+                  className="gap-2.5 text-xs"
                 >
-                  <AppCheckbox checked={assignSkipAssigned} className="mt-0.5" />
                   <span>
                     <span className="text-[13px] font-medium text-foreground">Skip already assigned leads</span>
                     <br />
                     <span className="text-muted-foreground">Leave the {alreadyAssignedCount} already-owned {alreadyAssignedCount !== 1 ? "leads" : "lead"} untouched and only assign the rest.</span>
                   </span>
-                </div>
+                </ChoiceCard>
                 {!assignSkipAssigned && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
                     {alreadyAssignedCount} of these {alreadyAssignedCount !== 1 ? "leads are" : "lead is"} already assigned to someone else — proceeding will reassign {alreadyAssignedCount !== 1 ? "them" : "it"}.

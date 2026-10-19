@@ -29,25 +29,6 @@ export function UsageHeader({ info, refreshing, onRefresh, extra }: {
   );
 }
 
-/** Flat Attio report panel: small title + muted description header, then the body.
- *  `flush` drops the body padding for tables that run edge to edge. */
-export function UsagePanel({ title, description, aside, flush, className, children }: {
-  title: string; description?: ReactNode; aside?: ReactNode; flush?: boolean; className?: string; children: ReactNode;
-}) {
-  return (
-    <section className={cn("rounded-lg border border-border bg-card", className)}>
-      <header className="flex min-h-12 items-center justify-between gap-3 border-b border-border px-4 py-2.5">
-        <div className="min-w-0">
-          <h4 className="text-sm font-semibold leading-tight">{title}</h4>
-          {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
-        </div>
-        {aside && <div className="shrink-0 text-xs tabular-nums text-muted-foreground">{aside}</div>}
-      </header>
-      <div className={cn(!flush && "p-4")}>{children}</div>
-    </section>
-  );
-}
-
 /** Centered muted line for an empty chart / table. */
 export function UsageEmpty({ children }: { children: ReactNode }) {
   return <p className="py-8 text-center text-[13px] text-muted-foreground">{children}</p>;

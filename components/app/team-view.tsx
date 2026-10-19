@@ -1,13 +1,14 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { UserPlus, RefreshCw, Eye, EyeOff, Users, ShieldCheck, MapPinOff, Radio, Pencil, X, ChevronDown } from "lucide-react";
 import { useApp } from "@/lib/app-context";
 import { cn } from "@/lib/utils";
-import { AppRadio } from "@/components/ui/app-radio";
+import { ChoiceCard } from "@/components/ui/choice-card";
+import { ModalShell } from "@/components/ui/modal-shell";
+import { SettingsPageTitle } from "@/components/ui/settings";
 import { Avatar } from "@/components/leads/lead-ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -248,17 +249,15 @@ export function TeamView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold leading-tight">Team</h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">
-            Who can sign in, their role, territory and the mailbox their leads are sent from.
-          </p>
-        </div>
-        <Button size="sm" onClick={() => setShowAdd((v) => !v)} className="shrink-0">
-          <UserPlus className="size-3.5" /> Add user
-        </Button>
-      </div>
+      <SettingsPageTitle
+        title="Team"
+        description="Who can sign in, their role, territory and the mailbox their leads are sent from."
+        actions={
+          <Button size="sm" onClick={() => setShowAdd((v) => !v)}>
+            <UserPlus className="size-3.5" /> Add user
+          </Button>
+        }
+      />
 
       {uncoveredTerritories.length > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[13px] text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
@@ -646,97 +645,90 @@ function HandoverBeforeDeactivateModal({
   const blocked = strategy === "manual" && !value;
 
   return (
-    <div className="fixed inset-0 z-200 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/25 dark:bg-black/60" onClick={saving ? undefined : onCancel} />
-      <div className="relative z-10 w-full max-w-md mx-4 rounded-lg border border-border bg-popover shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div>
-          <p className="text-xs text-muted-foreground">Handover required</p>
-          <p className="text-[15px] font-semibold mt-0.5">Where does this work go?</p>
-          <p className="text-[13px] text-muted-foreground mt-1">
-            {displayName} still holds{" "}
-            {[
-              leadCount > 0 ? `${leadCount.toLocaleString()} lead${leadCount !== 1 ? "s" : ""}` : null,
-              campaignCount > 0 ? `${campaignCount} campaign${campaignCount !== 1 ? "s" : ""}` : null,
-            ].filter(Boolean).join(" and ")}.{" "}
-            Choose where it goes before this account is deactivated.
-          </p>
-        </div>
-
-        <div className="grid gap-2">
-          {HANDOVER_OPTIONS.map((o) => {
-            const disabled = o.needsEligible && eligible.length === 0;
-            const checked = strategy === o.value;
-            return (
-              <label
-                key={o.value}
-                onClick={() => { if (!disabled && !saving) onStrategyChange(o.value); }}
-                className={cn(
-                  "flex items-start gap-3 rounded-lg border border-border p-3 bg-field",
-                  disabled
-                    ? "opacity-50 cursor-not-allowed"
-                    : "cursor-pointer",
-                  checked && !disabled && "border-primary/50 bg-primary/5",
-                )}
-              >
-                <AppRadio checked={checked} disabled={disabled || saving} className="mt-1" />
-                <div>
-                  <p className="text-sm font-medium">{o.label}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {o.description}
-                    {disabled && " Needs at least one other active, online employee."}
-                  </p>
-                </div>
-              </label>
-            );
-          })}
-        </div>
-
-        {strategy === "manual" && (
-          <div className="space-y-1.5">
-            <Label>Hand everything to</Label>
-            <Select value={value} onValueChange={onChange}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Choose an employee" /></SelectTrigger>
-              <SelectContent className="z-300">
-                {employees.map((e) => (
-                  <SelectItem key={e.id} value={e.id}>
-                    {e.full_name || e.email}{e.availability_status === "offline" ? " (offline)" : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {employees.length === 0 && (
-              <p className="text-xs text-destructive">
-                No other active employee exists. Use &ldquo;Return to the pool&rdquo; instead.
-              </p>
-            )}
-            {targetIsOffline && (
-              <p className="text-xs text-amber-700 dark:text-amber-400">
-                This employee is marked offline — they will still receive the whole book.
-              </p>
-            )}
-          </div>
-        )}
-
-        {(strategy === "round_robin" || strategy === "territory") && (
-          <div className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground space-y-1">
-            <p>
-              Splitting across <span className="text-foreground font-medium">{eligible.length}</span> active, online
-              employee{eligible.length !== 1 ? "s" : ""}
-              {awayCount > 0 && <> ({awayCount} offline {awayCount !== 1 ? "are" : "is"} excluded)</>}.
-            </p>
-            {campaignCount > 0 && <p>Each campaign follows whoever inherits most of its leads.</p>}
-            {strategy === "territory" && <p>Leads in countries nobody covers stay in the pool.</p>}
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>Cancel</Button>
-          <Button type="button" onClick={onConfirm} disabled={saving || blocked}>
-            {saving && <RefreshCw className="size-3.5 animate-spin" />} Hand over &amp; deactivate
-          </Button>
-        </div>
+    <ModalShell onClose={onCancel} closeDisabled={saving} className="max-w-md rounded-lg p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div>
+        <p className="text-xs text-muted-foreground">Handover required</p>
+        <p className="text-[15px] font-semibold mt-0.5">Where does this work go?</p>
+        <p className="text-[13px] text-muted-foreground mt-1">
+          {displayName} still holds{" "}
+          {[
+            leadCount > 0 ? `${leadCount.toLocaleString()} lead${leadCount !== 1 ? "s" : ""}` : null,
+            campaignCount > 0 ? `${campaignCount} campaign${campaignCount !== 1 ? "s" : ""}` : null,
+          ].filter(Boolean).join(" and ")}.{" "}
+          Choose where it goes before this account is deactivated.
+        </p>
       </div>
-    </div>
+
+      <div className="grid gap-2">
+        {HANDOVER_OPTIONS.map((o) => {
+          const disabled = o.needsEligible && eligible.length === 0;
+          const checked = strategy === o.value;
+          return (
+            <ChoiceCard
+              key={o.value}
+              indicator="radio"
+              indicatorClassName="mt-1"
+              selected={checked && !disabled}
+              disabled={disabled}
+              onSelect={() => { if (!saving) onStrategyChange(o.value); }}
+            >
+              <div>
+                <p className="text-sm font-medium">{o.label}</p>
+                <p className="text-xs text-muted-foreground">
+                  {o.description}
+                  {disabled && " Needs at least one other active, online employee."}
+                </p>
+              </div>
+            </ChoiceCard>
+          );
+        })}
+      </div>
+
+      {strategy === "manual" && (
+        <div className="space-y-1.5">
+          <Label>Hand everything to</Label>
+          <Select value={value} onValueChange={onChange}>
+            <SelectTrigger className="w-full"><SelectValue placeholder="Choose an employee" /></SelectTrigger>
+            <SelectContent className="z-300">
+              {employees.map((e) => (
+                <SelectItem key={e.id} value={e.id}>
+                  {e.full_name || e.email}{e.availability_status === "offline" ? " (offline)" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {employees.length === 0 && (
+            <p className="text-xs text-destructive">
+              No other active employee exists. Use &ldquo;Return to the pool&rdquo; instead.
+            </p>
+          )}
+          {targetIsOffline && (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              This employee is marked offline — they will still receive the whole book.
+            </p>
+          )}
+        </div>
+      )}
+
+      {(strategy === "round_robin" || strategy === "territory") && (
+        <div className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground space-y-1">
+          <p>
+            Splitting across <span className="text-foreground font-medium">{eligible.length}</span> active, online
+            employee{eligible.length !== 1 ? "s" : ""}
+            {awayCount > 0 && <> ({awayCount} offline {awayCount !== 1 ? "are" : "is"} excluded)</>}.
+          </p>
+          {campaignCount > 0 && <p>Each campaign follows whoever inherits most of its leads.</p>}
+          {strategy === "territory" && <p>Leads in countries nobody covers stay in the pool.</p>}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2 pt-1">
+        <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>Cancel</Button>
+        <Button type="button" onClick={onConfirm} disabled={saving || blocked}>
+          {saving && <RefreshCw className="size-3.5 animate-spin" />} Hand over &amp; deactivate
+        </Button>
+      </div>
+    </ModalShell>
   );
 }
 
@@ -877,46 +869,38 @@ function TerritoryModal({
   onSave: () => void;
   onCancel: () => void;
 }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
-  if (!mounted) return null;
+  return (
+    <ModalShell onClose={onCancel} closeDisabled={saving} className="flex max-h-[90vh] max-w-5xl flex-col overflow-hidden rounded-lg">
+      <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-3.5">
+        <div>
+          <h2 className="text-[15px] font-semibold">
+            Which countries&apos; leads route here
+          </h2>
+          <p className="text-[13px] text-muted-foreground mt-0.5">{TERRITORY_HELP}</p>
+        </div>
+        <Button type="button" variant="ghost" size="icon" onClick={onCancel} disabled={saving} className="size-8 shrink-0 text-muted-foreground hover:text-foreground">
+          <X className="size-4" />
+        </Button>
+      </div>
 
-  return createPortal(
-    <div className="fixed inset-0 z-200 flex items-center justify-center pointer-events-auto">
-      <div className="absolute inset-0 bg-black/25 dark:bg-black/60" onClick={saving ? undefined : onCancel} />
-      <div className="relative z-10 mx-4 flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-border bg-popover shadow-xl">
-        <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-3.5">
-          <div>
-            <h2 className="text-[15px] font-semibold">
-              Which countries&apos; leads route here
-            </h2>
-            <p className="text-[13px] text-muted-foreground mt-0.5">{TERRITORY_HELP}</p>
-          </div>
-          <Button type="button" variant="ghost" size="icon" onClick={onCancel} disabled={saving} className="size-8 shrink-0 text-muted-foreground hover:text-foreground">
-            <X className="size-4" />
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <LocationsGrid selected={draft} onChangeSelected={setDraft} maxHeightClassName="max-h-[55vh]" />
+      </div>
+
+      <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-3">
+        <p className="text-xs text-muted-foreground">
+          {draft.length === 0
+            ? "No countries — this employee is skipped by territory routing."
+            : summarizeTerritory(draft)}
+        </p>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={saving}>Cancel</Button>
+          <Button type="button" size="sm" onClick={onSave} disabled={saving || !dirty}>
+            {saving && <RefreshCw className="size-3.5 animate-spin" />}
+            Save territory
           </Button>
         </div>
-
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <LocationsGrid selected={draft} onChangeSelected={setDraft} maxHeightClassName="max-h-[55vh]" />
-        </div>
-
-        <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-3">
-          <p className="text-xs text-muted-foreground">
-            {draft.length === 0
-              ? "No countries — this employee is skipped by territory routing."
-              : summarizeTerritory(draft)}
-          </p>
-          <div className="flex shrink-0 items-center gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={saving}>Cancel</Button>
-            <Button type="button" size="sm" onClick={onSave} disabled={saving || !dirty}>
-              {saving && <RefreshCw className="size-3.5 animate-spin" />}
-              Save territory
-            </Button>
-          </div>
-        </div>
       </div>
-    </div>,
-    document.body,
+    </ModalShell>
   );
 }
