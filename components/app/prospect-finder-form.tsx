@@ -469,7 +469,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
           {step > 0 && <Button type="button" variant="outline" onClick={() => { setError(""); setStep((s) => s - 1); }}>Back</Button>}
         </div>
         {step < STEPS.length - 1 ? (
-          <Button type="button" onClick={next}>Next</Button>
+          <Button type="button" onClick={next} disabled={step === 1 && (creditsTooLow || !!fitBlock)} className="disabled:bg-gray-400 disabled:text-white disabled:opacity-100">Next</Button>
         ) : (
           <Button type="button" onClick={startSearch} disabled={busy}>
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />} Find {target} leads
