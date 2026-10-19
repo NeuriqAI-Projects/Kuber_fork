@@ -15,7 +15,7 @@ const ICONS: Partial<Record<string, React.ReactNode>> = {
   cold: <Snowflake className="size-3" />,
 };
 
-/** The shared map labels are upper case ("OUT OF OFFICE"); tags read in sentence case. */
+/** Sentence-case tag label ("Out of office") from the shared temperature map. */
 export function temperatureLabel(temperature: string | null | undefined): string {
   const { label } = temperatureBadge(temperature);
   return label.charAt(0) + label.slice(1).toLowerCase();

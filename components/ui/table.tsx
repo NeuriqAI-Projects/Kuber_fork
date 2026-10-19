@@ -4,16 +4,21 @@ import { cn } from "@/lib/utils"
 
 const Table = React.forwardRef<
   HTMLTableElement,
-  React.HTMLAttributes<HTMLTableElement>
->(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
+  React.HTMLAttributes<HTMLTableElement> & {
+    /** false = no own scroll box, so a sticky header can stick to the page's
+     *  scroll container instead. Default true. */
+    scroll?: boolean
+  }
+>(({ className, scroll = true, ...props }, ref) => {
+  const table = (
     <table
       ref={ref}
       className={cn("w-full caption-bottom border-collapse text-[13px]", className)}
       {...props}
     />
-  </div>
-))
+  )
+  return scroll ? <div className="relative w-full overflow-auto">{table}</div> : table
+})
 Table.displayName = "Table"
 
 const TableHeader = React.forwardRef<

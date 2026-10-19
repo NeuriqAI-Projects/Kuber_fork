@@ -19,7 +19,8 @@ export function Pill({
   children,
   ...rest
 }: {
-  color?: BatchColorName;
+  /** A batch tone, or "neutral" for a gray tag (light and dark). */
+  color?: BatchColorName | "neutral";
   dot?: boolean;
   icon?: React.ReactNode;
   /** "full" — an Attio-style tag (batches, leads table). "sm" — a tighter
@@ -28,7 +29,9 @@ export function Pill({
   className?: string;
   children: React.ReactNode;
 } & React.HTMLAttributes<HTMLSpanElement>) {
-  const c = getBatchColor(color);
+  const c = color === "neutral"
+    ? { pill: "bg-secondary border-border text-muted-foreground", bg: "bg-muted-foreground" }
+    : getBatchColor(color);
   return (
     <span
       {...rest}

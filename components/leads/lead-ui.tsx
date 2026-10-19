@@ -83,12 +83,13 @@ function avatarTint(name: string) {
   return AVATAR_TINTS[Math.abs(h) % AVATAR_TINTS.length];
 }
 
-export function Avatar({ name, size = "sm" }: { name: string; size?: "sm" | "md" | "lg" }) {
+export function Avatar({ name, size = "sm" }: { name: string; size?: "xs" | "sm" | "md" | "lg" }) {
   const initials = name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   return (
     <div className={cn(
       "rounded-full flex items-center justify-center font-semibold shrink-0",
       initials ? avatarTint(name) : "bg-secondary text-muted-foreground",
+      size === "xs" && "size-5 text-[9px]",
       size === "sm" && "size-7 text-[11px]",
       size === "md" && "size-10 text-sm",
       size === "lg" && "size-14 text-base",
@@ -130,7 +131,7 @@ export function PipelineStepper({ currentStatus }: { currentStatus: LeadStatus }
             </div>
             <div className={cn("pb-4", last && "pb-0")}>
               <p className={cn(
-                "font-display text-xs font-semibold uppercase tracking-wide",
+                "text-[13px] font-medium",
                 active ? "text-foreground" : done ? "text-muted-foreground" : "text-muted-foreground/40",
               )}>
                 {stage}

@@ -169,9 +169,15 @@ export function SettingsSkeleton() {
     <div className="flex h-full flex-col animate-pulse">
       <HeaderBar actions={0} />
       <div className="flex min-h-0 flex-1">
-        <aside className="w-56 shrink-0 space-y-1 border-r border-border p-2">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-8 w-full rounded-md bg-hover" />
+        {/* Grouped settings menu: a small group label, then its items. */}
+        <aside className="w-56 shrink-0 space-y-4 border-r border-border p-2 pt-3">
+          {[3, 2, 4].map((n, g) => (
+            <div key={g} className="space-y-1">
+              <div className={`mx-2 mb-2 h-2.5 w-16 ${bar}`} />
+              {Array.from({ length: n }).map((_, i) => (
+                <div key={i} className="h-8 w-full rounded-md bg-hover" />
+              ))}
+            </div>
           ))}
         </aside>
         <div className="max-w-3xl flex-1 space-y-6 px-8 py-6">

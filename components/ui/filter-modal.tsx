@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /**
- * The Filters modal shell shared by Leads and Organizations: "Refine / Filters"
+ * The Filters modal shell shared by Leads and Organizations: "Filters"
  * header, scrolling body, Clear all / Cancel / Apply footer. Callers own the
  * draft state and put their fields (MultiSelectDropdown etc.) in the body.
  * A custom overlay rather than the Radix Dialog, matching the original Leads
@@ -20,7 +20,6 @@ export function FilterModal({ children, onClose, onClear, onApply }: {
       <div className="relative z-10 w-full max-w-md rounded-xl border border-border bg-popover shadow-xl flex flex-col min-h-[min(34rem,85vh)] max-h-[85vh]">
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0">
           <div>
-            <p className="eyebrow">Refine</p>
             <p className="text-[15px] font-semibold mt-0.5">Filters</p>
           </div>
           <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" onClick={onClose}>
