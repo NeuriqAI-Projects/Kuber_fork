@@ -28,10 +28,13 @@ alter table public.prospect_page_memory enable row level security;
 
 -- Take the next page for this filter set, atomically (two searches at once never get the same page).
 create or replace function public.claim_prospect_page(p_company uuid, p_key text)
-returns int language sql as $$
+returns int language sql set search_path = public as $$
   insert into public.prospect_page_memory (company_id, filter_key, last_page)
   values (p_company, p_key, 1)
   on conflict (company_id, filter_key)
   do update set last_page = public.prospect_page_memory.last_page + 1, updated_at = now()
   returning last_page;
 $$;
+-- Server only: the browser keys must not move another company's page memory.
+revoke execute on function public.claim_prospect_page(uuid, text) from public, anon, authenticated;
+grant execute on function public.claim_prospect_page(uuid, text) to service_role;
