@@ -17,12 +17,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { searchOrganizations, type ApolloOrganization } from "@/lib/services/apollo";
 import { isApolloMockCompany, mockApolloDelay, mockSearchOrganizations } from "@/lib/services/apollo-mock";
-import { checkApolloCredits } from "@/lib/services/provider-credits";
+import { checkApolloCredits, checkFirecrawlCredits } from "@/lib/services/provider-credits";
 import { DEV_COMPANY_ID, parseIndustryKeywordGroups, resolveApolloKeyword } from "@/lib/constants";
 import type { ApolloOrgAdvancedFilters } from "@/lib/services/apollo";
 import { normalizeDomain } from "@/lib/utils/domain";
 import { companyName } from "./text";
-import { filterKey, nextStep, revealCap, suggestedMaxCredits } from "./digging";
+import { FIRECRAWL_PER_PAGE, filterKey, nextStep, revealCap, suggestedMaxCredits } from "./digging";
 
 export interface ProspectSearchInput {
   keywords: string[];
@@ -58,12 +58,15 @@ type OrgPage = { organizations: ApolloOrganization[]; pagination: { total_entrie
 export interface SearchDeps {
   mock: boolean;
   creditsLeft(): Promise<number | null>;
+  /** Firecrawl credits left; a page of 100 companies can use up to 100. */
+  firecrawlLeft?(): Promise<number | null>;
   search(input: ProspectSearchInput): Promise<OrgPage>;
 }
 
 /** Dev-workspace test scenarios, switched on by a word in the batch name:
  *  [apollo-0] no credits · [apollo-down] Apollo answers 500 · [apollo-timeout] no answer · [apollo-empty] 0 results
- *  · [no-socials] companies come without LinkedIn/Twitter/Facebook · [pages-N] N pages of companies (multi-page searches). */
+ *  · [no-socials] companies come without LinkedIn/Twitter/Facebook · [pages-N] N pages of companies (multi-page searches)
+ *  · [firecrawl-low] Firecrawl has only 50 credits left. */
 const has = (input: ProspectSearchInput, f: string) => input.batch_name.toLowerCase().includes(`[${f}]`);
 
 export function defaultSearchDeps(db: SupabaseClient, companyId: string, input?: ProspectSearchInput): SearchDeps {
@@ -71,6 +74,7 @@ export function defaultSearchDeps(db: SupabaseClient, companyId: string, input?:
   return {
     mock,
     creditsLeft: async () => (mock ? (input && has(input, "apollo-0") ? 0 : null) : (await checkApolloCredits(db, "any" /* one shared Apollo account */, { fresh: true })).remaining),
+    firecrawlLeft: async () => (mock ? (input && has(input, "firecrawl-low") ? 50 : null) : (await checkFirecrawlCredits(db, companyId, { fresh: true })).remaining),
     search: async (input) => {
       if (mock) {
         await mockApolloDelay();
@@ -118,6 +122,11 @@ export async function runProspectSearch(db: SupabaseClient, companyId: string, u
     const left = await deps.creditsLeft();
     if (left !== null && left < 1) {
       return { ok: false, status: 402, code: "APOLLO_OUT_OF_CREDITS", message: "Apollo has no credits left. Nothing was searched or charged." };
+    }
+    // Every company found is read by Firecrawl; don't pay Apollo for companies we can't read.
+    const fc = (await deps.firecrawlLeft?.()) ?? null;
+    if (fc !== null && fc < FIRECRAWL_PER_PAGE) {
+      return { ok: false, status: 402, code: "FIRECRAWL_LOW", message: `Firecrawl (it reads company websites) has only ${fc} credits left, and 100 companies need up to 100. Top up Firecrawl first. Nothing was searched or charged.` };
     }
   }
 
@@ -281,22 +290,26 @@ export async function continueRun(db: SupabaseClient, companyId: string, searchI
     const promoted = rs.filter((r) => r.status === "promoted");
     const { data: mem } = await db.from("prospect_page_memory").select("last_page, total_pages").eq("filter_key", s.filter_key).maybeSingle();
     const target = s.target_leads as number, maxCredits = s.max_credits as number;
+    const input = s.filters as ProspectSearchInput;
+    const working = rs.filter((r) => WORKING.includes(r.status)).length;
+    // Asked only when a new page might be read, so a waiting search makes no Firecrawl calls.
+    const firecrawlLeft = working === 0 && promoted.length < target ? ((await depsFor(input).firecrawlLeft?.()) ?? null) : null;
     const step = nextStep({
       target, maxCredits,
       // Counted the same way in test batches, so the rules behave the same there.
       creditsUsed: pages.length + promoted.length,
       leads: promoted.length,
-      working: rs.filter((r) => WORKING.includes(r.status)).length,
+      working,
       pagesRead: pages.length,
       leadsPerPage: pages.map((p) => promoted.filter((r) => r.page === p).length),
       totalPages: (mem?.total_pages as number | null) ?? null,
       nextPage: ((mem?.last_page as number | null) ?? 0) + 1,
       lastPageEmpty: false,
+      firecrawlLeft,
     });
     if (step.action === "wait") { await unlock(); return "waiting"; }
     if (step.action === "stop") { await unlock({ run_status: "complete", run_note: step.note }); return "stopped"; }
 
-    const input = s.filters as ProspectSearchInput;
     const page = await claimPage(db, companyId, s.filter_key as string);
     const res = await fetchPageInto(db, searchId, { ...input, page }, depsFor(input), s.filter_key as string);
     if (!res.ok) { await unlock(); return "stopped"; }

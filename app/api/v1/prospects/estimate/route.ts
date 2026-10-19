@@ -6,7 +6,8 @@ import { dbForUser } from "@/lib/supabase/scoped";
 import { parseIndustryKeywordGroups, resolveApolloKeyword } from "@/lib/constants";
 import { countPeopleAtCompanies } from "@/lib/services/apollo";
 import { estimateMarket } from "@/lib/services/prospects/estimate";
-import { filterKey } from "@/lib/services/prospects/digging";
+import { filterKey, leadsApolloFits, leadsFirecrawlFits } from "@/lib/services/prospects/digging";
+import { checkApolloCredits, checkFirecrawlCredits } from "@/lib/services/provider-credits";
 
 const Body = z.object({
   keywords: z.array(z.string().trim().min(1)).min(1).max(50),
@@ -30,6 +31,12 @@ export async function POST(req: NextRequest) {
   const { data: kw } = await db.from("settings").select("value").eq("key", "industry_keyword_groups").maybeSingle();
   const groups = parseIndustryKeywordGroups(kw?.value);
   const keywordTags = [...new Set(parsed.data.keywords.map((k) => resolveApolloKeyword(groups, k)))];
+  // How many leads the Apollo and Firecrawl balances can pay for. Only super
+  // admins see exact balances (settings/usage), so managers get lead counts.
+  const balances = Promise.all([
+    checkApolloCredits(db, "any" /* one shared Apollo account */).then((c) => c.remaining).catch(() => null),
+    checkFirecrawlCredits(db, user.companyId ?? "any").then((c) => c.remaining).catch(() => null),
+  ]);
   try {
     const people = await countPeopleAtCompanies({ keywordTags, locations: parsed.data.locations, employeeRanges: parsed.data.employee_ranges });
     const est = estimateMarket(people);
@@ -39,8 +46,10 @@ export async function POST(req: NextRequest) {
     const pagesUsed = (mem?.last_page as number | undefined) ?? 0;
     const totalPages = (mem?.total_pages as number | undefined) ?? Math.max(1, Math.ceil(est.companies.mid / 100));
     const leftShare = Math.max(0, 1 - pagesUsed / totalPages);
+    const [apolloLeft, firecrawlLeft] = await balances;
     return ok({
       free: true, ...est,
+      fits: { apollo_leads: leadsApolloFits(apolloLeft), firecrawl_leads: leadsFirecrawlFits(firecrawlLeft) },
       pages_used: pagesUsed, total_pages: mem?.total_pages ?? null,
       leads_left: { low: Math.round(est.leads.low * leftShare), high: Math.round(est.leads.high * leftShare) },
     });

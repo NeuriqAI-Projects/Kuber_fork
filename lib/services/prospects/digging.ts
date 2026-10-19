@@ -10,6 +10,10 @@ export const MAX_PAGES_PER_SEARCH = 20;
 export const DRY_PAGE_LEADS = 3;
 /** Leads per page used to suggest a credit limit (17 Oct 2026 live tests). */
 export const LEADS_PER_PAGE = 33;
+/** Firecrawl credits a page of 100 companies can use (1 per website read). */
+export const FIRECRAWL_PER_PAGE = 100;
+/** Most leads one search can be asked for: what 20 pages give at 33 a page. */
+export const MAX_LEADS_PER_SEARCH = MAX_PAGES_PER_SEARCH * LEADS_PER_PAGE;
 
 export interface RunState {
   target: number;
@@ -27,6 +31,8 @@ export interface RunState {
   nextPage: number;
   /** The last page read came back with no companies at all. */
   lastPageEmpty: boolean;
+  /** Firecrawl credits left (null = unknown or test batch). */
+  firecrawlLeft?: number | null;
 }
 
 export type DigStep = { action: "fetch" } | { action: "wait" } | { action: "stop"; note: string };
@@ -39,6 +45,9 @@ export function nextStep(s: RunState): DigStep {
   }
   // A page costs 1 credit and is only worth it if at least 1 lead can still be paid for.
   if (s.creditsUsed + 2 > s.maxCredits) return { action: "stop", note: `Stopped at ${s.leads} of ${s.target} leads: your credit limit of ${s.maxCredits} is reached.` };
+  if (s.firecrawlLeft != null && s.firecrawlLeft < FIRECRAWL_PER_PAGE) {
+    return { action: "stop", note: `Stopped at ${s.leads} of ${s.target} leads: Firecrawl (it reads company websites) has only ${s.firecrawlLeft} credits left, not enough for the next 100 companies. Top up Firecrawl to get more.` };
+  }
   const last2 = s.leadsPerPage.slice(-2);
   if (last2.length === 2 && last2.every((n) => n < DRY_PAGE_LEADS)) {
     return { action: "stop", note: `Stopped at ${s.leads} of ${s.target} leads: the last 2 pages gave almost no leads, so these keywords are used up. Try other keywords.` };
@@ -55,6 +64,17 @@ export function minCredits(target: number): number {
 /** Credit limit to suggest for a lead target: the minimum plus 10% room. */
 export function suggestedMaxCredits(target: number): number {
   return Math.ceil(minCredits(target) * 1.1);
+}
+
+/** Most leads the credits left can pay for (null = unknown). */
+export function leadsApolloFits(apolloLeft: number | null): number | null {
+  if (apolloLeft == null) return null;
+  let n = Math.max(0, Math.floor((apolloLeft * LEADS_PER_PAGE) / (LEADS_PER_PAGE + 1)));
+  while (n > 0 && minCredits(n) > apolloLeft) n--;
+  return n;
+}
+export function leadsFirecrawlFits(firecrawlLeft: number | null): number | null {
+  return firecrawlLeft == null ? null : Math.floor(firecrawlLeft / FIRECRAWL_PER_PAGE) * LEADS_PER_PAGE;
 }
 
 /** Cap on automatic reveals: never past the target, never past what the credit limit leaves after pages. */
