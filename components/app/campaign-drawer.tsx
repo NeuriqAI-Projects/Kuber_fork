@@ -26,6 +26,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { SearchInput } from "@/components/ui/search-input";
 import { Pill } from "@/components/ui/pill";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
+import { PageHeader } from "@/components/ui/page-header";
+import { RecordHeader } from "@/components/ui/record-layout";
 import { AppCheckbox } from "@/components/ui/app-checkbox";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -82,6 +84,8 @@ import {
   addThreadParticipantAsLead,
   queryCache,
   cacheKeys,
+  prefetchLead,
+  prefetchOrg,
 } from "@/lib/api-client";
 import { RegenerateDraftsModal } from "@/components/app/regenerate-drafts-modal";
 import { HoldSendingModal } from "@/components/app/hold-sending-modal";
@@ -127,6 +131,7 @@ import {
   type DeliveryLeadLike,
 } from "@/lib/campaign-status";
 import { cumulativeDays, dayLabel } from "@/lib/followup-schedule-preview";
+import { TEMPERATURE_BADGE } from "@/lib/temperature-badge";
 import { delayInDays, writeByAt } from "@/lib/services/followup-schedule";
 import { extractFollowupWaitsFromSteps, rebuildStepsWithFollowupWaits } from "@/lib/constants";
 
@@ -183,6 +188,26 @@ function stripQuotedLines(text: string | null | undefined): string | null {
   return kept.join("\n").trim() || null;
 }
 
+/**
+ * Attio tag tones — a pale fill with dark text in light mode, a low-alpha fill
+ * with light text in dark mode (root CLAUDE.md "Tags / status pills"). Every
+ * status chip on this screen picks one of these so light mode stays readable.
+ */
+const TAG = {
+  gray:    "bg-secondary text-muted-foreground border-border",
+  blue:    "bg-blue-100 text-blue-800 border-blue-200/70 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/25",
+  green:   "bg-green-100 text-green-800 border-green-200/70 dark:bg-green-500/15 dark:text-green-300 dark:border-green-500/25",
+  amber:   "bg-amber-100 text-amber-800 border-amber-200/70 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25",
+  red:     "bg-red-100 text-red-800 border-red-200/70 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/25",
+  teal:    "bg-teal-100 text-teal-800 border-teal-200/70 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/25",
+  violet:  "bg-violet-100 text-violet-800 border-violet-200/70 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/25",
+  primary: "bg-primary/10 text-primary border-primary/20",
+} as const;
+
+/** Shared chip shape for the hand-built status chips (they need an icon or a
+ *  click handler, so they can't all be a <Pill>). */
+const CHIP = "inline-flex items-center gap-1 rounded-[5px] border px-1.5 py-[3px] text-[11px] font-medium leading-none whitespace-nowrap";
+
 const DRAFT_STATUS_LABEL: Record<string, string> = {
   generating: "Generating",
   draft:      "Draft",
@@ -198,12 +223,12 @@ const DRAFT_STATUS_LABEL: Record<string, string> = {
  * one that has actually been mailed (green).
  */
 const DELIVERY_PILL_CLS: Record<DeliveryBucket, string> = {
-  not_queued:  "bg-muted text-muted-foreground border border-border",
-  sending:     "bg-amber-500/15 text-amber-600 border border-amber-500/30",
-  sent:        "bg-green-500/15 text-green-600 border border-green-500/30",
-  replied:     "bg-primary/15 text-primary border border-primary/30",
-  bounced:     "bg-red-500/15 text-red-500 border border-red-500/30",
-  send_failed: "bg-red-500/15 text-red-500 border border-red-500/30",
+  not_queued:  TAG.gray,
+  sending:     TAG.amber,
+  sent:        TAG.green,
+  replied:     TAG.primary,
+  bounced:     TAG.red,
+  send_failed: TAG.red,
 };
 
 /** In-flight wording, kept apart from status labels — this is an activity, not a stored status. */
@@ -213,12 +238,12 @@ const DRAFT_ACTIVITY_LABEL: Record<"generating" | "regenerating", string> = {
 };
 
 const DRAFT_STATUS_STYLE: Record<string, string> = {
-  generating: "bg-amber-500/10 text-amber-400",
-  draft:      "bg-blue-500/10 text-blue-400",
-  approved:   "bg-green-500/10 text-green-400",
-  sent:       "bg-teal-500/10 text-teal-400",
-  failed:     "bg-red-500/10 text-red-400",
-  rejected:   "bg-zinc-500/10 text-zinc-400",
+  generating: TAG.amber,
+  draft:      TAG.blue,
+  approved:   TAG.green,
+  sent:       TAG.teal,
+  failed:     TAG.red,
+  rejected:   TAG.gray,
 };
 
 type AttachmentInfo = {
@@ -576,8 +601,8 @@ function DraftStatusBadge({
   return (
     <span
       className={cn(
-        "font-mono text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md shrink-0",
-        "inline-flex items-center justify-center gap-1",
+        CHIP,
+        "shrink-0 justify-center",
         styleClass,
       )}
     >
@@ -591,7 +616,7 @@ function DraftStatusBadge({
 function OutboxQuotedBlock({ quoted, isHtml }: { quoted: string; isHtml: boolean }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="mt-2 pt-2 border-t border-border/50">
+    <div className="mt-2 pt-2 border-t border-border">
       <Button
         type="button"
         variant="ghost"
@@ -599,11 +624,11 @@ function OutboxQuotedBlock({ quoted, isHtml }: { quoted: string; isHtml: boolean
         onClick={() => setOpen((o) => !o)}
         className="h-auto px-0 py-0 gap-1 text-[11px] font-normal text-muted-foreground hover:text-foreground hover:bg-transparent"
       >
-        <span className="tracking-widest">⋯</span>
+        <span>⋯</span>
         {open ? "Hide quoted text" : "Show quoted text"}
       </Button>
       {open && (
-        <div className="mt-2 pl-3 border-l-2 border-muted-foreground/30 text-muted-foreground/90 text-xs leading-relaxed">
+        <div className="mt-2 pl-3 border-l-2 border-border text-muted-foreground text-xs leading-relaxed">
           {isHtml ? (
             <div
               className="[&_p]:mb-1.5 [&_blockquote]:opacity-80"
@@ -677,27 +702,27 @@ function OutboxMessageRow({
         tabIndex={0}
         onClick={onToggle}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
-        className="w-full flex items-center gap-3 px-4 py-2.5 text-left font-normal border-b border-border/60 last:border-b-0 hover:bg-secondary cursor-pointer transition-colors"
+        className="w-full flex items-center gap-3 px-4 py-2.5 text-left font-normal border-b border-border last:border-b-0 hover:bg-hover cursor-pointer transition-colors"
       >
         <Avatar name={senderName} size="sm" />
-        <span className="shrink-0 max-w-[160px] truncate text-sm font-medium text-foreground/90">
+        <span className="shrink-0 max-w-[160px] truncate text-[13px] font-medium text-foreground">
           {senderName}
         </span>
         {fromThirdParty && (
-          <Badge variant="outline" className="shrink-0 rounded font-mono text-[9px] px-1.5 py-0 text-muted-foreground">
+          <Badge variant="outline" className="shrink-0 text-muted-foreground">
             via cc
           </Badge>
         )}
         {/* Which sequence send this is. On the collapsed row because that is the
             glanceable one — the whole point is reading the thread at a glance. */}
         {stepLabel && (
-          <Badge variant="outline" className="shrink-0 rounded font-mono text-[9px] px-1.5 py-0 border-primary/40 text-primary">
+          <Badge variant="selected" className="shrink-0">
             {stepLabel}
           </Badge>
         )}
         {/* Same reason as the Unibox: the collapsed row is the glanceable one. */}
         {isUnanswered && (
-          <Badge variant="outline" className="shrink-0 rounded font-mono text-[9px] px-1.5 py-0 border-amber-500/40 text-amber-500">
+          <Badge variant="outline" className={cn("shrink-0", TAG.amber)}>
             Not answered
           </Badge>
         )}
@@ -711,13 +736,13 @@ function OutboxMessageRow({
             type="button"
             onClick={(e) => { e.stopPropagation(); onReplyTo(); }}
             title={`Reply to ${replyTargetName ?? senderName}`}
-            className="shrink-0 rounded p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+            className="shrink-0 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-hover transition-colors"
           >
             <Reply className="size-3.5" />
           </button>
         )}
         {timestamp && (
-          <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
             {format(new Date(timestamp), "MMM d")}
           </span>
         )}
@@ -726,46 +751,46 @@ function OutboxMessageRow({
   }
 
   return (
-    <div className="border-b border-border/60 last:border-b-0">
+    <div className="border-b border-border last:border-b-0">
       <Button
         type="button"
         variant="ghost"
         onClick={onToggle}
-        className="h-auto w-full justify-start items-start gap-3 px-4 py-3 text-left font-normal rounded-none hover:bg-secondary"
+        className="h-auto w-full justify-start items-start gap-3 px-4 py-3 text-left font-normal rounded-none hover:bg-hover"
       >
         <Avatar name={senderName} size="sm" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-sm">{senderName}</span>
+            <span className="font-semibold text-[13px]">{senderName}</span>
             {fromThirdParty && (
-              <Badge variant="outline" className="rounded font-mono text-[9px] px-1.5 py-0.5 text-muted-foreground">
+              <Badge variant="outline" className="text-muted-foreground">
                 not the lead
               </Badge>
             )}
             {isUnanswered && (
-              <Badge variant="outline" className="rounded font-mono text-[9px] px-1.5 py-0.5 border-amber-500/40 text-amber-500">
+              <Badge variant="outline" className={TAG.amber}>
                 Not answered
               </Badge>
             )}
             {isReplyTarget && (
-              <Badge variant="selected" className="rounded font-mono text-[9px] px-1.5 py-0.5">
+              <Badge variant="selected">
                 Replying to this
               </Badge>
             )}
           </div>
           {inReplyToLabel && (
-            <p className="flex items-center gap-1 font-mono text-[11px] text-primary/80 truncate">
+            <p className="flex items-center gap-1 text-xs text-primary truncate">
               <CornerDownRight className="size-3 shrink-0" />
               in reply to {inReplyToLabel}
             </p>
           )}
-          <p className="font-mono text-xs text-muted-foreground truncate">
+          <p className="text-xs text-muted-foreground truncate">
             to {toLabel || "—"}
             {ccLabel && ` · cc ${ccLabel}`}
           </p>
         </div>
         {timestamp && (
-          <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
             {format(new Date(timestamp), "MMM d, h:mm a")}
           </span>
         )}
@@ -794,7 +819,7 @@ function OutboxMessageRow({
               variant="ghost"
               size="sm"
               onClick={onReplyTo}
-              className="h-7 gap-1.5 px-2 text-[11px] text-primary hover:text-primary"
+              className="gap-1.5 px-2 text-xs text-primary hover:text-primary [&_svg]:size-3"
             >
               <Reply className="size-3" />
               Reply to {replyTargetName ?? senderName}
@@ -805,7 +830,7 @@ function OutboxMessageRow({
                 variant="ghost"
                 size="sm"
                 onClick={onReplyAll}
-                className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                className="gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground [&_svg]:size-3"
                 title="Answer this message with everyone on the thread in the To line"
               >
                 <ReplyAll className="size-3" />
@@ -821,7 +846,7 @@ function OutboxMessageRow({
                 size="sm"
                 disabled={addingLead}
                 onClick={onAddAsLead}
-                className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                className="gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground [&_svg]:size-3"
                 title="Add this person as a lead in the same organization"
               >
                 {addingLead ? <Loader2 className="size-3 animate-spin" /> : <UserPlus className="size-3" />}
@@ -841,7 +866,7 @@ function OutboxMessageRow({
  *  instead of popping in one at a time. */
 function AnalyticsChartSkeleton() {
   return (
-    <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
+    <div className="rounded-lg border border-border bg-card p-4">
       <Skeleton className="h-3 w-24 mb-3" />
       <div className="h-[140px] flex items-center gap-3">
         <Skeleton className="size-[110px] rounded-full shrink-0" />
@@ -1675,7 +1700,7 @@ export function CampaignDetail({
     if (delivery !== "not_queued") return DELIVERY_PILL_CLS[delivery];
     const ds = cl.email_drafts?.status;
     if (ds && DRAFT_STATUS_STYLE[ds]) return DRAFT_STATUS_STYLE[ds];
-    return "bg-secondary text-muted-foreground";
+    return TAG.gray;
   }
 
   const [attaching, setAttaching] = useState(false);
@@ -2822,12 +2847,12 @@ export function CampaignDetail({
   const outboxLastItemId = outboxMessageItems.length > 0 ? outboxMessageItems[outboxMessageItems.length - 1].id : null;
 
   const TEMP_BADGE: Record<string, { label: string; cls: string; icon?: React.ReactNode }> = {
-    hot:          { label: "HOT",          cls: "bg-red-500/15 text-red-400 border-red-500/30",     icon: <Flame className="size-3" /> },
-    warm:         { label: "WARM",         cls: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
-    cold:         { label: "COLD",         cls: "bg-sky-500/15 text-sky-400 border-sky-500/30",     icon: <Snowflake className="size-3" /> },
-    neutral:      { label: "NEUTRAL",      cls: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30" },
-    ooo:          { label: "OUT OF OFFICE",cls: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-    unsubscribed: { label: "UNSUBSCRIBED", cls: "bg-zinc-700/40 text-zinc-500 border-zinc-600/30" },
+    hot:          { label: "Hot",           cls: TEMPERATURE_BADGE.hot.cls,     icon: <Flame className="size-3" /> },
+    warm:         { label: "Warm",          cls: TEMPERATURE_BADGE.warm.cls },
+    cold:         { label: "Cold",          cls: TEMPERATURE_BADGE.cold.cls,    icon: <Snowflake className="size-3" /> },
+    neutral:      { label: "Neutral",       cls: TEMPERATURE_BADGE.neutral.cls },
+    ooo:          { label: "Out of office", cls: TEMPERATURE_BADGE.ooo.cls },
+    unsubscribed: { label: "Unsubscribed",  cls: TEMPERATURE_BADGE.unsubscribed.cls },
   };
 
   const pendingReplyDrafts = threads.reduce(
@@ -2906,7 +2931,7 @@ export function CampaignDetail({
     { name: "Gen",    v: report.totals.draftsGenerated, fill: "var(--primary)", opacity: 1 },
     { name: "Cert",   v: report.totals.certified,       fill: "var(--primary)", opacity: 1 },
     { name: "Sent",   v: report.totals.sent,            fill: "var(--primary)", opacity: 1 },
-    { name: "Failed", v: report.totals.failed,          fill: "#ef4444",        opacity: 1 },
+    { name: "Failed", v: report.totals.failed,          fill: "var(--destructive)", opacity: 1 },
   ] : [];
 
   const analyticsNeutral = Math.max(0, analyticsTotalLeads - analyticsHot - analyticsCold);
@@ -3277,26 +3302,108 @@ export function CampaignDetail({
   }, [seqLeadId, seqStepOrder]);
 
 
-  // Status badge info for analytics tab
+  // Status tag for the record header — Attio light/dark tag pairs.
   const statusBadge = (() => {
     switch (campaign.status) {
-      case "Live":      return { label: "Active",    cls: "bg-green-500/15 text-green-500 border-green-500/30" };
-      case "Paused":    return { label: "Paused",    cls: "bg-yellow-500/15 text-yellow-500 border-yellow-500/30" };
-      case "Scheduled": return { label: "Scheduled", cls: "bg-blue-500/15 text-blue-500 border-blue-500/30" };
-      default:          return { label: "Draft",     cls: "bg-muted text-muted-foreground border-border" };
+      case "Live":      return { label: "Active",    cls: TAG.green };
+      case "Paused":    return { label: "Paused",    cls: TAG.amber };
+      case "Scheduled": return { label: "Scheduled", cls: TAG.blue };
+      default:          return { label: "Draft",     cls: TAG.gray };
     }
   })();
 
   return (
     <div className="flex flex-col h-full bg-background">
+      {/* ── Page header: breadcrumb + campaign-wide actions ─────────────── */}
+      <PageHeader
+        crumbs={[
+          { label: "Campaigns", icon: <Megaphone />, onClick: onBack },
+          { label: campaignName },
+        ]}
+        actions={
+          <>
+            {/* Hold sits with the campaign, not inside a tab and not beside
+                the lead rail: it stops the whole campaign, so anywhere lead-scoped
+                would read as "hold this one lead", which Instantly cannot do.
+                Hidden once held — the banner below owns Resume from then on. */}
+            {!sendingHeld && (campaign.status === "Live" || campaign.status === "Scheduled") && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={holdBusy}
+                title="Stop Instantly sending anything further on this campaign, including queued follow-ups"
+                onClick={() => setHoldConfirmOpen(true)}
+                className="text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+              >
+                {holdBusy ? <Loader2 className="animate-spin" /> : <PauseCircle />}
+                Hold sending
+              </Button>
+            )}
+            {viewTab === "outbox" && (
+              <>
+                {aiFailedLeads.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                    disabled={bulkRegenOpening || regenJobActive}
+                    title="Ask the AI again for every lead that got the default email because the AI failed"
+                    onClick={() => void openBulkRegenerate(aiFailedLeads.map((cl) => cl.id))}
+                  >
+                    <RotateCcw />
+                    Try AI again ({aiFailedLeads.length})
+                  </Button>
+                )}
+                {campaignRegenerableCount > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={bulkRegenOpening || regenJobActive}
+                    title={regenJobActive
+                      ? "A regeneration is already running for this campaign"
+                      : "Regenerate every un-certified draft in this campaign"}
+                    onClick={() => void openBulkRegenerate()}
+                  >
+                    {bulkRegenOpening ? <Loader2 className="animate-spin" /> : <RotateCcw />}
+                    Regenerate all ({campaignRegenerableCount})
+                  </Button>
+                )}
+                {draftReadyLeads.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={certifying || regenJobActive}
+                    title={regenJobActive ? "A regeneration is running — certifying is paused until it finishes" : undefined}
+                    onClick={handleCertifyAll}
+                  >
+                    {certifying ? <Loader2 className="animate-spin" /> : null}
+                    Certify all ({draftReadyLeads.length})
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  disabled={primaryBusy || certifying || sending || primaryAction.mode === "none"}
+                  onClick={() => void handlePrimaryAction()}
+                >
+                  {primaryBusy ? <Loader2 className="animate-spin" /> : null}
+                  {primaryLabel}
+                </Button>
+              </>
+            )}
+          </>
+        }
+      />
+
       {/* ── Held banner ──────────────────────────────────────────────────────
-          Above the tabs and outside every tab's body, because a held campaign
-          is otherwise invisible: silence looks exactly like working normally.
-          Someone who holds sending and gets distracted must trip over this. */}
+          Right under the header and outside every tab's body, because a held
+          campaign is otherwise invisible: silence looks exactly like working
+          normally. Someone who holds sending and gets distracted must trip
+          over this. */}
       {sendingHeld && (
-        <div className="shrink-0 flex items-center gap-2.5 flex-wrap border-b border-amber-500/50 bg-amber-500/10 px-6 py-2">
-          <PauseCircle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-          <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+        <div className="shrink-0 flex items-center gap-2.5 flex-wrap border-b border-amber-200 bg-amber-50 px-6 py-2 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <PauseCircle className="size-4 shrink-0 text-amber-700 dark:text-amber-400" />
+          <p className="text-[13px] font-medium text-amber-800 dark:text-amber-300">
             Sending is held
             {heldAt && (
               <span className="font-normal">
@@ -3307,160 +3414,93 @@ export function CampaignDetail({
           </p>
           <Button
             size="sm"
-            className="ml-auto gap-1.5"
+            className="ml-auto"
             disabled={holdBusy}
             onClick={() => void handleToggleHold(false)}
           >
-            {holdBusy ? <Loader2 className="size-3.5 animate-spin" /> : <PlayCircle className="size-3.5" />}
+            {holdBusy ? <Loader2 className="animate-spin" /> : <PlayCircle />}
             Resume sending
           </Button>
         </div>
       )}
 
-      {/* ── Top bar ──────────────────────────────────────────────────────── */}
-      <div className="shrink-0 bg-background border-b border-border flex items-center justify-between gap-4 px-6 h-14">
-        <div className="flex items-center gap-3 min-w-0">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={onBack}
-            className="size-8 text-muted-foreground hover:text-foreground shrink-0"
-          >
-            <ArrowLeft className="size-4" />
-          </Button>
-          {editingName ? (
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Input
-                autoFocus
-                value={nameDraft}
-                onChange={(e) => setNameDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void handleSaveName();
-                  if (e.key === "Escape") { setEditingName(false); setNameDraft(campaignName); }
-                }}
-                className="h-7 w-56 bg-background text-sm font-semibold"
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={savingName}
-                onClick={() => void handleSaveName()}
-                aria-label="Save campaign name"
-                className="size-7 shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-50"
-              >
-                {savingName ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={savingName}
-                onClick={() => { setEditingName(false); setNameDraft(campaignName); }}
-                aria-label="Cancel"
-                className="size-7 shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-50"
-              >
-                <X className="size-3.5" />
-              </Button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 min-w-0 group/name">
-              <h1 className="font-display text-sm font-semibold text-foreground truncate min-w-0">{campaignName}</h1>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => { setNameDraft(campaignName); setEditingName(true); }}
-                aria-label="Edit campaign name"
-                className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
-              >
-                <Pencil className="size-3.5" />
-              </Button>
-            </div>
-          )}
-
-          {/* Hold sits with the campaign name, not inside a tab and not beside
-              the lead rail: it stops the whole campaign, so anywhere lead-scoped
-              would read as "hold this one lead", which Instantly cannot do.
-              Hidden once held — the banner above owns Resume from then on. */}
-          {!sendingHeld && (campaign.status === "Live" || campaign.status === "Scheduled") && (
+      {/* ── Record header: name (editable), status and mode ──────────────── */}
+      <RecordHeader
+        className="pt-4 pb-2"
+        avatar={
+          <div className="grid size-9 place-items-center rounded-lg border border-border bg-field text-muted-foreground shadow-xs">
+            <Megaphone className="size-4" />
+          </div>
+        }
+        title={editingName ? (
+          <span className="flex items-center gap-1.5 min-w-0">
+            <Input
+              autoFocus
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleSaveName();
+                if (e.key === "Escape") { setEditingName(false); setNameDraft(campaignName); }
+              }}
+              className="h-8 w-72 text-[15px] font-semibold"
+            />
             <Button
               type="button"
-              variant="outline"
-              size="sm"
-              disabled={holdBusy}
-              title="Stop Instantly sending anything further on this campaign, including queued follow-ups"
-              onClick={() => setHoldConfirmOpen(true)}
-              className="ml-1 shrink-0 gap-1.5 border-amber-500/60 text-amber-700 hover:bg-amber-500/10 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+              variant="ghost"
+              size="icon-sm"
+              disabled={savingName}
+              onClick={() => void handleSaveName()}
+              aria-label="Save campaign name"
+              className="text-muted-foreground hover:text-foreground"
             >
-              {holdBusy ? <Loader2 className="size-3.5 animate-spin" /> : <PauseCircle className="size-3.5" />}
-              Hold sending
+              {savingName ? <Loader2 className="animate-spin" /> : <Check />}
             </Button>
-          )}
-        </div>
-
-        {viewTab === "outbox" && (
-          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-            {aiFailedLeads.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 border-destructive/40 text-destructive hover:text-destructive"
-                disabled={bulkRegenOpening || regenJobActive}
-                title="Ask the AI again for every lead that got the default email because the AI failed"
-                onClick={() => void openBulkRegenerate(aiFailedLeads.map((cl) => cl.id))}
-              >
-                <RotateCcw className="size-3.5" />
-                Try AI again ({aiFailedLeads.length})
-              </Button>
-            )}
-            {campaignRegenerableCount > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                disabled={bulkRegenOpening || regenJobActive}
-                title={regenJobActive
-                  ? "A regeneration is already running for this campaign"
-                  : "Regenerate every un-certified draft in this campaign"}
-                onClick={() => void openBulkRegenerate()}
-              >
-                {bulkRegenOpening
-                  ? <Loader2 className="size-3.5 animate-spin" />
-                  : <RotateCcw className="size-3.5" />}
-                Regenerate all ({campaignRegenerableCount})
-              </Button>
-            )}
-            {draftReadyLeads.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={certifying || regenJobActive}
-                title={regenJobActive ? "A regeneration is running — certifying is paused until it finishes" : undefined}
-                onClick={handleCertifyAll}
-              >
-                {certifying ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : null}
-                Certify all ({draftReadyLeads.length})
-              </Button>
-            )}
             <Button
-              size="sm"
-              disabled={primaryBusy || certifying || sending || primaryAction.mode === "none"}
-              onClick={() => void handlePrimaryAction()}
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={savingName}
+              onClick={() => { setEditingName(false); setNameDraft(campaignName); }}
+              aria-label="Cancel"
+              className="text-muted-foreground hover:text-foreground"
             >
-              {primaryBusy ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : null}
-              {primaryLabel}
+              <X />
             </Button>
-          </div>
+          </span>
+        ) : (
+          <span className="flex items-center gap-1 min-w-0">
+            <span className="truncate">{campaignName}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => { setNameDraft(campaignName); setEditingName(true); }}
+              aria-label="Edit campaign name"
+              title="Rename campaign"
+              className="shrink-0 text-muted-foreground hover:text-foreground [&_svg]:size-3.5"
+            >
+              <Pencil />
+            </Button>
+          </span>
         )}
-      </div>
+        badges={
+          <>
+            <Pill shape="sm" className={statusBadge.cls}>{statusBadge.label}</Pill>
+            {sendingHeld && <Pill shape="sm" className={TAG.amber}>Sending held</Pill>}
+            <Pill shape="sm" className={TAG.gray}>{campaign.humanInLoop ? "Human review" : "Auto-send"}</Pill>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {analyticsTotalLeads} lead{analyticsTotalLeads === 1 ? "" : "s"}
+              {campaign.createdAt ? ` · created ${format(new Date(`${campaign.createdAt}T00:00:00`), "d MMM yyyy")}` : ""}
+            </span>
+          </>
+        }
+      />
 
       {/* Drafts stalling on a dead API key is felt HERE first — an employee
           watching their own campaign sit at "No draft" is the person most
           likely to notice and the least able to explain it. The banner renders
           nothing when healthy, so empty:hidden collapses the spacing away. */}
-      <div className="shrink-0 px-6 pt-4 empty:hidden">
+      <div className="shrink-0 px-6 pt-2 empty:hidden">
         <ServiceHealthBanner />
       </div>
 
@@ -3468,10 +3508,10 @@ export function CampaignDetail({
           they're written automatically once credits are back. Until then the
           campaign can send what's ready, or give the rest the default email. */}
       {draftingPaused && progress && (
-        <div className="shrink-0 px-6 pt-4">
-          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 flex flex-wrap items-center gap-3">
+        <div className="shrink-0 px-6 pt-2">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex flex-wrap items-center gap-3 dark:border-amber-500/30 dark:bg-amber-500/10">
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Drafting paused: the AI is out of credits</p>
+              <p className="text-[13px] font-semibold text-amber-800 dark:text-amber-300">Drafting paused: the AI is out of credits</p>
               <p className="text-xs text-foreground">
                 {progress.total - progress.pending} of {progress.total} emails written. The other {progress.pending} are written automatically within a minute of the credits being topped up.
               </p>
@@ -3482,19 +3522,19 @@ export function CampaignDetail({
               </Button>
             )}
             <Button size="sm" variant="outline" disabled={usingDefault} onClick={() => void handleUseDefault()}>
-              {usingDefault ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : null}
+              {usingDefault ? <Loader2 className="animate-spin" /> : null}
               Use default email for the other {progress.pending}
             </Button>
           </div>
         </div>
       )}
 
-      {/* ── Section tabs — horizontal, directly under the campaign name ── */}
-      <div className="shrink-0 border-b border-border px-6 pt-5 pb-3">
+      {/* ── Section tabs — Attio underline tabs under the record header ── */}
+      <div className="shrink-0 px-6">
         <SegmentedTabs
+          variant="underline"
           value={viewTab}
           onValueChange={setViewTab}
-          size="lg"
           options={campaignTabs}
         />
       </div>
@@ -3506,16 +3546,16 @@ export function CampaignDetail({
       {viewTab === "analytics" && (
         <div className="flex flex-col flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
           {progress && progress.failed > 0 && (
-            <div className="px-6 pt-3 pb-2 flex items-center justify-end gap-2">
+            <div className="px-6 pt-4 flex items-center justify-end gap-2">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="gap-1.5 border-red-500/30 text-red-400 hover:text-red-300"
+                className="text-destructive hover:text-destructive"
                 disabled={retryingAll}
                 onClick={() => void handleRetryAllFailed()}
               >
-                {retryingAll ? <Loader2 className="size-3 animate-spin" /> : <RotateCcw className="size-3" />}
+                {retryingAll ? <Loader2 className="animate-spin" /> : <RotateCcw />}
                 Retry ({progress.failed})
               </Button>
             </div>
@@ -3523,29 +3563,30 @@ export function CampaignDetail({
 
           {
             /* ── Analytics view ── */
-            <div className="px-6 pb-4 flex flex-col gap-3 flex-1 min-h-0">
+            <div className="px-6 pt-4 pb-6 flex flex-col gap-3 flex-1 min-h-0">
               {/* Stat cards */}
-              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2">
                 {[
-                  { label: "Leads",      value: analyticsTotalLeads, icon: Users,          accent: "" },
+                  { label: "Leads",      value: analyticsTotalLeads, accent: "" },
                   // Sent (delivered total) splits into exactly one of No reply
                   // yet / Replied / Bounced — those three always sum back to
                   // Sent, so nothing is double-counted or hidden inside another
                   // tile the way the old "Sent = delivered minus everything
                   // else" framing did.
-                  { label: "Sent",         value: analyticsDelivered, icon: Send,          accent: "", sub: "reached an inbox" },
-                  { label: "No reply yet", value: analyticsSent,      icon: Clock,          accent: "", sub: "delivered, nothing back yet" },
-                  { label: "Replied",      value: analyticsReplied,   icon: MessageSquare, accent: "", sub: `${analyticsReplyRate}% reply rate` },
-                  { label: "Bounced",      value: analyticsBounced,   icon: AlertTriangle, accent: "red" },
-                  { label: "Certified",  value: report?.totals.certified ?? 0, icon: CheckCircle2, accent: "", sub: report ? `${report.rates.certifyRate}% of drafts` : undefined },
-                  { label: "Hot",        value: analyticsHot,        icon: Flame,          accent: "red" },
-                  { label: "Cold",       value: analyticsCold,       icon: Snowflake,      accent: "sky" },
-                ].map(({ label, value, icon: Icon, accent, sub }) => (
+                  { label: "Sent",         value: analyticsDelivered, accent: "", sub: "reached an inbox" },
+                  { label: "No reply yet", value: analyticsSent,      accent: "", sub: "delivered, nothing back yet" },
+                  { label: "Replied",      value: analyticsReplied,   accent: "", sub: `${analyticsReplyRate}% reply rate` },
+                  { label: "Bounced",      value: analyticsBounced,   accent: "red" },
+                  { label: "Certified",  value: report?.totals.certified ?? 0, accent: "", sub: report ? `${report.rates.certifyRate}% of drafts` : undefined },
+                  { label: "Hot",        value: analyticsHot,        accent: "red" },
+                  { label: "Cold",       value: analyticsCold,       accent: "sky" },
+                ].map(({ label, value, accent, sub }) => (
+                  // Compact Attio tiles: label, number, one muted line — no
+                  // icon badge, so eight fit on one row at laptop width.
                   <StatTile
                     key={label}
                     label={label}
                     value={value}
-                    icon={Icon}
                     sub={sub}
                     tone={accent === "red" ? "red" : accent === "sky" ? "sky" : "neutral"}
                   />
@@ -3557,9 +3598,9 @@ export function CampaignDetail({
                   the data model yet (both are spent at the organization level,
                   before a lead is ever attached to a campaign), so they are
                   deliberately not shown here rather than guessed at. */}
-              <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
+              <div className="rounded-lg border border-border bg-card p-4">
                 <div className="flex items-center gap-1.5">
-                  <p className="eyebrow">Cost</p>
+                  <p className="text-[13px] font-medium text-foreground">Cost</p>
                   {llmCost && (
                     <InfoTooltip
                       text={`AI/model spend only, tracked since ${format(new Date(llmCost.trackingStartedAt), "d MMM yyyy")}. Apollo lead credits and Firecrawl enrichment cost aren't attributed per campaign yet.`}
@@ -3576,15 +3617,15 @@ export function CampaignDetail({
                 ) : (
                   <div className="mt-2 space-y-3">
                     <div className="flex items-end gap-2">
-                      <DollarSign className="size-5 text-primary shrink-0 mb-0.5" />
-                      <p className="font-display text-2xl font-semibold tabular-nums">
+                      <DollarSign className="size-4 text-muted-foreground shrink-0 mb-1" />
+                      <p className="text-xl font-semibold tabular-nums">
                         {formatUsd(llmCost.totalCostUsd)}
                       </p>
                       {!llmCost.hasKnownCost && (
                         <span className="text-xs text-muted-foreground mb-1">— no priced calls yet</span>
                       )}
                       {llmCost.hasKnownCost && llmCost.unknownCostCalls > 0 && (
-                        <span className="text-xs text-amber-600 mb-1">
+                        <span className="text-xs text-amber-700 dark:text-amber-400 mb-1">
                           + {llmCost.unknownCostCalls} call{llmCost.unknownCostCalls === 1 ? "" : "s"} with an unpriced model, not counted
                         </span>
                       )}
@@ -3593,7 +3634,7 @@ export function CampaignDetail({
                     {/* Every dollar as rate × count = subtotal, one row per kind
                         of call, so the total is something you can check by hand
                         rather than a single number you have to take on faith. */}
-                    <div className="rounded-lg border border-border overflow-hidden">
+                    <div className="rounded-md border border-border overflow-hidden">
                       {/* table-fixed + explicit widths: auto layout lets a
                           long model id (e.g. a dated snapshot tag) force the
                           whole table, and with it the Analytics tab, wider
@@ -3602,39 +3643,39 @@ export function CampaignDetail({
                       <Table className="table-fixed">
                         <TableHeader>
                           <TableRow className="hover:bg-transparent">
-                            <TableHead className="h-8 px-3 text-[10px] w-[28%]">Purpose</TableHead>
-                            <TableHead className="h-8 px-3 text-[10px] w-[32%]">Model</TableHead>
-                            <TableHead className="h-8 px-3 text-[10px] text-right w-[13%]">Calls</TableHead>
-                            <TableHead className="h-8 px-3 text-[10px] text-right w-[13%]">Cost / call</TableHead>
-                            <TableHead className="h-8 px-3 text-[10px] text-right w-[14%]">Subtotal</TableHead>
+                            <TableHead className="w-[28%]">Purpose</TableHead>
+                            <TableHead className="w-[32%]">Model</TableHead>
+                            <TableHead className="text-right w-[13%]">Calls</TableHead>
+                            <TableHead className="text-right w-[13%]">Cost / call</TableHead>
+                            <TableHead className="text-right w-[14%]">Subtotal</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {llmCost.purposes.map((p) => (
                             <TableRow key={`${p.purpose}::${p.model}`} className="hover:bg-transparent">
-                              <TableCell className="py-2 px-3 text-xs truncate">{p.label}</TableCell>
-                              <TableCell className="py-2 px-3 text-xs font-mono text-muted-foreground truncate" title={p.model}>
+                              <TableCell className="truncate">{p.label}</TableCell>
+                              <TableCell className="text-muted-foreground truncate" title={p.model}>
                                 {p.model}
                               </TableCell>
-                              <TableCell className="py-2 px-3 text-xs text-right font-mono tabular-nums text-muted-foreground">
+                              <TableCell className="text-right tabular-nums text-muted-foreground">
                                 {p.calls}
                               </TableCell>
-                              <TableCell className="py-2 px-3 text-xs text-right font-mono tabular-nums text-muted-foreground">
+                              <TableCell className="text-right tabular-nums text-muted-foreground">
                                 {p.calls > 0 ? formatUsd(p.costUsd / p.calls) : "—"}
                               </TableCell>
-                              <TableCell className="py-2 px-3 text-xs text-right font-mono tabular-nums font-medium">
-                                {formatUsd(p.costUsd)}{p.hasUnknownCost && <span className="text-amber-600">*</span>}
+                              <TableCell className="text-right tabular-nums font-medium">
+                                {formatUsd(p.costUsd)}{p.hasUnknownCost && <span className="text-amber-700 dark:text-amber-400">*</span>}
                               </TableCell>
                             </TableRow>
                           ))}
-                          <TableRow className="border-t-2 border-border bg-field hover:bg-field dark:bg-card dark:hover:bg-card">
-                            <TableCell className="py-2 px-3 text-xs font-semibold">Total</TableCell>
-                            <TableCell className="py-2 px-3" />
-                            <TableCell className="py-2 px-3 text-xs text-right font-mono tabular-nums font-semibold">
+                          <TableRow className="bg-secondary hover:bg-secondary">
+                            <TableCell className="font-semibold">Total</TableCell>
+                            <TableCell />
+                            <TableCell className="text-right tabular-nums font-semibold">
                               {llmCost.totalCalls}
                             </TableCell>
-                            <TableCell className="py-2 px-3" />
-                            <TableCell className="py-2 px-3 text-xs text-right font-mono tabular-nums font-semibold">
+                            <TableCell />
+                            <TableCell className="text-right tabular-nums font-semibold">
                               {formatUsd(llmCost.totalCostUsd)}
                             </TableCell>
                           </TableRow>
@@ -3662,8 +3703,8 @@ export function CampaignDetail({
                 ) : (
                 <>
                 {/* Pipeline donut + legend */}
-                <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
-                  <p className="eyebrow mb-2">Pipeline</p>
+                <div className="rounded-lg border border-border bg-card p-4">
+                  <p className="text-[13px] font-medium text-foreground mb-2">Pipeline</p>
                   <div className="flex items-center gap-3">
                     <CampaignDonutChart data={pipelineData} />
                     <div className="flex-1 space-y-1.5 min-w-0">
@@ -3673,7 +3714,7 @@ export function CampaignDetail({
                             <span className="size-2 rounded-full shrink-0" style={{ background: s.fill, opacity: s.opacity }} />
                             <span className="truncate">{s.name}</span>
                           </span>
-                          <span className="font-mono font-semibold tabular-nums shrink-0">{s.value}</span>
+                          <span className="font-medium tabular-nums shrink-0 text-foreground">{s.value}</span>
                         </div>
                       ))}
                     </div>
@@ -3681,8 +3722,8 @@ export function CampaignDetail({
                 </div>
 
                 {/* Draft funnel bar chart */}
-                <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
-                  <p className="eyebrow mb-2">Draft funnel</p>
+                <div className="rounded-lg border border-border bg-card p-4">
+                  <p className="text-[13px] font-medium text-foreground mb-2">Draft funnel</p>
                   {report ? (
                     <CampaignBarChart data={funnelData} />
                   ) : (
@@ -3695,8 +3736,8 @@ export function CampaignDetail({
                 </div>
 
                 {/* Lead temperature donut + legend */}
-                <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
-                  <p className="eyebrow mb-2">Lead temperature</p>
+                <div className="rounded-lg border border-border bg-card p-4">
+                  <p className="text-[13px] font-medium text-foreground mb-2">Lead temperature</p>
                   <div className="flex items-center gap-3">
                     <CampaignDonutChart data={tempData} />
                     <div className="flex-1 space-y-1.5 min-w-0">
@@ -3706,7 +3747,7 @@ export function CampaignDetail({
                             <span className="size-2 rounded-full shrink-0" style={{ background: s.fill, opacity: s.opacity }} />
                             <span className="truncate">{s.name}</span>
                           </span>
-                          <span className="font-mono font-semibold tabular-nums shrink-0">{s.value}</span>
+                          <span className="font-medium tabular-nums shrink-0 text-foreground">{s.value}</span>
                         </div>
                       ))}
                     </div>
@@ -3722,17 +3763,17 @@ export function CampaignDetail({
                   last confirmed), so these are honestly "how many still have
                   more sequence ahead of them", not "how many are due today". */}
               {stepDeliveryPct.length > 1 && (
-                <div className="grid grid-cols-3 gap-3">
-                  <StatTile label="Follow-ups sent" value={followupsSentTotal} icon={Send} sub="at least one, all-time" />
-                  <StatTile label="Follow-ups pending" value={followupsDueTotal} icon={Clock} tone={followupsDueTotal > 0 ? "amber" : "neutral"} sub="still have more steps queued" />
-                  <StatTile label="Stopped" value={followupsStoppedTotal} icon={AlertTriangle} sub="replied or bounced — sequence ends" />
+                <div className="grid grid-cols-3 gap-2">
+                  <StatTile label="Follow-ups sent" value={followupsSentTotal} sub="at least one, all-time" />
+                  <StatTile label="Follow-ups pending" value={followupsDueTotal} tone={followupsDueTotal > 0 ? "amber" : "neutral"} sub="still have more steps queued" />
+                  <StatTile label="Stopped" value={followupsStoppedTotal} sub="replied or bounced — sequence ends" />
                 </div>
               )}
 
               {/* Sequence step performance + Replied vs Sent */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                 {!analyticsChartsReady ? (
-                  <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4 lg:col-span-2">
+                  <div className="rounded-lg border border-border bg-card p-4 lg:col-span-2">
                     <Skeleton className="h-3 w-40 mb-3" />
                     <div className="space-y-3">
                       {[100, 80, 60].map((w, i) => (
@@ -3744,15 +3785,15 @@ export function CampaignDetail({
                     </div>
                   </div>
                 ) : stepDeliveryPct.length > 0 && (
-                  <div className="rounded-xl border border-border bg-field dark:bg-card p-4 lg:col-span-2">
+                  <div className="rounded-lg border border-border bg-card p-4 lg:col-span-2">
                     <div className="flex items-center gap-1.5 mb-1">
-                      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Sequence step performance</p>
+                      <p className="text-[13px] font-medium text-foreground">Sequence step performance</p>
                       <InfoTip
                         side="right"
                         text="Each row is one email in this campaign's sequence — Opening email is the initial outreach, Follow-up 1 is the first follow-up, and so on. Sent = actually delivered, confirmed by Instantly's own send webhook (not just handed to Instantly's queue). A bounce still counts as sent — the mail left, the mailbox rejected it — so the red marker sits inside the sent portion, showing how many of that step's sends bounced."
                       />
                     </div>
-                    <p className="text-[10px] text-muted-foreground mb-3">% of leads actually delivered each email in the sequence</p>
+                    <p className="text-xs text-muted-foreground mb-3">% of leads actually delivered each email in the sequence</p>
                     <div className="space-y-3">
                       {stepDeliveryPct.map((s) => (
                         <div key={s.name}>
@@ -3763,10 +3804,10 @@ export function CampaignDetail({
                               {s.bounced > 0 && <span className="ml-1.5 text-destructive">· {s.bounced} bounced</span>}
                             </span>
                           </div>
-                          <div className="h-2.5 rounded-full bg-muted overflow-hidden relative">
+                          <div className="h-2 rounded-full bg-secondary overflow-hidden relative">
                             <div
-                              className="h-full rounded-full transition-all"
-                              style={{ width: `${s.pct}%`, background: "var(--primary)" }}
+                              className="h-full rounded-full bg-primary"
+                              style={{ width: `${s.pct}%` }}
                             />
                             {s.bounced > 0 && s.total > 0 && (
                               <div
@@ -3786,9 +3827,9 @@ export function CampaignDetail({
                 {!analyticsChartsReady ? (
                   <AnalyticsChartSkeleton />
                 ) : (
-                <div className="rounded-xl border border-border bg-field dark:bg-card p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">Replied vs. delivered</p>
-                  <p className="text-[10px] text-muted-foreground mb-2">
+                <div className="rounded-lg border border-border bg-card p-4">
+                  <p className="text-[13px] font-medium text-foreground mb-1">Replied vs. delivered</p>
+                  <p className="text-xs text-muted-foreground mb-2">
                     {analyticsReplyRate}% of delivered emails on this campaign got a reply
                   </p>
                   <CampaignBarChart
@@ -3809,14 +3850,14 @@ export function CampaignDetail({
       {viewTab === "leads" && (
         <div className="flex flex-col flex-1 min-h-0">
           {/* Header row */}
-          <div className="px-6 py-3 border-b border-border shrink-0 flex items-center gap-3 flex-wrap">
+          <div className="px-6 py-1.5 min-h-11 border-b border-border shrink-0 flex items-center gap-2 flex-wrap">
             {/* Search */}
             <SearchInput
               value={leadsSearch}
               onChange={setLeadsSearch}
               placeholder="Search leads…"
               size="sm"
-              wrapperClassName="flex-1 min-w-36 max-w-xs"
+              wrapperClassName="w-60"
             />
 
             {/* Delivery filter — dropdown right next to search, matching the
@@ -3824,10 +3865,10 @@ export function CampaignDetail({
                 out of the picker entirely (not meaningful filters day-to-day);
                 the remaining buckets only show up once they're non-empty. */}
             <Select value={leadsDelivery} onValueChange={(v) => setLeadsDelivery(v)}>
-              <SelectTrigger className="h-8 w-36 gap-2 rounded-md px-3 text-xs shadow-sm">
+              <SelectTrigger className="h-8 w-44">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent align="start" className="min-w-36">
+              <SelectContent align="start" className="min-w-44">
                 <SelectItem value="all">All ({campaignLeads.length})</SelectItem>
                 {(["sending", "sent", "replied", "bounced"] as const)
                   .filter((b) => (deliveryCounts[b] ?? 0) > 0)
@@ -3883,11 +3924,11 @@ export function CampaignDetail({
               <Button
                 size="sm"
                 variant="outline"
-                className="ml-auto border-destructive/40 text-destructive hover:text-destructive"
+                className="ml-auto text-destructive hover:text-destructive"
                 disabled={removing}
                 onClick={() => setRemoveIds(leadsCheckedRemovable)}
               >
-                <UserMinus className="size-3.5 mr-1.5" />
+                <UserMinus />
                 Remove from campaign ({leadsCheckedRemovable.length})
               </Button>
             )}
@@ -3907,7 +3948,7 @@ export function CampaignDetail({
 
           {leadsViewMode === "kanban" ? (
             /* ── Kanban view ── */
-            <div className="flex flex-col flex-1 min-h-0 bg-card">
+            <div className="flex flex-col flex-1 min-h-0">
               <CampaignKanban
                 leads={filteredLeads}
                 selectedId={selectedId}
@@ -3918,34 +3959,32 @@ export function CampaignDetail({
               {error && <p className="text-sm text-destructive px-4 pb-3">{error}</p>}
             </div>
           ) : (
-          /* Table */
-          <div className="flex-1 min-h-0 overflow-y-auto bg-secondary px-6 py-4">
+          /* Table — Attio grid, edge to edge under the toolbar */
+          <div className="flex-1 min-h-0 overflow-y-auto">
               {loading ? (
-                <div className="rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden animate-pulse">
-                  <div className="flex items-center gap-4 px-4 py-3 border-b border-border bg-secondary">
-                    <div className="size-4 rounded bg-secondary" />
-                    <div className="h-3 w-24 bg-secondary rounded" />
-                    <div className="h-3 w-32 bg-secondary rounded" />
-                    <div className="h-3 w-20 bg-secondary rounded ml-auto" />
-                  </div>
-                  {Array.from({ length: 8 }).map((_, i) => (
-                    <div key={i} className="flex items-center gap-4 px-4 py-3.5 border-b border-border last:border-0">
+                <div className="animate-pulse">
+                  {Array.from({ length: 10 }).map((_, i) => (
+                    <div key={i} className="flex h-9 items-center gap-4 px-6 border-b border-border">
                       <div className="size-4 rounded bg-secondary" />
-                      <div className="size-8 rounded-full bg-secondary" />
-                      <div className="h-3.5 w-28 bg-secondary rounded" />
-                      <div className="h-3 w-36 bg-secondary rounded" />
-                      <div className="h-5 w-16 bg-secondary rounded-full ml-auto" />
+                      <div className="size-6 rounded-full bg-secondary" />
+                      <div className="h-3 w-32 bg-secondary rounded" />
+                      <div className="h-3 w-44 bg-secondary rounded" />
+                      <div className="h-4 w-16 bg-secondary rounded ml-auto" />
                     </div>
                   ))}
                 </div>
               ) : filteredLeads.length === 0 ? (
-                <EmptyState message={leadsSearch ? "No leads match your search." : "No leads yet."} />
+                <EmptyState
+                  boxed={false}
+                  icon={Users}
+                  title={leadsSearch ? "No leads found" : "No leads yet"}
+                  message={leadsSearch ? "No leads match your search." : "Leads added to this campaign show up here."}
+                />
               ) : (
-                <div className="block w-full rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-x-auto overflow-y-hidden">
-                <table className="w-full text-sm border-collapse">
-                  <thead className="sticky top-0 z-10 bg-secondary backdrop-blur-sm">
-                    <tr className="border-b border-border">
-                      <th className="w-10 pl-4 pr-2 py-2.5 border-r border-border">
+                <Table className="border-b border-border">
+                  <TableHeader className="sticky top-0 z-10 bg-background">
+                    <TableRow>
+                      <TableHead className="w-10 pl-6 pr-2">
                         {(() => {
                           const removable = filteredLeads.filter(isRemovableLead);
                           const all = removable.length > 0 && removable.every((cl) => leadsCheckedIds.has(cl.id));
@@ -3955,32 +3994,35 @@ export function CampaignDetail({
                               aria-label={all ? "Untick all" : "Tick all leads that can be removed"}
                               disabled={removable.length === 0}
                               onClick={() => setLeadsCheckedIds(all ? new Set() : new Set(removable.map((cl) => cl.id)))}
+                              className="flex items-center"
                             >
                               <AppCheckbox checked={all} disabled={removable.length === 0} />
                             </button>
                           );
                         })()}
-                      </th>
-                      <th className="w-8 px-6 py-2.5 text-left eyebrow border-r border-border">#</th>
-                      <th className="px-6 py-2.5 text-left eyebrow border-r border-border">Name</th>
-                      <th className="px-6 py-2.5 text-left eyebrow border-r border-border">Email</th>
-                      <th className="px-6 py-2.5 text-left eyebrow border-r border-border">Job Title</th>
-                      <th className="px-6 py-2.5 text-left eyebrow border-r border-border">Status</th>
-                      <th className="px-6 py-2.5 text-left eyebrow">Company</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
+                      </TableHead>
+                      <TableHead className="w-12 text-right">#</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Job title</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Company</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {filteredLeads.map((cl, index) => {
                       const lead = cl.leads;
                       const name = [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") || "Unknown";
                       return (
-                        <tr
+                        <TableRow
                           key={cl.id}
                           onClick={() => handleOpenInOutbox(cl.id)}
-                          className="group cursor-pointer transition-colors hover:bg-secondary"
+                          onMouseEnter={() => prefetchLead(cl.lead_id)}
+                          data-state={leadsCheckedIds.has(cl.id) ? "selected" : undefined}
+                          className="group cursor-pointer"
                         >
-                          <td
-                            className="w-10 pl-4 pr-2 py-3 border-r border-border"
+                          <TableCell
+                            className="w-10 pl-6 pr-2"
                             title={isRemovableLead(cl) ? undefined : "Already sent. Can't be removed."}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -3993,21 +4035,21 @@ export function CampaignDetail({
                             }}
                           >
                             <AppCheckbox checked={leadsCheckedIds.has(cl.id)} disabled={!isRemovableLead(cl)} />
-                          </td>
-                          <td className="w-8 px-6 py-3 font-mono text-xs text-muted-foreground tabular-nums border-r border-border">{index + 1}</td>
-                          <td className="px-6 py-3 border-r border-border">
+                          </TableCell>
+                          <TableCell className="w-12 text-right text-xs text-muted-foreground tabular-nums">{index + 1}</TableCell>
+                          <TableCell>
                             <div className="flex items-center gap-2">
                               <Avatar name={name} size="sm" />
-                              <span className="font-medium truncate max-w-[140px]">{name}</span>
+                              <span className="font-medium truncate max-w-[160px]">{name}</span>
                             </div>
-                          </td>
-                          <td className="px-6 py-3 font-mono text-xs text-muted-foreground border-r border-border">
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
                             <span className="whitespace-nowrap">{lead?.email}</span>
-                          </td>
-                          <td className="px-6 py-3 text-xs text-muted-foreground border-r border-border">
-                            <span className="truncate block max-w-[120px]">{lead?.title}</span>
-                          </td>
-                          <td className="px-6 py-3 border-r border-border">
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            <span className="truncate block max-w-[160px]">{lead?.title}</span>
+                          </TableCell>
+                          <TableCell>
                             <div className="flex flex-wrap gap-1">
                               {(() => {
                                 const activity = getDraftActivity(cl);
@@ -4018,20 +4060,20 @@ export function CampaignDetail({
                                 // outranks the stored status, which is still the
                                 // superseded version until the new one lands.
                                 if (activity) {
-                                  pills.push({ label: `${DRAFT_ACTIVITY_LABEL[activity]}…`, cls: "bg-blue-500/15 text-blue-500 border border-blue-500/30" });
+                                  pills.push({ label: `${DRAFT_ACTIVITY_LABEL[activity]}…`, cls: TAG.blue });
                                 } else if (ds === "draft") {
-                                  pills.push({ label: "Draft", cls: "bg-amber-500/15 text-amber-600 border border-amber-500/30" });
+                                  pills.push({ label: "Draft", cls: TAG.amber });
                                 } else if (ds === "generating") {
-                                  pills.push({ label: "Generating…", cls: "bg-blue-500/15 text-blue-500 border border-blue-500/30" });
+                                  pills.push({ label: "Generating…", cls: TAG.blue });
                                 } else if (ds === "failed") {
-                                  pills.push({ label: "Failed", cls: "bg-red-500/15 text-red-500 border border-red-500/30" });
+                                  pills.push({ label: "Failed", cls: TAG.red });
                                 } else if (ds === "approved") {
-                                  pills.push({ label: "Certified", cls: "bg-primary/15 text-primary border border-primary/30" });
+                                  pills.push({ label: "Certified", cls: TAG.primary });
                                 }
                                 if (!activity && isAiFailedDefault(cl)) {
-                                  pills.push({ label: "AI failed", cls: "bg-red-500/15 text-red-500 border border-red-500/30" });
+                                  pills.push({ label: "AI failed", cls: TAG.red });
                                 } else if (!activity && isDefaultEmail(cl) && ds !== "sent") {
-                                  pills.push({ label: "Default email", cls: "bg-muted text-muted-foreground border border-border" });
+                                  pills.push({ label: "Default email", cls: TAG.gray });
                                 }
 
                                 // Delivery pill — exactly one, straight off the shared
@@ -4045,11 +4087,11 @@ export function CampaignDetail({
 
                                 // Fallback if nothing matched
                                 if (pills.length === 0) {
-                                  pills.push({ label: waitingLabel, cls: "bg-muted text-muted-foreground border border-border" });
+                                  pills.push({ label: waitingLabel, cls: TAG.gray });
                                 }
 
                                 return pills.map(({ label, cls }) => (
-                                  <span key={label} className={cn("inline-flex items-center px-2 py-0.5 rounded-md font-mono text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap", cls)}>
+                                  <span key={label} className={cn(CHIP, cls)}>
                                     {label}
                                   </span>
                                 ));
@@ -4062,7 +4104,7 @@ export function CampaignDetail({
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); openOriginalOf(cl); }}
                                   title={`${replacesTooltip(cl)} — open them`}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-secondary border border-border font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                                  className={cn(CHIP, TAG.gray, "transition-colors hover:text-foreground")}
                                 >
                                   <CornerDownRight className="size-3" />
                                   Replacement
@@ -4078,7 +4120,7 @@ export function CampaignDetail({
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); openReplacementOf(cl); }}
                                     title={`${replacedTooltip(cl)} — open them`}
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-500/15 border border-green-500/30 font-mono text-[10px] font-semibold uppercase tracking-wide text-green-600 transition-colors hover:bg-green-500/25"
+                                    className={cn(CHIP, TAG.green, "transition-colors hover:opacity-80")}
                                   >
                                     <Check className="size-3" />
                                     Replaced
@@ -4087,7 +4129,7 @@ export function CampaignDetail({
                                   <button
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); openReplace(cl); }}
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-border bg-field font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                                    className={cn(CHIP, "border-border bg-field text-muted-foreground transition-colors hover:bg-hover hover:text-foreground")}
                                     title="Add another contact at this company"
                                   >
                                     <UserPlus className="size-3" />
@@ -4096,16 +4138,15 @@ export function CampaignDetail({
                                 )
                               )}
                             </div>
-                          </td>
-                          <td className="px-6 py-3 text-xs text-muted-foreground">
-                            <span className="truncate block max-w-[120px]">{lead?.company_name}</span>
-                          </td>
-                        </tr>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            <span className="truncate block max-w-[160px]">{lead?.company_name}</span>
+                          </TableCell>
+                        </TableRow>
                       );
                     })}
-                  </tbody>
-                </table>
-                </div>
+                  </TableBody>
+                </Table>
               )}
           </div>
           )}
@@ -4116,51 +4157,51 @@ export function CampaignDetail({
       {viewTab === "outbox" && (
         <div className="flex flex-1 min-h-0">
           {/* Left: unified lead list */}
-          <div className="w-[266px] h-full shrink-0 border-r border-border flex flex-col">
+          <div className="w-[280px] h-full shrink-0 border-r border-border flex flex-col bg-card">
             {/* Header */}
             <div className="border-b border-border shrink-0">
               <div className="px-3 pt-2 flex flex-wrap items-center gap-1.5">
                 <Select value={outboxFilter} onValueChange={(v) => setOutboxFilter(v as typeof outboxFilter)}>
-                  <SelectTrigger className="h-7 basis-full min-w-0 gap-1.5 rounded-md border-border px-2 py-0 text-[11px] font-medium text-foreground [&>svg]:size-3 [&>svg]:opacity-70">
+                  <SelectTrigger className="h-8 basis-full min-w-0">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {OUTBOX_FILTERS.map(({ id, label }) => (
-                      <SelectItem key={id} value={id} className="text-[11px]">
+                      <SelectItem key={id} value={id}>
                         {label} ({outboxFilterCounts[id]})
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <Select value={leadsSort} onValueChange={(v) => setLeadsSort(v as CampaignLeadsSort)}>
-                  <SelectTrigger className="h-7 w-auto shrink-0 ml-auto gap-1.5 rounded-md border-border px-2 py-0 text-[11px] font-medium text-foreground [&>svg]:size-3 [&>svg]:opacity-70">
+                  <SelectTrigger className="h-7 w-auto shrink-0 mr-auto text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="az" className="text-[11px]">A–Z</SelectItem>
-                    <SelectItem value="newest" className="text-[11px]">Newest</SelectItem>
+                    <SelectItem value="az">A–Z</SelectItem>
+                    <SelectItem value="newest">Newest</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button
                   type="button"
                   variant="outline"
-                  size="icon"
+                  size="icon-sm"
                   disabled={syncingReplies}
                   title="Sync replies"
                   onClick={() => void runSyncReplies()}
-                  className="size-7 shrink-0 bg-field hover:bg-field text-muted-foreground hover:text-primary disabled:opacity-50"
+                  className="shrink-0 text-muted-foreground hover:text-foreground [&_svg]:size-3.5"
                 >
-                  <RefreshCw className={cn("size-3", syncingReplies && "animate-spin")} />
+                  <RefreshCw className={cn(syncingReplies && "animate-spin")} />
                 </Button>
                 <Button
                   asChild
                   variant="outline"
-                  size="icon"
+                  size="icon-sm"
                   title="Open in Unibox"
-                  className="size-7 shrink-0 bg-field hover:bg-field text-muted-foreground hover:text-primary"
+                  className="shrink-0 text-muted-foreground hover:text-foreground [&_svg]:size-3.5"
                 >
                   <a href={`/unibox?campaign_id=${campaign.id}`}>
-                    <ExternalLink className="size-3" />
+                    <ExternalLink />
                   </a>
                 </Button>
               </div>
@@ -4194,7 +4235,7 @@ export function CampaignDetail({
                           });
                         }
                       }}
-                      className="h-auto p-0 text-[11px] text-muted-foreground hover:text-primary shrink-0"
+                      className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground shrink-0"
                     >
                       {outboxSelectableFilteredLeads.every((cl) => checkedIds.has(cl.id))
                         ? "Deselect all"
@@ -4202,7 +4243,7 @@ export function CampaignDetail({
                     </Button>
                   )}
                   {outboxCheckedCount > 0 && (
-                    <span className="text-[11px] font-medium text-foreground truncate">
+                    <span className="text-xs font-medium text-foreground truncate">
                       {outboxCheckedCount} selected
                     </span>
                   )}
@@ -4216,16 +4257,14 @@ export function CampaignDetail({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-7 shrink-0 gap-1 px-2 text-[11px]"
+                      className="shrink-0 px-2 text-xs [&_svg]:size-3"
                       disabled={bulkRegenOpening || regenJobActive}
                       title={regenJobActive
                         ? "A regeneration is already running for this campaign"
                         : "Regenerate the selected drafts"}
                       onClick={() => void openBulkRegenerate(outboxCheckedRegenIds)}
                     >
-                      {bulkRegenOpening
-                        ? <Loader2 className="size-3 animate-spin" />
-                        : <RotateCcw className="size-3" />}
+                      {bulkRegenOpening ? <Loader2 className="animate-spin" /> : <RotateCcw />}
                       Regenerate ({outboxCheckedRegenIds.length})
                     </Button>
                   )}
@@ -4234,12 +4273,12 @@ export function CampaignDetail({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-7 shrink-0 px-2 text-[11px] border-destructive/40 text-destructive hover:text-destructive"
+                      className="shrink-0 px-2 text-xs text-destructive hover:text-destructive [&_svg]:size-3"
                       disabled={removing}
                       title="Take the ticked leads out of this campaign"
                       onClick={() => setRemoveIds(outboxCheckedRemovableIds)}
                     >
-                      <UserMinus className="size-3" />
+                      <UserMinus />
                       Remove ({outboxCheckedRemovableIds.length})
                     </Button>
                   )}
@@ -4248,12 +4287,12 @@ export function CampaignDetail({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-7 shrink-0 px-2 text-[11px]"
+                      className="shrink-0 px-2 text-xs [&_svg]:size-3"
                       disabled={certifying || regenJobActive}
                       title={regenJobActive ? "A regeneration is running — certifying is paused until it finishes" : undefined}
                       onClick={() => void handleBulkCertify(outboxCertifyDraftIds)}
                     >
-                      {certifying ? <Loader2 className="size-3 animate-spin mr-1" /> : null}
+                      {certifying ? <Loader2 className="animate-spin" /> : null}
                       Certify ({outboxCertifyDraftIds.length})
                     </Button>
                   )}
@@ -4262,14 +4301,14 @@ export function CampaignDetail({
               {regenJobActive && regenJob && (
                 <div className="px-3 pb-2.5 pt-0.5 space-y-1.5">
                   <div className="flex items-baseline justify-between gap-2">
-                    <p className="eyebrow truncate">Regenerating drafts</p>
-                    <p className="font-mono tabular-nums text-[11px] text-muted-foreground shrink-0">
+                    <p className="text-xs font-medium text-foreground truncate">Regenerating drafts</p>
+                    <p className="tabular-nums text-xs text-muted-foreground shrink-0">
                       {regenJob.processed} / {regenJob.total}
                     </p>
                   </div>
                   <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
                     <div
-                      className="h-full rounded-full bg-primary transition-all duration-500"
+                      className="h-full rounded-full bg-primary"
                       style={{ width: `${regenJob.total > 0 ? Math.round((regenJob.processed / regenJob.total) * 100) : 0}%` }}
                     />
                   </div>
@@ -4294,7 +4333,7 @@ export function CampaignDetail({
                 </div>
               )}
             </div>
-            <div className="flex-1 overflow-y-auto space-y-1.5 p-2">
+            <div className="flex-1 overflow-y-auto">
               {outboxFilteredLeads.length === 0 ? (
                 <p className="p-6 text-sm text-muted-foreground text-center">
                   {campaignLeads.length === 0 ? "No leads yet." : "No leads match this filter."}
@@ -4310,60 +4349,52 @@ export function CampaignDetail({
                   const latestMsg = thread.messages[thread.messages.length - 1];
                   const replyDraftStatus = latestMsg?.reply_drafts[latestMsg.reply_drafts.length - 1]?.status;
                   const statusConfig: Record<string, { label: string; cls: string }> = {
-                    generating: { label: "Generating", cls: "bg-yellow-500/15 text-yellow-500 border-yellow-500/25" },
-                    draft:      { label: "Draft",       cls: "bg-primary/15 text-primary border-primary/25" },
-                    approved:   { label: "Certified",   cls: "bg-green-500/15 text-green-500 border-green-500/25" },
-                    sent:       { label: "Sent",        cls: "bg-muted text-muted-foreground border-border" },
-                    failed:     { label: "Failed",      cls: "bg-destructive/15 text-destructive border-destructive/25" },
+                    generating: { label: "Generating", cls: TAG.amber },
+                    draft:      { label: "Draft",       cls: TAG.primary },
+                    approved:   { label: "Certified",   cls: TAG.green },
+                    sent:       { label: "Sent",        cls: TAG.gray },
+                    failed:     { label: "Failed",      cls: TAG.red },
                   };
                   const sc = replyDraftStatus ? statusConfig[replyDraftStatus] : null;
                   return (
-                    <Button
+                    <button
                       key={cl.id}
                       type="button"
-                      variant="ghost"
                       onClick={() => setSelectedId(cl.id)}
+                      onMouseEnter={() => prefetchLead(cl.lead_id)}
                       className={cn(
-                        "h-auto w-full block justify-start text-left font-normal rounded-lg border px-3 py-2.5",
-                        isActive ? "border-primary bg-primary/8 hover:bg-primary/8" : "border-border bg-field hover:bg-field hover:border-muted-foreground/40",
+                        "flex w-full items-center gap-2 border-b border-border px-3 py-2 text-left transition-colors",
+                        isActive ? "bg-primary/5" : "hover:bg-hover",
                       )}
                     >
-                      <div className="flex items-center gap-2">
-                        <Avatar name={name} size="sm" />
-                        <div className="flex-1 min-w-0">
-                          <p className={cn("text-xs font-medium truncate", isActive ? "text-primary" : "text-foreground")}>{name}</p>
-                          <div className="mt-0.5 flex items-center gap-1 flex-wrap">
-                            <span className="inline-flex px-1.5 py-0.5 rounded border text-[10px] font-semibold bg-blue-500/15 text-blue-600 border-blue-500/25">
-                              Reply received
-                            </span>
-                            {sc && (
-                              <span className={cn("inline-flex px-1.5 py-0.5 rounded border text-[10px] font-semibold", sc.cls)}>
-                                {sc.label}
-                              </span>
-                            )}
-                          </div>
+                      <Avatar name={name} size="sm" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-medium truncate text-foreground">{name}</p>
+                        <div className="mt-1 flex items-center gap-1 flex-wrap">
+                          <span className={cn(CHIP, TAG.blue)}>Reply received</span>
+                          {sc && <span className={cn(CHIP, sc.cls)}>{sc.label}</span>}
                         </div>
-                        {thread.messages.length > 1 && (
-                          <span className="text-[10px] text-muted-foreground/70 shrink-0">({thread.messages.length})</span>
-                        )}
                       </div>
-                    </Button>
+                      {thread.messages.length > 1 && (
+                        <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">{thread.messages.length}</span>
+                      )}
+                    </button>
                   );
                 }
 
                 const activity = getDraftActivity(cl);
                 const status = cl.email_drafts?.status ?? "none";
                 const delivery = deliveryBucket(cl);
-                const inFlightCls = "bg-yellow-500/15 text-yellow-500 border-yellow-500/25";
+                const inFlightCls = TAG.amber;
                 const statusConfig: Record<string, { label: string; cls: string }> = {
                   generating: { label: "Generating", cls: inFlightCls },
-                  draft:      { label: "Draft",       cls: "bg-primary/15 text-primary border-primary/25" },
-                  approved:   { label: "Certified",   cls: "bg-green-500/15 text-green-500 border-green-500/25" },
-                  sent:       { label: "Sent",        cls: "bg-muted text-muted-foreground border-border" },
-                  failed:     { label: "Failed",      cls: "bg-destructive/15 text-destructive border-destructive/25" },
+                  draft:      { label: "Draft",       cls: TAG.primary },
+                  approved:   { label: "Certified",   cls: TAG.green },
+                  sent:       { label: "Sent",        cls: TAG.gray },
+                  failed:     { label: "Failed",      cls: TAG.red },
                   none:       {
                     label: waitingLabel,
-                    cls: "bg-muted text-muted-foreground border-border",
+                    cls: TAG.gray,
                   },
                 };
                 // An in-flight row wins over whatever draft_id still resolves to:
@@ -4384,14 +4415,15 @@ export function CampaignDetail({
                   <div
                     key={cl.id}
                     className={cn(
-                      "flex items-center cursor-pointer rounded-lg border transition-colors",
-                      isActive ? "border-primary bg-primary/10" : "border-border bg-field hover:bg-field hover:border-muted-foreground/40",
+                      "flex items-center cursor-pointer border-b border-border transition-colors",
+                      isActive ? "bg-primary/5" : "hover:bg-hover",
                     )}
                     onClick={() => setSelectedId(cl.id)}
+                    onMouseEnter={() => prefetchLead(cl.lead_id)}
                   >
                     {showCheckbox && (
                       <div
-                        className="w-9 shrink-0 py-2.5 pl-2.5 flex items-center"
+                        className="w-9 shrink-0 py-2 pl-3 flex items-center"
                         onClick={(e) => {
                           e.stopPropagation();
                           if (!canCheck) return;
@@ -4408,17 +4440,17 @@ export function CampaignDetail({
                         />
                       </div>
                     )}
-                    <div className={cn("flex items-center gap-2 flex-1 min-w-0 py-2.5 pr-3", showCheckbox ? "pl-1" : "pl-3")}>
+                    <div className={cn("flex items-center gap-2 flex-1 min-w-0 py-2 pr-3", showCheckbox ? "pl-1" : "pl-3")}>
                       <Avatar name={name} size="sm" />
                       <div className="flex-1 min-w-0">
-                        <p className={cn("text-xs font-medium truncate", isActive ? "text-primary" : "text-foreground")}>{name}</p>
-                        <span className="mt-0.5 flex flex-wrap items-center gap-1">
-                          <span className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold", sc.cls)}>
+                        <p className="text-[13px] font-medium truncate text-foreground">{name}</p>
+                        <span className="mt-1 flex flex-wrap items-center gap-1">
+                          <span className={cn(CHIP, sc.cls)}>
                             {activity && <Loader2 className="size-2.5 animate-spin" />}
                             {sc.label}
                           </span>
                           {!activity && isAiFailedDefault(cl) && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-semibold bg-destructive/15 text-destructive border-destructive/25">
+                            <span className={cn(CHIP, TAG.red)}>
                               AI failed
                             </span>
                           )}
@@ -4428,14 +4460,14 @@ export function CampaignDetail({
                         <Button
                           type="button"
                           variant="outline"
-                          size="icon"
+                          size="icon-sm"
                           title="Try AI again for this lead"
                           aria-label="Try AI again for this lead"
                           disabled={retryingId === cl.id}
-                          className="size-6 shrink-0 border-destructive/40 text-destructive hover:text-destructive"
+                          className="size-6 shrink-0 text-destructive hover:text-destructive [&_svg]:size-3"
                           onClick={(e) => { e.stopPropagation(); void handleRetryOne(cl.email_drafts!.id, cl.id); }}
                         >
-                          {retryingId === cl.id ? <Loader2 className="size-3 animate-spin" /> : <RotateCcw className="size-3" />}
+                          {retryingId === cl.id ? <Loader2 className="animate-spin" /> : <RotateCcw />}
                         </Button>
                       )}
                     </div>
@@ -4446,16 +4478,19 @@ export function CampaignDetail({
           </div>
 
           {/* Right: unified thread view */}
-          <div className="flex-1 overflow-y-auto bg-secondary">
+          <div className="flex-1 overflow-y-auto bg-background">
             {!selected ? (
-              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-                Select a lead to view their outbox
-              </div>
+              <EmptyState
+                boxed={false}
+                icon={Send}
+                className="h-full"
+                message="Select a lead to view their outbox"
+              />
             ) : (
               <div className="w-full max-w-[1400px] mx-auto p-6 space-y-4">
                 {/* Lead + org cards — half width each; click opens Lead / Org drawers */}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-field px-4 py-3 shadow-sm transition-colors hover:border-primary/40 hover:bg-field">
+                  <div className="flex w-full items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:bg-hover" onMouseEnter={() => prefetchLead(selected.lead_id)}>
                     <button
                       type="button"
                       onClick={() => setDrawerLead(campaignLeadToDrawerLead(selected))}
@@ -4472,21 +4507,21 @@ export function CampaignDetail({
                         className="block w-full min-w-0 text-left rounded-sm"
                         title="Open lead details"
                       >
-                        <p className="eyebrow text-muted-foreground">Lead</p>
-                        <p className="font-display text-sm font-semibold text-foreground truncate">
+                        <p className="text-xs text-muted-foreground">Lead</p>
+                        <p className="text-sm font-semibold text-foreground truncate">
                           {[selected.leads?.first_name, selected.leads?.last_name].filter(Boolean).join(" ") || "Unknown"}
                         </p>
                       </button>
                       {selected.leads?.email ? (
                         <a
                           href={`mailto:${selected.leads.email}`}
-                          className="font-mono text-xs text-blue-500 hover:text-blue-600 hover:underline truncate block max-w-full"
+                          className="text-xs text-primary hover:underline truncate block max-w-full"
                           title={`Email ${selected.leads.email}`}
                         >
                           {selected.leads.email}
                         </a>
                       ) : (
-                        <p className="font-mono text-xs text-muted-foreground truncate">No email</p>
+                        <p className="text-xs text-muted-foreground truncate">No email</p>
                       )}
                       {selected.leads?.title && (
                         <p className="text-xs text-muted-foreground truncate">{selected.leads.title}</p>
@@ -4508,7 +4543,7 @@ export function CampaignDetail({
                         const temp = selectedThread.latest_temperature ?? "neutral";
                         const badge = TEMP_BADGE[temp] ?? TEMP_BADGE.neutral;
                         return (
-                          <span className={cn("font-mono text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded-md border inline-flex items-center gap-1", badge.cls)}>
+                          <span className={cn(CHIP, badge.cls)}>
                             {badge.icon}{badge.label}
                           </span>
                         );
@@ -4517,9 +4552,9 @@ export function CampaignDetail({
                     {selected.leads?.replaces_lead_id && (
                       <span
                         title={replacesTooltip(selected)}
-                        className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary border border-border font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                        className={cn(CHIP, TAG.gray, "shrink-0")}
                       >
-                        <UserPlus className="size-3.5" />
+                        <UserPlus className="size-3" />
                         Replacement
                       </span>
                     )}
@@ -4534,9 +4569,9 @@ export function CampaignDetail({
                             if (r) handleOpenInOutbox(r.id);
                           }}
                           title={`${replacedTooltip(selected)} — open them`}
-                          className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-500/15 border border-green-500/30 font-mono text-[10px] font-semibold uppercase tracking-wider text-green-600 transition-colors hover:bg-green-500/25"
+                          className={cn(CHIP, TAG.green, "shrink-0 transition-colors hover:opacity-80")}
                         >
-                          <Check className="size-3.5" />
+                          <Check className="size-3" />
                           Replaced
                         </button>
                       ) : (
@@ -4564,11 +4599,11 @@ export function CampaignDetail({
                       const websiteLabel = websiteRaw.replace(/^https?:\/\//i, "").replace(/\/$/, "") || null;
                       const location = [org.company_city, org.company_country].filter(Boolean).join(", ");
                       return (
-                        <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-field px-4 py-3 shadow-sm transition-colors hover:border-primary/40 hover:bg-field">
+                        <div className="flex w-full items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:bg-hover" onMouseEnter={() => prefetchOrg(org.org_id!)}>
                           <button
                             type="button"
                             onClick={() => setDrawerOrgId(org.org_id!)}
-                            className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground"
+                            className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-field text-muted-foreground"
                             title="Open organization details"
                             aria-label="Open organization details"
                           >
@@ -4581,8 +4616,8 @@ export function CampaignDetail({
                               className="block w-full min-w-0 text-left rounded-sm"
                               title="Open organization details"
                             >
-                              <p className="eyebrow text-muted-foreground">Organization</p>
-                              <p className="font-display text-sm font-semibold text-foreground truncate">
+                              <p className="text-xs text-muted-foreground">Organization</p>
+                              <p className="text-sm font-semibold text-foreground truncate">
                                 {org.company_name || "Untitled organization"}
                               </p>
                             </button>
@@ -4591,7 +4626,7 @@ export function CampaignDetail({
                                 href={websiteHref}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="font-mono text-xs text-blue-500 hover:text-blue-600 hover:underline truncate block max-w-full"
+                                className="text-xs text-primary hover:underline truncate block max-w-full"
                                 title={websiteHref}
                               >
                                 {websiteLabel}
@@ -4603,19 +4638,19 @@ export function CampaignDetail({
                                 <span className="truncate">{location}</span>
                               </p>
                             ) : !websiteHref ? (
-                              <p className="font-mono text-xs text-muted-foreground truncate">No website</p>
+                              <p className="text-xs text-muted-foreground truncate">No website</p>
                             ) : null}
                           </div>
                         </div>
                       );
                     })()
                   ) : (
-                    <div className="flex w-full items-center gap-3 rounded-xl border border-dashed border-border bg-field/60 px-4 py-3 text-left shadow-sm">
-                      <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground" aria-hidden>
+                    <div className="flex w-full items-center gap-3 rounded-lg border border-dashed border-border bg-card px-4 py-3 text-left">
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-field text-muted-foreground" aria-hidden>
                         <Building2 className="size-4" />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="eyebrow text-muted-foreground">Organization</p>
+                        <p className="text-xs text-muted-foreground">Organization</p>
                         <p className="text-sm text-muted-foreground italic">
                           {selected.leads?.company_name || "No organization linked"}
                         </p>
@@ -4626,8 +4661,8 @@ export function CampaignDetail({
 
                 {isDefaultEmail(selected) && selected.email_drafts?.fallback_reason && selected.email_drafts.status !== "sent" && (
                   isAiFailedDefault(selected) ? (
-                    <div className="rounded-xl border border-destructive/35 bg-destructive/10 px-4 py-3 space-y-2">
-                      <p className="text-sm font-semibold text-destructive">AI couldn&apos;t write this one, so the default email is used</p>
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 space-y-2 dark:border-red-500/30 dark:bg-red-500/10">
+                      <p className="text-[13px] font-semibold text-red-800 dark:text-red-300">AI couldn&apos;t write this one, so the default email is used</p>
                       <p className="text-xs text-foreground">{aiFailedReason(selected)} Nothing has been sent. Check the email below, or ask the AI again.</p>
                       <div className="flex flex-wrap gap-2">
                         <Button
@@ -4640,7 +4675,7 @@ export function CampaignDetail({
                           Try AI again
                         </Button>
                         {isRemovableLead(selected) && (
-                          <Button size="sm" variant="outline" className="gap-1.5 border-destructive/40 text-destructive hover:text-destructive" onClick={() => setRemoveIds([selected.id])}>
+                          <Button size="sm" variant="outline" className="gap-1.5 text-destructive hover:text-destructive" onClick={() => setRemoveIds([selected.id])}>
                             <UserMinus className="size-3.5" />
                             Remove from campaign
                           </Button>
@@ -4648,8 +4683,8 @@ export function CampaignDetail({
                       </div>
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
-                      <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Default email</p>
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+                      <p className="text-[13px] font-semibold text-amber-800 dark:text-amber-300">Default email</p>
                       <p className="text-xs text-foreground">{aiFailedReason(selected)} Check it before certifying.</p>
                     </div>
                   )
@@ -4660,7 +4695,7 @@ export function CampaignDetail({
                     running campaign with no explanation. */}
                 {selectedOriginal && (
                   <div className="max-w-2xl mx-auto w-full flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground">
-                    <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-foreground/70">
+                    <span className="font-medium text-foreground">
                       Replacement for
                     </span>
                     <button
@@ -4671,7 +4706,7 @@ export function CampaignDetail({
                       {[selectedOriginal.leads?.first_name, selectedOriginal.leads?.last_name].filter(Boolean).join(" ") || "the bounced contact"}
                     </button>
                     {selectedOriginal.leads?.email && (
-                      <span className="font-mono text-[11px] line-through opacity-70">{selectedOriginal.leads.email}</span>
+                      <span className="line-through opacity-70">{selectedOriginal.leads.email}</span>
                     )}
                     <span>
                       bounced{selectedOriginal.bounced_at ? ` ${format(new Date(selectedOriginal.bounced_at), "d MMM")}` : ""}
@@ -4682,12 +4717,12 @@ export function CampaignDetail({
                 {/* The handoff: what a replaced bounce shows instead of a dead
                     thread. What happened, who covers it now, who decided that. */}
                 {isReplacedBounce && !bouncedThreadOpen && (
-                  <div className="max-w-2xl mx-auto w-full rounded-xl border border-border bg-card p-6 flex flex-col items-center gap-4 text-center">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-red-500/15 border border-red-500/30 font-mono text-[10px] font-semibold uppercase tracking-wide text-red-500">
+                  <div className="max-w-2xl mx-auto w-full rounded-lg border border-border bg-card p-6 flex flex-col items-center gap-4 text-center">
+                    <span className={cn(CHIP, TAG.red)}>
                       Bounced{selected.bounced_at ? ` ${format(new Date(selected.bounced_at), "d MMM yyyy")}` : ""}
                     </span>
                     <div className="space-y-1.5">
-                      <p className="font-display text-sm font-semibold text-foreground">This mailbox rejected our email.</p>
+                      <p className="text-sm font-semibold text-foreground">This mailbox rejected our email.</p>
                       <p className="text-xs text-muted-foreground max-w-sm mx-auto">
                         The message was never read, so there is nothing here to review or send.
                         {" "}Outreach to {selected.leads?.company_name || "this company"} continues with the contact below.
@@ -4708,7 +4743,7 @@ export function CampaignDetail({
                           <span className="block text-sm font-semibold text-foreground truncate">
                             {[selectedReplacement.leads?.first_name, selectedReplacement.leads?.last_name].filter(Boolean).join(" ") || "Replacement contact"}
                           </span>
-                          <span className="block font-mono text-[11px] text-muted-foreground truncate">
+                          <span className="block text-xs text-muted-foreground truncate">
                             {selectedReplacement.leads?.email}
                           </span>
                         </span>
@@ -4756,7 +4791,7 @@ export function CampaignDetail({
                 {/* Initial email — editor while pending, bubble once sent */}
                 {(!isReplacedBounce || bouncedThreadOpen) && (<>
                 {selected.email_drafts?.status === "generating" || regenerating || getDraftActivity(selected) ? (
-                  <div className="max-w-2xl mx-auto rounded-xl border border-border bg-card p-6 space-y-4 animate-pulse">
+                  <div className="max-w-2xl mx-auto rounded-lg border border-border bg-card p-6 space-y-4 animate-pulse">
                     <div className="flex items-center gap-2 mb-2">
                       <Loader2 className="size-4 text-muted-foreground animate-spin" />
                       <p className="text-xs text-muted-foreground">
@@ -4778,9 +4813,9 @@ export function CampaignDetail({
                     </div>
                   </div>
                 ) : selected.email_drafts && selected.email_drafts.status !== "sent" ? (
-                  <div className="max-w-2xl mx-auto rounded-xl border border-border bg-card p-5 space-y-4">
+                  <div className="max-w-2xl mx-auto rounded-lg border border-border bg-card p-5 space-y-4">
                     <div className="space-y-1.5">
-                      <Label className="eyebrow">Subject</Label>
+                      <Label>Subject</Label>
                       <Input
                         value={editSubject}
                         onChange={(e) => setEditSubject(e.target.value)}
@@ -4789,7 +4824,7 @@ export function CampaignDetail({
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="eyebrow">Body</Label>
+                      <Label>Body</Label>
                       <RichTextEditor
                         value={editBody}
                         onChange={setEditBody}
@@ -4810,7 +4845,7 @@ export function CampaignDetail({
                         onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleLeadAttachmentUpload(f); }}
                       />
                       {selected.attachment?.effective ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-border bg-secondary text-foreground max-w-full">
+                        <span className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border border-border bg-secondary text-foreground max-w-full">
                           <Paperclip className="size-3 shrink-0" />
                           {selected.attachment.effective.url ? (
                             <a href={selected.attachment.effective.url} target="_blank" rel="noopener" className="truncate underline underline-offset-2 hover:text-primary">
@@ -4829,7 +4864,7 @@ export function CampaignDetail({
                               size="icon"
                               disabled={attaching}
                               onClick={() => void handleLeadAttachmentRemove()}
-                              className="size-5 text-muted-foreground hover:text-red-400"
+                              className="size-5 text-muted-foreground hover:text-destructive"
                               title="Remove per-lead attachment"
                             >
                               <X className="size-3" />
@@ -4846,7 +4881,7 @@ export function CampaignDetail({
                         variant="ghost"
                         disabled={attaching}
                         onClick={() => attachInputRef.current?.click()}
-                        className="h-6 px-2 text-[11px] gap-1 text-muted-foreground hover:text-foreground"
+                        className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground [&_svg]:size-3"
                       >
                         {attaching ? <Loader2 className="size-3 animate-spin" /> : <Paperclip className="size-3" />}
                         {selected.attachment?.effective ? "Replace for this lead" : "Add for this lead"}
@@ -4870,7 +4905,7 @@ export function CampaignDetail({
                       {isPromptStaleForSelected && !isPreviewingHistory && (
                         <Button
                           variant="outline"
-                          className="gap-1.5 border-amber-500/50 text-amber-500 hover:bg-amber-500/10 hover:text-amber-500"
+                          className="gap-1.5 text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
                           disabled={regenerating}
                           onClick={handleRegenerateWithNewPrompt}
                           title="The system prompt was updated after this draft was generated"
@@ -4881,10 +4916,10 @@ export function CampaignDetail({
                       )}
                       {selected.email_drafts.status === "approved" && !isPreviewingHistory && (
                         <>
-                          <p className="text-sm text-green-400 flex items-center gap-1.5 mr-1">
+                          <p className="text-[13px] text-green-700 dark:text-green-400 flex items-center gap-1.5 mr-1">
                             <CheckCircle2 className="size-4" /> Certified. Ready to send.
                           </p>
-                          <Button variant="outline" className="gap-1.5 border-amber-500/50 text-amber-500 hover:bg-amber-500/10 hover:text-amber-500" disabled={certifying} onClick={handleReopen}>
+                          <Button variant="outline" className="gap-1.5 text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300" disabled={certifying} onClick={handleReopen}>
                             <RotateCcw className="size-3.5" /> Undo certify
                           </Button>
                         </>
@@ -4895,7 +4930,7 @@ export function CampaignDetail({
                       {["draft", "approved", "failed", "rejected"].includes(selected.email_drafts.status) && !isPreviewingHistory && (
                         <Button
                           variant="outline"
-                          className={cn("gap-1.5", regenOpen && "border-primary text-primary bg-primary/5 hover:bg-primary/10 hover:text-primary")}
+                          className={cn("gap-1.5", regenOpen && "bg-accent hover:bg-accent")}
                           onClick={() => setRegenOpen((o) => !o)}
                         >
                           <RotateCcw className="size-3.5" /> Regenerate
@@ -4905,7 +4940,7 @@ export function CampaignDetail({
                       {versions.length > 1 && (
                         <Button
                           variant="outline"
-                          className={cn("gap-1.5", historyOpen && "border-primary text-primary bg-primary/5 hover:bg-primary/10 hover:text-primary")}
+                          className={cn("gap-1.5", historyOpen && "bg-accent hover:bg-accent")}
                           onClick={() => setHistoryOpen((o) => !o)}
                         >
                           <History className="size-3.5" />
@@ -4917,7 +4952,7 @@ export function CampaignDetail({
 
                     {/* Version history */}
                     {historyOpen && versions.length > 1 && (
-                      <div ref={historyPanelRef} className="enter space-y-2 rounded-lg border border-border bg-secondary p-3">
+                      <div ref={historyPanelRef} className="space-y-2 rounded-lg border border-border bg-secondary p-3">
                         <div className="flex flex-wrap gap-2">
                           {versions.map((v) => (
                             <Button
@@ -4927,10 +4962,10 @@ export function CampaignDetail({
                               size="sm"
                               onClick={() => loadVersionPreview(v)}
                               className={cn(
-                                "font-mono text-xs h-auto px-2.5 py-1.5",
+                                "text-xs tabular-nums",
                                 (previewVersionId === v.id || (!previewVersionId && v.id === selected.email_drafts?.id))
-                                  ? "border-primary bg-primary/10 text-primary hover:bg-primary/10"
-                                  : "border-border bg-secondary text-muted-foreground hover:border-muted-foreground",
+                                  ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/10"
+                                  : "text-muted-foreground",
                               )}
                             >
                               v{v.version} · {format(new Date(v.created_at), versionsSpanOneDay ? "HH:mm" : "MMM d, HH:mm")}
@@ -4939,7 +4974,7 @@ export function CampaignDetail({
                         </div>
                         {isPreviewingHistory && (
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-xs text-amber-400">Viewing historical version (read-only)</p>
+                            <p className="text-xs text-amber-700 dark:text-amber-400">Viewing historical version (read-only)</p>
                             <Button size="sm" variant="outline" disabled={restoring} onClick={() => handleRestoreVersion(previewVersionId!)}>
                               {restoring ? <Loader2 className="size-3 animate-spin" /> : "Restore this version"}
                             </Button>
@@ -4957,7 +4992,7 @@ export function CampaignDetail({
 
                     {/* Regenerate panel */}
                     {regenOpen && (
-                      <div ref={regenPanelRef} className="enter swatch-bar-top rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-2">
+                      <div ref={regenPanelRef} className="rounded-lg border border-border bg-secondary p-3 space-y-2">
                         {/* A multi-line instruction is normal here — people paste a block of
                             bullets and say "remove this". An <input> cannot hold newlines: the
                             browser strips them on paste and joins them onto one line, and Enter
@@ -4967,7 +5002,7 @@ export function CampaignDetail({
                           value={regenQuery}
                           onChange={(e) => setRegenQuery(e.target.value)}
                           rows={4}
-                          className="text-sm resize-y bg-field"
+                          className="resize-y"
                           placeholder='Describe the change — multiple lines are fine, e.g. paste a block and say "remove this"'
                           onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleRegenerate(); }}
                         />
@@ -4983,7 +5018,7 @@ export function CampaignDetail({
                     )}
                   </div>
                 ) : outboxMessageItems.length > 0 ? (
-                  <div className="rounded-xl border border-border bg-field dark:bg-card overflow-hidden">
+                  <div className="rounded-lg border border-border bg-card overflow-hidden">
                     <AddParticipantLeadDialog
                       open={!!outboxAddLeadFor}
                       email={outboxAddLeadFor}
@@ -5118,7 +5153,7 @@ export function CampaignDetail({
                       <Button
                         size="sm"
                         onClick={handleReplyClick}
-                        className="gap-1.5 rounded-full px-4"
+                        className="gap-1.5"
                       >
                         <Reply className="size-3.5" />
                         Reply
@@ -5171,7 +5206,7 @@ export function CampaignDetail({
           {/* Campaign vs Lead sits right under the main tab bar, above
               everything else in this tab — so it reads as switching the whole
               screen, not as a control buried inside one pane's content. */}
-          <div className="shrink-0 border-b border-border px-6 pt-3 pb-3 flex items-center justify-start">
+          <div className="shrink-0 border-b border-border px-6 py-1.5 min-h-11 flex items-center justify-start">
             <SegmentedTabs
               size="md"
               value={seqPane}
@@ -5188,17 +5223,17 @@ export function CampaignDetail({
               there — it is not rendered at all, and the right pane takes the
               full width instead. */}
           {seqPane === "lead" && (
-          <div className="w-[266px] h-full shrink-0 border-r border-border flex flex-col">
+          <div className="w-[280px] h-full shrink-0 border-r border-border flex flex-col bg-card">
             <div className="border-b border-border shrink-0">
               <div className="px-3 pt-2 pb-2 space-y-2">
                 <SearchInput
                   value={seqLeadSearch}
                   onChange={setSeqLeadSearch}
                   placeholder="Search name or company"
-                  className="h-7 text-[11px]"
+                  size="sm"
                 />
                 <Select value={seqLeadFilter} onValueChange={(v) => { setSeqLeadFilter(v as typeof seqLeadFilter); setSeqLeadId(null); }}>
-                  <SelectTrigger className="h-7 w-full gap-1.5 rounded-md border-border px-2 py-0 text-[11px] font-medium text-foreground [&>svg]:size-3 [&>svg]:opacity-70">
+                  <SelectTrigger className="h-8 w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -5218,35 +5253,35 @@ export function CampaignDetail({
                   indistinguishable from the real thing. */}
               {(seqQuality.ai > 0 || seqQuality.template > 0 || seqQuality.manual > 0) && (
                 <div className="px-3 pb-2 space-y-1">
-                  <div className="flex items-center gap-1.5 text-[11px] flex-wrap">
-                    <span className="font-mono tabular-nums font-semibold">{seqQuality.ai}</span>
+                  <div className="flex items-center gap-1.5 text-xs flex-wrap">
+                    <span className="tabular-nums font-semibold">{seqQuality.ai}</span>
                     <span className="text-muted-foreground">personalised</span>
                     {seqQuality.template > 0 && (
                       <>
                         <span className="text-muted-foreground">·</span>
-                        <span className="font-mono tabular-nums font-semibold text-amber-600">{seqQuality.template}</span>
+                        <span className="tabular-nums font-semibold text-amber-700 dark:text-amber-400">{seqQuality.template}</span>
                         <span className="text-muted-foreground">template</span>
                       </>
                     )}
                     {seqQuality.manual > 0 && (
                       <>
                         <span className="text-muted-foreground">·</span>
-                        <span className="font-mono tabular-nums font-semibold text-primary">{seqQuality.manual}</span>
+                        <span className="tabular-nums font-semibold text-primary">{seqQuality.manual}</span>
                         <span className="text-muted-foreground">customized</span>
                       </>
                     )}
                   </div>
                   {seqQuality.reasons.map(([why, n]) => (
-                    <p key={why} className="text-[10px] leading-snug text-muted-foreground">
-                      <span className="font-mono tabular-nums">{n}</span> · {why}
+                    <p key={why} className="text-[11px] leading-snug text-muted-foreground">
+                      <span className="tabular-nums">{n}</span> · {why}
                     </p>
                   ))}
                 </div>
               )}
               {seqCounts.finished > 0 && (
                 <div className="px-3 pb-2">
-                  <p className="text-[10px] text-muted-foreground">
-                    <span className="font-mono tabular-nums">{seqCounts.finished}</span> out of sequence
+                  <p className="text-[11px] text-muted-foreground">
+                    <span className="tabular-nums">{seqCounts.finished}</span> out of sequence
                     {seqCounts.replied > 0 ? ` · ${seqCounts.replied} replied` : ""}
                     {seqCounts.bounced > 0 ? ` · ${seqCounts.bounced} bounced` : ""}
                   </p>
@@ -5254,7 +5289,7 @@ export function CampaignDetail({
               )}
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-1.5 p-2">
+            <div className="flex-1 overflow-y-auto">
               {seqLeadRows.length === 0 ? (
                 <p className="p-6 text-sm text-muted-foreground text-center">
                   No leads match this filter.
@@ -5264,31 +5299,29 @@ export function CampaignDetail({
                 const name = [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") || "Unknown";
                 const isActive = seqActiveLeadRow?.cl.id === cl.id;
                 return (
-                  <Button
+                  <button
                     key={cl.id}
                     type="button"
-                    variant="ghost"
                     onClick={() => setSeqLeadId(cl.id)}
+                    onMouseEnter={() => prefetchLead(cl.lead_id)}
                     className={cn(
-                      "h-auto w-full block justify-start text-left font-normal rounded-lg border px-3 py-2.5",
-                      isActive
-                        ? "border-primary bg-primary/8 hover:bg-primary/8"
-                        : "border-border bg-field hover:bg-field hover:border-muted-foreground/40",
+                      "block w-full border-b border-border px-3 py-2 text-left transition-colors",
+                      isActive ? "bg-primary/5" : "hover:bg-hover",
                     )}
                   >
                     <div className="flex items-center gap-2">
                       <Avatar name={name} size="sm" />
                       <div className="flex-1 min-w-0">
-                        <p className={cn("text-xs font-medium truncate", isActive ? "text-primary" : "text-foreground")}>{name}</p>
-                        <p className="text-[10px] text-muted-foreground truncate">{lead?.company_name ?? ""}</p>
+                        <p className="text-[13px] font-medium truncate text-foreground">{name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{lead?.company_name ?? ""}</p>
                         <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
                           {finished ? (
-                            <span className="inline-flex px-1.5 py-0.5 rounded border text-[10px] font-semibold bg-muted text-muted-foreground border-border capitalize">
+                            <span className={cn(CHIP, TAG.gray, "capitalize")}>
                               {finished}
                             </span>
                           ) : (
                             <>
-                              <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                              <span className="text-[11px] tabular-nums text-muted-foreground">
                                 {sentCount} of {totalSteps} sent
                               </span>
                               {/* A template actually REACHED this person. Worth a
@@ -5306,7 +5339,7 @@ export function CampaignDetail({
                         </div>
                       </div>
                     </div>
-                  </Button>
+                  </button>
                 );
               })}
             </div>
@@ -5324,7 +5357,7 @@ export function CampaignDetail({
                   underneath instead. */}
               {seqPane === "lead" && (
                 <div className="min-w-0">
-                  <p className="font-display text-sm font-semibold truncate">
+                  <p className="text-[15px] font-semibold truncate">
                     {seqActiveLeadRow
                       ? [seqActiveLeadRow.cl.leads?.first_name, seqActiveLeadRow.cl.leads?.last_name].filter(Boolean).join(" ") || "Lead"
                       : "No lead selected"}
@@ -5345,7 +5378,7 @@ export function CampaignDetail({
                 <>
                 {/* Lead + org cards — same clickable pattern as Outbox. */}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-field px-4 py-3 shadow-sm transition-colors hover:border-primary/40 hover:bg-field">
+                  <div className="flex w-full items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:bg-hover" onMouseEnter={() => prefetchLead(seqActiveLeadRow.cl.lead_id)}>
                     <button
                       type="button"
                       onClick={() => setDrawerLead(campaignLeadToDrawerLead(seqActiveLeadRow.cl))}
@@ -5362,21 +5395,21 @@ export function CampaignDetail({
                         className="block w-full min-w-0 text-left rounded-sm"
                         title="Open lead details"
                       >
-                        <p className="eyebrow text-muted-foreground">Lead</p>
-                        <p className="font-display text-sm font-semibold text-foreground truncate">
+                        <p className="text-xs text-muted-foreground">Lead</p>
+                        <p className="text-sm font-semibold text-foreground truncate">
                           {[seqActiveLeadRow.cl.leads?.first_name, seqActiveLeadRow.cl.leads?.last_name].filter(Boolean).join(" ") || "Unknown"}
                         </p>
                       </button>
                       {seqActiveLeadRow.cl.leads?.email ? (
                         <a
                           href={`mailto:${seqActiveLeadRow.cl.leads.email}`}
-                          className="font-mono text-xs text-blue-500 hover:text-blue-600 hover:underline truncate block max-w-full"
+                          className="text-xs text-primary hover:underline truncate block max-w-full"
                           title={`Email ${seqActiveLeadRow.cl.leads.email}`}
                         >
                           {seqActiveLeadRow.cl.leads.email}
                         </a>
                       ) : (
-                        <p className="font-mono text-xs text-muted-foreground truncate">No email</p>
+                        <p className="text-xs text-muted-foreground truncate">No email</p>
                       )}
                       {seqActiveLeadRow.cl.leads?.title && (
                         <p className="text-xs text-muted-foreground truncate">{seqActiveLeadRow.cl.leads.title}</p>
@@ -5406,11 +5439,11 @@ export function CampaignDetail({
                     const websiteLabel = websiteRaw.replace(/^https?:\/\//i, "").replace(/\/$/, "") || null;
                     const location = [org.company_city, org.company_country].filter(Boolean).join(", ");
                     return (
-                      <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-field px-4 py-3 shadow-sm transition-colors hover:border-primary/40 hover:bg-field">
+                      <div className="flex w-full items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:bg-hover" onMouseEnter={() => prefetchOrg(org.org_id!)}>
                         <button
                           type="button"
                           onClick={() => setDrawerOrgId(org.org_id!)}
-                          className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground"
+                          className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-field text-muted-foreground"
                           title="Open organization details"
                           aria-label="Open organization details"
                         >
@@ -5423,8 +5456,8 @@ export function CampaignDetail({
                             className="block w-full min-w-0 text-left rounded-sm"
                             title="Open organization details"
                           >
-                            <p className="eyebrow text-muted-foreground">Organization</p>
-                            <p className="font-display text-sm font-semibold text-foreground truncate">
+                            <p className="text-xs text-muted-foreground">Organization</p>
+                            <p className="text-sm font-semibold text-foreground truncate">
                               {org.company_name || "Untitled organization"}
                             </p>
                           </button>
@@ -5433,7 +5466,7 @@ export function CampaignDetail({
                               href={websiteHref}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="font-mono text-xs text-blue-500 hover:text-blue-600 hover:underline truncate block max-w-full"
+                              className="text-xs text-primary hover:underline truncate block max-w-full"
                               title={websiteHref}
                             >
                               {websiteLabel}
@@ -5449,14 +5482,14 @@ export function CampaignDetail({
                       </div>
                     );
                   })() : (
-                    <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-field px-4 py-3 shadow-sm text-muted-foreground">
+                    <div className="flex w-full items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 text-muted-foreground">
                       <Building2 className="size-4 shrink-0" />
                       <p className="text-xs">No organization on record</p>
                     </div>
                   )}
                 </div>
                 {seqActiveLeadRow.finished ? (
-                  <div className="rounded-lg border border-border bg-field p-6 text-center space-y-2">
+                  <div className="rounded-lg border border-border bg-card p-6 text-center space-y-2">
                     <p className="text-sm font-medium capitalize">{seqActiveLeadRow.finished}</p>
                     <p className="text-xs text-muted-foreground max-w-sm mx-auto">
                       {seqActiveLeadRow.finished === "replied"
@@ -5467,39 +5500,52 @@ export function CampaignDetail({
                 ) : seqLeadTimeline.length === 0 ? (
                   <EmptyState message="This campaign has no follow-up steps yet." />
                 ) : (
-                  <div className="space-y-3">
+                  // Workflow-style: one numbered node per step on a vertical
+                  // connector, so the order and spacing of the sequence reads
+                  // at a glance (Attio workflow builder look).
+                  <ol className="relative space-y-3 before:absolute before:left-[13px] before:top-4 before:bottom-4 before:w-px before:bg-border">
                     {seqLeadTimeline.map((row) => (
-                      <div key={row.step.step_order} className="rounded-lg border border-border bg-field p-4 space-y-3">
+                      <li key={row.step.step_order} className="relative flex gap-3">
+                      <span
+                        className={cn(
+                          "z-[1] mt-3 grid size-7 shrink-0 place-items-center rounded-full border text-xs font-semibold tabular-nums",
+                          row.sent ? "border-green-200 bg-green-100 text-green-800 dark:border-green-500/25 dark:bg-green-500/15 dark:text-green-300" : "border-border bg-field text-muted-foreground",
+                        )}
+                        aria-hidden
+                      >
+                        {row.sent ? <Check className="size-3.5" /> : sequenceDisplayStep(row.step.step_order)}
+                      </span>
+                      <div className="min-w-0 flex-1 rounded-lg border border-border bg-card p-4 space-y-3">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+                          <span className="text-[13px] font-semibold text-foreground">
                             Follow-up {sequenceDisplayStep(row.step.step_order)}
                           </span>
                           {/* The landing day, not the raw delay. Delays stack, so
                               the number typed into the step is not the day it
                               goes out — showing the total is what stops that
                               being misread. */}
-                          <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                          <span className="text-xs tabular-nums text-muted-foreground">
                             {dayLabel(row.daysFromOpening)}
                           </span>
                           {row.dueAt && (
-                            <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                            <span className="text-xs tabular-nums text-muted-foreground">
                               {row.sent ? "sent" : "due"} {format(row.dueAt, Number.isInteger(row.daysFromOpening) ? "MMM d" : "MMM d, h:mm a")}
                             </span>
                           )}
                           {row.sent && (
-                            <Pill shape="sm" className="bg-emerald-500/15 text-emerald-600 border-transparent">Sent</Pill>
+                            <Pill shape="sm" className={TAG.green}>Sent</Pill>
                           )}
                           {row.written && (
                             row.draft?.source === "manual"
-                              ? <Pill shape="sm" className="bg-primary/15 text-primary border-transparent">Customized for this lead</Pill>
+                              ? <Pill shape="sm" className={TAG.primary}>Customized for this lead</Pill>
                               : row.isTemplate
-                              ? <Pill shape="sm" className="bg-amber-500/15 text-amber-600 border-transparent">Template</Pill>
-                              : <Pill shape="sm" className="bg-primary/15 text-primary border-transparent">AI written</Pill>
+                              ? <Pill shape="sm" className={TAG.amber}>Template</Pill>
+                              : <Pill shape="sm" className={TAG.violet}>AI written</Pill>
                           )}
                         </div>
 
                         {row.isTemplate && row.draft?.fallback_reason && (
-                          <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
                             {row.draft.fallback_reason}
                           </p>
                         )}
@@ -5570,7 +5616,7 @@ export function CampaignDetail({
                               }}
                               className={cn(
                                 "h-7 gap-1.5 px-3 text-xs [&_svg]:size-3",
-                                seqRegenOpenFor === row.draft?.id && "border-primary text-primary bg-primary/5",
+                                seqRegenOpenFor === row.draft?.id && "bg-accent hover:bg-accent",
                               )}
                             >
                               {seqLeadRegenerating === seqActiveLeadRow.cl.id
@@ -5586,7 +5632,7 @@ export function CampaignDetail({
                               onClick={() => void toggleSeqHistory(row.draft!.id)}
                               className={cn(
                                 "h-7 gap-1.5 px-3 text-xs [&_svg]:size-3",
-                                seqHistoryOpen === row.draft!.id && "border-primary text-primary bg-primary/5",
+                                seqHistoryOpen === row.draft!.id && "bg-accent hover:bg-accent",
                               )}
                             >
                               <History />
@@ -5602,12 +5648,12 @@ export function CampaignDetail({
                             wrong with it — and a blind reroll is rarely what
                             someone means when they press Regenerate. */}
                         {seqRegenOpenFor === row.draft?.id && (
-                          <div className="enter rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+                          <div className="rounded-lg border border-border bg-secondary p-3 space-y-2">
                             <Textarea
                               value={seqRegenQuery}
                               onChange={(e) => setSeqRegenQuery(e.target.value)}
                               rows={3}
-                              className="text-sm resize-y bg-field"
+                              className="resize-y"
                               placeholder="What should change? Leave empty to simply write it again."
                               onKeyDown={(e) => {
                                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -5636,7 +5682,7 @@ export function CampaignDetail({
                         {/* Regenerating is cheap enough that people do it a few
                             times and then decide the second attempt was best. */}
                         {seqHistoryOpen === row.draft?.id && (
-                          <div className="enter space-y-2 rounded-lg border border-border bg-secondary p-3">
+                          <div className="space-y-2 rounded-lg border border-border bg-secondary p-3">
                             {seqHistoryLoading ? (
                               <p className="text-xs text-muted-foreground flex items-center gap-2">
                                 <Loader2 className="size-3 animate-spin" /> Loading versions…
@@ -5659,10 +5705,10 @@ export function CampaignDetail({
                                         size="sm"
                                         onClick={() => setSeqPreviewVersion(isCurrent ? null : v)}
                                         className={cn(
-                                          "font-mono text-xs h-auto px-2.5 py-1.5",
+                                          "text-xs tabular-nums",
                                           isShown
-                                            ? "border-primary bg-primary/10 text-primary hover:bg-primary/10"
-                                            : "border-border bg-secondary text-muted-foreground hover:border-muted-foreground",
+                                            ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/10"
+                                            : "text-muted-foreground",
                                         )}
                                       >
                                         v{v.version} · {format(new Date(v.created_at), seqVersionsSpanOneDay ? "HH:mm" : "MMM d, HH:mm")}
@@ -5677,7 +5723,7 @@ export function CampaignDetail({
                                       dangerouslySetInnerHTML={{ __html: seqPreviewVersion.body ?? "" }}
                                     />
                                     <div className="flex items-center gap-2 flex-wrap">
-                                      <p className="text-xs text-amber-400">Viewing an older version (read-only)</p>
+                                      <p className="text-xs text-amber-700 dark:text-amber-400">Viewing an older version (read-only)</p>
                                       <Button
                                         size="sm"
                                         variant="outline"
@@ -5702,8 +5748,9 @@ export function CampaignDetail({
                           </p>
                         )}
                       </div>
+                      </li>
                     ))}
-                  </div>
+                  </ol>
                 )}
                 </>
                 )
@@ -5715,8 +5762,8 @@ export function CampaignDetail({
                   {/* Said plainly, because the pane sits under a lead's name and
                       everything in it is campaign-wide. Editing here changes the
                       schedule for everyone, not for the person on screen. */}
-                  <div className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-2">
-                    <p className="text-xs font-medium truncate">{campaign.name}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-[15px] font-semibold truncate">Sequence for {campaignName}</p>
                     <InfoTooltip
                       text={`Timing and instructions for all ${campaignLeads.length} leads in this campaign — not just the one you're viewing.`}
                     />
@@ -5727,10 +5774,10 @@ export function CampaignDetail({
                       in, so follow-ups cost no AI credits. Takes effect on
                       follow-ups not yet written; turning it back on lets unsent
                       default-text ones be rewritten by the AI. */}
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
                     <div className="space-y-0.5">
-                      <Label htmlFor="seq-followups-ai" className="text-sm font-medium">Write follow-ups with AI</Label>
-                      <p className="text-[11px] text-muted-foreground">
+                      <Label htmlFor="seq-followups-ai" className="text-[13px] font-medium">Write follow-ups with AI</Label>
+                      <p className="text-xs text-muted-foreground">
                         {seqFollowupsAi
                           ? "Each follow-up is personalised for the lead. Uses AI credits."
                           : "Each follow-up uses its step's text below, with the name and company filled in. No AI credits."}
@@ -5747,7 +5794,7 @@ export function CampaignDetail({
                   {seqFollowupsAi && (
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-1.5">
-                      <Label className="eyebrow">Applies to every follow-up</Label>
+                      <Label>Applies to every follow-up</Label>
                       <InfoTooltip text="Extra guidance the AI applies to every future follow-up in this campaign, e.g. 'Mention our new Dubai warehouse.'" />
                     </div>
                     <Textarea
@@ -5755,7 +5802,7 @@ export function CampaignDetail({
                       disabled={!canEditSettings}
                       onChange={(e) => setSeqCampaignInstruction(e.target.value)}
                       placeholder="Optional"
-                      className="text-sm min-h-16"
+                      className="min-h-16"
                     />
                   </div>
                   )}
@@ -5764,11 +5811,15 @@ export function CampaignDetail({
                       left the rest of the drawer empty. */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                   {seqStepEdits.map((st, idx) => (
-                    <div key={idx} className="rounded-lg border border-border bg-field px-3 py-2 space-y-2">
+                    <div key={idx} className="rounded-lg border border-border bg-card p-3 space-y-3">
                       <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground w-24 shrink-0">
-                        Follow-up {idx + 1} after
+                      <span className="grid size-6 shrink-0 place-items-center rounded-full border border-border bg-field text-[11px] font-semibold tabular-nums text-muted-foreground" aria-hidden>
+                        {idx + 1}
                       </span>
+                      <span className="text-[13px] font-medium text-foreground shrink-0">
+                        Follow-up {idx + 1}
+                      </span>
+                      <span className="text-xs text-muted-foreground shrink-0">after</span>
                       <Input
                         type="number"
                         min={1}
@@ -5779,11 +5830,11 @@ export function CampaignDetail({
                           const v = Math.max(1, Math.min(365, Number(e.target.value) || 1));
                           setSeqStepEdits((prev) => prev.map((x, i) => (i === idx ? { ...x, delay: v } : x)));
                         }}
-                        className="h-7 w-14 px-1 py-0 text-center text-sm font-mono tabular-nums"
+                        className="h-7 w-14 px-1 py-0 text-center tabular-nums"
                       />
                       <span className="text-xs text-muted-foreground">days</span>
                       <span className="ml-auto flex shrink-0 items-center gap-1">
-                        <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                        <span className="text-xs tabular-nums text-muted-foreground">
                           {dayLabel(seqStepEditDays[idx] ?? 0)}
                         </span>
                         <InfoTooltip text="Waits stack from the previous email — this is the actual day this follow-up goes out, not just its own gap." />
@@ -5836,9 +5887,9 @@ export function CampaignDetail({
                               disabled={!canEditSettings}
                               onChange={(e) => setSeqStepEdits((prev) => prev.map((x, i) => (i === idx ? { ...x, ai_instruction: e.target.value } : x)))}
                               placeholder={`Extra instruction for follow-up ${idx + 1} only (optional)`}
-                              className="text-xs min-h-12"
+                              className="min-h-12"
                             />
-                            <p className="text-[10px] text-muted-foreground">
+                            <p className="text-[11px] text-muted-foreground">
                               {stillToWrite} unwritten{alreadySent > 0 ? ` · ${alreadySent} sent` : ""}
                             </p>
                           </>
@@ -5850,7 +5901,7 @@ export function CampaignDetail({
                           from the instruction above, which only guides the AI. */}
                       <div className="space-y-1.5 pt-2 border-t border-border">
                         <div className="flex items-center gap-1.5">
-                          <Label className="eyebrow">{seqFollowupsAi ? "If it can't be personalised" : `Follow-up ${idx + 1} text`}</Label>
+                          <Label>{seqFollowupsAi ? "If it can't be personalised" : `Follow-up ${idx + 1} text`}</Label>
                           <InfoTooltip text={seqFollowupsAi
                             ? "Sent when the lead has no company details, or the AI cannot write. Leave empty to use the company default from Settings."
                             : "Sent to every lead for this step, with {{first_name}} and {{company}} filled in. Leave empty to use the company default from Settings."} />
@@ -5866,7 +5917,7 @@ export function CampaignDetail({
                         />
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           {!hasVisibleText(st.fallback_body) && (
-                            <p className="text-[10px] text-muted-foreground">Using the company default</p>
+                            <p className="text-[11px] text-muted-foreground">Using the company default</p>
                           )}
                           {canEditSettings && (
                             <Button
@@ -5964,7 +6015,7 @@ export function CampaignDetail({
 
       {/* ── Options ───────────────────────────────────────────────────────── */}
       {viewTab === "options" && (
-        <div className="flex-1 overflow-y-auto px-8 py-8">
+        <div className="flex-1 overflow-y-auto px-6 py-6">
           <EditCampaignForm
             variant="page"
             campaign={campaign}
@@ -5978,7 +6029,7 @@ export function CampaignDetail({
 
       {/* ── Discussion ────────────────────────────────────────────────────── */}
       {viewTab === "discussion" && (
-        <div className="flex-1 min-h-0 flex flex-col bg-secondary">
+        <div className="flex-1 min-h-0 flex flex-col">
           <div className="flex-1 overflow-y-auto">
             <div className="w-full max-w-3xl mx-auto px-6 py-6">
               {loadingComments ? (
@@ -5988,23 +6039,21 @@ export function CampaignDetail({
                       <div className="size-7 rounded-full bg-secondary shrink-0" />
                       <div className="space-y-1.5 max-w-[65%]">
                         <div className="h-3 w-16 bg-secondary rounded" />
-                        <div className="h-12 w-48 bg-secondary rounded-xl" />
+                        <div className="h-12 w-48 bg-secondary rounded-lg" />
                       </div>
                     </div>
                   ))}
                 </div>
               ) : comments.length === 0 ? (
-                <div className="min-h-[320px] flex flex-col items-center justify-center text-center px-5">
-                  <div className="size-11 rounded-full border border-border bg-field flex items-center justify-center text-primary mb-3">
-                    <MessageSquare className="size-5" />
-                  </div>
-                  <p className="text-sm font-semibold">Start the campaign discussion</p>
-                  <p className="text-xs text-muted-foreground mt-1 max-w-sm leading-relaxed">
-                    Notes here are visible to managers and employees who can access this campaign.
-                  </p>
-                </div>
+                <EmptyState
+                  boxed={false}
+                  icon={MessageSquare}
+                  className="min-h-[320px]"
+                  title="Start the campaign discussion"
+                  message="Notes here are visible to managers and employees who can access this campaign."
+                />
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-1">
                   {comments.map((comment, index) => {
                     const own = comment.author_id === appSession?.user.id;
                     const showDate = startsNewChatDay(
@@ -6012,10 +6061,10 @@ export function CampaignDetail({
                       comments[index - 1]?.created_at,
                     );
                     return (
-                      <div key={comment.id} className="space-y-3">
+                      <div key={comment.id} className="space-y-1">
                         {showDate && (
                           <div className="flex items-center justify-center py-1">
-                            <span className="rounded-full border border-border bg-field px-3 py-1 text-[10px] leading-none font-medium text-muted-foreground shadow-sm">
+                            <span className="rounded-md border border-border bg-field px-2 py-1 text-[11px] leading-none font-medium text-muted-foreground">
                               <span className="translate-y-px inline-block">{formatChatDate(comment.created_at)}</span>
                             </span>
                           </div>
@@ -6037,7 +6086,7 @@ export function CampaignDetail({
 
           {/* Floating composer — no full-width bar, the input is its own card. */}
           <div className="shrink-0 w-full max-w-3xl mx-auto px-6 pb-6 pt-2">
-            <div className="rounded-2xl border border-border bg-field shadow-lg shadow-black/5">
+            <div className="rounded-lg border border-border bg-field shadow-sm">
               <Textarea
                 value={commentBody}
                 onChange={(event) => setCommentBody(event.target.value)}
@@ -6050,10 +6099,10 @@ export function CampaignDetail({
                 maxLength={2000}
                 rows={3}
                 placeholder="Write a message to the campaign team…"
-                className="min-h-[76px] resize-none border-0 bg-transparent text-sm shadow-none outline-none px-4 pt-3"
+                className="min-h-[76px] resize-none border-0 bg-transparent shadow-none px-3 pt-2.5"
               />
-              <div className="flex items-center justify-between gap-2 px-4 pb-3">
-                <span className="text-[10px] text-muted-foreground">
+              <div className="flex items-center justify-between gap-2 px-3 pb-2.5">
+                <span className="text-[11px] text-muted-foreground">
                   Ctrl/⌘ + Enter to send
                 </span>
                 <Button
@@ -6063,7 +6112,7 @@ export function CampaignDetail({
                   disabled={!commentBody.trim() || sendingComment}
                   aria-label="Send message"
                   title="Send message"
-                  className="size-8 rounded-full"
+                  className="size-7"
                 >
                   {sendingComment
                     ? <Loader2 className="size-3.5 animate-spin" />

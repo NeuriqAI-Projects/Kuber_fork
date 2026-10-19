@@ -38,40 +38,40 @@ function HoldSendingModalInner({
     // and Radix sets `pointer-events: none` on <body> while open — without this
     // every button here is unclickable. Same treatment as regenerate-drafts-modal.
     <div data-confirm-dialog-root className="fixed inset-0 z-200 flex items-center justify-center pointer-events-auto">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={submitting ? undefined : onCancel} />
+      <div className="absolute inset-0 bg-black/25 dark:bg-black/60" onClick={submitting ? undefined : onCancel} />
 
-      <div className="relative w-full max-w-md rounded-xl border border-border bg-card shadow-xl">
+      <div className="relative w-full max-w-md mx-4 rounded-xl border border-border bg-popover text-popover-foreground shadow-xl">
         <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div className="flex items-center gap-2.5 min-w-0">
             <PauseCircle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-            <h2 className="font-display text-sm font-semibold">Hold sending?</h2>
+            <h2 className="text-[15px] font-semibold leading-tight">Hold sending?</h2>
           </div>
           <Button
             type="button"
             variant="ghost"
-            size="icon"
+            size="icon-sm"
             disabled={submitting}
             onClick={onCancel}
             aria-label="Close"
-            className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+            className="-mr-1 shrink-0 text-muted-foreground hover:text-foreground"
           >
-            <X className="size-3.5" />
+            <X />
           </Button>
         </div>
 
         <div className="space-y-4 px-5 py-4">
           <div className="space-y-2">
             <div className="flex items-baseline gap-2">
-              <span className="font-mono text-lg font-semibold tabular-nums">{stoppable}</span>
+              <span className="text-lg font-semibold tabular-nums">{stoppable}</span>
               <span className="text-sm text-muted-foreground">
                 follow-up{stoppable === 1 ? "" : "s"} will be held and stay editable
               </span>
             </div>
             {waiting > 0 && unwritten > 0 && (
               <p className="pl-1 text-xs text-muted-foreground">
-                <span className="font-mono tabular-nums">{waiting}</span> already written
+                <span className="tabular-nums">{waiting}</span> already written
                 {" · "}
-                <span className="font-mono tabular-nums">{unwritten}</span> not written yet
+                <span className="tabular-nums">{unwritten}</span> not written yet
               </p>
             )}
           </div>
@@ -79,7 +79,7 @@ function HoldSendingModalInner({
           {sent > 0 && (
             <div className="rounded-lg border border-border bg-secondary px-3 py-2.5">
               <div className="flex items-baseline gap-2">
-                <span className="font-mono text-sm font-semibold tabular-nums">{sent}</span>
+                <span className="text-sm font-semibold tabular-nums">{sent}</span>
                 <span className="text-xs text-muted-foreground">
                   already went out — these cannot be changed
                 </span>
@@ -101,11 +101,11 @@ function HoldSendingModalInner({
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-          <Button type="button" variant="ghost" size="sm" disabled={submitting} onClick={onCancel}>
+          <Button type="button" variant="outline" size="sm" disabled={submitting} onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="button" size="sm" className="gap-1.5" disabled={submitting} onClick={onConfirm}>
-            {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <PauseCircle className="size-3.5" />}
+          <Button type="button" size="sm" disabled={submitting} onClick={onConfirm}>
+            {submitting ? <Loader2 className="animate-spin" /> : <PauseCircle />}
             {thenRegenerate ? "Hold sending, then regenerate" : "Hold sending"}
           </Button>
         </div>

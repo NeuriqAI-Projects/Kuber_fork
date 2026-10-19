@@ -34,25 +34,25 @@ export function CampaignConfigModal({ campaign, open }: { campaign: Campaign; op
   const activeDays = DAY_ORDER.filter((k) => campaign.sendDays?.[k]).map((k) => DAY_LABELS[k]);
 
   return (
-    <div className="enter swatch-bar-top absolute bottom-full right-0 mb-2 z-50 w-80 overflow-hidden rounded-xl border border-border bg-card text-sm shadow-xl divide-y divide-border max-h-[70vh] overflow-y-auto">
-      <div className="px-4 pt-3 pb-2">
-        <p className="eyebrow">Campaign · config</p>
+    <div className="absolute bottom-full right-0 mb-2 z-50 w-80 overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground text-[13px] shadow-lg divide-y divide-border max-h-[70vh] overflow-y-auto">
+      <div className="px-4 py-2.5">
+        <p className="text-[13px] font-semibold">Campaign config</p>
       </div>
       <div className="flex items-center justify-between px-4 py-2.5">
         <span className="text-muted-foreground flex items-center gap-2"><User className="size-3.5" /> Sender name</span>
-        <span className="font-mono text-xs font-medium">{campaign.senderName || "—"}</span>
+        <span className="text-xs font-medium">{campaign.senderName || "—"}</span>
       </div>
       <div className="flex items-center justify-between px-4 py-2.5">
         <span className="text-muted-foreground flex items-center gap-2"><Gauge className="size-3.5" /> Daily limit</span>
-        <span className="font-mono text-xs font-medium tabular-nums">{campaign.dailyLimit ?? 30}/day</span>
+        <span className="text-xs font-medium tabular-nums">{campaign.dailyLimit ?? 30}/day</span>
       </div>
       <div className="flex items-center justify-between px-4 py-2.5">
         <span className="text-muted-foreground flex items-center gap-2"><Clock className="size-3.5" /> Window</span>
-        <span className="font-mono text-xs font-medium tabular-nums">{campaign.windowFrom ?? "08:00"} – {campaign.windowTo ?? "18:00"}</span>
+        <span className="text-xs font-medium tabular-nums">{campaign.windowFrom ?? "08:00"} – {campaign.windowTo ?? "18:00"}</span>
       </div>
       <div className="flex items-center justify-between px-4 py-2.5">
         <span className="text-muted-foreground flex items-center gap-2"><Globe className="size-3.5" /> Timezone</span>
-        <span className="font-mono text-xs font-medium">{campaign.timezone ?? "—"}</span>
+        <span className="text-xs font-medium">{campaign.timezone ?? "—"}</span>
       </div>
       {activeDays.length > 0 && (
         <div className="flex items-center justify-between px-4 py-2.5">
@@ -67,7 +67,7 @@ export function CampaignConfigModal({ campaign, open }: { campaign: Campaign; op
         </div>
       )}
       <div className="px-4 py-2.5 space-y-1.5">
-        <span className="text-muted-foreground flex items-center gap-2 text-sm"><Clock className="size-3.5" /> Follow-up schedule</span>
+        <span className="text-muted-foreground flex items-center gap-2"><Clock className="size-3.5" /> Follow-up schedule</span>
         {stepsLoading ? (
           <div className="space-y-2 animate-pulse">
             {Array.from({ length: 2 }).map((_, i) => (
@@ -85,7 +85,7 @@ export function CampaignConfigModal({ campaign, open }: { campaign: Campaign; op
             return (
               <div key={s.step_order} className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">{formatOrdinal(s.step_order - 1)} follow-up</span>
-                <span className="font-mono font-medium tabular-nums">
+                <span className="font-medium tabular-nums">
                   {waitStep ? `${waitStep.delay} ${waitStep.delay_unit} after previous` : "—"}
                 </span>
               </div>

@@ -68,16 +68,16 @@ function RegenerateDraftsModalInner({
     // and Radix sets `pointer-events: none` on <body> while open — without this
     // every button here is unclickable. Same treatment as batch-confirm-modal.
     <div data-confirm-dialog-root className="fixed inset-0 z-200 flex items-center justify-center pointer-events-auto">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={submitting ? undefined : onCancel} />
+      <div className="absolute inset-0 bg-black/25 dark:bg-black/60" onClick={submitting ? undefined : onCancel} />
 
-      <div className="enter swatch-bar-top overflow-hidden relative z-10 w-full max-w-lg mx-4 rounded-2xl border border-border bg-card shadow-2xl flex flex-col max-h-[90vh]">
+      <div className="relative z-10 w-full max-w-lg mx-4 flex flex-col max-h-[90vh] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-xl">
 
-        <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-border shrink-0">
+        <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-border shrink-0">
           <div className="min-w-0">
-            <h2 className="font-display text-base font-semibold">
-              {verb} <span className="font-mono tabular-nums">{total}</span> {stepNumber > 1 ? "follow-up" : "draft"}{total !== 1 ? "s" : ""}
+            <h2 className="text-[15px] font-semibold leading-tight">
+              {verb} <span className="tabular-nums">{total}</span> {stepNumber > 1 ? "follow-up" : "draft"}{total !== 1 ? "s" : ""}
             </h2>
-            <p className="text-xs text-muted-foreground mt-2">
+            <p className="text-[13px] text-muted-foreground mt-1.5">
               {aiOff
                 ? `AI follow-ups are switched off for this campaign. Each of these will be replaced with the Follow-up ${stepNumber - 1} text from the Sequences tab, or the company default where that box is empty, with the name and company filled in. No AI credits are used. Prior versions stay in history.`
                 : "With an instruction, each draft is edited from its current wording. Without one, each gets a fresh AI rewrite. Prior versions stay in history."}
@@ -86,18 +86,19 @@ function RegenerateDraftsModalInner({
           <Button
             type="button"
             variant="ghost"
-            size="icon"
+            size="icon-sm"
             onClick={onCancel}
             disabled={submitting}
-            className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+            aria-label="Close"
+            className="-mr-1 -mt-1 shrink-0 text-muted-foreground hover:text-foreground"
           >
-            <X className="size-4" />
+            <X />
           </Button>
         </div>
 
         {/* Scope summary — only shown when there's nuance beyond the header's total */}
         {(scopeNotes.length > 0 || protectedRows.length > 0) && (
-          <div className="px-6 py-3 border-b border-border bg-secondary shrink-0 space-y-1">
+          <div className="px-5 py-2.5 border-b border-border bg-secondary shrink-0 space-y-1">
             {scopeNotes.length > 0 && (
               <p className="text-xs text-muted-foreground">
                 {scopeNotes.join(" — ").replace(/^./, (c) => c.toUpperCase())}.
@@ -113,9 +114,9 @@ function RegenerateDraftsModalInner({
         )}
 
         {!aiOff && (
-        <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4">
+        <div className="flex-1 overflow-y-auto min-h-0 px-5 py-4">
           <div className="flex items-baseline justify-between gap-2">
-            <Label className="text-sm font-medium">Instruction (optional)</Label>
+            <Label>Instruction (optional)</Label>
             <span className={`text-[11px] tabular-nums shrink-0 ${instruction.length > INSTRUCTION_MAX_LENGTH ? "text-destructive" : "text-muted-foreground"}`}>
               {instruction.length}/{INSTRUCTION_MAX_LENGTH}
             </span>
@@ -126,7 +127,7 @@ function RegenerateDraftsModalInner({
             disabled={submitting}
             rows={4}
             maxLength={INSTRUCTION_MAX_LENGTH}
-            className="mt-2 text-sm resize-y"
+            className="mt-1.5 resize-y"
             onChange={(e) => setInstruction(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !submitting) onConfirm(instruction.trim()); }}
             placeholder="e.g. Make it shorter and less salesy — multi-line instructions are fine"
@@ -137,7 +138,7 @@ function RegenerateDraftsModalInner({
         </div>
         )}
 
-        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-border shrink-0">
+        <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-border shrink-0">
           <p className="text-[11px] text-muted-foreground">
             Runs in the background — safe to close.
           </p>
@@ -145,8 +146,8 @@ function RegenerateDraftsModalInner({
             <Button variant="outline" size="sm" onClick={onCancel} disabled={submitting}>
               Cancel
             </Button>
-            <Button size="sm" className="gap-1.5" onClick={() => onConfirm(aiOff ? "" : instruction.trim())} disabled={submitting || total === 0}>
-              {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}
+            <Button size="sm" onClick={() => onConfirm(aiOff ? "" : instruction.trim())} disabled={submitting || total === 0}>
+              {submitting ? <Loader2 className="animate-spin" /> : <RotateCcw />}
               {verb} {total}
             </Button>
           </div>

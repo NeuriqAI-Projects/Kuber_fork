@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { DAY_LABELS, type Campaign } from "@/components/app/create-campaign-modal";
@@ -40,9 +40,9 @@ function DayPill({ day, active, onClick, disabled }: { day: string; active: bool
       size="icon"
       onClick={onClick}
       disabled={disabled}
-      className="size-8 rounded-full text-xs leading-none font-semibold"
+      className="size-8 rounded-md text-xs leading-none font-semibold"
     >
-      <span className="translate-y-px">{day[0].toUpperCase()}</span>
+      <span>{day[0].toUpperCase()}</span>
     </Button>
   );
 }
@@ -50,7 +50,7 @@ function DayPill({ day, active, onClick, disabled }: { day: string; active: bool
 function TimeSelect({ value, onChange, disabled, className }: { value: string; onChange: (v: string) => void; disabled?: boolean; className?: string }) {
   return (
     <Select value={value} onValueChange={onChange} disabled={disabled}>
-      <SelectTrigger className={cn("h-9 w-32 tabular-nums", className)}>
+      <SelectTrigger className={cn("h-8 w-32 tabular-nums", className)}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent align="center" className="min-w-32 max-h-56">
@@ -69,7 +69,7 @@ export function SharedSettingsNotice({ readOnly, className }: { readOnly: boolea
   const Icon = readOnly ? Lock : Info;
   return (
     <div className={cn("flex items-center gap-2.5 text-[13px] leading-snug text-foreground", className)}>
-      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-amber-500/15">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-500/15">
         <Icon className="size-3.5 text-amber-600 dark:text-amber-400" />
       </span>
       <span>
@@ -225,8 +225,8 @@ export function EditCampaignForm({
           className={cn("flex items-center shrink-0", isPage ? "gap-2" : "w-full")}
         >
           {isPage ? (
-            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 font-mono text-xs leading-none font-semibold text-primary tabular-nums">
-              <span className="translate-y-px">{idx + 1}</span>
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border bg-field text-[11px] leading-none font-semibold text-muted-foreground tabular-nums">
+              <span>{idx + 1}</span>
             </span>
           ) : null}
           <div
@@ -248,7 +248,7 @@ export function EditCampaignForm({
                 const v = Math.max(1, Math.min(365, Number(e.target.value) || 1));
                 setFollowupSteps((prev) => prev.map((s, i) => i === idx ? { ...s, delay: v } : s));
               }}
-              className="h-7 w-14 rounded-md border border-border bg-field px-1 py-0 text-center text-sm font-mono font-medium tabular-nums"
+              className="h-7 w-14 px-1 py-0 text-center tabular-nums"
             />
             <Select
               value={step.delay_unit}
@@ -269,7 +269,7 @@ export function EditCampaignForm({
               </SelectContent>
             </Select>
             {/* Resulting day — see create-campaign-modal. The delays stack. */}
-            <span className="font-mono text-[10px] tabular-nums text-muted-foreground shrink-0">
+            <span className="text-[11px] tabular-nums text-muted-foreground shrink-0">
               {dayLabel(followupDays[idx] ?? 0)}
             </span>
             {!isPage && <div className="flex-1" />}
@@ -316,23 +316,25 @@ export function EditCampaignForm({
   );
 
   if (isPage) {
-    const fieldBlock = "space-y-2 rounded-xl border border-border bg-card px-5 py-4 shadow-sm";
+    const fieldBlock = "space-y-2 rounded-lg border border-border bg-card px-5 py-4";
 
     return (
       <div className={cn("space-y-6", className)}>
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-stretch">
           {/* Left: identity & AI */}
           <div className="flex flex-col lg:col-span-2">
-            <p className="eyebrow mb-2">Identity &amp; AI</p>
-            <div className="flex flex-1 flex-col gap-6">
-              <div className={fieldBlock}>
-                <Label className="text-sm font-medium">Sender name</Label>
+            <p className="mb-2 text-[13px] font-semibold text-foreground">Identity &amp; AI</p>
+            {/* One panel for both fields — Attio groups related fields in a
+                single bordered panel instead of boxing each field. */}
+            <div className="flex flex-1 flex-col rounded-lg border border-border bg-card divide-y divide-border">
+              <div className="space-y-2 px-5 py-4">
+                <Label className="text-[13px] font-medium">Sender name</Label>
                 <p className="text-xs text-muted-foreground">Shown as the &quot;from&quot; name on outgoing emails</p>
                 <Input value={senderName} disabled={readOnly} onChange={(e) => setSenderName(e.target.value)} placeholder="Kuber Polyplast" />
               </div>
 
-              <div className={cn(fieldBlock, "flex flex-1 flex-col")}>
-                <Label className="text-sm font-medium">Additional context for AI</Label>
+              <div className="flex flex-1 flex-col space-y-2 px-5 py-4">
+                <Label className="text-[13px] font-medium">Additional context for AI</Label>
                 <p className="text-xs text-muted-foreground">Extra guidance the AI uses when writing emails</p>
                 <Textarea
                   value={aiPromptContext}
@@ -347,14 +349,14 @@ export function EditCampaignForm({
 
           {/* Right: schedule & limits — one compact card, no dead space */}
           <div className="flex flex-col lg:col-span-3">
-          <p className="eyebrow mb-2">Schedule &amp; limits</p>
-          <div className="flex flex-1 flex-col rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+          <p className="mb-2 text-[13px] font-semibold text-foreground">Schedule &amp; limits</p>
+          <div className="flex flex-1 flex-col rounded-lg border border-border bg-card overflow-hidden">
             <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 divide-y divide-border sm:divide-y-0 border-b border-border">
               <div className="flex flex-col justify-center gap-3 px-5 py-4 sm:border-r border-border">
                 <div className="flex items-center gap-2.5">
                   <Gauge className="size-4 text-muted-foreground shrink-0" />
                   <div>
-                    <p className="text-sm font-medium leading-none">Daily limit</p>
+                    <p className="text-[13px] font-medium leading-none">Daily limit</p>
                     <p className="text-xs text-muted-foreground mt-1">Emails sent per day across all senders</p>
                   </div>
                 </div>
@@ -365,7 +367,7 @@ export function EditCampaignForm({
                   value={dailyLimit}
                   disabled={readOnly}
                   onChange={(e) => setDailyLimit(Math.max(1, Math.min(500, Number(e.target.value))))}
-                  className="h-9 w-24 text-center font-mono tabular-nums"
+                  className="h-8 w-24 text-center tabular-nums"
                 />
               </div>
 
@@ -373,7 +375,7 @@ export function EditCampaignForm({
                 <div className="flex items-center gap-2.5">
                   <Clock className="size-4 text-muted-foreground shrink-0" />
                   <div>
-                    <p className="text-sm font-medium leading-none">Sending window</p>
+                    <p className="text-[13px] font-medium leading-none">Sending window</p>
                     <p className="text-xs text-muted-foreground mt-1">Local time of recipient</p>
                   </div>
                 </div>
@@ -389,7 +391,7 @@ export function EditCampaignForm({
               <div className="flex items-center gap-2.5">
                 <Calendar className="size-4 text-muted-foreground shrink-0" />
                 <div>
-                  <p className="text-sm font-medium leading-none">Send days</p>
+                  <p className="text-[13px] font-medium leading-none">Send days</p>
                   <p className="text-xs text-muted-foreground mt-1">Days emails will be sent</p>
                 </div>
               </div>
@@ -414,7 +416,7 @@ export function EditCampaignForm({
           <div className="flex items-center gap-2.5">
             <Clock className="size-4 text-muted-foreground shrink-0" />
             <div>
-              <p className="text-sm font-medium leading-none">Follow-up schedule</p>
+              <p className="text-[13px] font-medium leading-none">Follow-up schedule</p>
               <p className="text-xs text-muted-foreground mt-1">Wait time after the previous email before each follow-up sends</p>
             </div>
           </div>
@@ -427,7 +429,7 @@ export function EditCampaignForm({
           {!readOnly && (
             <Button disabled={saving} onClick={() => void handleSave()} className="shrink-0 gap-1.5 self-end sm:self-auto">
               {saving ? (
-                <><Loader2 className="size-3.5 animate-spin" /> Saving…</>
+                <><Loader2 className="animate-spin" /> Saving…</>
               ) : (
                 <>Save changes <ChevronRight className="size-3.5" /></>
               )}
@@ -441,12 +443,12 @@ export function EditCampaignForm({
   return (
     <div className={cn("space-y-6", className)}>
       <div className="space-y-1.5">
-        <Label className="text-sm font-medium">Sender name</Label>
+        <Label className="text-[13px] font-medium">Sender name</Label>
         <Input value={senderName} disabled={readOnly} onChange={(e) => setSenderName(e.target.value)} placeholder="Kuber Polyplast" />
       </div>
 
       <div className="space-y-1.5">
-        <Label className="text-sm font-medium">Additional context for AI</Label>
+        <Label className="text-[13px] font-medium">Additional context for AI</Label>
         <Textarea
           value={aiPromptContext}
           disabled={readOnly}
@@ -456,7 +458,7 @@ export function EditCampaignForm({
         />
       </div>
 
-      <div className="rounded-lg border border-border bg-secondary shadow-sm overflow-hidden">
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
         <div className="grid grid-cols-1 sm:grid-cols-2 divide-y divide-border sm:divide-y-0">
 
           {/* Daily limit */}
@@ -464,7 +466,7 @@ export function EditCampaignForm({
             <div className="flex items-center gap-2.5">
               <Gauge className="size-4 text-muted-foreground shrink-0" />
               <div>
-                <p className="text-sm font-medium leading-none">Daily limit</p>
+                <p className="text-[13px] font-medium leading-none">Daily limit</p>
                 <p className="text-xs text-muted-foreground mt-1">Emails sent per day across all senders</p>
               </div>
             </div>
@@ -475,7 +477,7 @@ export function EditCampaignForm({
               value={dailyLimit}
               disabled={readOnly}
               onChange={(e) => setDailyLimit(Math.max(1, Math.min(500, Number(e.target.value))))}
-              className="h-9 w-24 text-center font-mono tabular-nums"
+              className="h-8 w-24 text-center tabular-nums"
             />
           </div>
 
@@ -484,7 +486,7 @@ export function EditCampaignForm({
             <div className="flex items-center gap-2.5">
               <Clock className="size-4 text-muted-foreground shrink-0" />
               <div>
-                <p className="text-sm font-medium leading-none">Sending window</p>
+                <p className="text-[13px] font-medium leading-none">Sending window</p>
                 <p className="text-xs text-muted-foreground mt-1">Local time of recipient</p>
               </div>
             </div>
@@ -499,15 +501,15 @@ export function EditCampaignForm({
           <div className="flex flex-col gap-3 px-5 py-4 sm:border-r border-border">
             <div className="flex items-center gap-2.5">
               <Globe className="size-4 text-muted-foreground shrink-0" />
-              <p className="text-sm font-medium leading-none">Timezone</p>
+              <p className="text-[13px] font-medium leading-none">Timezone</p>
             </div>
             <Select value={timezone} onValueChange={setTimezone} disabled={readOnly}>
-              <SelectTrigger className="h-9 w-full sm:w-45 font-mono">
+              <SelectTrigger className="h-8 w-full sm:w-45">
                 <SelectValue placeholder="Select timezone" />
               </SelectTrigger>
               <SelectContent align="start" className="min-w-45">
                 {(TIMEZONES.includes(timezone) ? TIMEZONES : [timezone, ...TIMEZONES]).map((tz) => (
-                  <SelectItem key={tz} value={tz} className="font-mono">{tz}</SelectItem>
+                  <SelectItem key={tz} value={tz}>{tz}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -518,7 +520,7 @@ export function EditCampaignForm({
             <div className="flex items-center gap-2.5">
               <Calendar className="size-4 text-muted-foreground shrink-0" />
               <div>
-                <p className="text-sm font-medium leading-none">Send days</p>
+                <p className="text-[13px] font-medium leading-none">Send days</p>
                 <p className="text-xs text-muted-foreground mt-1">Days emails will be sent</p>
               </div>
             </div>
@@ -541,7 +543,7 @@ export function EditCampaignForm({
           <div className="flex items-center gap-2.5">
             <Clock className="size-4 text-muted-foreground shrink-0" />
             <div>
-              <p className="text-sm font-medium leading-none">Follow-up schedule</p>
+              <p className="text-[13px] font-medium leading-none">Follow-up schedule</p>
               <p className="text-xs text-muted-foreground">Wait time after the previous email before each follow-up sends</p>
             </div>
           </div>
@@ -554,7 +556,7 @@ export function EditCampaignForm({
         {!readOnly && (
           <Button disabled={saving} onClick={() => void handleSave()} className="shrink-0 gap-1.5 self-end sm:self-auto">
             {saving ? (
-              <><Loader2 className="size-3.5 animate-spin" /> Saving…</>
+              <><Loader2 className="animate-spin" /> Saving…</>
             ) : (
               <>Save changes <ChevronRight className="size-3.5" /></>
             )}
@@ -581,12 +583,12 @@ export function EditCampaignModal({
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-3xl overflow-hidden p-0">
-        <DialogHeader className="swatch-bar-top border-b border-border px-6 pt-6 pb-4 text-left">
-          <p className="eyebrow mb-1">Editing · {campaign.name}</p>
-          <DialogTitle className="font-display text-xl">Edit campaign</DialogTitle>
+        <DialogHeader className="border-b border-border px-5 py-4 text-left">
+          <DialogTitle>Edit campaign</DialogTitle>
+          <DialogDescription className="truncate">{campaign.name}</DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[68vh] overflow-y-auto px-6 py-5">
+        <div className="max-h-[68vh] overflow-y-auto px-5 py-4">
           <EditCampaignForm
             campaign={campaign}
             readOnly={readOnly}
