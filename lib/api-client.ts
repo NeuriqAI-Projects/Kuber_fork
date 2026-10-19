@@ -1,9 +1,12 @@
 "use client";
 
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import type { Lead, LeadStatus, LeadScore, LeadSource, EnrichmentStage } from "@/lib/leads";
 import type { Campaign } from "@/components/app/create-campaign-modal";
 import type { CampaignStepInput } from "@/lib/constants";
 import { campaignOutcomes } from "@/lib/campaign-status";
+import { mapDbCampaign as mapDbCampaignFull } from "@/lib/mappers";
+import { queryCache } from "@/lib/query-cache";
 
 // ─── Token helper ─────────────────────────────────────────────────────────────
 
@@ -72,6 +75,7 @@ async function apiFetch<T>(path: string, init: RequestInit = {}, token?: string)
     // just deactivated) — force the user out instead of leaving them staring
     // at a broken page full of failed requests.
     if (res.status === 401) {
+      queryCache.clear();
       const { supabase } = await import("@/lib/supabase");
       await supabase.auth.signOut();
       if (typeof window !== "undefined") window.location.href = "/";
@@ -81,6 +85,10 @@ async function apiFetch<T>(path: string, init: RequestInit = {}, token?: string)
     err.details = json.error?.details;
     throw err;
   }
+  // Any successful write can change what cached GETs would return: stale them
+  // all and refetch the related ones that are on screen (lib/query-cache.ts).
+  const method = (init.method ?? "GET").toUpperCase();
+  if (method !== "GET" && method !== "HEAD") queryCache.invalidateForMutation(path);
   return json.data as T;
 }
 
@@ -1357,8 +1365,10 @@ export async function removeLogo(token: string): Promise<{ cleared: boolean }> {
 // ─── Campaigns ────────────────────────────────────────────────────────────────
 
 export async function fetchCampaigns(token: string): Promise<Campaign[]> {
-  const data = await apiFetch<{ campaigns: DbCampaign[] }>("/api/v1/campaigns", {}, token);
-  return data.campaigns.map(mapDbCampaign);
+  const data = await apiFetch<{ campaigns: Parameters<typeof mapDbCampaignFull>[0][] }>("/api/v1/campaigns", {}, token);
+  // lib/mappers' mapper: the same one the old server-rendered Campaigns page
+  // used, so attachmentName / assignedTo (the owner filter) are kept.
+  return data.campaigns.map(mapDbCampaignFull);
 }
 
 export async function fetchCampaignSteps(token: string, campaignId: string): Promise<{
@@ -1907,4 +1917,170 @@ export async function saveLabPromptSet(
 
 export async function deleteLabPromptSet(token: string, id: string): Promise<{ deleted: string }> {
   return apiFetch(`/api/v1/model-lab/prompt-sets?id=${id}`, { method: "DELETE" }, token);
+}
+
+// ─── Client cache (stale-while-revalidate) ───────────────────────────────────
+//
+// Screens read through `useCached(key, fetcher)`: cached data renders on the
+// spot (revisits, drawers reopened, rows hovered first) and a background
+// request refreshes it. Keys are the GET path so writes through apiFetch can
+// invalidate what they touched. The store itself lives in lib/query-cache.ts.
+
+export { queryCache } from "@/lib/query-cache";
+
+/** Current access token, read fresh — use inside cached fetchers instead of
+ *  closing over `session.access_token`, which a prefetch could outlive. */
+export { getToken as getAccessToken };
+
+export type CachedResult<T> = {
+  data: T | undefined;
+  error: unknown;
+  /** Nothing cached yet and the first request is still running. */
+  isLoading: boolean;
+  /** A request (first load or background refresh) is running. */
+  isValidating: boolean;
+  /** Write the cached value (optimistic updates). */
+  mutate: (next: T | ((prev: T | undefined) => T)) => void;
+  /** Refetch now, ignoring the dedupe window. */
+  revalidate: () => Promise<T | undefined>;
+};
+
+/**
+ * Read `key` from the cache and keep it fresh. `key = null` disables the query
+ * (e.g. no session yet). On mount it revalidates unless the entry is younger
+ * than `dedupeMs`; `refreshMs` adds a quiet poll while the tab is visible.
+ */
+export function useCached<T>(
+  key: string | null,
+  fetcher: () => Promise<T>,
+  opts: { dedupeMs?: number; refreshMs?: number } = {},
+): CachedResult<T> {
+  const fetcherRef = useRef(fetcher);
+  useEffect(() => { fetcherRef.current = fetcher; });
+
+  const subscribe = useCallback(
+    (cb: () => void) => (key ? queryCache.subscribe(key, cb) : () => {}),
+    [key],
+  );
+  const entry = useSyncExternalStore(
+    subscribe,
+    () => (key ? queryCache.get<T>(key) : undefined),
+    () => undefined,
+  );
+
+  const dedupeMs = opts.dedupeMs ?? 2_000;
+  useEffect(() => {
+    if (!key) return;
+    const run = () => fetcherRef.current();
+    queryCache.setFetcher(key, run);
+    void queryCache.fetch(key, run, { maxAgeMs: dedupeMs }).catch(() => {});
+  }, [key, dedupeMs]);
+
+  const refreshMs = opts.refreshMs;
+  useEffect(() => {
+    if (!key || !refreshMs) return;
+    const t = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      void queryCache.fetch(key, () => fetcherRef.current()).catch(() => {});
+    }, refreshMs);
+    return () => clearInterval(t);
+  }, [key, refreshMs]);
+
+  const mutate = useCallback((next: T | ((prev: T | undefined) => T)) => {
+    if (key) queryCache.set<T>(key, next);
+  }, [key]);
+  const revalidate = useCallback(async () => {
+    if (!key) return undefined;
+    return queryCache.fetch<T>(key, () => fetcherRef.current());
+  }, [key]);
+
+  return {
+    data: entry?.data,
+    error: entry?.error ?? null,
+    isLoading: !!key && entry?.data === undefined && !entry?.error,
+    isValidating: entry?.validating ?? false,
+    mutate,
+    revalidate,
+  };
+}
+
+/** Warm `key` (hover, before navigating). Skips the request when the cached
+ *  value is younger than `maxAgeMs`; never throws. */
+export function prefetch<T>(key: string, fetcher?: () => Promise<T>, opts: { maxAgeMs?: number } = {}): void {
+  if (typeof window === "undefined") return;
+  void queryCache.fetch<T>(key, fetcher, { maxAgeMs: opts.maxAgeMs ?? 15_000 }).catch(() => {});
+}
+
+// ─── Shared cached queries ───────────────────────────────────────────────────
+// One key + fetcher per resource so a hover prefetch and the screen that later
+// reads it hit the same entry.
+
+export const cacheKeys = {
+  campaigns:          "/api/v1/campaigns",
+  dashboardAnalytics: "/api/v1/dashboard/analytics",
+  imports:            "/api/v1/imports",
+  leadCounts:         "/api/v1/leads/count",
+  users:              "/api/v1/settings/users",
+  lead:               (id: string) => `/api/v1/leads/${id}`,
+  leadActivity:       (id: string) => `/api/v1/leads/${id}/activity`,
+  leadComments:       (id: string) => `/api/v1/leads/${id}/comments`,
+  org:                (id: string) => `/api/v1/organizations/${id}`,
+  orgLeads:           (id: string) => `/api/v1/leads?organization_id=${id}&limit=200`,
+  campaignLeads:      (id: string) => `/api/v1/campaigns/${id}/leads?limit=200`,
+  campaignComments:   (id: string) => `/api/v1/campaigns/${id}/comments`,
+  campaignReport:     (id: string) => `/api/v1/campaigns/${id}/report`,
+  campaignLlmCost:    (id: string) => `/api/v1/campaigns/${id}/llm-cost`,
+  campaignReplies:    (id: string) => `/api/v1/campaigns/${id}/replies`,
+  campaignSteps:      (id: string) => `/api/v1/campaigns/${id}/steps`,
+  uniboxThreads:      (qs: string) => `/api/v1/unibox/threads${qs ? `?${qs}` : ""}`,
+  uniboxThread:       (id: string) => `/api/v1/unibox/threads/${id}`,
+};
+
+export type DashboardAnalyticsData = {
+  temperatureBreakdown: { hot: number; cold: number; ooo: number; unsubscribed: number; unclassified: number };
+  pendingReplies: Array<{ id: string; campaignId: string; campaignName: string; leadEmail: string | null; preview: string; createdAt: string }>;
+  totalLeads: number;
+  leadsThisMonth: number;
+  enrichedLeads: number;
+  pipelineGrowth: Array<{ month: string; leads: number }>;
+  stageDonutData: Array<{ name: string; value: number; color: string }>;
+};
+
+/** Manager: company-wide; employee: scoped to their own leads/campaigns —
+ *  the route decides from the caller's role, same as the old server page. */
+export async function fetchDashboardAnalytics(token: string): Promise<DashboardAnalyticsData> {
+  return apiFetch("/api/v1/dashboard/analytics", {}, token);
+}
+
+export const cachedFetchers = {
+  campaigns:          async () => fetchCampaigns(await getToken()),
+  dashboardAnalytics: async () => fetchDashboardAnalytics(await getToken()),
+  imports:            async () => (await fetchImports(await getToken())).imports,
+  leadStatusCounts:   async () => fetchLeadStatusCounts(await getToken()),
+  users:              async () => fetchUsers(await getToken()),
+  lead:               (id: string) => async () => fetchLead(await getToken(), id),
+  leadActivity:       (id: string) => async () => fetchLeadActivity(await getToken(), id),
+  leadComments:       (id: string) => async () => fetchLeadComments(await getToken(), id),
+  org:                (id: string) => async () => fetchOrg(await getToken(), id),
+  orgLeads:           (id: string) => async () => fetchLeadsByOrg(await getToken(), id),
+};
+
+/** Hover-prefetch for a lead row: the drawer then opens with its data. */
+export function prefetchLead(id: string): void {
+  prefetch(cacheKeys.lead(id), cachedFetchers.lead(id));
+  prefetch(cacheKeys.leadActivity(id), cachedFetchers.leadActivity(id));
+  prefetch(cacheKeys.leadComments(id), cachedFetchers.leadComments(id));
+}
+
+/** Hover-prefetch for an organization row / company link. */
+export function prefetchOrg(id: string): void {
+  prefetch(cacheKeys.org(id), cachedFetchers.org(id));
+  prefetch(cacheKeys.orgLeads(id), cachedFetchers.orgLeads(id));
+}
+
+/** Hover-prefetch for a campaign card: the list row (header) is already in the
+ *  campaigns cache; warm the leads table, which is the slow part. */
+export function prefetchCampaign(id: string): void {
+  prefetch(cacheKeys.campaigns, cachedFetchers.campaigns, { maxAgeMs: 30_000 });
+  prefetch(cacheKeys.campaignLeads(id), async () => fetchCampaignLeads(await getToken(), id));
 }

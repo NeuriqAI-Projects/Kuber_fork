@@ -6,7 +6,10 @@ import { isAppUser, getUserRole, type AppRole } from "@/lib/auth/roles";
 import { type Lead } from "@/lib/leads";
 import { type Campaign } from "@/components/app/create-campaign-modal";
 import { supabase } from "@/lib/supabase";
-import { fetchLeads, fetchLeadsCount, fetchCampaigns, rescrapeOrg, type LeadListFilters } from "@/lib/api-client";
+import {
+  fetchLeads, fetchLeadsCount, rescrapeOrg, type LeadListFilters,
+  useCached, cacheKeys, cachedFetchers, queryCache,
+} from "@/lib/api-client";
 
 export type PrefillData = {
   prefillOrg?: { id?: string; name: string; industry: string; domain: string; country: string };
@@ -26,6 +29,10 @@ type AppContextValue = {
   leadsTotal: number | null;
   loadLeads: (token: string, opts?: { background?: boolean }) => Promise<void>;
   loadingLeads: boolean;
+  /** True once the first page of leads has been loaded for this user. The
+   *  provider outlives page navigations, so the Leads page uses this to render
+   *  the rows it already has and refresh quietly instead of showing a skeleton. */
+  leadsLoaded: boolean;
   loadMoreLeads: (token: string) => Promise<void>;
   loadingMoreLeads: boolean;
   loadAllLeads: (token: string) => Promise<void>;
@@ -42,6 +49,8 @@ type AppContextValue = {
   setCampaigns: React.Dispatch<React.SetStateAction<Campaign[]>>;
   loadCampaigns: (token: string) => Promise<void>;
   loadingCampaigns: boolean;
+  /** True once the campaigns list has been fetched (or restored from cache). */
+  campaignsLoaded: boolean;
 
   // Enrichment
   enrichingIds: Set<string>;
@@ -122,6 +131,11 @@ export function AppProvider({
   const [session,        setSession       ] = useState<Session | null>(initialSession);
   const [loadingSession, setLoadingSession] = useState(!initialSession);
 
+  // The client GET cache belongs to one user: a different (or no) user drops
+  // it before anything below reads from it. Idempotent, so safe during render.
+  const cacheOwner = session?.user.id ?? null;
+  queryCache.setScope(cacheOwner);
+
   const [leads,            setLeads          ] = useState<Lead[]>([]);
   // Every lead seen this session, by id. `leads` holds only the newest page, so
   // a selection made in a filtered view could not be resolved from it — the
@@ -136,10 +150,24 @@ export function AppProvider({
   );
   const [leadsTotal,       setLeadsTotal     ] = useState<number | null>(initialLeadsTotal);
   const [loadingLeads,     setLoadingLeads   ] = useState(false);
+  const [leadsLoadedFor,   setLeadsLoadedFor ] = useState<string | null>(null);
   const [loadingMoreLeads, setLoadingMoreLeads] = useState(false);
   const [loadingAllLeads, setLoadingAllLeads] = useState(false);
-  const [campaigns,        setCampaigns      ] = useState<Campaign[]>([]);
-  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
+  // Campaigns live in the shared cache (key /api/v1/campaigns), so the
+  // Campaigns list, a campaign's page, the Dashboard and the sidebar count all
+  // read one copy, render it instantly on revisit and refresh in the background.
+  const campaignsQuery = useCached<Campaign[]>(
+    session ? cacheKeys.campaigns : null,
+    cachedFetchers.campaigns,
+  );
+  const campaigns = useMemo(() => campaignsQuery.data ?? [], [campaignsQuery.data]);
+  const mutateCampaigns = campaignsQuery.mutate;
+  const setCampaigns: React.Dispatch<React.SetStateAction<Campaign[]>> = useCallback((next) => {
+    mutateCampaigns((prev) => (typeof next === "function" ? next(prev ?? []) : next));
+  }, [mutateCampaigns]);
+  const [loadingCampaignsManual, setLoadingCampaigns] = useState(false);
+  const loadingCampaigns = loadingCampaignsManual || campaignsQuery.isLoading;
+  const campaignsLoaded = campaignsQuery.data !== undefined;
 
   const [enrichingIds,       setEnrichingIds      ] = useState<Set<string>>(new Set());
   const [checkedIds,         setCheckedIds        ] = useState<Set<string>>(new Set());
@@ -169,6 +197,7 @@ export function AppProvider({
       // Browser client can emit INITIAL_SESSION=null before cookies hydrate; keep server session.
       if (event === "INITIAL_SESSION" && !s && initialSession) return;
       if (event === "SIGNED_OUT") {
+        queryCache.clear();
         setSession(null);
         setLoadingSession(false);
         return;
@@ -247,12 +276,13 @@ export function AppProvider({
         return [...res.leads, ...prev.filter((l) => !fresh.has(l.id))];
       });
       setLeadsTotal(res.total);
+      setLeadsLoadedFor(session?.user.id ?? null);
     } catch { /* silently ignore */ }
     finally {
       leadsInFlight.current = false;
       if (!opts?.background) setLoadingLeads(false);
     }
-  }, [rememberLeads]);
+  }, [rememberLeads, session?.user.id]);
 
   /** Appends the next page only. */
   const loadMoreLeads = useCallback(async (token: string) => {
@@ -313,11 +343,13 @@ export function AppProvider({
     return { leads: all, total };
   }, [rememberLeads]);
 
-  const loadCampaigns = useCallback(async (token: string) => {
+  // Kept for callers that refresh after a change (create, pause, …): forces a
+  // refetch into the shared cache. The token arg is unused now — the cached
+  // fetcher reads a fresh one — but the signature stays for existing callers.
+  const loadCampaigns = useCallback(async (_token: string) => {
     setLoadingCampaigns(true);
     try {
-      const list = await fetchCampaigns(token);
-      setCampaigns(list);
+      await queryCache.fetch(cacheKeys.campaigns, cachedFetchers.campaigns);
     } catch { /* silently ignore */ } finally {
       setLoadingCampaigns(false);
     }
@@ -327,7 +359,7 @@ export function AppProvider({
     if (!session) {
       setLeads([]);
       setLeadsTotal(null);
-      setCampaigns([]);
+      setLeadsLoadedFor(null);
       return;
     }
     if (initialLeadsTotal === null) {
@@ -335,9 +367,20 @@ export function AppProvider({
         .then((total) => setLeadsTotal(total))
         .catch(() => {});
     }
-    // Sidebar shows a campaign count on every page, not just /campaigns.
-    void loadCampaigns(session.access_token);
-  }, [session, initialLeadsTotal, loadCampaigns]);
+    // The sidebar's campaign count is loaded by the cached query above.
+  }, [session, initialLeadsTotal]);
+
+  // A different user must never see the previous user's leads, even briefly.
+  const leadsOwner = useRef(cacheOwner);
+  useEffect(() => {
+    if (leadsOwner.current === cacheOwner) return;
+    leadsOwner.current = cacheOwner;
+    leadIndex.current.clear();
+    setLeads([]);
+    setLeadsLoadedFor(null);
+  }, [cacheOwner]);
+
+  const leadsLoaded = !!session && leadsLoadedFor === session.user.id;
 
   // ── Enrichment ────────────────────────────────────────────────────────────
 
@@ -368,6 +411,7 @@ export function AppProvider({
     leadsTotal,
     loadLeads,
     loadingLeads,
+    leadsLoaded,
     loadMoreLeads,
     loadingMoreLeads,
     loadAllLeads,
@@ -378,6 +422,7 @@ export function AppProvider({
     setCampaigns,
     loadCampaigns,
     loadingCampaigns,
+    campaignsLoaded,
     enrichingIds,
     handleEnrichLead,
     checkedIds,
@@ -398,8 +443,8 @@ export function AppProvider({
     setDeleteLeadLoading,
   }), [
     session, loadingSession,
-    leads, leadsTotal, loadLeads, loadingLeads, loadMoreLeads, loadingMoreLeads, loadAllLeads, loadingAllLeads, searchLeads,
-    campaigns, loadCampaigns, loadingCampaigns,
+    leads, leadsTotal, loadLeads, loadingLeads, leadsLoaded, loadMoreLeads, loadingMoreLeads, loadAllLeads, loadingAllLeads, searchLeads,
+    campaigns, setCampaigns, loadCampaigns, loadingCampaigns, campaignsLoaded,
     enrichingIds, handleEnrichLead,
     checkedIds, selectedLead, selectedOrgId,
     showAddLeads, manualPrefill, showCreateCampaign,

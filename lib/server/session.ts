@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import { isAppUser } from "@/lib/auth/roles";
@@ -28,7 +29,10 @@ export async function requireAppSession(): Promise<Session> {
  * render every tenant's rows. Anything a page renders should come from the `db`
  * returned here.
  */
-export async function requireAppSessionContext(): Promise<{
+// Wrapped in React cache(): the (app) layout and the page both call this in the
+// same request, and each call is a getUser + getSession + profiles round trip.
+// cache() dedupes per request only — every request still runs the full check.
+export const requireAppSessionContext = cache(async function requireAppSessionContext(): Promise<{
   session: Session;
   userId: string;
   role: "manager" | "employee";
@@ -51,7 +55,7 @@ export async function requireAppSessionContext(): Promise<{
     companyId: profile.company_id as string,
     db: createScopedClient(profile.company_id as string),
   };
-}
+});
 
 /**
  * Server guard for manager-only pages. Resolves the role from `profiles`

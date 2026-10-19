@@ -1,21 +1,34 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CampaignDetail } from "@/components/app/campaign-drawer";
 import { useApp } from "@/lib/app-context";
-import type { Campaign } from "@/components/app/create-campaign-modal";
+import CampaignDetailLoading from "./loading";
 
 interface Props {
   campaignId: string;
-  initialCampaign: Campaign | null;
 }
 
-export function CampaignDetailClient({ campaignId, initialCampaign }: Props) {
+export function CampaignDetailClient({ campaignId }: Props) {
   const router = useRouter();
-  const { campaigns } = useApp();
+  const { campaigns, campaignsLoaded, loadCampaigns, session } = useApp();
 
-  // Prefer live context data (has real-time updates); fall back to server-fetched initial
-  const campaign = campaigns.find((c) => c.id === campaignId) ?? initialCampaign;
+  // The campaign row comes from the shared (cached) campaigns list, which has
+  // live updates and the caller's role scoping. Only the very first visit,
+  // before that list has ever loaded, shows the skeleton.
+  const campaign = campaigns.find((c) => c.id === campaignId) ?? null;
+
+  // Not in the cached list (e.g. created a moment ago in another tab): refetch
+  // the list once before saying "not found".
+  const missing = campaignsLoaded && !campaign;
+  const [rechecked, setRechecked] = useState(false);
+  useEffect(() => {
+    if (!missing || rechecked || !session) return;
+    void loadCampaigns(session.access_token).finally(() => setRechecked(true));
+  }, [missing, rechecked, session, loadCampaigns]);
+
+  if (!campaign && (!campaignsLoaded || !rechecked)) return <CampaignDetailLoading />;
 
   if (!campaign) {
     return (

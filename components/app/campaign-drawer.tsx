@@ -80,6 +80,8 @@ import {
   type RegenerationJobStatus,
   type RegenerationSkipped,
   addThreadParticipantAsLead,
+  queryCache,
+  cacheKeys,
 } from "@/lib/api-client";
 import { RegenerateDraftsModal } from "@/components/app/regenerate-drafts-modal";
 import { HoldSendingModal } from "@/components/app/hold-sending-modal";
@@ -827,6 +829,37 @@ function AnalyticsChartSkeleton() {
   );
 }
 
+// Cache keys for what this screen loads. Each loader writes its result here
+// and the screen seeds its state from it, so reopening a campaign (or one
+// whose leads were hover-prefetched) paints with data instead of a skeleton
+// while a background request refreshes it.
+const drawerKeys = {
+  leads:      cacheKeys.campaignLeads,
+  progress:   (id: string) => `/api/v1/campaigns/${id}/draft-progress`,
+  replies:    cacheKeys.campaignReplies,
+  regenJob:   (id: string) => `/api/v1/campaigns/${id}/regeneration-job`,
+  report:     cacheKeys.campaignReport,
+  llmCost:    cacheKeys.campaignLlmCost,
+  comments:   cacheKeys.campaignComments,
+  steps:      cacheKeys.campaignSteps,
+  promptMeta: "/api/v1/settings/prompt-meta",
+};
+
+type CampaignLeadsResponse = Awaited<ReturnType<typeof fetchCampaignLeads>>;
+
+function mapCampaignLeadRows(leadsRes: CampaignLeadsResponse): CampaignLead[] {
+  const rawLeads = leadsRes.campaign_leads as CampaignLead[];
+  return rawLeads.map((cl) => {
+    // email_drafts is flattened to the STEP 1 draft here, because most of this
+    // screen means "the opening email" when it says draft. That flattening also
+    // threw the follow-up drafts away, so anything asking for step 2 found
+    // nothing. Keep the full set alongside it for the Sequences tab.
+    const allDrafts = [...getLeadDrafts(cl), ...(cl.followup_drafts ?? [])];
+    const step1Draft = getLeadDraftForStep(cl, 1);
+    return { ...cl, all_drafts: allDrafts, email_drafts: step1Draft ?? null };
+  });
+}
+
 export function CampaignDetail({
   campaign,
   onBack,
@@ -838,8 +871,13 @@ export function CampaignDetail({
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(campaign.name);
   const [savingName, setSavingName] = useState(false);
-  const [campaignLeads, setCampaignLeads] = useState<CampaignLead[]>([]);
-  const [progress, setProgress] = useState<DraftProgress | null>(null);
+  const cachedLeadsRes = queryCache.getData<CampaignLeadsResponse>(drawerKeys.leads(campaign.id));
+  const [campaignLeads, setCampaignLeads] = useState<CampaignLead[]>(
+    () => (cachedLeadsRes ? mapCampaignLeadRows(cachedLeadsRes) : []),
+  );
+  const [progress, setProgress] = useState<DraftProgress | null>(
+    () => queryCache.getData<DraftProgress>(drawerKeys.progress(campaign.id)) ?? null,
+  );
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
@@ -863,7 +901,9 @@ export function CampaignDetail({
   } | null>(null);
   const [bulkRegenSubmitting, setBulkRegenSubmitting] = useState(false);
   const [bulkRegenOpening, setBulkRegenOpening] = useState(false);
-  const [regenJob, setRegenJob] = useState<RegenerationJobStatus | null>(null);
+  const [regenJob, setRegenJob] = useState<RegenerationJobStatus | null>(
+    () => queryCache.getData<{ job: RegenerationJobStatus | null }>(drawerKeys.regenJob(campaign.id))?.job ?? null,
+  );
   const [cancellingJob, setCancellingJob] = useState(false);
   const [saving, setSaving] = useState(false);
   const [certifying, setCertifying] = useState(false);
@@ -887,9 +927,13 @@ export function CampaignDetail({
   const [previewVersionId, setPreviewVersionId] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [viewTab, setViewTab] = useState<CampaignViewTab>("analytics");
-  const [report, setReport] = useState<CampaignReportData | null>(null);
+  const [report, setReport] = useState<CampaignReportData | null>(
+    () => queryCache.getData<CampaignReportData>(drawerKeys.report(campaign.id)) ?? null,
+  );
   const [reportLoading, setReportLoading] = useState(false);
-  const [llmCost, setLlmCost] = useState<CampaignLlmCost | null>(null);
+  const [llmCost, setLlmCost] = useState<CampaignLlmCost | null>(
+    () => queryCache.getData<CampaignLlmCost>(drawerKeys.llmCost(campaign.id)) ?? null,
+  );
   const [llmCostLoading, setLlmCostLoading] = useState(false);
   // Index into seqStepEdits pending removal, awaiting confirm — a step's text
   // and timing for every lead in the campaign is real work to lose to a
@@ -905,7 +949,9 @@ export function CampaignDetail({
   const [replaceTarget, setReplaceTarget] = useState<ReplaceLeadTarget | null>(null);
   const [replaceSubmitting, setReplaceSubmitting] = useState(false);
   const [replaceError, setReplaceError] = useState("");
-  const [threads, setThreads] = useState<CampaignReplyThread[]>([]);
+  const [threads, setThreads] = useState<CampaignReplyThread[]>(
+    () => queryCache.getData<{ threads: CampaignReplyThread[] }>(drawerKeys.replies(campaign.id))?.threads ?? [],
+  );
   const [outboxFilter, setOutboxFilter] = useState<
     "all" | "action" | "certified" | "sending" | "sent" | "replied" | "bounced" | "followup" | "followup_sent" | AuthorFilterId
   >("all");
@@ -1013,25 +1059,29 @@ export function CampaignDetail({
   /** True when the STORED body is the {{customBodyN}} placeholder and the editor is
    *  only showing sample text in its place. */
   const [seqStepSaving, setSeqStepSaving] = useState(false);
-  const [comments, setComments] = useState<CampaignComment[]>([]);
+  const [comments, setComments] = useState<CampaignComment[]>(
+    () => queryCache.getData<CampaignComment[]>(drawerKeys.comments(campaign.id)) ?? [],
+  );
   const [commentBody, setCommentBody] = useState("");
   const [loadingComments, setLoadingComments] = useState(false);
   const [sendingComment, setSendingComment] = useState(false);
   const commentsEndRef = useRef<HTMLDivElement | null>(null);
   const activeCampaignIdRef = useRef(campaign.id);
 
-  const [systemPromptUpdatedAt, setSystemPromptUpdatedAt] = useState<string | null>(null);
+  const [systemPromptUpdatedAt, setSystemPromptUpdatedAt] = useState<string | null>(
+    () => queryCache.getData<string | null>(drawerKeys.promptMeta) ?? null,
+  );
 
   useEffect(() => {
-    (async () => {
+    void queryCache.fetch(drawerKeys.promptMeta, async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      if (!session) return null;
       const res = await fetch("/api/v1/settings/prompt-meta", {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       const json = await res.json();
-      setSystemPromptUpdatedAt(json.data?.updatedAt ?? null);
-    })();
+      return (json.data?.updatedAt ?? null) as string | null;
+    }, { maxAgeMs: 60_000 }).then(setSystemPromptUpdatedAt).catch(() => {});
   }, []);
 
   const { loadCampaigns, session: appSession, role } = useApp();
@@ -1047,7 +1097,8 @@ export function CampaignDetail({
     if (!appSession?.access_token) return;
     if (!quiet) setLoadingComments(true);
     try {
-      const next = await fetchCampaignComments(appSession.access_token, campaignId);
+      const token = appSession.access_token;
+      const next = await queryCache.fetch(drawerKeys.comments(campaignId), () => fetchCampaignComments(token, campaignId));
       if (activeCampaignIdRef.current !== campaignId) return;
       setComments((current) => {
         if (!quiet) return next;
@@ -1101,7 +1152,7 @@ export function CampaignDetail({
 
   useEffect(() => {
     activeCampaignIdRef.current = campaign.id;
-    setComments([]);
+    setComments(queryCache.getData<CampaignComment[]>(drawerKeys.comments(campaign.id)) ?? []);
     setCommentBody("");
     void loadComments(campaign.id, true);
   }, [campaign.id, loadComments]);
@@ -1198,21 +1249,13 @@ export function CampaignDetail({
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     const token = session.access_token;
+    // Through the cache: joins a hover prefetch already in flight and leaves
+    // the result for the next visit.
     const [leadsRes, prog] = await Promise.all([
-      fetchCampaignLeads(token, campaign.id),
-      fetchDraftProgress(token, campaign.id),
+      queryCache.fetch(drawerKeys.leads(campaign.id), () => fetchCampaignLeads(token, campaign.id)),
+      queryCache.fetch(drawerKeys.progress(campaign.id), () => fetchDraftProgress(token, campaign.id)),
     ]);
-    const rawLeads = leadsRes.campaign_leads as CampaignLead[];
-
-    const leads = rawLeads.map((cl) => {
-      // email_drafts is flattened to the STEP 1 draft here, because most of this
-      // screen means "the opening email" when it says draft. That flattening also
-      // threw the follow-up drafts away, so anything asking for step 2 found
-      // nothing. Keep the full set alongside it for the Sequences tab.
-      const allDrafts = [...getLeadDrafts(cl), ...(cl.followup_drafts ?? [])];
-      const step1Draft = getLeadDraftForStep(cl, 1);
-      return { ...cl, all_drafts: allDrafts, email_drafts: step1Draft ?? null };
-    });
+    const leads = mapCampaignLeadRows(leadsRes);
     setCampaignLeads(leads);
     setProgress(prog);
     return leads;
@@ -1222,7 +1265,8 @@ export function CampaignDetail({
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return null;
-      const { job } = await fetchRegenerationJob(session.access_token, campaign.id);
+      const token = session.access_token;
+      const { job } = await queryCache.fetch(drawerKeys.regenJob(campaign.id), () => fetchRegenerationJob(token, campaign.id));
       setRegenJob(job);
       return job;
     } catch {
@@ -1233,7 +1277,8 @@ export function CampaignDetail({
   const loadReplies = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
-    const { threads: t } = await fetchCampaignReplies(session.access_token, campaign.id);
+    const token = session.access_token;
+    const { threads: t } = await queryCache.fetch(drawerKeys.replies(campaign.id), () => fetchCampaignReplies(token, campaign.id));
     setThreads(t);
   }, [campaign.id]);
 
@@ -1322,7 +1367,9 @@ export function CampaignDetail({
   }
 
   useEffect(() => {
-    setLoading(true);
+    // Skeleton only when nothing is cached for this campaign yet; otherwise the
+    // cached rows stay up while this refreshes them.
+    setLoading(queryCache.getData(drawerKeys.leads(campaign.id)) === undefined);
     void loadReplies();
     void loadRegenJob();
     loadData()
@@ -1333,6 +1380,7 @@ export function CampaignDetail({
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- campaign.id is inside loadData
   }, [loadData, loadRegenJob]);
 
   // Refresh reply threads when opening Outbox so Unibox Generate/Save shows up
@@ -1345,12 +1393,14 @@ export function CampaignDetail({
   useEffect(() => {
     if (viewTab !== "analytics") return;
     let cancelled = false;
-    setReportLoading(true);
+    // Spinner only when there is no report (cached or loaded) to show yet.
+    setReportLoading(queryCache.getData(drawerKeys.report(campaign.id)) === undefined);
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session || cancelled) return;
       try {
-        const data = await fetchCampaignReport(session.access_token, campaign.id);
+        const token = session.access_token;
+        const data = await queryCache.fetch(drawerKeys.report(campaign.id), () => fetchCampaignReport(token, campaign.id));
         if (!cancelled) setReport(data);
       } catch {
         if (!cancelled) setReport(null);
@@ -1364,12 +1414,13 @@ export function CampaignDetail({
   useEffect(() => {
     if (viewTab !== "analytics") return;
     let cancelled = false;
-    setLlmCostLoading(true);
+    setLlmCostLoading(queryCache.getData(drawerKeys.llmCost(campaign.id)) === undefined);
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session || cancelled) return;
       try {
-        const data = await fetchCampaignLlmCost(session.access_token, campaign.id);
+        const token = session.access_token;
+        const data = await queryCache.fetch(drawerKeys.llmCost(campaign.id), () => fetchCampaignLlmCost(token, campaign.id));
         if (!cancelled) setLlmCost(data);
       } catch {
         if (!cancelled) setLlmCost(null);
@@ -1386,31 +1437,36 @@ export function CampaignDetail({
   // filters silently empty until the user happened to open Sequences first.
   useEffect(() => {
     let cancelled = false;
+    const applySteps = ({ steps, followup_instruction, followups_ai_enabled }: Awaited<ReturnType<typeof fetchCampaignSteps>>) => {
+      setSeqCampaignInstruction(followup_instruction ?? "");
+      setSeqFollowupsAi(followups_ai_enabled ?? true);
+      // ai_instruction and fallback_body ride along deliberately. Dropping
+      // them here left both boxes EMPTY on every fresh load while the text
+      // sat safely in the database - and worse, a Save from that screen
+      // wrote the empty box back over it (client campaign, 18 Sep 2026).
+      const mapped = steps.map((s) => ({
+        step_order: s.step_order, subject: s.subject, body: s.body,
+        delay: s.delay, delay_unit: s.delay_unit,
+        ai_instruction: s.ai_instruction ?? null, fallback_body: s.fallback_body ?? null,
+      }));
+      setCampaignSteps(mapped);
+      const followUps = mapped.filter((s) => s.step_order > 1);
+      if (followUps.length > 0) {
+        setSelectedSequenceStep((prev) =>
+          followUps.some((s) => s.step_order === prev) ? prev : followUps[0].step_order,
+        );
+      }
+    };
+    // Cached steps paint at once; the request below refreshes them.
+    const cachedSteps = queryCache.getData<Awaited<ReturnType<typeof fetchCampaignSteps>>>(drawerKeys.steps(campaign.id));
+    if (cachedSteps) applySteps(cachedSteps);
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session || cancelled) return;
       try {
-        const { steps, followup_instruction, followups_ai_enabled } = await fetchCampaignSteps(session.access_token, campaign.id);
-        if (!cancelled) {
-          setSeqCampaignInstruction(followup_instruction ?? "");
-          setSeqFollowupsAi(followups_ai_enabled ?? true);
-          // ai_instruction and fallback_body ride along deliberately. Dropping
-          // them here left both boxes EMPTY on every fresh load while the text
-          // sat safely in the database - and worse, a Save from that screen
-          // wrote the empty box back over it (client campaign, 18 Sep 2026).
-          const mapped = steps.map((s) => ({
-            step_order: s.step_order, subject: s.subject, body: s.body,
-            delay: s.delay, delay_unit: s.delay_unit,
-            ai_instruction: s.ai_instruction ?? null, fallback_body: s.fallback_body ?? null,
-          }));
-          setCampaignSteps(mapped);
-          const followUps = mapped.filter((s) => s.step_order > 1);
-          if (followUps.length > 0) {
-            setSelectedSequenceStep((prev) =>
-              followUps.some((s) => s.step_order === prev) ? prev : followUps[0].step_order,
-            );
-          }
-        }
+        const token = session.access_token;
+        const res = await queryCache.fetch(drawerKeys.steps(campaign.id), () => fetchCampaignSteps(token, campaign.id));
+        if (!cancelled) applySteps(res);
       } catch {
         if (!cancelled) setCampaignSteps([]);
       }
