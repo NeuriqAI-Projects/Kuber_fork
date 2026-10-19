@@ -2065,22 +2065,40 @@ export const cachedFetchers = {
   orgLeads:           (id: string) => async () => fetchLeadsByOrg(await getToken(), id),
 };
 
-/** Hover-prefetch for a lead row: the drawer then opens with its data. */
+// Hover intent: sweeping the mouse down a table must not fire requests for
+// every row it crosses. Each call replaces the pending one, so only the row the
+// pointer rests on (≥ HOVER_INTENT_MS) is fetched.
+const HOVER_INTENT_MS = 120;
+let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+function onHoverIntent(run: () => void) {
+  if (typeof window === "undefined") return;
+  if (hoverTimer) clearTimeout(hoverTimer);
+  hoverTimer = setTimeout(() => { hoverTimer = null; run(); }, HOVER_INTENT_MS);
+}
+
+/** Hover-prefetch for a lead row (`onMouseEnter={() => prefetchLead(lead.id)}`):
+ *  the lead drawer then opens with its details, activity and comments. */
 export function prefetchLead(id: string): void {
-  prefetch(cacheKeys.lead(id), cachedFetchers.lead(id));
-  prefetch(cacheKeys.leadActivity(id), cachedFetchers.leadActivity(id));
-  prefetch(cacheKeys.leadComments(id), cachedFetchers.leadComments(id));
+  onHoverIntent(() => {
+    prefetch(cacheKeys.lead(id), cachedFetchers.lead(id));
+    prefetch(cacheKeys.leadActivity(id), cachedFetchers.leadActivity(id));
+    prefetch(cacheKeys.leadComments(id), cachedFetchers.leadComments(id));
+  });
 }
 
 /** Hover-prefetch for an organization row / company link. */
 export function prefetchOrg(id: string): void {
-  prefetch(cacheKeys.org(id), cachedFetchers.org(id));
-  prefetch(cacheKeys.orgLeads(id), cachedFetchers.orgLeads(id));
+  onHoverIntent(() => {
+    prefetch(cacheKeys.org(id), cachedFetchers.org(id));
+    prefetch(cacheKeys.orgLeads(id), cachedFetchers.orgLeads(id));
+  });
 }
 
 /** Hover-prefetch for a campaign card: the list row (header) is already in the
  *  campaigns cache; warm the leads table, which is the slow part. */
 export function prefetchCampaign(id: string): void {
-  prefetch(cacheKeys.campaigns, cachedFetchers.campaigns, { maxAgeMs: 30_000 });
-  prefetch(cacheKeys.campaignLeads(id), async () => fetchCampaignLeads(await getToken(), id));
+  onHoverIntent(() => {
+    prefetch(cacheKeys.campaigns, cachedFetchers.campaigns, { maxAgeMs: 30_000 });
+    prefetch(cacheKeys.campaignLeads(id), async () => fetchCampaignLeads(await getToken(), id));
+  });
 }

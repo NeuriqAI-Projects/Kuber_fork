@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Building2, Globe2, Mail, Megaphone, Target, User } from "lucide-react";
 import { isAppUser } from "@/lib/auth/roles";
 import { supabase } from "@/lib/supabase";
-import { fetchLead } from "@/lib/api-client";
+import { useCached, cacheKeys, cachedFetchers } from "@/lib/api-client";
+import { useApp } from "@/lib/app-context";
 import type { Lead } from "@/lib/leads";
 import { Avatar, PipelineStepper, ScoreBadge, StatusBadge } from "@/components/leads/lead-ui";
 import { Button } from "@/components/ui/button";
@@ -37,9 +38,15 @@ export default function LeadDetailPage() {
   const router = useRouter();
   const leadId = typeof params.id === "string" ? params.id : "";
 
-  const [lead,    setLead   ] = useState<Lead | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError  ] = useState("");
+  // The lead renders straight from the cache (or the row the Leads page already
+  // holds) and refreshes in the background; only an unknown lead shows the
+  // loading line. The auth check runs alongside instead of in front of it.
+  const { leadsByIds } = useApp();
+  const known = leadId ? leadsByIds(new Set([leadId]))[0] ?? null : null;
+  const leadQuery = useCached<Lead>(leadId ? cacheKeys.lead(leadId) : null, cachedFetchers.lead(leadId));
+  const lead = leadQuery.data ?? known;
+  const loading = !lead && leadQuery.isLoading;
+  const error = !lead && leadQuery.error ? (leadQuery.error as Error).message : "";
 
   useEffect(() => {
     let mounted = true;
@@ -51,15 +58,6 @@ export default function LeadDetailPage() {
 
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.replace("/"); return; }
-
-      try {
-        const found = await fetchLead(session.access_token, leadId);
-        if (mounted) setLead(found);
-      } catch (e) {
-        if (mounted) setError((e as Error).message);
-      } finally {
-        if (mounted) setLoading(false);
-      }
     }
 
     void init();

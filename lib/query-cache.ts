@@ -27,17 +27,16 @@ export type CacheEntry<T = unknown> = {
 
 type Fetcher<T> = () => Promise<T>;
 
-/** Which cached resources a write to `/api/v1/<resource>/…` can change. A
- *  mutation marks EVERY entry stale (so the next screen that mounts refetches
- *  in the background), but only refetches *mounted* entries of these resources
- *  right away — refetching everything on screen after each draft approval would
+/** Which cached resources a write to `/api/v1/<resource>/…` can change. Those
+ *  entries go stale; the mounted ones refetch right away. Kept narrow on
+ *  purpose — refetching everything on screen after each draft approval would
  *  be a request storm on the campaign page. */
 const RELATED: Record<string, string[]> = {
   leads:            ["leads", "organizations", "campaigns", "dashboard", "imports", "unibox"],
   organizations:    ["organizations", "leads"],
   campaigns:        ["campaigns", "dashboard", "leads"],
   "campaign-leads": ["campaigns", "leads", "dashboard"],
-  drafts:           ["campaigns", "drafts"],
+  drafts:           ["drafts"],
   "reply-drafts":   ["reply-drafts", "campaigns", "unibox", "dashboard"],
   unibox:           ["unibox", "campaigns", "leads"],
   imports:          ["imports", "leads"],
@@ -201,19 +200,13 @@ export class QueryCache {
     }
   }
 
-  /** After a successful POST/PATCH/PUT/DELETE to `path`: every entry goes stale
-   *  (revalidated on its next mount) and mounted entries of related resources
-   *  refetch now. */
+  /** After a successful POST/PATCH/PUT/DELETE to `path`: entries of related
+   *  resources go stale (revalidated on their next read) and the mounted ones
+   *  refetch now. Unrelated entries are left alone. */
   invalidateForMutation(path: string): void {
     const resource = resourceOf(path);
     const related = new Set(RELATED[resource] ?? [resource]);
-    for (const key of this.keys()) {
-      const live = related.has(resourceOf(key));
-      this.write(key, { stale: true });
-      if (live && this.hasSubscribers(key) && this.fetchers.has(key)) {
-        void this.fetch(key).catch(() => {});
-      }
-    }
+    this.invalidate((key) => related.has(resourceOf(key)));
   }
 }
 

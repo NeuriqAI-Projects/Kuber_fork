@@ -16,8 +16,9 @@ import { useApp } from "@/lib/app-context";
 import type { Lead, EnrichmentStage, LeadStatus } from "@/lib/leads";
 import { Avatar, ScoreBadge, StatusBadge } from "@/components/leads/lead-ui";
 import {
-  fetchLead, fetchLeadActivity, fetchLeadComments, fetchUsers, patchLead, patchOrg,
+  fetchLead, fetchLeadActivity, fetchLeadComments, patchLead, patchOrg,
   postLeadComment, toggleLeadCommentReaction, rescrapeOrg, fetchServiceHealth,
+  queryCache, cacheKeys, cachedFetchers, useCached,
   type Profile, type LeadActivityEvent, type LeadComment,
 } from "@/lib/api-client";
 import { DiscussionComment } from "@/components/app/discussion-comment";
@@ -649,6 +650,8 @@ function LeadDrawerSkeleton() {
 
 // ── Main drawer ───────────────────────────────────────────────────────────────
 
+const enrichStatusKey = (orgId: string) => `/api/enrich/status?org_id=${orgId}`;
+
 export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
   lead: Lead | null;
   onClose: () => void;
@@ -668,7 +671,9 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
   const [loadingComments, setLoadingComments] = useState(false);
   const [sendingComment,  setSendingComment ] = useState(false);
   const [retrying,    setRetrying   ] = useState(false);
-  const [employees,   setEmployees  ] = useState<Profile[]>([]);
+  // Users list is shared/cached (the Leads page loads the same one).
+  const usersQuery = useCached<Profile[]>(role === "manager" ? cacheKeys.users : null, cachedFetchers.users);
+  const employees = (usersQuery.data ?? []).filter((u) => u.role === "employee" && u.is_active);
   const [reassigning, setReassigning] = useState(false);
   const commentsEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -689,7 +694,8 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
     try {
       const tok = await getToken();
       if (!tok) return;
-      const updated = await fetchLead(tok, l.id);
+      // Through the cache: joins a hover prefetch already in flight.
+      const updated = await queryCache.fetch(cacheKeys.lead(l.id), () => fetchLead(tok, l.id));
       if (activeLeadIdRef.current !== l.id) return;
       setFreshLead(updated);
       onLeadUpdated?.(updated);
@@ -707,17 +713,19 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
         headers: { Authorization: `Bearer ${tok}` },
       });
       const json = await res.json() as { success: boolean; data?: EnrichStatus };
+      if (json.success && json.data) queryCache.set(enrichStatusKey(orgId), json.data);
       if (activeLeadIdRef.current == null) return;
       if (json.success && json.data) setEnrichData(json.data);
     } catch { /* non-fatal */ }
   }, []);
 
   const fetchActivity = useCallback(async (leadId: string) => {
-    setLoadingActivity(true);
+    // Spinner only when there is nothing cached to show meanwhile.
+    setLoadingActivity(queryCache.getData(cacheKeys.leadActivity(leadId)) === undefined);
     try {
       const tok = await getToken();
       if (!tok) return;
-      const events = await fetchLeadActivity(tok, leadId);
+      const events = await queryCache.fetch(cacheKeys.leadActivity(leadId), () => fetchLeadActivity(tok, leadId));
       if (activeLeadIdRef.current !== leadId) return;
       setActivity(events);
     } catch { /* non-fatal */ }
@@ -729,7 +737,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
     try {
       const tok = await getToken();
       if (!tok) return;
-      const next = await fetchLeadComments(tok, leadId);
+      const next = await queryCache.fetch(cacheKeys.leadComments(leadId), () => fetchLeadComments(tok, leadId));
       if (activeLeadIdRef.current !== leadId) return;
       setComments((current) => {
         if (!quiet) return next;
@@ -785,6 +793,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
     try {
       const tok = await getToken();
       const updated = await patchLead(tok, display.id, patch);
+      queryCache.set(cacheKeys.lead(display.id), updated);
       setFreshLead(updated);
       onLeadUpdated?.(updated);
     } catch (e) {
@@ -811,19 +820,13 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
 
   // Single-lead reassignment (manager-only) — previously the only way to move
   // one lead was bulk-assign or a campaign-assign side effect (review §3.2).
-  useEffect(() => {
-    if (role !== "manager") return;
-    getToken().then((tok) => fetchUsers(tok)).then((users) => {
-      setEmployees(users.filter((u) => u.role === "employee" && u.is_active));
-    }).catch(() => {});
-  }, [role]);
-
   async function handleReassign(nextAssignee: string | null) {
     if (!display || reassigning) return;
     setReassigning(true);
     try {
       const tok = await getToken();
       const updated = await patchLead(tok, display.id, { assigned_to: nextAssignee });
+      queryCache.set(cacheKeys.lead(display.id), updated);
       setFreshLead(updated);
       onLeadUpdated?.(updated);
       toast.success(nextAssignee ? "Lead reassigned" : "Lead returned to the pool");
@@ -847,10 +850,12 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
       setRailMode("activity");
       return;
     }
-    setFreshLead(null);
-    setEnrichData(null);
-    setActivity([]);
-    setComments([]);
+    // Whatever is cached for this lead (a previous open, or a row hover
+    // prefetch) shows at once; the fetches below refresh it.
+    setFreshLead(queryCache.getData<Lead>(cacheKeys.lead(lead.id)) ?? null);
+    setEnrichData(lead.orgId ? queryCache.getData<EnrichStatus>(enrichStatusKey(lead.orgId)) ?? null : null);
+    setActivity(queryCache.getData<LeadActivityEvent[]>(cacheKeys.leadActivity(lead.id)) ?? []);
+    setComments(queryCache.getData<LeadComment[]>(cacheKeys.leadComments(lead.id)) ?? []);
     setCommentBody("");
     setRailMode("activity");
     void fetchFresh(lead);

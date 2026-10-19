@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   Megaphone, Users, Send, MessageSquare, Clock, Gauge, ArrowUp,
   Globe, Calendar, ExternalLink, Loader2, CheckCircle2, RotateCcw, RefreshCw, Check, Save, History, ChevronDown, ArrowLeft,
@@ -28,7 +29,6 @@ import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { AppCheckbox } from "@/components/ui/app-checkbox";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { LEAD_TEMPLATE_VARS } from "@/components/ui/template-var-textarea";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import {
@@ -89,9 +89,9 @@ import { CampaignCredits } from "@/components/app/campaign-credits";
 import { ReplaceLeadModal, type ReplaceLeadTarget } from "@/components/app/replace-lead-modal";
 import { DiscussionComment } from "@/components/app/discussion-comment";
 import { CampaignKanban } from "@/components/app/campaign-kanban";
-import { CampaignReportView, type CampaignReportData } from "@/components/app/campaign-report";
-import { ReplyDraftBox, replyDraftHasContent } from "@/components/app/reply-draft-box";
-import { ManualReplyBox, type ReplyRecipientContext } from "@/components/app/manual-reply-box";
+import type { CampaignReportData } from "@/components/app/campaign-report";
+import { replyDraftHasContent } from "@/lib/reply-draft-content";
+import type { ReplyRecipientContext } from "@/components/app/manual-reply-box";
 import { AddParticipantLeadDialog } from "@/components/app/add-participant-lead-dialog";
 import {
   isInbound,
@@ -118,7 +118,6 @@ import {
   CAMPAIGN_ACTION_HELP,
   type CampaignLeadsSort,
 } from "@/lib/leads";
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis } from "recharts";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ServiceHealthBanner } from "@/components/app/service-health-banner";
 import {
@@ -130,6 +129,33 @@ import {
 import { cumulativeDays, dayLabel } from "@/lib/followup-schedule-preview";
 import { delayInDays, writeByAt } from "@/lib/services/followup-schedule";
 import { extractFollowupWaitsFromSteps, rebuildStepsWithFollowupWaits } from "@/lib/constants";
+
+// Heavy editors/charts load on demand (tiptap, recharts) instead of shipping
+// with the campaign page's first bundle. Placeholders keep the layout height.
+const RichTextEditor = dynamic(
+  () => import("@/components/ui/rich-text-editor").then((m) => m.RichTextEditor),
+  { ssr: false, loading: () => <div className="min-h-[160px]" aria-busy="true" /> },
+);
+const ReplyDraftBox = dynamic(
+  () => import("@/components/app/reply-draft-box").then((m) => m.ReplyDraftBox),
+  { ssr: false, loading: () => <div className="min-h-[220px]" aria-busy="true" /> },
+);
+const ManualReplyBox = dynamic(
+  () => import("@/components/app/manual-reply-box").then((m) => m.ManualReplyBox),
+  { ssr: false, loading: () => <div className="min-h-[220px]" aria-busy="true" /> },
+);
+const CampaignReportView = dynamic(
+  () => import("@/components/app/campaign-report").then((m) => m.CampaignReportView),
+  { ssr: false, loading: () => <div className="min-h-[240px]" aria-busy="true" /> },
+);
+const CampaignDonutChart = dynamic(
+  () => import("@/components/app/campaign-analytics-charts").then((m) => m.CampaignDonutChart),
+  { ssr: false, loading: () => <div style={{ width: "45%", height: 140 }} aria-busy="true" /> },
+);
+const CampaignBarChart = dynamic(
+  () => import("@/components/app/campaign-analytics-charts").then((m) => m.CampaignBarChart),
+  { ssr: false, loading: () => <div style={{ width: "100%", height: 140 }} aria-busy="true" /> },
+);
 
 /**
  * Strips quoted-reply lines from a stored email plain-text body for display.
@@ -3639,23 +3665,7 @@ export function CampaignDetail({
                 <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
                   <p className="eyebrow mb-2">Pipeline</p>
                   <div className="flex items-center gap-3">
-                    <ResponsiveContainer width="45%" height={140}>
-                      <PieChart>
-                        <Pie data={pipelineData} cx="50%" cy="50%" innerRadius={36} outerRadius={58} paddingAngle={2} dataKey="value" stroke="none">
-                          {pipelineData.map((s, i) => <Cell key={i} fill={s.fill} fillOpacity={s.opacity} />)}
-                        </Pie>
-                        <Tooltip
-                          content={({ active, payload }) =>
-                            active && payload?.length ? (
-                              <div className="rounded border border-border bg-card px-2 py-1 text-xs shadow-lg">
-                                <span className="font-semibold">{payload[0].name}: </span>
-                                <span>{payload[0].value}</span>
-                              </div>
-                            ) : null
-                          }
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <CampaignDonutChart data={pipelineData} />
                     <div className="flex-1 space-y-1.5 min-w-0">
                       {pipelineData.map((s) => (
                         <div key={s.name} className="flex items-center justify-between text-xs gap-2">
@@ -3674,25 +3684,7 @@ export function CampaignDetail({
                 <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
                   <p className="eyebrow mb-2">Draft funnel</p>
                   {report ? (
-                    <ResponsiveContainer width="100%" height={140}>
-                      <BarChart data={funnelData} margin={{ top: 8, right: 4, left: -28, bottom: 0 }}>
-                        <XAxis dataKey="name" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                        <Tooltip
-                          content={({ active, payload, label }) =>
-                            active && payload?.length ? (
-                              <div className="rounded border border-border bg-card px-2 py-1 text-xs shadow-lg">
-                                <span className="font-semibold">{label}: </span>
-                                <span>{payload[0].value}</span>
-                              </div>
-                            ) : null
-                          }
-                        />
-                        <Bar dataKey="v" radius={[3, 3, 0, 0]}>
-                          {funnelData.map((d, i) => <Cell key={i} fill={d.fill} fillOpacity={d.opacity} />)}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <CampaignBarChart data={funnelData} />
                   ) : (
                     <div className="h-[140px] flex items-center justify-center">
                       {reportLoading ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : (
@@ -3706,23 +3698,7 @@ export function CampaignDetail({
                 <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
                   <p className="eyebrow mb-2">Lead temperature</p>
                   <div className="flex items-center gap-3">
-                    <ResponsiveContainer width="45%" height={140}>
-                      <PieChart>
-                        <Pie data={tempData} cx="50%" cy="50%" innerRadius={36} outerRadius={58} paddingAngle={2} dataKey="value" stroke="none">
-                          {tempData.map((s, i) => <Cell key={i} fill={s.fill} fillOpacity={s.opacity} />)}
-                        </Pie>
-                        <Tooltip
-                          content={({ active, payload }) =>
-                            active && payload?.length ? (
-                              <div className="rounded border border-border bg-card px-2 py-1 text-xs shadow-lg">
-                                <span className="font-semibold">{payload[0].name}: </span>
-                                <span>{payload[0].value}</span>
-                              </div>
-                            ) : null
-                          }
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <CampaignDonutChart data={tempData} />
                     <div className="flex-1 space-y-1.5 min-w-0">
                       {tempData.map((s) => (
                         <div key={s.name} className="flex items-center justify-between text-xs gap-2">
@@ -3815,34 +3791,12 @@ export function CampaignDetail({
                   <p className="text-[10px] text-muted-foreground mb-2">
                     {analyticsReplyRate}% of delivered emails on this campaign got a reply
                   </p>
-                  <ResponsiveContainer width="100%" height={140}>
-                    <BarChart
-                      data={[
-                        { name: "Delivered", v: analyticsDelivered, fill: "var(--primary)", opacity: 1 },
-                        { name: "Replied",   v: analyticsReplied,   fill: "#22c55e",        opacity: 1 },
-                      ]}
-                      margin={{ top: 8, right: 4, left: -28, bottom: 0 }}
-                    >
-                      <XAxis dataKey="name" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                      <Tooltip
-                        content={({ active, payload, label }) =>
-                          active && payload?.length ? (
-                            <div className="rounded border border-border bg-card px-2 py-1 text-xs shadow-lg">
-                              <span className="font-semibold">{label}: </span>
-                              <span>{payload[0].value}</span>
-                            </div>
-                          ) : null
-                        }
-                      />
-                      <Bar dataKey="v" radius={[3, 3, 0, 0]}>
-                        {[
-                          { fill: "var(--primary)", opacity: 1 },
-                          { fill: "#22c55e",         opacity: 1 },
-                        ].map((d, i) => <Cell key={i} fill={d.fill} fillOpacity={d.opacity} />)}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <CampaignBarChart
+                    data={[
+                      { name: "Delivered", v: analyticsDelivered, fill: "var(--primary)", opacity: 1 },
+                      { name: "Replied",   v: analyticsReplied,   fill: "#22c55e",        opacity: 1 },
+                    ]}
+                  />
                 </div>
                 )}
               </div>

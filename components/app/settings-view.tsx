@@ -24,8 +24,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 // with no newline-to-<br> conversion — so it needs the real, HTML-output
 // shared editor instead, or a manager's line breaks silently vanish in the
 // sent email.
-import { RichTextEditor as HtmlRichTextEditor, type TemplateVar } from "@/components/ui/rich-text-editor";
-import { fetchLogo, fetchSettings, patchSettings, fetchMySettings, patchMySettings, removeLogo, uploadLogo, fetchMyAvailability, setMyAvailability, type AvailabilityStatus } from "@/lib/api-client";
+import type { TemplateVar } from "@/components/ui/rich-text-editor";
+import { queryCache, fetchLogo, fetchSettings, patchSettings, fetchMySettings, patchMySettings, removeLogo, uploadLogo, fetchMyAvailability, setMyAvailability, type AvailabilityStatus } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { BRAND_LOGO_CHANGED, COLORS } from "@/lib/branding";
@@ -38,6 +38,12 @@ import { useSearchParams, useRouter } from "next/navigation";
 const TeamView = dynamic(
   () => import("@/components/app/team-view").then((m) => m.TeamView),
   { ssr: false, loading: () => <div className="p-8 animate-pulse"><div className="h-40 rounded-xl bg-secondary" /></div> },
+);
+
+// tiptap: only the follow-up fallback / HTML sections use it — load on demand.
+const HtmlRichTextEditor = dynamic(
+  () => import("@/components/ui/rich-text-editor").then((m) => m.RichTextEditor),
+  { ssr: false, loading: () => <div className="min-h-[160px]" aria-busy="true" /> },
 );
 
 const EmailSendingView = dynamic(
@@ -329,8 +335,64 @@ export function SettingsView() {
     sectionLabel;
 
   useEffect(() => {
+    // Settings forms paint from the last loaded copy on a revisit (no
+    // skeleton). The fresh copy is applied only when it actually differs from
+    // what was shown, so a background refresh can't overwrite a field the user
+    // started typing into unless the data really changed on the server.
+    type MyData = Awaited<ReturnType<typeof fetchMySettings>>;
+    type CompanyData = Awaited<ReturnType<typeof fetchSettings>>;
+    type LogoData = { logo_path: string | null; logo_url: string | null };
+    const MY_KEY = "/api/v1/me/settings";
+    const SETTINGS_KEY = "/api/v1/settings";
+    const LOGO_KEY = "/api/v1/settings/logo";
+
+    function applyMy(my: MyData) {
+      // Keys nav depends on this — set it from /me/settings immediately so we
+      // don't wait on company settings / logo (or a full Team users list).
+      setIsSuperAdmin(my.is_super_admin);
+      setMyDraftPrompt(my.draft_prompt ?? "");
+      setMyDraftTemplate(my.draft_template ?? "");
+      setMyReplyPrompt(my.reply_prompt ?? "");
+      setMySignature(my.signature ?? "");
+      setMySenderName(my.sender_name ?? "");
+      setMyDefaults(my.defaults);
+    }
+    function applySettings(s: CompanyData) {
+      if (!s) return;
+      setSenderName(s.default_sender_name ?? "");
+      setClientIndustry(s.client_industry ?? "");
+      setCompanyContext(s.company_context ?? "");
+      setSystemPrompt(s.system_prompt ?? "");
+      setGenericSubject(s.generic_email_subject ?? "");
+      setGenericBody(s.generic_email_body ?? "");
+      setFollowupFallbackBody(s.followup_fallback_body ?? "");
+      setAllowHtmlEmails(s.allow_html_emails === "true");
+      setSigContact(s.signature_contact ?? "");
+      setReplyDrafterPrompt(s.reply_drafter_prompt ?? "");
+      try { setProductOfferings(JSON.parse(s.product_offerings ?? "[]") as ProductOffering[]); } catch { setProductOfferings([]); }
+      setIndustryKeywordGroups(parseIndustryKeywordGroups(s.industry_keyword_groups));
+    }
+    function applyLogo(l: LogoData) {
+      setLogoPath(l.logo_path);
+      setLogoUrl(l.logo_url);
+    }
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+    const cachedMy = queryCache.getData<MyData>(MY_KEY);
+    const cachedSettings = queryCache.getData<CompanyData>(SETTINGS_KEY);
+    const cachedLogo = queryCache.getData<LogoData>(LOGO_KEY);
+    // After a save anywhere (entries marked stale) wait for the server copy
+    // instead of flashing the pre-save values.
+    const notStale = (k: string) => queryCache.get(k)?.stale === false;
+    const hasCache = cachedMy !== undefined && cachedSettings !== undefined && notStale(MY_KEY) && notStale(SETTINGS_KEY);
+    if (hasCache) {
+      applyMy(cachedMy);
+      applySettings(cachedSettings);
+      if (cachedLogo) applyLogo(cachedLogo);
+    }
+
     async function load() {
-      setLoading(true);
+      setLoading(!hasCache);
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token ?? "";
@@ -340,41 +402,19 @@ export function SettingsView() {
         // Personal settings, company settings and the logo all load for everyone
         // — employees need the company settings behind Knowledge Sources, and
         // GET /settings is readable by any authenticated user.
-        const myPromise = fetchMySettings(token);
-        const settingsPromise = fetchSettings(token);
-        const logoPromise = fetchLogo(token).catch(() => ({ logo_path: null, logo_url: null }));
+        const myPromise = queryCache.fetch(MY_KEY, () => fetchMySettings(token));
+        const settingsPromise = queryCache.fetch(SETTINGS_KEY, () => fetchSettings(token));
+        const logoPromise = queryCache.fetch(LOGO_KEY, () => fetchLogo(token)).catch(() => ({ logo_path: null, logo_url: null }));
 
         const my = await myPromise;
-        // Keys nav depends on this — set it from /me/settings immediately so we
-        // don't wait on company settings / logo (or a full Team users list).
-        setIsSuperAdmin(my.is_super_admin);
-        setMyDraftPrompt(my.draft_prompt ?? "");
-        setMyDraftTemplate(my.draft_template ?? "");
-        setMyReplyPrompt(my.reply_prompt ?? "");
-        setMySignature(my.signature ?? "");
-        setMySenderName(my.sender_name ?? "");
-        setMyDefaults(my.defaults);
+        if (!hasCache || !same(my, cachedMy)) applyMy(my);
 
         const s = await settingsPromise;
-        if (s) {
-          setSenderName(s.default_sender_name ?? "");
-          setClientIndustry(s.client_industry ?? "");
-          setCompanyContext(s.company_context ?? "");
-          setSystemPrompt(s.system_prompt ?? "");
-          setGenericSubject(s.generic_email_subject ?? "");
-          setGenericBody(s.generic_email_body ?? "");
-          setFollowupFallbackBody(s.followup_fallback_body ?? "");
-          setAllowHtmlEmails(s.allow_html_emails === "true");
-          setSigContact(s.signature_contact ?? "");
-          setReplyDrafterPrompt(s.reply_drafter_prompt ?? "");
-          try { setProductOfferings(JSON.parse(s.product_offerings ?? "[]") as ProductOffering[]); } catch { setProductOfferings([]); }
-          setIndustryKeywordGroups(parseIndustryKeywordGroups(s.industry_keyword_groups));
-        }
+        if (!hasCache || !same(s, cachedSettings)) applySettings(s);
         setLoading(false);
 
         const l = await logoPromise;
-        setLogoPath(l.logo_path);
-        setLogoUrl(l.logo_url);
+        if (!cachedLogo || !same(l, cachedLogo)) applyLogo(l);
       } catch (e) {
         setError((e as Error).message);
         setLoading(false);

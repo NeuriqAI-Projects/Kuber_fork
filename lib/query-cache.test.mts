@@ -147,7 +147,7 @@ test("invalidate marks stale and refetches only mounted keys", async () => {
   assert.equal(c.isFresh("/api/v1/leads/count", 60_000), false);
 });
 
-test("a mutation refetches mounted related keys and stales everything else", async () => {
+test("a mutation refetches mounted related keys and leaves unrelated ones alone", async () => {
   const c = new QueryCache();
   const calls: Record<string, number> = {};
   const f = (k: string) => async () => { calls[k] = (calls[k] ?? 0) + 1; return calls[k]; };
@@ -159,9 +159,20 @@ test("a mutation refetches mounted related keys and stales everything else", asy
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(calls["/api/v1/campaigns"], 2);
   assert.equal(calls["/api/v1/dashboard/analytics"], 2);
-  assert.equal(calls["/api/v1/settings"], 1, "unrelated mounted key is not refetched…");
-  assert.equal(c.get("/api/v1/settings")?.stale, true, "…but is stale for its next mount");
+  assert.equal(calls["/api/v1/settings"], 1, "unrelated mounted key is not refetched");
+  assert.equal(c.get("/api/v1/settings")?.stale, false, "and stays fresh");
   assert.equal(calls["/api/v1/unibox/threads"], 1);
+});
+
+test("a mutation stales unmounted related keys so their next read revalidates", async () => {
+  const c = new QueryCache();
+  let n = 0;
+  await c.fetch("/api/v1/leads/abc", async () => ++n);
+  c.invalidateForMutation("/api/v1/leads/abc");
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(n, 1, "not mounted: no request now");
+  assert.equal(c.isFresh("/api/v1/leads/abc", 60_000), false);
+  assert.equal(await c.fetch("/api/v1/leads/abc", undefined, { maxAgeMs: 60_000 }), 2, "stale entry refetches even inside maxAge");
 });
 
 test("fetch without a registered fetcher rejects", async () => {

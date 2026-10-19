@@ -6,8 +6,10 @@ import Link from "next/link";
 import { ArrowLeft, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { useApp } from "@/lib/app-context";
 import {
-  fetchCampaigns,
+  cacheKeys,
+  queryCache,
   fetchUniboxThread,
   fetchUniboxThreads,
   markThreadRead,
@@ -56,27 +58,74 @@ function pickLatestDraft(messages: UniboxMessage[], drafts: ReplyDraft[]): Reply
   return pickLatestDraftForThread(latest?.reply_event_id, drafts);
 }
 
+type ThreadsPage = Awaited<ReturnType<typeof fetchUniboxThreads>>;
+
+function buildThreadParams(f: {
+  eaccount: string | null;
+  debouncedSearch: string;
+  campaignIds: string[];
+  readState: UniboxReadStateFilter;
+  interest: UniboxInterestFilter;
+  cursor: string | null;
+}): Record<string, string | undefined> {
+  const params: Record<string, string | undefined> = {
+    eaccount: f.eaccount ?? undefined,
+    q: f.debouncedSearch || undefined,
+    cursor: f.cursor ?? undefined,
+    limit: "30",
+  };
+  if (f.campaignIds.length > 0) {
+    params.campaign_ids = f.campaignIds.join(",");
+  }
+  if (f.readState !== "all") {
+    params.status = f.readState;
+  }
+  if (f.interest !== "all") {
+    params.interest = f.interest === "lead" ? "lead" : String(f.interest);
+  }
+  return params;
+}
+
+function threadsPageKey(params: Record<string, string | undefined>): string {
+  return cacheKeys.uniboxThreads(
+    new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => !!e[1])).toString(),
+  );
+}
+
 export function UniboxClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const [token, setToken] = useState("");
+  // Seeded from the app session so the first request doesn't wait on a
+  // separate getSession round trip; the effect below keeps the old behaviour.
+  const { session, campaigns: allCampaigns } = useApp();
+  const [token, setToken] = useState(() => session?.access_token ?? "");
   const [campaignIds, setCampaignIds] = useState<string[]>(() => parseCampaignIdsParam(searchParams));
   const [eaccount, setEaccount] = useState<string | null>(() => searchParams.get("eaccount"));
   const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const [debouncedSearch, setDebouncedSearch] = useState(() => searchParams.get("q") ?? "");
   const [readState, setReadState] = useState<UniboxReadStateFilter>(() => parseReadStateParam(searchParams.get("status")));
   const [interest, setInterest] = useState<UniboxInterestFilter>(() => parseInterestParam(searchParams.get("interest")));
-  const [unreadTotal, setUnreadTotal] = useState(0);
-  const [threads, setThreads] = useState<UniboxThreadSummary[]>([]);
-  const [threadsTotal, setThreadsTotal] = useState<number | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
+  // Seed the list from the cached first page for the filters in the URL, so a
+  // revisit paints the threads on the very first frame (no skeleton flash).
+  const [initialPage] = useState(() => queryCache.getData<ThreadsPage>(threadsPageKey(buildThreadParams({
+    eaccount, debouncedSearch, campaignIds, readState, interest, cursor: null,
+  }))));
+  const [unreadTotal, setUnreadTotal] = useState(initialPage?.counts.unread_total ?? 0);
+  const [threads, setThreads] = useState<UniboxThreadSummary[]>(initialPage?.threads ?? []);
+  const [threadsTotal, setThreadsTotal] = useState<number | null>(initialPage?.counts.total ?? null);
+  const [cursor, setCursor] = useState<string | null>(initialPage?.next_cursor ?? null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "detail">("list");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialPage);
   const [loadingMore, setLoadingMore] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([]);
+  // The campaign filter reads the shared (cached) campaigns list instead of
+  // fetching its own copy on every visit.
+  const campaigns = useMemo(
+    () => allCampaigns.map((x) => ({ id: x.id, name: x.name })),
+    [allCampaigns],
+  );
   const [threadDetail, setThreadDetail] = useState<Awaited<ReturnType<typeof fetchUniboxThread>> | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const readTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -122,36 +171,33 @@ export function UniboxClient() {
     loadThreadsAbortRef.current?.abort();
     const controller = new AbortController();
     loadThreadsAbortRef.current = controller;
+    const params = buildThreadParams({ eaccount, debouncedSearch, campaignIds, readState, interest, cursor: append ? cursor : null });
+
+    // First page per filter set is cached: revisiting Unibox (or flipping back
+    // to a filter seen before) shows that list at once and refreshes it quietly.
+    const pageKey = threadsPageKey(params);
+    const cachedPage = append ? undefined : queryCache.getData<ThreadsPage>(pageKey);
     if (append) setLoadingMore(true);
-    else setLoading(true);
-    // Clear the old list right away on a fresh (non-append) load so a filter
-    // change never shows the previous filter's results while the new request
-    // is in flight — it should read as "cleared, then repopulated", not
-    // "stale list that suddenly swaps out".
-    if (!append) {
+    else if (cachedPage) {
+      setThreads(cachedPage.threads);
+      setCursor(cachedPage.next_cursor);
+      setThreadsTotal(cachedPage.counts.total);
+      setUnreadTotal(cachedPage.counts.unread_total);
+      setLoading(false);
+    } else {
+      setLoading(true);
+      // Clear the old list right away on a fresh (non-append) load so a filter
+      // change never shows the previous filter's results while the new request
+      // is in flight — it should read as "cleared, then repopulated", not
+      // "stale list that suddenly swaps out".
       setThreads([]);
       setCursor(null);
       setThreadsTotal(null);
     }
     try {
-      const params: Record<string, string | undefined> = {
-        eaccount: eaccount ?? undefined,
-        q: debouncedSearch || undefined,
-        cursor: append && cursor ? cursor : undefined,
-        limit: "30",
-      };
-      if (campaignIds.length > 0) {
-        params.campaign_ids = campaignIds.join(",");
-      }
-      if (readState !== "all") {
-        params.status = readState;
-      }
-      if (interest !== "all") {
-        params.interest = interest === "lead" ? "lead" : String(interest);
-      }
-
       const data = await fetchUniboxThreads(token, params, controller.signal);
       if (controller.signal.aborted) return;
+      if (!append) queryCache.set(pageKey, data);
       setThreads((prev) => (append ? [...prev, ...data.threads] : data.threads));
       setCursor(data.next_cursor);
       setThreadsTotal(data.counts.total);
@@ -169,16 +215,16 @@ export function UniboxClient() {
 
   useEffect(() => { void loadThreads(false); }, [token, campaignIds, eaccount, debouncedSearch, readState, interest]);
 
-  useEffect(() => {
-    if (!token) return;
-    fetchCampaigns(token).then((c) => setCampaigns(c.map((x) => ({ id: x.id, name: x.name })))).catch(() => {});
-  }, [token]);
-
   const loadDetail = useCallback(async (threadId: string, opts?: { silent?: boolean }) => {
     if (!token) return;
-    if (!opts?.silent) setDetailLoading(true);
+    // A thread opened before renders from cache right away; the fetch below
+    // still refreshes it (and marks it read) as before.
+    const cachedDetail = queryCache.getData<Awaited<ReturnType<typeof fetchUniboxThread>>>(cacheKeys.uniboxThread(threadId));
+    if (cachedDetail) setThreadDetail(cachedDetail);
+    if (!opts?.silent && !cachedDetail) setDetailLoading(true);
     try {
       const detail = await fetchUniboxThread(token, threadId, true);
+      queryCache.set(cacheKeys.uniboxThread(threadId), detail);
       setThreadDetail(detail);
       if (readTimer.current) clearTimeout(readTimer.current);
       readTimer.current = setTimeout(() => {
