@@ -21,7 +21,8 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Label } from "@/components/ui/label";
 import { LocationsPicker } from "@/components/ui/locations-picker";
 import { Stepper } from "@/components/ui/stepper";
-import { getBatchColor } from "@/lib/constants";
+import { Pill } from "@/components/ui/pill";
+import type { BatchColorName } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { FIRECRAWL_PER_PAGE, LEADS_PER_PAGE, MAX_LEADS_PER_SEARCH, MAX_PAGES_PER_SEARCH, minCredits, suggestedMaxCredits } from "@/lib/services/prospects/digging";
 
@@ -52,11 +53,11 @@ function Bill({ target, maxCredits, firecrawlShort }: { target: number; maxCredi
   const minutes = Math.max(1, Math.round((pages * 100) / COMPANIES_PER_MINUTE));
   const line = "flex justify-between gap-3 tabular-nums";
   return (
-    <div className="space-y-1.5 rounded-xl border border-border bg-field p-4 text-sm dark:bg-card">
-      <p className="text-base font-semibold">Your search</p>
+    <div className="space-y-1.5 rounded-lg border border-border bg-card p-4 text-[13px]">
+      <p className="text-[15px] font-semibold">Your search</p>
       <div className={line}><span>{target} lead{target === 1 ? "" : "s"} × 1 credit</span><span>{target}</span></div>
       <div className={line}><span>~{pages} search{pages === 1 ? "" : "es"} of 100 companies</span><span>{pages}</span></div>
-      <div className={cn(line, "border-t border-dashed border-border pt-2 text-base font-bold")}><span className="flex items-center gap-1">Expected <InfoTip side="left" text="Companies that aren't plastic makers, or have nobody to email, cost nothing." /></span><span>~{expected} credits</span></div>
+      <div className={cn(line, "border-t border-dashed border-border pt-2 text-sm font-semibold")}><span className="flex items-center gap-1">Expected <InfoTip side="left" text="Companies that aren't plastic makers, or have nobody to email, cost nothing." /></span><span>~{expected} credits</span></div>
       <div className={cn(line, maxCredits < expected ? "font-semibold text-destructive" : "text-muted-foreground")}><span>Your limit</span><span>{maxCredits} credits</span></div>
       <div className="space-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
         <div className={cn(line, firecrawlShort && "font-semibold text-destructive")}><span>Website reading</span><span>~{pages * FIRECRAWL_PER_PAGE} Firecrawl</span></div>
@@ -66,25 +67,25 @@ function Bill({ target, maxCredits, firecrawlShort }: { target: number; maxCredi
         <DialogTrigger asChild>
           <Button type="button" variant="outline" size="sm" className="mt-1 w-full">View detailed bill</Button>
         </DialogTrigger>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg rounded-lg">
           <DialogHeader><DialogTitle>Detailed bill</DialogTitle></DialogHeader>
-          <div className="space-y-4 text-sm">
+          <div className="space-y-4 text-[13px]">
             <section className="space-y-1.5">
-              <p className="font-semibold">Apollo credits</p>
+              <p className="font-medium text-foreground">Apollo credits</p>
               <div className={line}><span>Searching: {pages} × 100 companies</span><span>{pages}</span></div>
               <p className="text-xs text-muted-foreground">Apollo charges 1 credit for every page of 100 companies. About 1 in {Math.round(100 / LEADS_PER_PAGE)} companies becomes a lead, so {target} leads need ~{pages} pages.</p>
               <div className={line}><span>Lead contacts: {target} × 1</span><span>{target}</span></div>
               <p className="text-xs text-muted-foreground">Each good-fit company gets one buyer revealed. Apollo charges 1 credit per revealed contact.</p>
-              <div className={cn(line, "border-t border-dashed border-border pt-1.5 font-bold")}><span>Expected</span><span>~{expected}</span></div>
+              <div className={cn(line, "border-t border-dashed border-border pt-1.5 font-semibold")}><span>Expected</span><span>~{expected}</span></div>
               <div className={cn(line, maxCredits < expected && "font-semibold text-destructive")}><span>Your limit (Kuber never goes over)</span><span>{maxCredits}</span></div>
             </section>
             <section className="space-y-1.5">
-              <p className="font-semibold">Firecrawl credits</p>
+              <p className="font-medium text-foreground">Firecrawl credits</p>
               <div className={cn(line, firecrawlShort && "font-semibold text-destructive")}><span>Website reading: {pages} × 100 companies</span><span>~{pages * FIRECRAWL_PER_PAGE}</span></div>
               <p className="text-xs text-muted-foreground">Kuber reads each company&apos;s website (1 Firecrawl credit each) so the AI can tell if it makes plastic products.</p>
             </section>
             <section className="space-y-1.5">
-              <p className="font-semibold">Costs nothing</p>
+              <p className="font-medium text-foreground">Costs nothing</p>
               <p className="text-xs text-muted-foreground">The free size check, companies that aren&apos;t plastic makers (Hidden), and companies with nobody to email. Needs-review companies cost 1 Apollo credit only when you approve them.</p>
             </section>
             <div className={line}><span>Time (in the background)</span><span>~{minutes} min</span></div>
@@ -120,26 +121,26 @@ function MarketSize({ filters, target, onPick, onFits }: { filters: Record<strin
   const tooFew = !!left && left.low > 0 && target > left.low;
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 rounded-lg border border-border bg-field px-3 py-2 text-sm dark:bg-card">
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-[13px]">
         {state === "loading" ? <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" /> : <Search className="size-4 shrink-0 text-muted-foreground" />}
         <div className="min-w-0 flex-1">
           {state === "error" && <span className="text-muted-foreground">Couldn&apos;t check the size. You can still search.</span>}
           {state !== "error" && !est && <span className="text-muted-foreground">Checking available leads…</span>}
           {state !== "error" && est && (
             est.companies.mid === 0
-              ? <span className="font-medium text-amber-600 dark:text-amber-400">Almost no companies for these keywords.</span>
+              ? <span className="font-medium text-amber-700 dark:text-amber-300">Almost no companies for these keywords.</span>
               : left!.high === 0
-                ? <span className="font-medium text-amber-600 dark:text-amber-400">No new leads left for these keywords.</span>
-                : <span>Available: <b>~{n(left!.low)} leads</b> <span className="text-muted-foreground">(up to {n(left!.high)})</span></span>
+                ? <span className="font-medium text-amber-700 dark:text-amber-300">No new leads left for these keywords.</span>
+                : <span>Available: <b className="font-semibold tabular-nums">~{n(left!.low)} leads</b> <span className="text-muted-foreground">(up to {n(left!.high)})</span></span>
           )}
         </div>
         <InfoTip side="left" text={`Free check, no credits used. A rough guess. A lead = a plastic maker with a person we can email (about 1 in 3 companies). Your keywords match about ${est ? n(est.companies.mid) : "…"} companies in Apollo.${used > 0 ? " You searched them before, so companies you already got are skipped." : ""}`} />
       </div>
       {est && est.companies.mid > 0 && tooFew && (
-        <div className="flex items-start gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+        <div className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
           <CircleAlert className="mt-0.5 size-4 shrink-0" />
           <div className="space-y-1.5">
-            <p>Only about <b>{n(left!.low)}</b> leads available. Add keywords or countries in step 1 for more.</p>
+            <p>Only about <b className="font-semibold tabular-nums">{n(left!.low)}</b> leads available. Add keywords or countries in step 1 for more.</p>
             <Button type="button" size="sm" variant="outline" onClick={() => onPick(left!.low)}>Ask for {n(left!.low)} leads instead</Button>
           </div>
         </div>
@@ -192,77 +193,77 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
   const checked = s?.stages.scored ?? 0;
   const left = Math.max(0, total - checked);
   const done = !!s && s.in_progress === 0;
-  const tile = "flex flex-col gap-1 rounded-xl border border-border bg-field p-4 dark:bg-card";
+  const tile = "flex flex-col gap-1 rounded-lg border border-border bg-card p-4";
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5 py-2">
-      <div className="flex items-center gap-4 rounded-2xl border border-border bg-field p-5 dark:bg-card">
-        <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-          {done ? <Check className="size-7" /> : <Loader2 className="size-7 animate-spin" />}
+      <div className="flex items-center gap-4 rounded-lg border border-border bg-card p-4">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          {done ? <Check className="size-5" /> : <Loader2 className="size-5 animate-spin" />}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-xl font-bold">{done ? "All companies checked" : "Search started"}</p>
+          <p className="text-lg font-semibold">{done ? "All companies checked" : "Search started"}</p>
           <p className="text-sm text-muted-foreground">
             {done ? "Good fits are getting their contact; the rest wait in Organizations." : "Kuber is checking every company in the background. You can close this window — nothing stops."}
           </p>
         </div>
-        <span className={cn("inline-flex shrink-0 items-center rounded-full border px-3 py-1 text-xs font-semibold", getBatchColor(batchColor).pill)}>{batchName}</span>
+        <Pill color={batchColor as BatchColorName} dot className="shrink-0">{batchName}</Pill>
       </div>
 
       {s?.target_leads != null && (
-        <div className="space-y-1.5 rounded-xl border border-border bg-field p-4 dark:bg-card">
-          <p className="text-sm"><b className="text-lg tabular-nums">{s.leads} of {s.target_leads} leads</b>
+        <div className="space-y-1.5 rounded-lg border border-border bg-card p-4">
+          <p className="text-sm"><b className="text-[15px] font-semibold tabular-nums">{s.leads} of {s.target_leads} leads</b>
             <span className="text-muted-foreground"> · {s.pages.length} page{s.pages.length === 1 ? "" : "s"} of 100 companies read{s.pages.length ? ` (page ${s.pages.join(", ")})` : ""}</span>
           </p>
-          <div className="h-1.5 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${Math.min(100, (s.leads / s.target_leads) * 100)}%` }} /></div>
-          {s.run_note && <p className={cn("text-sm", s.leads < s.target_leads ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400")}>{s.run_note}</p>}
+          <div className="h-1.5 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-emerald-500 transition-[width] duration-500" style={{ width: `${Math.min(100, (s.leads / s.target_leads) * 100)}%` }} /></div>
+          {s.run_note && <p className={cn("text-sm", s.leads < s.target_leads ? "text-amber-700 dark:text-amber-300" : "text-emerald-700 dark:text-emerald-300")}>{s.run_note}</p>}
           {!s.run_note && s.run_status === "running" && <p className="text-xs text-muted-foreground">Kuber reads the next 100 companies on its own when these are checked, until it has {s.target_leads} leads or hits your credit limit.</p>}
         </div>
       )}
 
-      {netError && <p className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-400"><CircleAlert className="size-4" />Can&apos;t reach the server right now ({netError}). The search keeps running; these numbers update when the connection is back.</p>}
+      {netError && <p className="flex items-center gap-1.5 text-[13px] text-amber-700 dark:text-amber-300"><CircleAlert className="size-4" />Can&apos;t reach the server right now ({netError}). The search keeps running; these numbers update when the connection is back.</p>}
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div className={tile}>
           <span className="text-xs text-muted-foreground">Companies found</span>
-          <span className="text-3xl font-bold tabular-nums">{s?.returned ?? "…"}</span>
+          <span className="text-2xl font-semibold tabular-nums">{s?.returned ?? "…"}</span>
           <span className="text-xs text-muted-foreground">{s ? `${s.total} new to you` : " "}</span>
         </div>
         <div className={tile}>
           <span className="text-xs text-muted-foreground">Checked so far</span>
-          <span className="text-3xl font-bold tabular-nums text-primary">{checked}</span>
-          <div className="h-1.5 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-primary transition-all duration-500" style={{ width: `${total ? (checked / total) * 100 : 0}%` }} /></div>
+          <span className="text-2xl font-semibold tabular-nums">{checked}</span>
+          <div className="h-1.5 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-primary transition-[width] duration-500" style={{ width: `${total ? (checked / total) * 100 : 0}%` }} /></div>
         </div>
         <div className={tile}>
           <span className="text-xs text-muted-foreground">Time left</span>
-          <span className="text-3xl font-bold tabular-nums">{done ? "Done" : `~${Math.max(1, Math.ceil(left / COMPANIES_PER_MINUTE))} min`}</span>
+          <span className="text-2xl font-semibold tabular-nums">{done ? "Done" : `~${Math.max(1, Math.ceil(left / COMPANIES_PER_MINUTE))} min`}</span>
           <span className="text-xs text-muted-foreground">about {COMPANIES_PER_MINUTE} companies a minute</span>
         </div>
       </div>
 
-      <div className="divide-y divide-border rounded-xl border border-border bg-field px-4 dark:bg-card">
+      <div className="divide-y divide-border rounded-lg border border-border bg-card px-4">
         {[
-          { icon: <Check className="size-4" />, tone: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400", title: "Good fits", text: "One contact revealed automatically, then it appears in Leads", side: s ? `${s.groups.good} so far` : "" },
-          { icon: <CircleAlert className="size-4" />, tone: "bg-amber-500/15 text-amber-600 dark:text-amber-400", title: "Need your review", text: "Approve or decline them in Organizations", side: s ? `${s.groups.review} so far · no cost until approved` : "" },
+          { icon: <Check className="size-4" />, tone: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300", title: "Good fits", text: "One contact revealed automatically, then it appears in Leads", side: s ? `${s.groups.good} so far` : "" },
+          { icon: <CircleAlert className="size-4" />, tone: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300", title: "Need your review", text: "Approve or decline them in Organizations", side: s ? `${s.groups.review} so far · no cost until approved` : "" },
           { icon: <X className="size-4" />, tone: "bg-secondary text-muted-foreground", title: "Not a fit", text: "Traders, distributors, machine makers — hidden", side: s ? `${s.groups.hidden} · nothing spent` : "" },
         ].map((r) => (
           <div key={r.title} className="flex items-center gap-3 py-3">
             <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-lg", r.tone)}>{r.icon}</span>
-            <div className="min-w-0 flex-1"><p className="text-sm font-semibold">{r.title}</p><p className="text-xs text-muted-foreground">{r.text}</p></div>
-            <span className="shrink-0 text-xs text-muted-foreground">{r.side}</span>
+            <div className="min-w-0 flex-1"><p className="text-[13px] font-medium">{r.title}</p><p className="text-xs text-muted-foreground">{r.text}</p></div>
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{r.side}</span>
           </div>
         ))}
       </div>
 
       {s && (
-        <p className="rounded-lg border border-border px-3 py-2 text-sm">
-          <b>Apollo credits used so far: {s.credits_used}</b>{s.max_credits != null ? ` of your limit of ${s.max_credits}` : ""} ({s.credits_spent} for search{s.credits_spent === 1 ? "" : "es"} + {s.credits_used - s.credits_spent} contact{s.credits_used - s.credits_spent === 1 ? "" : "s"}){s.mock ? " · test batch, nothing is charged" : ""}.
+        <p className="rounded-lg border border-border bg-card px-3 py-2 text-[13px]">
+          <b className="font-semibold tabular-nums">Apollo credits used so far: {s.credits_used}</b>{s.max_credits != null ? ` of your limit of ${s.max_credits}` : ""} ({s.credits_spent} for search{s.credits_spent === 1 ? "" : "es"} + {s.credits_used - s.credits_spent} contact{s.credits_used - s.credits_spent === 1 ? "" : "s"}){s.mock ? " · test batch, nothing is charged" : ""}.
           <span className="text-muted-foreground"> Website reading: about {s.stages.read} Firecrawl credits.</span>
         </p>
       )}
 
       {s && s.stages.waiting_credits > 0 && (
-        <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
           Apollo ran out of credits: {s.stages.waiting_credits} good compan{s.stages.waiting_credits === 1 ? "y is" : "ies are"} waiting. They continue on their own after a top-up — nothing is lost.
         </p>
       )}
@@ -449,7 +450,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
     return (
       <div className="flex flex-col items-center gap-3 py-16 text-center">
         <Loader2 className="size-6 animate-spin text-primary" />
-        <p className="text-base font-semibold">Starting your search</p>
+        <p className="text-[15px] font-semibold">Starting your search</p>
         <p className="max-w-sm text-xs text-muted-foreground">
           Looking up companies for &ldquo;{resuming}&rdquo; in Apollo and saving them. This usually takes a few seconds, longer on a slow connection. You can close this window; it keeps going.
         </p>
@@ -507,7 +508,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
                   <NumberInput id="target-leads" min={1} max={100_000} value={target} aria-invalid={!!fitBlock}
                     onValueChange={(n) => { setError(""); setTarget(n); }} className="w-28" />
                   {TARGET_CHIPS.map((n) => (
-                    <Button key={n} type="button" size="sm" variant={target === n ? "default" : "outline"} className="rounded-full" onClick={() => setTarget(n)}>{n}</Button>
+                    <Button key={n} type="button" variant="outline" className={cn("tabular-nums", target === n && "border-primary/50 bg-primary/5 hover:bg-primary/5")} onClick={() => setTarget(n)}>{n}</Button>
                   ))}
                 </div>
               </div>
@@ -540,14 +541,14 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
                 {creditsTooLow && <p className="flex items-start gap-1.5 text-sm font-medium text-destructive"><AlertCircle className="mt-0.5 size-4 shrink-0" />Not enough credits. {creditsMsg}</p>}
               </div>
               <div className="space-y-1.5">
-                <p className="text-sm font-medium">What happens to each company</p>
+                <p className="text-[13px] font-medium text-foreground">What happens to each company</p>
                 <div className="flex flex-nowrap items-center gap-2">
                   {[
-                    { label: "Good fit", tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400", tip: "Makes plastic products: one buyer is revealed automatically (1 credit)." },
-                    { label: "Needs review", tone: "bg-amber-500/15 text-amber-700 dark:text-amber-400", tip: "The AI can't tell, no website, unclear LinkedIn, or website down. Waits for you; no cost until you approve." },
+                    { label: "Good fit", tone: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300", tip: "Makes plastic products: one buyer is revealed automatically (1 credit)." },
+                    { label: "Needs review", tone: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300", tip: "The AI can't tell, no website, unclear LinkedIn, or website down. Waits for you; no cost until you approve." },
                     { label: "Hidden", tone: "bg-secondary text-muted-foreground", tip: "Not a plastic maker (traders, distributors, machine makers, brands that only use packaging). Nothing spent." },
                   ].map((g) => (
-                    <span key={g.label} className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium", g.tone)}>
+                    <span key={g.label} className={cn("inline-flex items-center gap-1 rounded-[5px] px-1.5 py-[3px] text-xs font-medium", g.tone)}>
                       {g.label}<InfoTip side="top" text={g.tip} />
                     </span>
                   ))}
@@ -556,7 +557,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
             </div>
             <Bill target={target} maxCredits={maxCredits} firecrawlShort={fits?.firecrawl_leads != null && target > fits.firecrawl_leads} />
             {fits && (fits.apollo_leads != null || fits.firecrawl_leads != null) && (
-              <div className="space-y-1 text-sm font-medium text-amber-700 dark:text-amber-400">
+              <div className="space-y-1 text-[13px] font-medium tabular-nums text-amber-700 dark:text-amber-300">
                 {fits.apollo_leads != null && <p>Apollo credits left: {fits.apollo_credits != null ? `${fits.apollo_credits.toLocaleString()} → ` : ""}enough for about {fits.apollo_leads.toLocaleString()} leads</p>}
                 {fits.firecrawl_leads != null && <p>Firecrawl credits left: {fits.firecrawl_credits != null ? `${fits.firecrawl_credits.toLocaleString()} → ` : ""}enough for about {fits.firecrawl_leads.toLocaleString()} leads</p>}
               </div>
@@ -587,7 +588,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
           {step > 0 && <Button type="button" variant="outline" onClick={() => { setError(""); setStep((s) => s - 1); }}>Back</Button>}
         </div>
         {step < STEPS.length - 1 ? (
-          <Button type="button" onClick={next} disabled={step === 1 && (creditsTooLow || !!fitBlock)} className="disabled:bg-gray-400 disabled:text-white disabled:opacity-100">Next</Button>
+          <Button type="button" onClick={next} disabled={step === 1 && (creditsTooLow || !!fitBlock)}>Next</Button>
         ) : (
           <Button type="button" onClick={startSearch} disabled={busy}>
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />} Find {target} leads

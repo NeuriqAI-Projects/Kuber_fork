@@ -5,7 +5,10 @@
 // Kanban board. Data: GET /api/v1/prospects (lib/services/prospects/groups.ts
 // decides each company's column and status line).
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Building2, Check, ChevronDown, ChevronUp, ExternalLink, Loader2, RotateCcw, Undo2, X } from "lucide-react";
+import {
+  AlertTriangle, Building2, Check, CheckCheck, ChevronDown, ChevronUp, CircleDot, ExternalLink, Gauge, Globe, Link2, Loader2,
+  MessageSquareText, RotateCcw, Tag, Undo2, X, type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import { ApolloCostNote } from "@/components/app/apollo-cost-note";
 import { getToken } from "@/components/app/lead-forms";
@@ -17,7 +20,10 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Tip } from "@/components/ui/tip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DomainLink } from "@/components/app/domain-link";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { PageHeader } from "@/components/ui/page-header";
+import { DetailRow, DetailSection } from "@/components/ui/record-layout";
+import { prefetchOrg } from "@/lib/api-client";
 import { getBatchColor } from "@/lib/constants";
 import { GROUP_LABEL, GROUPS, statusLine, type Group, type Tone } from "@/lib/services/prospects/groups";
 import { cn } from "@/lib/utils";
@@ -117,17 +123,65 @@ export async function decideScored(ids: string[], action: DecideAction) {
 // ── small pieces ─────────────────────────────────────────────────────────────
 const TONE: Record<Tone, string> = {
   blue: "bg-primary/10 text-primary border-primary/20",
-  amber: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
-  green: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
-  red: "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30",
+  amber: "bg-amber-100 text-amber-800 border-amber-200/70 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25",
+  green: "bg-emerald-100 text-emerald-800 border-emerald-200/70 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25",
+  red: "bg-red-100 text-red-800 border-red-200/70 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/25",
   gray: "bg-secondary text-muted-foreground border-border",
 };
+
+// ── Attio grid pieces (shared with the Leads page lists) ─────────────────────
+// Built on the shared Table cells inside the caller's own scroll box (rather
+// than <Table>, whose wrapper scrolls itself) so the header row and the first
+// column can stick. `border-separate` keeps sticky cells' borders attached.
+export const GRID_TABLE =
+  "w-full border-separate border-spacing-0 text-[13px] [&_td]:whitespace-nowrap [&_td]:border-b [&_th]:border-b [&_td]:border-border [&_th]:border-border";
+export const HEAD_CELL = "sticky top-0 z-20 bg-card";
+/** A sticky body cell: opaque, follows the row's hover/selected tint (row needs `group`). */
+export const STICKY_CELL =
+  "sticky z-10 bg-card group-hover:bg-hover before:pointer-events-none before:absolute before:inset-0 group-data-[state=selected]:before:bg-primary/5";
+
+/** Grid header cell: small icon + sentence-case label. */
+export function ColHead({ icon: Icon, label, info, className }: { icon: LucideIcon; label: string; info?: string; className?: string }) {
+  return (
+    <TableHead className={cn(HEAD_CELL, className)}>
+      <span className="inline-flex items-center gap-1.5">
+        <Icon className="size-3.5 shrink-0" />
+        {label}
+        {info && <InfoTip text={info} />}
+      </span>
+    </TableHead>
+  );
+}
+
+/** 20px company tile for grid rows. */
+export function OrgTile() {
+  return (
+    <span className="grid size-5 shrink-0 place-items-center rounded-[5px] border border-border bg-field text-muted-foreground">
+      <Building2 className="size-3" />
+    </span>
+  );
+}
+
+/** The scored "Why" text and its status line, on one line (both in the hover title). */
+export function WhyCell({ reason, line }: { reason: string | null; line: { text: string; tone: Tone } | null }) {
+  const warn = line && (line.tone === "red" || line.tone === "amber");
+  return (
+    <div className="flex max-w-[420px] min-w-0 items-center gap-2" title={[reason, line?.text].filter(Boolean).join("\n")}>
+      {warn && (
+        <span className={cn("max-w-[50%] shrink-0 truncate text-xs font-medium", line.tone === "red" ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-300")}>
+          {line.text}
+        </span>
+      )}
+      <span className="min-w-0 truncate text-muted-foreground">{reason ?? (warn ? "" : line?.text ?? "—")}</span>
+    </div>
+  );
+}
 const STATUS_DOT: Record<Group, string> = { checking: "bg-primary", review: "bg-amber-500", good: "bg-emerald-500", approved: "bg-blue-500", declined: "bg-muted-foreground", hidden: "bg-muted-foreground/50" };
 const GROUP_TONE: Record<Group, Tone> = { checking: "blue", review: "amber", good: "green", approved: "blue", declined: "gray", hidden: "gray" };
 
 export function GroupPill({ group, status }: { group: Group; status?: string }) {
   const label = status === "site_down" ? "Website down" : GROUP_LABEL[group];
-  return <span className={cn("inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px] font-semibold whitespace-nowrap", TONE[status === "site_down" ? "red" : GROUP_TONE[group]])}>{label}</span>;
+  return <span className={cn("inline-flex items-center rounded border px-1.5 py-[3px] text-[11px] font-medium leading-none whitespace-nowrap", TONE[status === "site_down" ? "red" : GROUP_TONE[group]])}>{label}</span>;
 }
 
 /** Short label for a problem pill; the exact message goes in the hover title. */
@@ -144,18 +198,18 @@ export function FitPill({ score }: { score: number | null }) {
   if (score == null) return <Tip text="Not scored yet."><span className="text-xs text-muted-foreground">–</span></Tip>;
   const tip = score === 9 ? "Fit score 9: makes the products you searched." : score === 7 ? "Fit score 7: makes other plastic products." : `Fit score ${score}: not a fit.`;
   // A circle in the primary shade for a real fit (7+); neutral for the rest.
-  return <Tip text={tip}><span className={cn("inline-flex size-7 shrink-0 items-center justify-center rounded-full border font-mono text-xs font-bold tabular-nums", score >= 7 ? "border-primary/25 bg-primary/10 text-primary" : TONE.gray)}>{score}</span></Tip>;
+  return <Tip text={tip}><span className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold tabular-nums", score >= 7 ? "border-primary/25 bg-primary/10 text-primary" : TONE.gray)}>{score}</span></Tip>;
 }
 
 export function BatchPill({ name, color, wide = false }: { name: string; color: string; wide?: boolean }) {
   // Only as wide as its text; a long name is cut with "…" (full name on hover).
-  return <Tip text={`Batch: ${name.replace(/^Batch: /, "")}`} className={wide ? "max-w-full" : "max-w-[150px]"}><span className={cn("inline-flex w-fit min-w-0 max-w-full items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold", getBatchColor(color).pill)}><span className="truncate">{name}</span></span></Tip>;
+  return <Tip text={`Batch: ${name.replace(/^Batch: /, "")}`} className={wide ? "max-w-full" : "max-w-[150px]"}><span className={cn("inline-flex w-fit min-w-0 max-w-full items-center rounded-[5px] border px-1.5 py-[3px] text-xs font-medium leading-none", getBatchColor(color).pill)}><span className="truncate">{name}</span></span></Tip>;
 }
 
 function Links({ c, linkedin = true }: { c: ScoredCompany; linkedin?: boolean }) {
   const site = c.website_url ?? (c.domain ? `https://${c.domain}` : null);
   return (
-    <span className="flex flex-wrap gap-x-2 text-[11px]">
+    <span className="flex flex-wrap gap-x-2 text-xs">
       {site ? <Tip text="Open the company website in a new tab."><a href={site} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex max-w-full items-center gap-0.5 text-primary hover:underline"><span className="truncate">{c.domain ?? "Website"}</span><ExternalLink className="size-2.5 shrink-0" /></a></Tip> : <span className="text-muted-foreground">No website</span>}
       {linkedin && c.linkedin_url && <Tip text="Open the LinkedIn page in a new tab."><a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-0.5 text-primary hover:underline">LinkedIn<ExternalLink className="size-2.5" /></a></Tip>}
     </span>
@@ -165,10 +219,10 @@ function Links({ c, linkedin = true }: { c: ScoredCompany; linkedin?: boolean })
 export function Decide({ c, busy, onDecide, large = false }: { c: ScoredCompany; busy: boolean; onDecide: (ids: string[], a: DecideAction) => void; large?: boolean }) {
   const act = (a: DecideAction) => (e: React.MouseEvent) => { e.stopPropagation(); onDecide([c.id], a); };
   // `large` = the drawer footer: full-width, taller buttons. Cards keep the compact size.
-  const btn = large ? "h-10 flex-1 gap-1.5 px-4 text-sm [&_svg]:size-4" : "h-7 gap-1 px-2 text-xs [&_svg]:size-3";
+  const btn = large ? "h-9 flex-1 gap-1.5 px-4 text-[13px] [&_svg]:size-4" : "h-6 gap-1 px-2 text-xs [&_svg]:size-3";
   const row = large ? "flex gap-2" : "flex justify-end gap-1.5";
   if (c.status === "rejected") {
-    return <span className={large ? "flex" : "flex justify-end"}><Tip text="Put it back where it was before the Decline." className={large ? "flex-1" : undefined}><Button size="sm" variant="outline" disabled={busy} onClick={act("undo")} className={cn(btn, "w-full border-amber-500/50 text-amber-500 hover:bg-amber-500/10 hover:text-amber-500")}><Undo2 />Undo</Button></Tip></span>;
+    return <span className={large ? "flex" : "flex justify-end"}><Tip text="Put it back where it was before the Decline." className={large ? "flex-1" : undefined}><Button size="sm" variant="outline" disabled={busy} onClick={act("undo")} className={cn(btn, "w-full border-amber-300 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-500/40 dark:text-amber-300 dark:hover:bg-amber-500/10 dark:hover:text-amber-200")}><Undo2 />Undo</Button></Tip></span>;
   }
   if (c.group !== "review" && c.status !== "hidden") return null;
   return (
@@ -186,7 +240,7 @@ function Stage({ label, done, total, tone = "bg-primary" }: { label: string; don
   const pct = total ? Math.round((done / total) * 100) : 0;
   return (
     <div className="min-w-0 space-y-1">
-      <div className="flex justify-between gap-2 text-[11px] text-muted-foreground"><span className="truncate">{label}</span><span className="font-mono tabular-nums">{done}/{total}</span></div>
+      <div className="flex justify-between gap-2 text-[11px] text-muted-foreground"><span className="truncate">{label}</span><span className="tabular-nums">{done}/{total}</span></div>
       <div className="h-1.5 overflow-hidden rounded-full bg-secondary"><div className={cn("h-full rounded-full transition-all duration-500", tone)} style={{ width: `${pct}%` }} /></div>
     </div>
   );
@@ -234,11 +288,11 @@ export function RunningSearchesPill({ data, onOpen }: { data: ScoredData | null;
         <Button type="button" variant="outline" size="sm" className="gap-1.5">
           <Loader2 className="size-3.5 animate-spin text-primary" />
           {running.length} search{running.length > 1 ? "es" : ""} running
-          <span className="font-mono text-[11px] font-normal text-muted-foreground tabular-nums">{first.stages.scored}/{first.total}</span>
+          <span className="text-xs font-normal text-muted-foreground tabular-nums">{first.stages.scored}/{first.total}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[min(46rem,92vw)] p-4">
-        <p className="eyebrow mb-1">Running now</p>
+        <p className="mb-1 text-xs text-muted-foreground">Running now</p>
         <div className="divide-y divide-border">
           {running.slice(0, 4).map((s) => <SearchRow key={s.id} s={s} onOpen={onOpen} />)}
         </div>
@@ -259,12 +313,12 @@ export function RunningSearchesBar({ data, onOpen }: { data: ScoredData | null; 
   const shown = searches.filter((s) => s.stages.waiting_credits > 0 || s.groups.review > 0 || failed.includes(s)).slice(0, 6);
 
   return (
-    <div className="rounded-xl border border-border bg-field dark:bg-card px-4 py-2.5 text-sm">
+    <div className="rounded-lg border border-border bg-card px-3 py-1.5 text-[13px]">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         {(data?.review_total ?? 0) > 0 && <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{data!.review_total} need review</span>}
         {waiting.length > 0 && <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{waiting.reduce((t, s) => t + s.stages.waiting_credits, 0)} waiting for Apollo credits</span>}
         {failed.length > 0 && <span className="flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400"><AlertTriangle className="size-3.5" />{failed.length} search{failed.length > 1 ? "es" : ""} had a problem</span>}
-        <Button type="button" variant="ghost" size="sm" onClick={() => setOpen((o) => !o)} className="ml-auto h-7 gap-1 text-xs">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setOpen((o) => !o)} className="ml-auto text-muted-foreground">
           {open ? <>Hide <ChevronUp className="size-3.5" /></> : <>Details <ChevronDown className="size-3.5" /></>}
         </Button>
       </div>
@@ -343,54 +397,67 @@ export function ScoredOrgsTable({ data, error, loading, visible = DEFAULT_SCORED
   const rows = data?.companies ?? [];
   const reviewIds = rows.filter((c) => c.group === "review" && c.status !== "site_down").map((c) => c.id);
 
-  if (!data && loading) return <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading scored companies…</div>;
+  if (!data && loading) return <div className="flex items-center justify-center gap-2 py-16 text-[13px] text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading scored companies…</div>;
+  const cols: { label: string; icon: LucideIcon; show: boolean; className?: string }[] = [
+    { label: "Status", icon: CircleDot, show: true },
+    { label: "Fit", icon: Gauge, show: true },
+    { label: "Domain", icon: Globe, show: visible.domain },
+    { label: "LinkedIn", icon: Link2, show: visible.linkedin },
+    { label: "Why", icon: MessageSquareText, show: visible.why, className: "min-w-[280px]" },
+    { label: "Batch", icon: Tag, show: visible.batch },
+    { label: "Decide", icon: CheckCheck, show: true, className: "text-right" },
+  ];
   return (
-    <div className="space-y-3">
-      {error && <p className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400"><AlertTriangle className="size-4" />Couldn&apos;t refresh: {error}. Showing the last loaded list; it retries on its own.</p>}
-      {reviewIds.length > 0 && <ApolloCostNote credits={reviewIds.length} spendingOn={`revealing one contact at each of the ${reviewIds.length} companies you approve`} rate="1 credit per contact revealed. Retry on a website that was down uses 1 Firecrawl credit, not Apollo." />}
-      <div className="w-full overflow-hidden rounded-xl border border-border bg-field shadow-sm dark:bg-card">
-        {/* table-fixed with set column widths: the table always fits the page, and the long "Why"
-            text wraps in its own column instead of pushing Decide off to the right. */}
-        <Table className="table-fixed">
-          <TableHeader>
-            <TableRow className="border-border hover:bg-transparent">
-              {([["Organization", "w-[18%]", true], ["Status", "w-28", true], ["Fit", "w-14", true], ["Domain", "w-[16%]", visible.domain], ["LinkedIn", "w-24", visible.linkedin], ["Why", "", visible.why], ["Batch", "w-[12%]", visible.batch], ["Decide", "w-52", true]] as const).filter(([, , show]) => show).map(([h, w]) => (
-                <TableHead key={h} className={cn("font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground", w, h === "Decide" && "text-right")}>{h}</TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="p-0"><EmptyState boxed={false} message="No companies match these filters." /></TableCell></TableRow>
-            ) : rows.map((c) => {
-              const line = statusLine(c);
-              return (
-                <TableRow key={c.id} onClick={() => onOpenCompany(c)} className="cursor-pointer border-border hover:bg-secondary">
-                  <TableCell>
-                    <div className="flex items-center gap-2.5">
-                      <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-secondary"><Building2 className="size-3.5 text-muted-foreground" /></div>
-                      <p className="min-w-0 line-clamp-2 break-words text-sm font-semibold">{c.name}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell><GroupPill group={c.group} status={c.status} /></TableCell>
-                  <TableCell><FitPill score={c.score} /></TableCell>
-                  {visible.domain && <TableCell><DomainLink text={c.domain} href={c.website_url} /></TableCell>}
-                  {visible.linkedin && <TableCell><DomainLink text={c.linkedin_url ? "LinkedIn" : null} href={c.linkedin_url} tip="Open the LinkedIn page in a new tab." /></TableCell>}
-                  {visible.why && <TableCell><p className="line-clamp-2 break-words text-xs text-muted-foreground">{c.reason ?? "—"}</p><p className={cn("line-clamp-2 break-words text-[11px]", line.tone === "red" ? "text-red-600 dark:text-red-400" : line.tone === "amber" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>{line.text}</p></TableCell>}
-                  {visible.batch && <TableCell><BatchPill name={c.batch_name} color={c.batch_color} /></TableCell>}
-                  <TableCell><Decide c={c} busy={busy} onDecide={run} /></TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-        {reviewIds.length > 1 && (
-          <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-2.5">
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => run(reviewIds, "reject")}>Decline all {reviewIds.length}</Button>
-            <Button size="sm" disabled={busy} onClick={() => run(reviewIds, "approve")}>Approve all {reviewIds.length} · up to {reviewIds.length} credit{reviewIds.length === 1 ? "" : "s"}</Button>
-          </div>
-        )}
-      </div>
+    <div>
+      {(error || reviewIds.length > 0) && (
+        <div className="space-y-3 px-4 py-3">
+          {error && <p className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-800 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-300"><AlertTriangle className="size-4" />Couldn&apos;t refresh: {error}. Showing the last loaded list; it retries on its own.</p>}
+          {reviewIds.length > 0 && <ApolloCostNote credits={reviewIds.length} spendingOn={`revealing one contact at each of the ${reviewIds.length} companies you approve`} rate="1 credit per contact revealed. Retry on a website that was down uses 1 Firecrawl credit, not Apollo." />}
+        </div>
+      )}
+      <table className={cn(GRID_TABLE, (error || reviewIds.length > 0) && "border-t border-border")}>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <ColHead icon={Building2} label="Organization" className="left-0 z-30 min-w-[220px]" />
+            {cols.filter((c) => c.show).map((c) => <ColHead key={c.label} icon={c.icon} label={c.label} className={c.className} />)}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.length === 0 ? (
+            <TableRow className="hover:bg-transparent"><TableCell colSpan={8} className="border-r-0 p-0"><EmptyState boxed={false} icon={Building2} title="No companies" message="No companies match these filters." /></TableCell></TableRow>
+          ) : rows.map((c) => {
+            const line = statusLine(c);
+            return (
+              <TableRow
+                key={c.id}
+                onClick={() => onOpenCompany(c)}
+                onMouseEnter={() => { if (c.organization_id) prefetchOrg(c.organization_id); }}
+                className="group cursor-pointer"
+              >
+                <TableCell className={cn(STICKY_CELL, "left-0")}>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <OrgTile />
+                    <span className="max-w-[240px] truncate font-medium" title={c.name}>{c.name}</span>
+                  </div>
+                </TableCell>
+                <TableCell><GroupPill group={c.group} status={c.status} /></TableCell>
+                <TableCell><FitPill score={c.score} /></TableCell>
+                {visible.domain && <TableCell><DomainLink text={c.domain} href={c.website_url} /></TableCell>}
+                {visible.linkedin && <TableCell><DomainLink text={c.linkedin_url ? "LinkedIn" : null} href={c.linkedin_url} tip="Open the LinkedIn page in a new tab." /></TableCell>}
+                {visible.why && <TableCell><WhyCell reason={c.reason} line={line} /></TableCell>}
+                {visible.batch && <TableCell><BatchPill name={c.batch_name} color={c.batch_color} /></TableCell>}
+                <TableCell><Decide c={c} busy={busy} onDecide={run} /></TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </table>
+      {reviewIds.length > 1 && (
+        <div className="sticky bottom-0 z-20 flex items-center justify-end gap-2 border-t border-border bg-background px-4 py-2">
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => run(reviewIds, "reject")}>Decline all {reviewIds.length}</Button>
+          <Button size="sm" disabled={busy} onClick={() => run(reviewIds, "approve")}>Approve all {reviewIds.length} · up to {reviewIds.length} credit{reviewIds.length === 1 ? "" : "s"}</Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -417,8 +484,8 @@ export function ScoredOrgsKanban({ data, error, loading, groups, showHidden, onD
 }) {
   const [busy, setBusy] = useState(false);
   const run = async (ids: string[], a: DecideAction) => { setBusy(true); try { await onDecide(ids, a); } finally { setBusy(false); } };
-  if (!data && loading) return <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading scored companies…</div>;
-  if (!data?.searches.length) return <EmptyState message="No scored searches yet. Use Add leads → Scored Companies to start one." />;
+  if (!data && loading) return <div className="flex items-center justify-center gap-2 py-16 text-[13px] text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading scored companies…</div>;
+  if (!data?.searches.length) return <EmptyState icon={Building2} title="No scored searches yet" message="Use Add leads → Scored companies to start one." />;
   const companies = data.companies;
   const checking = data.searches.filter((s) => s.in_progress > 0);
   // Nothing picked in Status -> the five normal columns. Otherwise ONLY the
@@ -429,23 +496,24 @@ export function ScoredOrgsKanban({ data, error, loading, groups, showHidden, onD
 
   return (
     <div className="space-y-3">
-      {error && <p className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400"><AlertTriangle className="size-4" />Couldn&apos;t refresh: {error}. It retries on its own.</p>}
+      {error && <p className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-800 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-300"><AlertTriangle className="size-4" />Couldn&apos;t refresh: {error}. It retries on its own.</p>}
       {/* Fixed grid, no horizontal scroll: equal columns always fit the page width. */}
-      <div className="grid min-h-[500px] items-start gap-2 pb-4" style={{ gridTemplateColumns: `repeat(${cols.length}, minmax(0, 1fr))` }}>
+      <div className="grid min-h-[500px] items-start gap-3 pb-4" style={{ gridTemplateColumns: `repeat(${cols.length}, minmax(0, 1fr))` }}>
         {cols.map((col) => {
           const cards = companies.filter((c) => c.group === col.id);
           return (
             <div key={col.id} className="flex min-w-0 flex-col gap-2">
-              <div className="swatch-bar flex items-center gap-1.5 overflow-hidden rounded-lg border bg-field px-2.5 py-2">
+              <div className="flex h-8 items-center gap-2 px-1">
                 <span className={cn("size-2 shrink-0 rounded-full", col.dot)} />
-                <span className="eyebrow truncate text-foreground/80!">{GROUP_LABEL[col.id]}</span><InfoTip text={COL_TIP[col.id]} />
-                <span className="ml-auto shrink-0 rounded-full bg-secondary px-1.5 py-0.5 font-mono text-[10px] font-medium tabular-nums text-muted-foreground">{data.counts[col.id]}</span>
+                <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{GROUP_LABEL[col.id]}</span>
+                <span className="shrink-0 text-[13px] tabular-nums text-muted-foreground">{data.counts[col.id]}</span>
+                <InfoTip text={COL_TIP[col.id]} />
               </div>
               {col.id === "checking" && checking.map((s) => (
-                <div key={s.id} className="space-y-1 rounded-lg border border-primary/20 bg-primary/5 px-2.5 py-2">
-                  <p className="truncate text-[11px] font-semibold">{s.batch_name}</p>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-primary transition-all" style={{ width: `${s.total ? (s.stages.scored / s.total) * 100 : 0}%` }} /></div>
-                  <p className="font-mono text-[10px] text-muted-foreground">{s.stages.scored}/{s.total} checked</p>
+                <div key={s.id} className="space-y-1.5 rounded-lg border border-primary/20 bg-primary/5 px-2.5 py-2">
+                  <p className="truncate text-xs font-medium">{s.batch_name}</p>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-primary transition-[width]" style={{ width: `${s.total ? (s.stages.scored / s.total) * 100 : 0}%` }} /></div>
+                  <p className="text-xs tabular-nums text-muted-foreground">{s.stages.scored}/{s.total} checked</p>
                 </div>
               ))}
               <div className="flex flex-col gap-1.5">
@@ -456,23 +524,31 @@ export function ScoredOrgsKanban({ data, error, loading, groups, showHidden, onD
                   // plastic maker" just repeat the column or add noise.
                   const showLine = col.id === "checking" || col.id === "review" || line.tone === "red" || line.tone === "amber";
                   return (
-                    <div key={c.id} onClick={() => onOpenCompany(c)} className={cn("flex min-h-[130px] cursor-pointer flex-col gap-2.5 rounded-lg border bg-field p-3.5 shadow-sm hover:border-muted-foreground/50", c.status === "site_down" ? "border-red-500/30" : c.group === "review" ? "border-amber-500/30" : "border-border")}>
-                      <div className="flex items-start justify-between gap-2"><p className="text-xs font-semibold leading-snug">{c.name}</p><FitPill score={c.score} /></div>
+                    <div
+                      key={c.id}
+                      onClick={() => onOpenCompany(c)}
+                      onMouseEnter={() => { if (c.organization_id) prefetchOrg(c.organization_id); }}
+                      className={cn("flex cursor-pointer flex-col gap-2 rounded-lg border bg-card p-3 shadow-xs transition-colors hover:bg-hover", c.status === "site_down" ? "border-red-300 dark:border-red-500/40" : c.group === "review" ? "border-amber-300 dark:border-amber-500/40" : "border-border")}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2"><OrgTile /><p className="line-clamp-2 text-[13px] font-medium leading-snug">{c.name}</p></div>
+                        <FitPill score={c.score} />
+                      </div>
                       <Links c={c} linkedin={false} />
                       {/* Batch and status/problem pill share one line (wrapping only when they must). */}
                       <div className="flex flex-wrap items-center gap-1.5">
                         <BatchPill name={c.batch_name} color={c.batch_color} />
                         {showLine && (line.tone === "amber" || line.tone === "red"
                           // A problem is a small pill; the full message shows instantly on hover (InfoTip) and in the drawer.
-                          ? <InfoTip text={problemLabel(c, line.text) === "AI unsure" ? "The AI couldn't decide, so it's your call." : line.text} triggerClassName={cn("w-fit cursor-help gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-semibold", TONE[line.tone])}><AlertTriangle className="size-3 shrink-0" /><span className="truncate">{problemLabel(c, line.text)}</span></InfoTip>
-                          : <span className="text-[11px] leading-snug text-muted-foreground">{line.text}</span>)}
+                          ? <InfoTip text={problemLabel(c, line.text) === "AI unsure" ? "The AI couldn't decide, so it's your call." : line.text} triggerClassName={cn("w-fit cursor-help gap-1 rounded border px-1.5 py-[3px] text-[11px] font-medium leading-none", TONE[line.tone])}><AlertTriangle className="size-3 shrink-0" /><span className="truncate">{problemLabel(c, line.text)}</span></InfoTip>
+                          : <span className="text-xs leading-snug text-muted-foreground">{line.text}</span>)}
                       </div>
                       {(c.status === "rejected" || c.group === "review" || c.status === "hidden") && <div className="mt-auto"><Decide c={c} busy={busy} onDecide={run} /></div>}
                     </div>
                   );
                 })}
-                {cards.length > 60 && <p className="text-center text-[11px] text-muted-foreground">+ {cards.length - 60} more — use the list view or a batch filter</p>}
-                {cards.length === 0 && <div className="flex items-center justify-center rounded-lg border border-dashed border-border py-6"><p className="text-[10px] text-muted-foreground/60">Empty</p></div>}
+                {cards.length > 60 && <p className="text-center text-xs text-muted-foreground">+ {cards.length - 60} more — use the list view or a batch filter</p>}
+                {cards.length === 0 && <div className="flex items-center justify-center rounded-lg border border-dashed border-border py-6"><p className="text-xs text-muted-foreground">Empty</p></div>}
               </div>
             </div>
           );
@@ -483,11 +559,7 @@ export function ScoredOrgsKanban({ data, error, loading, groups, showHidden, onD
 }
 
 // ── drawer for a scored company that is not an organization yet ──────────────
-function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return <div className="space-y-0.5"><p className="eyebrow flex items-center gap-1">{label}{hint && <InfoTip text={hint} side="right" />}</p><div className="text-sm">{children}</div></div>;
-}
-
-/** Everything we know about a scored company, in the same right-hand drawer style
+/** Everything we know about a scored company, in the same right-hand record sheet
  *  as an organization. Used for companies that have no organization yet (not
  *  approved / no contact added) — approved ones open the normal org drawer. */
 export function ScoredCompanyDrawer({ company, onClose, onDecide, onFilterBatch }: {
@@ -505,41 +577,64 @@ export function ScoredCompanyDrawer({ company, onClose, onDecide, onFilterBatch 
   const run = async (ids: string[], a: DecideAction) => { setBusy(true); try { await onDecide(ids, a); } finally { setBusy(false); } };
   const site = c ? (c.website_url ?? (c.domain ? `https://${c.domain}` : null)) : null;
   const line = c ? statusLine(c) : null;
+  if (!c || !line) return null;
+  const hasDecide = c.status === "rejected" || c.group === "review" || c.status === "hidden";
 
   return (
     <>
-      <div className={cn("fixed inset-0 z-50 bg-black/40 transition-opacity duration-200", c ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0")} onClick={onClose} />
-      <div className={cn("fixed right-0 top-0 z-60 flex h-full w-[480px] max-w-[95vw] flex-col border-l border-border bg-card shadow-2xl transition-transform duration-300 ease-in-out", c ? "translate-x-0" : "translate-x-full")}>
-        {c && line && (
-          <>
-            <div className="swatch-bar-top flex shrink-0 items-center gap-3 border-b border-border p-5">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-secondary"><Building2 className="size-4 text-muted-foreground" /></div>
-              <div className="min-w-0 flex-1">
-                <p className="eyebrow">Scored company</p>
-                <h2 className="mt-0.5 truncate font-display text-lg font-semibold">{c.name}</h2>
-                <button type="button" onClick={() => onFilterBatch(c.search_id)} aria-label="Show only this batch" className="mt-0.5 block max-w-full cursor-pointer text-left hover:opacity-80"><BatchPill name={`Batch: ${c.batch_name}`} color={c.batch_color} wide /></button>
-              </div>
-              <Button type="button" variant="ghost" size="icon" onClick={onClose} className="size-7 rounded-lg text-muted-foreground hover:text-foreground"><X className="size-4" /></Button>
+      <div className="fixed inset-0 z-50 bg-black/25 dark:bg-black/60" onClick={onClose} />
+      <div role="dialog" aria-label={c.name} className="fixed right-0 top-0 z-60 flex h-full w-[min(560px,95vw)] flex-col border-l border-border bg-background shadow-xl">
+        <PageHeader
+          crumbs={[{ icon: <Building2 />, label: "Scored company" }, { label: c.name }]}
+          actions={<Button type="button" variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close" className="text-muted-foreground"><X className="size-4" /></Button>}
+        />
+        <div className="flex shrink-0 items-start gap-3 px-6 pb-4 pt-5">
+          <span className="grid size-10 shrink-0 place-items-center rounded-lg border border-border bg-field text-muted-foreground"><Building2 className="size-[18px]" /></span>
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-lg font-semibold leading-tight">{c.name}</h2>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <GroupPill group={c.group} status={c.status} />
+              <FitPill score={c.score} />
+              <button type="button" onClick={() => onFilterBatch(c.search_id)} aria-label="Show only this batch" className="max-w-full cursor-pointer text-left hover:opacity-80"><BatchPill name={`Batch: ${c.batch_name}`} color={c.batch_color} wide /></button>
             </div>
-            <div className="flex-1 space-y-3 overflow-y-auto p-5">
-              <div className="flex flex-wrap items-center gap-2"><GroupPill group={c.group} status={c.status} /><FitPill score={c.score} /></div>
-              <div className="space-y-4 rounded-xl border border-border bg-field p-4 dark:bg-card">
-                <Row label="Status"><span className={cn(line.tone === "red" ? "text-red-600 dark:text-red-400" : line.tone === "amber" ? "text-amber-600 dark:text-amber-400" : "text-foreground")}>{line.text}</span></Row>
-                {c.reason && <Row label="Why this score" hint="The AI's short reason for the score."><span className="text-muted-foreground">{c.reason}</span></Row>}
-                <Row label="Batch"><Tip text="Click to show only this batch."><button type="button" onClick={() => onFilterBatch(c.search_id)} className="cursor-pointer text-left text-primary hover:underline">{c.batch_name}</button></Tip></Row>
-                {c.domain && <Row label="Domain">{site ? <a href={site} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">{c.domain}<ExternalLink className="size-3" /></a> : c.domain}</Row>}
-                {c.linkedin_url && <Row label="LinkedIn"><a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 break-all text-primary hover:underline">{c.linkedin_url}<ExternalLink className="size-3 shrink-0" /></a></Row>}
-                {c.text_source && <Row label="Read from" hint="Where the text came from: the website or LinkedIn."><span className="text-muted-foreground">{c.text_source}</span></Row>}
-                {c.contact && (c.contact.first_name || c.contact.email) && (
-                  <Row label="Contact"><span>{[c.contact.first_name, c.contact.title].filter(Boolean).join(", ")}</span>{c.contact.email && <span className="block text-xs text-muted-foreground">{c.contact.email}</span>}</Row>
-                )}
-                {c.last_error && c.status !== "review" && <Row label="Last error"><span className="text-xs text-amber-600 dark:text-amber-400">{c.last_error}</span></Row>}
-                {c.attempts > 0 && <Row label="Attempts" hint="How many times we tried to read this company."><span className="font-mono text-xs">{c.attempts}</span></Row>}
-              </div>
-            </div>
-            <div className="shrink-0 border-t border-border p-4"><Decide c={c} busy={busy} onDecide={run} large /></div>
-          </>
-        )}
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto border-t border-border">
+          <div className="space-y-2 px-6 py-4">
+            <p className="text-xs text-muted-foreground">Status</p>
+            <p className={cn("text-sm", line.tone === "red" ? "text-red-600 dark:text-red-400" : line.tone === "amber" ? "text-amber-700 dark:text-amber-300" : "text-foreground")}>{line.text}</p>
+            {c.reason && (
+              <>
+                <p className="flex items-center gap-1 pt-2 text-xs text-muted-foreground">Why this score <InfoTip text="The AI's short reason for the score." side="right" /></p>
+                <p className="text-sm leading-relaxed">{c.reason}</p>
+              </>
+            )}
+            {c.last_error && c.status !== "review" && (
+              <>
+                <p className="pt-2 text-xs text-muted-foreground">Last error</p>
+                <p className="text-[13px] text-amber-700 dark:text-amber-300">{c.last_error}</p>
+              </>
+            )}
+          </div>
+          <DetailSection title="Record details" className="border-t border-border px-6">
+            <DetailRow icon={<Tag />} label="Batch">
+              <Tip text="Click to show only this batch."><button type="button" onClick={() => onFilterBatch(c.search_id)} className="cursor-pointer truncate text-left text-primary hover:underline">{c.batch_name}</button></Tip>
+            </DetailRow>
+            {c.domain && <DetailRow icon={<Globe />} label="Domain">{site ? <a href={site} target="_blank" rel="noopener noreferrer" className="inline-flex max-w-full items-center gap-1 text-primary hover:underline"><span className="truncate">{c.domain}</span><ExternalLink className="size-3 shrink-0" /></a> : c.domain}</DetailRow>}
+            {c.linkedin_url && <DetailRow icon={<Link2 />} label="LinkedIn"><a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="inline-flex max-w-full items-center gap-1 text-primary hover:underline" title={c.linkedin_url}><span className="truncate">{c.linkedin_url}</span><ExternalLink className="size-3 shrink-0" /></a></DetailRow>}
+            {c.text_source && <DetailRow icon={<MessageSquareText />} label={<span className="inline-flex items-center gap-1">Read from <InfoTip text="Where the text came from: the website or LinkedIn." side="right" /></span>}><span className="text-muted-foreground">{c.text_source}</span></DetailRow>}
+            {c.contact && (c.contact.first_name || c.contact.email) && (
+              <DetailRow icon={<CircleDot />} label="Contact">
+                <span title={[c.contact.first_name, c.contact.title, c.contact.email].filter(Boolean).join(" · ")}>
+                  {[c.contact.first_name, c.contact.title].filter(Boolean).join(", ")}
+                  {c.contact.email && <span className="text-muted-foreground"> · {c.contact.email}</span>}
+                </span>
+              </DetailRow>
+            )}
+            {c.attempts > 0 && <DetailRow icon={<RotateCcw />} label={<span className="inline-flex items-center gap-1">Attempts <InfoTip text="How many times we tried to read this company." side="right" /></span>}><span className="tabular-nums">{c.attempts}</span></DetailRow>}
+          </DetailSection>
+        </div>
+        {hasDecide && <div className="shrink-0 border-t border-border p-4"><Decide c={c} busy={busy} onDecide={run} large /></div>}
       </div>
     </>
   );

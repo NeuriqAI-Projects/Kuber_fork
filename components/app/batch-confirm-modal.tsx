@@ -32,7 +32,7 @@ function BatchConfirmModalInner({
   onConfirm,
   onCancel,
 }: BatchConfirmModalProps) {
-  const sourceLabel = source === "apollo" ? "Apollo Search" : source === "excel" ? "Excel / CSV" : "Manual Entry";
+  const sourceLabel = source === "apollo" ? "Apollo search" : source === "excel" ? "Excel / CSV" : "Manual entry";
   const extra       = totalCount && totalCount > leads.length ? totalCount - leads.length : 0;
 
   return (
@@ -45,15 +45,15 @@ function BatchConfirmModalInner({
     // treatment in components/ui/confirm-dialog.tsx and components/ui/dialog.tsx.
     <div data-confirm-dialog-root className="fixed inset-0 z-200 flex items-center justify-center pointer-events-auto">
       {/* backdrop */}
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
+      <div className="absolute inset-0 bg-black/25 dark:bg-black/60" onClick={onCancel} />
 
-      <div className="enter swatch-bar-top overflow-hidden relative z-10 w-full max-w-4xl mx-4 rounded-2xl border border-border bg-card shadow-2xl flex flex-col max-h-[90vh]">
+      <div className="overflow-hidden relative z-10 w-full max-w-4xl mx-4 rounded-lg border border-border bg-popover shadow-xl flex flex-col max-h-[90vh]">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0">
           <div>
-            <p className="eyebrow">{sourceLabel}</p>
-            <h2 className="font-display text-base font-semibold mt-0.5">Preview &amp; Confirm Import</h2>
+            <p className="text-xs text-muted-foreground">{sourceLabel}</p>
+            <h2 className="text-[15px] font-semibold leading-tight mt-0.5">Preview and confirm import</h2>
             <p className="text-xs text-muted-foreground mt-0.5">Review leads before confirming</p>
           </div>
           <Button
@@ -61,7 +61,7 @@ function BatchConfirmModalInner({
             variant="ghost"
             size="icon"
             onClick={onCancel}
-            className="size-8 text-muted-foreground hover:text-foreground"
+            className="size-7 text-muted-foreground hover:text-foreground"
           >
             <X className="size-4" />
           </Button>
@@ -69,10 +69,10 @@ function BatchConfirmModalInner({
 
         {/* Lead count */}
         {totalCount !== undefined && (
-          <div className="px-6 py-2.5 border-b border-border shrink-0 flex items-center gap-1.5 bg-secondary">
+          <div className="px-5 py-2 border-b border-border shrink-0 flex items-center gap-1.5 bg-secondary">
             <Users className="size-3.5 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">
-              <span className="font-mono tabular-nums">{totalCount}</span> lead{totalCount !== 1 ? "s" : ""} will be imported
+            <span className="text-[13px] text-muted-foreground">
+              <span className="tabular-nums font-medium text-foreground">{totalCount}</span> lead{totalCount !== 1 ? "s" : ""} will be imported
               {source === "apollo" && " (emails enriched post-import)"}
             </span>
           </div>
@@ -90,7 +90,7 @@ function BatchConfirmModalInner({
               )}
             </div>
           ) : (
-            <table className="w-full text-xs table-fixed">
+            <table className="w-full text-[13px] table-fixed">
               <colgroup>
                 <col className="w-[22%]" />
                 <col className="w-[24%]" />
@@ -98,10 +98,10 @@ function BatchConfirmModalInner({
                 <col className="w-[18%]" />
                 <col className="w-[18%]" />
               </colgroup>
-              <thead className="sticky top-0 bg-card border-b border-border">
+              <thead className="sticky top-0 z-10 bg-popover">
                 <tr>
-                  {["Name", "Email", "Organisation", "Domain", "Job Title"].map((h) => (
-                    <th key={h} className="eyebrow text-left px-3 py-2.5 whitespace-nowrap">
+                  {["Name", "Email", "Organisation", "Domain", "Job title"].map((h) => (
+                    <th key={h} className="h-8 border-b border-border text-left px-3 text-xs font-medium text-muted-foreground whitespace-nowrap">
                       {h}
                     </th>
                   ))}
@@ -109,37 +109,37 @@ function BatchConfirmModalInner({
               </thead>
               <tbody className="divide-y divide-border">
                 {leads.map((l, i) => (
-                  <tr key={i} className="hover:bg-secondary transition-colors align-top">
-                    <td className="px-3 py-2.5 font-medium leading-snug wrap-break-word">
+                  <tr key={i} className="hover:bg-hover transition-colors align-top">
+                    <td className="px-3 py-2 font-medium leading-snug wrap-break-word">
                       {[l.firstName, l.lastName].filter(Boolean).join(" ") || "—"}
                     </td>
-                    <td className="px-3 py-2.5 text-muted-foreground font-mono text-[11px] truncate max-w-0">{l.email || "—"}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground truncate max-w-0">{l.company || "—"}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground font-mono text-[11px] truncate max-w-0">
+                    <td className="px-3 py-2 text-muted-foreground truncate max-w-0">{l.email || "—"}</td>
+                    <td className="px-3 py-2 text-muted-foreground truncate max-w-0">{l.company || "—"}</td>
+                    <td className="px-3 py-2 text-muted-foreground truncate max-w-0">
                       {l.domain ? (
-                        <a href={/^https?:\/\//i.test(l.domain) ? l.domain : `https://${l.domain}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">{l.domain}</a>
+                        <a href={/^https?:\/\//i.test(l.domain) ? l.domain : `https://${l.domain}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{l.domain}</a>
                       ) : "—"}
                     </td>
-                    <td className="px-3 py-2.5 text-muted-foreground truncate max-w-0">{l.jobTitle || "—"}</td>
+                    <td className="px-3 py-2 text-muted-foreground truncate max-w-0">{l.jobTitle || "—"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
           {extra > 0 && (
-            <p className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground border-t border-border">
+            <p className="px-3 py-2 text-xs tabular-nums text-muted-foreground border-t border-border">
               +{extra} more lead{extra !== 1 ? "s" : ""} will be imported
             </p>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border shrink-0">
-          <Button variant="outline" size="sm" onClick={onCancel} disabled={confirming}>
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border shrink-0">
+          <Button variant="outline" onClick={onCancel} disabled={confirming}>
             Cancel
           </Button>
-          <Button size="sm" onClick={onConfirm} disabled={confirming}>
-            {confirming ? (progressText || "Importing…") : "Confirm & Import"}
+          <Button onClick={onConfirm} disabled={confirming}>
+            {confirming ? (progressText || "Importing…") : "Confirm and import"}
           </Button>
         </div>
       </div>

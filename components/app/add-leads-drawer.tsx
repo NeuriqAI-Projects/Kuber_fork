@@ -33,11 +33,11 @@ function lastSection(fallback: SectionKey): SectionKey {
 }
 
 const SECTIONS: { value: SectionKey; label: string; icon: typeof Search; description: string }[] = [
-  { value: "apollo",  label: "Apollo Search",  icon: Search,          description: "Filter Apollo's database by industry, title & location" },
-  { value: "scored",  label: "Scored Companies", icon: Sparkles,      description: "AI scores companies first; reveal one contact only at good fits" },
-  { value: "company", label: "Company Lookup", icon: Building2,       description: "Find one company by name and pick its contacts" },
+  { value: "apollo",  label: "Apollo search",  icon: Search,          description: "Filter Apollo's database by industry, title & location" },
+  { value: "scored",  label: "Scored companies", icon: Sparkles,      description: "AI scores companies first; reveal one contact only at good fits" },
+  { value: "company", label: "Company lookup", icon: Building2,       description: "Find one company by name and pick its contacts" },
   { value: "excel",   label: "Excel / CSV",    icon: FileSpreadsheet, description: "Upload a spreadsheet and map its columns" },
-  { value: "manual",  label: "Manual Entry",   icon: UserPlus,        description: "Add an organization and its people by hand" },
+  { value: "manual",  label: "Manual entry",   icon: UserPlus,        description: "Add an organization and its people by hand" },
 ];
 
 export function AddLeadsDrawer({
@@ -73,18 +73,18 @@ export function AddLeadsDrawer({
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent className="flex h-[min(46rem,90vh)] w-full max-w-6xl flex-col gap-0 overflow-hidden p-0">
-        <DialogHeader className="swatch-bar-top shrink-0 border-b border-border px-6 pb-4 pt-6 text-left">
-          <p className="eyebrow">{editMode ? "Org · Edit" : "Sourcing"}</p>
-          <DialogTitle className="mt-0.5">{editMode ? "Edit leads" : "Add Leads"}</DialogTitle>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+      <DialogContent className="flex h-[min(46rem,90vh)] w-full max-w-6xl flex-col gap-0 overflow-hidden rounded-lg p-0">
+        {/* 48px Attio header bar (the dialog's own close button sits at its right). */}
+        <DialogHeader className="flex h-12 shrink-0 flex-row items-center gap-2.5 space-y-0 border-b border-border pl-4 pr-12 text-left">
+          <DialogTitle className="shrink-0 text-[15px]">{editMode ? "Edit leads" : "Add leads"}</DialogTitle>
+          <p className="min-w-0 truncate text-[13px] text-muted-foreground">
             {editMode ? "Update organization and linked people." : "Source leads via Apollo, Excel, or manual entry."}
           </p>
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1 overflow-hidden bg-background">
           {!singleSection && (
-            <nav className="flex w-72 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border bg-background p-2">
+            <nav className="flex w-64 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border bg-sidebar p-2">
               {SECTIONS.map((s) => {
                 const Icon = s.icon;
                 const active = section === s.value;
@@ -95,17 +95,17 @@ export function AddLeadsDrawer({
                     variant="ghost"
                     onClick={() => { setSection(s.value); try { sessionStorage.setItem(LAST_SECTION_KEY, s.value); } catch { /* private mode */ } }}
                     className={cn(
-                      "h-auto w-full min-w-0 flex-col items-start gap-1 whitespace-normal rounded-lg px-3 py-2.5 text-left font-normal",
+                      "h-auto w-full min-w-0 flex-col items-start gap-0.5 whitespace-normal rounded-md px-2.5 py-2 text-left font-normal",
                       active
-                        ? "swatch-bar bg-primary/10 text-primary hover:bg-primary/10 hover:text-primary"
-                        : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                        ? "bg-accent text-foreground hover:bg-accent"
+                        : "text-foreground hover:bg-hover",
                     )}
                   >
-                    <span className="flex w-full min-w-0 items-center gap-2.5 text-sm font-medium">
-                      <Icon className="size-4 shrink-0" />
+                    <span className="flex w-full min-w-0 items-center gap-2 text-[13px] font-medium">
+                      <Icon className={cn("size-4 shrink-0", active ? "text-foreground" : "text-muted-foreground")} />
                       {s.label}
                     </span>
-                    <span className={cn("w-full min-w-0 whitespace-normal wrap-break-word text-[11px] font-normal leading-snug", active ? "text-primary/70" : "text-muted-foreground/70")}>
+                    <span className="w-full min-w-0 whitespace-normal wrap-break-word pl-6 text-xs font-normal leading-snug text-muted-foreground">
                       {s.description}
                     </span>
                   </Button>
@@ -114,7 +114,7 @@ export function AddLeadsDrawer({
             </nav>
           )}
 
-          <div className="min-w-0 flex-1 overflow-y-auto p-6">
+          <div className="min-w-0 flex-1 overflow-y-auto p-5">
             {singleSection ? (
               <ManualForm
                 onImport={handleImport}

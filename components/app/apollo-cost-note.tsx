@@ -33,7 +33,7 @@ export function ApolloCostNote({
 }) {
   if (credits <= 0) {
     return (
-      <div className={cn("flex items-start gap-2 rounded-lg border border-border bg-secondary px-3 py-2.5 text-[11px] text-muted-foreground", className)}>
+      <div className={cn("flex items-start gap-2 rounded-lg border border-border bg-secondary px-3 py-2 text-[13px] text-muted-foreground", className)}>
         <Coins className="size-3.5 shrink-0 mt-0.5" />
         <p>No credits spent yet — nothing selected.</p>
       </div>
@@ -41,12 +41,12 @@ export function ApolloCostNote({
   }
 
   return (
-    <div className={cn("flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-[11px] text-amber-600 dark:text-amber-400", className)}>
+    <div className={cn("flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300", className)}>
       <Coins className="size-3.5 shrink-0 mt-0.5" />
       <p>
-        Will spend <strong>{credits.toLocaleString()} Apollo credit{credits === 1 ? "" : "s"}</strong> {spendingOn}
-        {mock && <> <strong>(test)</strong></>}.
-        {rate && <span className="block text-amber-600/70 dark:text-amber-400/70 mt-0.5">{rate}{mock && " No real credits move in test mode."}</span>}
+        Will spend <strong className="font-semibold tabular-nums">{credits.toLocaleString()} Apollo credit{credits === 1 ? "" : "s"}</strong> {spendingOn}
+        {mock && <> <strong className="font-semibold">(test)</strong></>}.
+        {rate && <span className="mt-0.5 block text-xs text-amber-700 dark:text-amber-300/80">{rate}{mock && " No real credits move in test mode."}</span>}
       </p>
     </div>
   );
