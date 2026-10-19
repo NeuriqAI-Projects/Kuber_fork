@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
+import { Fragment, useEffect, useRef, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
 import { AlertCircle, Building2, ChevronDown, ChevronRight, Globe, Rocket, Search, Users } from "lucide-react";
 import { format } from "date-fns";
 import { AppCheckbox } from "@/components/ui/app-checkbox";
@@ -653,6 +653,48 @@ function writeCache(state: CachedState) {
   }
 }
 
+async function postJson<T>(url: string, payload: unknown): Promise<T> {
+  const token = await getToken();
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  const json = await res.json().catch(() => ({}));
+  // fail() nests the reason at error.message — reading json.message would
+  // surface a bare status code and throw the real cause away.
+  if (!res.ok) throw new Error(json?.error?.message ?? `Request failed: ${res.status}`);
+  return json?.data as T;
+}
+
+type SearchData = {
+  companies: Company[]; page: number; total_entries: number;
+  total_pages: number; credits_spent: number; mock?: boolean;
+};
+type SearchOutcome =
+  | { ok: true; data: SearchData; merged: Company[]; spent: number; criteria: string; page: number }
+  | { ok: false; error: string };
+
+/**
+ * The one company search that may be running at a time, kept outside the component.
+ *
+ * Closing the modal unmounts the form but cannot cancel the request, and Apollo still charges
+ * for it. Without this, reopening gave a blank form that did not know a search was running, so a
+ * second search could start beside it (another credit), and whichever finished last overwrote the
+ * saved results. Now a reopened form picks the running search back up, the same search is never
+ * started twice, and a different one waits until this finishes.
+ *
+ * The result is written to the session cache here, not by the component, so it is saved even if
+ * the form was closed before the answer came back.
+ */
+type InFlightSearch = { key: string; label: string; page: number; promise: Promise<SearchOutcome> };
+let inFlightSearch: InFlightSearch | null = null;
+
+const EMPTY_CACHE: CachedState = {
+  criteria: "", companies: [], apolloPage: 0, totalEntries: 0, creditsSpent: 0, mock: false, step: 0,
+  selectedCompany: null, contacts: [], picked: [], batchName: "",
+};
+
 export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void }) {
   const cached = readCache();
   const [step, setStep] = useState(cached?.step ?? 0);
@@ -693,6 +735,20 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
   const [assignMode, setAssignMode] = useState<ImportAssignMode>("manual");
   const employees = useAssignableEmployees(true);
 
+  // Picks a search that was started before this form was (re)opened back up: shows the loading
+  // screen again and puts the answer on screen when it lands.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    const running = inFlightSearch;
+    if (running) {
+      setBusy(true);
+      setLoadingList("companies");
+      if (running.page === 1) setStep(1);
+      void running.promise.then((o) => applySearchOutcome(o, running.page));
+    }
+    return () => { mountedRef.current = false; };
+  }, []);
 
   /** Identity of a search. Two searches with the same criteria return the same
    *  companies, so re-running one is a credit spent for nothing. */
@@ -722,19 +778,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
     });
   }
 
-  async function call<T>(url: string, payload: unknown): Promise<T> {
-    const token = await getToken();
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify(payload),
-    });
-    const json = await res.json().catch(() => ({}));
-    // fail() nests the reason at error.message — reading json.message would
-    // surface a bare status code and throw the real cause away.
-    if (!res.ok) throw new Error(json?.error?.message ?? `Request failed: ${res.status}`);
-    return json?.data as T;
-  }
+  const call = postJson;
 
   /** page 1 = a new search (resets results); page > 1 = buy another Apollo page. */
   async function runSearch(page: number) {
@@ -756,6 +800,13 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
       return;
     }
 
+    const key = JSON.stringify({ criteria, page });
+    // One company search at a time (see inFlightSearch).
+    if (inFlightSearch && inFlightSearch.key !== key) {
+      setError(`A search for "${inFlightSearch.label}" is still running. Wait for it to finish, then search again.`);
+      return;
+    }
+
     setError("");
     setBusy(true);
     setLoadingList("companies");
@@ -771,20 +822,47 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
       setPicked([]);
       setStep(1);
     }
-    try {
-      const data = await call<{
-        companies: Company[]; page: number; total_entries: number;
-        total_pages: number; credits_spent: number; mock?: boolean;
-      }>("/api/v1/leads/company-search", {
+
+    if (!inFlightSearch) {
+      const base = { companies, creditsSpent, batchName };
+      const payload = {
         name: name.trim(),
         country: countries.length ? countries : undefined,
         website: website.trim() || undefined,
         page,
         advanced: buildAdvanced(advanced),
-      });
+      };
+      const promise: Promise<SearchOutcome> = (async () => {
+        try {
+          const data = await postJson<SearchData>("/api/v1/leads/company-search", payload);
+          const merged = page === 1 ? data.companies : [...base.companies, ...data.companies];
+          const spent = base.creditsSpent + data.credits_spent;
+          // Written the moment the credit is spent, whether or not the form is still open.
+          writeCache({
+            ...(readCache() ?? EMPTY_CACHE),
+            criteria, companies: merged, apolloPage: data.page, totalEntries: data.total_entries,
+            creditsSpent: spent, mock: !!data.mock, step: 1, batchName: base.batchName,
+            ...(page === 1 ? { selectedCompany: null, contacts: [], picked: [] } : {}),
+          });
+          return { ok: true, data, merged, spent, criteria, page } as SearchOutcome;
+        } catch (e) {
+          return { ok: false, error: (e as Error).message } as SearchOutcome;
+        } finally {
+          inFlightSearch = null;
+        }
+      })();
+      inFlightSearch = { key, label: name.trim() || "this company", page, promise };
+    }
 
-      const merged = page === 1 ? data.companies : [...companies, ...data.companies];
-      const spent = creditsSpent + data.credits_spent;
+    const outcome = await inFlightSearch!.promise;
+    applySearchOutcome(outcome, page);
+  }
+
+  /** Puts a finished search on screen. A no-op if the form was closed meanwhile (the cache already has it). */
+  function applySearchOutcome(outcome: SearchOutcome, page: number) {
+    if (!mountedRef.current) return;
+    if (outcome.ok) {
+      const { data, merged, spent } = outcome;
       setMock(!!data.mock);
       setCompanies(merged);
       setApolloPage(data.page);
@@ -792,21 +870,12 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
       setCreditsSpent(spent);
       if (page === 1) { setCompanyPage(1); setSelectedCompany(null); }
       setStep(1);
-      // Written the moment the credit is spent, not on unmount — a crash or a
-      // hard reload between the two would otherwise lose what was paid for.
-      persist({
-        criteria, companies: merged, apolloPage: data.page,
-        totalEntries: data.total_entries, creditsSpent: spent,
-        mock: !!data.mock, step: 1,
-        ...(page === 1 ? { selectedCompany: null, contacts: [], picked: [] } : {}),
-      });
-    } catch (e) {
-      setError((e as Error).message);
+    } else {
+      setError(outcome.error);
       if (page === 1) setStep(0);
-    } finally {
-      setBusy(false);
-      setLoadingList(null);
     }
+    setBusy(false);
+    setLoadingList(null);
   }
 
   async function loadPeople(company: Company) {

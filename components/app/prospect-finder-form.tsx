@@ -275,6 +275,39 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
   );
 }
 
+/** A dropped connection reads "TypeError: fetch failed" / "Failed to fetch"; say what it means. */
+function friendlyError(msg: string): string {
+  return /fetch failed|failed to fetch|networkerror/i.test(msg)
+    ? "Lost the connection while contacting Apollo or the database, so the search did not finish. Check your internet and try again. If your Apollo credits went down, the search may have gone through: look for the batch in Organizations."
+    : msg;
+}
+
+type StartedInfo = { searchId: string; batchName: string; color: string };
+type StartOutcome = { ok: true; started: StartedInfo } | { ok: false; error: string };
+
+/**
+ * The search being started, and the screen that follows it, must outlive the form.
+ *
+ * Closing the modal unmounts the form but cannot cancel the request (Apollo still charges for it),
+ * and a reload or a dev hot-reload throws away anything held only in memory. Without this, reopening
+ * gave a blank Criteria step (finishing clears the draft) with no sign a search was running or had
+ * started, so people searched again and paid twice.
+ *   `starting`   the running request, in memory: a reopened form waits on it
+ *   KEY_START    a marker in the tab's session storage: survives a reload; the form then looks the
+ *                new search up by its batch name
+ *   KEY_RESULT   the answer ("search started" or the error), kept until the person dismisses it
+ */
+let starting: { batchName: string; promise: Promise<StartOutcome> } | null = null;
+const KEY_START = "kuber:scored:start";
+const KEY_RESULT = "kuber:scored:result";
+type StartMarker = { batchName: string; color: string; at: number };
+type StoredResult = { kind: "started"; started: StartedInfo } | { kind: "error"; error: string };
+function ssGet<T>(k: string): T | null { try { const r = sessionStorage.getItem(k); return r ? (JSON.parse(r) as T) : null; } catch { return null; } }
+function ssSet(k: string, v: unknown) { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch { /* storage full or private mode: the in-memory path still works */ } }
+function ssDel(k: string) { try { sessionStorage.removeItem(k); } catch { /* nothing to remove */ } }
+/** A marker older than this means the request died with the page; stop waiting for it. */
+const START_MAX_AGE_MS = 3 * 60_000;
+
 export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   const [step, setStep] = useDraft("scored", "step", 0);
   const [keywords, setKeywords] = useDraft<string[]>("scored", "keywords", []);
@@ -309,8 +342,57 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   const [assignTo, setAssignTo] = useDraft("scored", "assignTo", "");
   const employees = useAssignableEmployees(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [started, setStarted] = useState<{ searchId: string; batchName: string; color: string } | null>(null);
+  const [error, setError] = useState(() => {
+    // Read only. React runs state initialisers twice in development, so deleting here would hand the
+    // message to a render that is then thrown away. It is cleared in the mount effect below.
+    const r = ssGet<StoredResult>(KEY_RESULT);
+    return r?.kind === "error" ? friendlyError(r.error) : "";
+  });
+  const [started, setStarted] = useState<StartedInfo | null>(() => {
+    const r = ssGet<StoredResult>(KEY_RESULT);
+    return r?.kind === "started" ? r.started : null;
+  });
+  /** A search started before this form was (re)opened is still running: its batch name. */
+  const [resuming, setResuming] = useState<string | null>(() => {
+    if (starting) return starting.batchName;
+    const m = ssGet<StartMarker>(KEY_START);
+    return m && Date.now() - m.at < START_MAX_AGE_MS ? m.batchName : null;
+  });
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    if (ssGet<StoredResult>(KEY_RESULT)?.kind === "error") ssDel(KEY_RESULT); // shown once
+    const running = starting;
+    if (running) {
+      void running.promise.then((o) => {
+        if (!mountedRef.current) return;
+        setResuming(null);
+        if (o.ok) setStarted(o.started); else { ssDel(KEY_RESULT); setError(friendlyError(o.error)); }
+      });
+    } else {
+      // The page was reloaded (or hot-reloaded) mid-request: find the search by its batch name.
+      const m = ssGet<StartMarker>(KEY_START);
+      if (m && Date.now() - m.at < START_MAX_AGE_MS) {
+        let alive = true;
+        const look = async () => {
+          try {
+            const d = await api<{ searches: ScoredSearch[] }>("/api/v1/prospects?summary=1");
+            const mine = d.searches.find((x) => x.batch_name === m.batchName && new Date(x.created_at).getTime() >= m.at - 5000);
+            if (mine && alive) {
+              const info = { searchId: mine.id, batchName: m.batchName, color: m.color };
+              ssSet(KEY_RESULT, { kind: "started", started: info } satisfies StoredResult); ssDel(KEY_START);
+              setResuming(null); setStarted(info); alive = false;
+            }
+          } catch { /* try again on the next tick */ }
+          if (alive && Date.now() - m.at >= START_MAX_AGE_MS) { ssDel(KEY_START); setResuming(null); alive = false; }
+        };
+        void look();
+        const t = setInterval(() => { if (alive) void look(); else clearInterval(t); }, 3000);
+        return () => { alive = false; clearInterval(t); mountedRef.current = false; };
+      } else if (m) ssDel(KEY_START);
+    }
+    return () => { mountedRef.current = false; };
+  }, []);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -327,17 +409,52 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
     if (!batchName.trim()) { setStep(2); setBatchError(true); return; }
     if (creditsTooLow || fitBlock) { setStep(1); setError(fitBlock?.msg ?? creditsMsg); return; }
     if (assignMode === "manual" && !assignTo) { setError("Pick the employee who should get these leads."); return; }
+    // One search at a time (see `starting`).
+    if (starting) { setError("A search is still starting. Wait for it to finish."); return; }
     setError(""); setBusy(true);
-    try {
-      const out = await api<{ search_id: string }>("/api/v1/prospects/search", {
-        keywords, locations: countries.length ? countries : undefined, employee_ranges: sizes.length ? sizes : undefined,
-        lookalike_org_ids: lookalikes.length ? lookalikes : undefined, exclude_websites: exclude.length ? exclude : undefined,
-        advanced: buildAdvanced(advanced), target_leads: target, max_credits: maxCredits,
-        batch_name: batchName.trim(), color: batchColor, ...buildImportAssignment(assignMode, assignTo),
-      });
-      setStarted({ searchId: out.search_id, batchName: batchName.trim(), color: batchColor });
-      clearDraft("scored");
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    const name = batchName.trim(), color = batchColor;
+    // Show the progress screen right away. The request can take a long time (several Apollo and
+    // database round trips), so the button must not be the only sign anything is happening.
+    setResuming(name);
+    const payload = {
+      keywords, locations: countries.length ? countries : undefined, employee_ranges: sizes.length ? sizes : undefined,
+      lookalike_org_ids: lookalikes.length ? lookalikes : undefined, exclude_websites: exclude.length ? exclude : undefined,
+      advanced: buildAdvanced(advanced), target_leads: target, max_credits: maxCredits,
+      batch_name: name, color, ...buildImportAssignment(assignMode, assignTo),
+    };
+    ssDel(KEY_RESULT);
+    ssSet(KEY_START, { batchName: name, color, at: Date.now() } satisfies StartMarker);
+    const promise: Promise<StartOutcome> = (async () => {
+      try {
+        const out = await api<{ search_id: string }>("/api/v1/prospects/search", payload);
+        clearDraft("scored");
+        const started = { searchId: out.search_id, batchName: name, color };
+        // Saved here, not by the form, so it is kept even if the form was closed meanwhile.
+        ssSet(KEY_RESULT, { kind: "started", started } satisfies StoredResult);
+        return { ok: true, started } as StartOutcome;
+      } catch (e) {
+        ssSet(KEY_RESULT, { kind: "error", error: (e as Error).message } satisfies StoredResult);
+        return { ok: false, error: (e as Error).message } as StartOutcome;
+      } finally { starting = null; ssDel(KEY_START); }
+    })();
+    starting = { batchName: name, promise };
+    const o = await promise;
+    if (!mountedRef.current) return; // closed while it ran: the answer is already in session storage
+    setResuming(null);
+    if (o.ok) setStarted(o.started); else { ssDel(KEY_RESULT); setError(friendlyError(o.error)); }
+    setBusy(false);
+  }
+
+  if (resuming && !started) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-16 text-center">
+        <Loader2 className="size-6 animate-spin text-primary" />
+        <p className="text-base font-semibold">Starting your search</p>
+        <p className="max-w-sm text-xs text-muted-foreground">
+          Looking up companies for &ldquo;{resuming}&rdquo; in Apollo and saving them. This usually takes a few seconds, longer on a slow connection. You can close this window; it keeps going.
+        </p>
+      </div>
+    );
   }
 
   if (started) {
@@ -348,11 +465,12 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
         batchColor={started.color}
         onOpen={() => {
           // Already on Leads: switch it in place. Elsewhere: open Leads on this batch.
+          ssDel(KEY_RESULT);
           if (pathname === "/leads") window.dispatchEvent(new CustomEvent("kuber:open-scored-batch", { detail: { searchId: started.searchId } }));
           else router.push(`/leads?entity=orgs&sbatch=${started.searchId}`);
           onDone?.();
         }}
-        onAnother={() => setStarted(null)}
+        onAnother={() => { ssDel(KEY_RESULT); setStarted(null); }}
       />
     );
   }

@@ -137,14 +137,14 @@ function problemLabel(c: ScoredCompany, text: string): string {
   return "Error";
 }
 
-function FitPill({ score }: { score: number | null }) {
+export function FitPill({ score }: { score: number | null }) {
   if (score == null) return <Tip text="Not scored yet."><span className="text-xs text-muted-foreground">–</span></Tip>;
   const tip = score === 9 ? "Fit score 9: makes the products you searched." : score === 7 ? "Fit score 7: makes other plastic products." : `Fit score ${score}: not a fit.`;
   // A circle in the primary shade for a real fit (7+); neutral for the rest.
   return <Tip text={tip}><span className={cn("inline-flex size-7 shrink-0 items-center justify-center rounded-full border font-mono text-xs font-bold tabular-nums", score >= 7 ? "border-primary/25 bg-primary/10 text-primary" : TONE.gray)}>{score}</span></Tip>;
 }
 
-function BatchPill({ name, color, wide = false }: { name: string; color: string; wide?: boolean }) {
+export function BatchPill({ name, color, wide = false }: { name: string; color: string; wide?: boolean }) {
   // Only as wide as its text; a long name is cut with "…" (full name on hover).
   return <Tip text={`Batch: ${name.replace(/^Batch: /, "")}`} className={wide ? "max-w-full" : "max-w-[150px]"}><span className={cn("inline-flex w-fit min-w-0 max-w-full items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold", getBatchColor(color).pill)}><span className="truncate">{name}</span></span></Tip>;
 }
@@ -159,7 +159,7 @@ function Links({ c, linkedin = true }: { c: ScoredCompany; linkedin?: boolean })
   );
 }
 
-function Decide({ c, busy, onDecide, large = false }: { c: ScoredCompany; busy: boolean; onDecide: (ids: string[], a: DecideAction) => void; large?: boolean }) {
+export function Decide({ c, busy, onDecide, large = false }: { c: ScoredCompany; busy: boolean; onDecide: (ids: string[], a: DecideAction) => void; large?: boolean }) {
   const act = (a: DecideAction) => (e: React.MouseEvent) => { e.stopPropagation(); onDecide([c.id], a); };
   // `large` = the drawer footer: full-width, taller buttons. Cards keep the compact size.
   const btn = large ? "h-10 flex-1 gap-1.5 px-4 text-sm [&_svg]:size-4" : "h-7 gap-1 px-2 text-xs [&_svg]:size-3";
