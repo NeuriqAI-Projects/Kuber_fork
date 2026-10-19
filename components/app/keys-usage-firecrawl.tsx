@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Gauge, Coins, CalendarDays, TrendingDown, Flame, CheckCircle2 } from "lucide-react";
+import { RefreshCw, Coins, CalendarDays, TrendingDown, Flame, CheckCircle2 } from "lucide-react";
 import { useApp } from "@/lib/app-context";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -83,7 +83,7 @@ export function FirecrawlUsageView() {
           with other tools.
         </p>
         <Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={() => void load(true)} className="shrink-0 gap-1.5">
-          <Gauge className={cn("size-3.5", refreshing && "animate-pulse")} />
+          <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
           {refreshing ? "Checking…" : "Refresh"}
         </Button>
       </div>

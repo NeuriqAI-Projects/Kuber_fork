@@ -25,9 +25,71 @@ import { cn } from "@/lib/utils";
 
 const STEPS = ["Criteria", "Settings", "Batch", "Assign"];
 const SIZE_SUGGESTIONS = ["1,10", "11,50", "51,200", "201,500", "501,1000", "1001,5000", "5001,10000"];
-const DEFAULT_MAX_REVEALS = 20;
-/** Measured on 200 real companies, 9 Oct 2026. */
-const COMPANIES_PER_MINUTE = 55;
+/** Default Apollo limit for one batch: 1 search + up to 39 contacts. One batch of
+ *  100 companies gave about 33 leads in the 17 Oct 2026 live tests. */
+const DEFAULT_MAX_CREDITS = 40;
+/** Measured live on 17 Oct 2026 with only the every-minute background job. */
+const COMPANIES_PER_MINUTE = 20;
+
+interface MarketEstimate { companies: { low: number; mid: number; high: number }; leads: { low: number; high: number } }
+
+/** Expected Apollo use for one batch, from the 17 Oct 2026 live tests: about
+ *  25–40 leads per 100 companies with good keywords (1 credit each), plus 1 for
+ *  the search, and never more than the limit. */
+function ExpectedUse({ maxCredits }: { maxCredits: number }) {
+  const contacts = Math.max(0, maxCredits - 1);
+  const low = 1 + Math.min(contacts, 25), high = 1 + Math.min(contacts, 40);
+  return (
+    <div className="space-y-1 rounded-lg border border-border px-3 py-2.5 text-sm">
+      <p><b>Expected use: about {low === high ? low : `${low}–${high}`} credits</b> · never more than {maxCredits}.</p>
+      <p className="text-xs text-muted-foreground">
+        1 credit for the search (up to 100 companies) + 1 per lead. One batch usually gives about 25–40 leads with good keywords.
+        {contacts < 40 && ` With this limit you get at most ${contacts} lead${contacts === 1 ? "" : "s"}; extra good companies wait for your review (1 credit each if you approve).`}
+        {" "}Companies that aren&apos;t plastic makers, or have nobody with an email, cost nothing.
+      </p>
+    </div>
+  );
+}
+
+/** Free size check (Apollo People Search, 0 credits) shown under the filters. */
+function MarketSize({ keywords, countries, sizes }: { keywords: string[]; countries: string[]; sizes: string[] }) {
+  const [est, setEst] = useState<MarketEstimate | null>(null);
+  const [state, setState] = useState<"idle" | "loading" | "error">("idle");
+  const key = JSON.stringify([keywords, countries, sizes]);
+  useEffect(() => {
+    if (!keywords.length) { setEst(null); setState("idle"); return; }
+    let alive = true;
+    setState("loading");
+    const t = setTimeout(() => {
+      api<MarketEstimate>("/api/v1/prospects/estimate", { keywords, locations: countries.length ? countries : undefined, employee_ranges: sizes.length ? sizes : undefined })
+        .then((e) => { if (alive) { setEst(e); setState("idle"); } })
+        .catch(() => { if (alive) setState("error"); });
+    }, 600);
+    return () => { alive = false; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  if (!keywords.length) return null;
+  const n = (x: number) => x.toLocaleString();
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-border px-3 py-2.5 text-sm">
+      {state === "loading" ? <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" /> : <Search className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}
+      <div className="min-w-0 flex-1">
+        {state === "error" && <p className="text-muted-foreground">Couldn&apos;t check the size right now. You can still search.</p>}
+        {state !== "error" && !est && <p className="text-muted-foreground">Checking how many companies match…</p>}
+        {state !== "error" && est && (
+          est.companies.mid === 0
+            ? <p className="font-medium text-amber-600 dark:text-amber-400">Apollo has almost no companies for these keywords. Try a different keyword.</p>
+            : <p>
+                <b>About {n(est.companies.mid)} companies</b> match ({n(est.companies.low)}–{n(est.companies.high)}) · <b>about {n(est.leads.low)}–{n(est.leads.high)} leads</b> possible in total.
+              </p>
+        )}
+        <p className="flex items-center gap-1 text-xs text-muted-foreground">Free check, no credits used. One batch reads up to 100 of these.
+          <InfoTip side="right" text="Estimated from Apollo's free People Search. It is a range: the exact number of companies is only known after the paid search. About 1 in 3 companies becomes a lead (makes plastic and has a person with an email)." />
+        </p>
+      </div>
+    </div>
+  );
+}
 
 async function api<T>(url: string, body?: unknown): Promise<T> {
   const token = await getToken();
@@ -96,7 +158,7 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
         <div className={tile}>
           <span className="text-xs text-muted-foreground">Companies found</span>
           <span className="text-3xl font-bold tabular-nums">{s?.returned ?? "…"}</span>
-          <span className="text-xs text-muted-foreground">{s ? `${s.total} new · ${s.credits_spent} Apollo credit${s.credits_spent === 1 ? "" : "s"}${s.mock ? " (test)" : ""}` : " "}</span>
+          <span className="text-xs text-muted-foreground">{s ? `${s.total} new to you` : " "}</span>
         </div>
         <div className={tile}>
           <span className="text-xs text-muted-foreground">Checked so far</span>
@@ -124,6 +186,13 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
         ))}
       </div>
 
+      {s && (
+        <p className="rounded-lg border border-border px-3 py-2 text-sm">
+          <b>Apollo credits used so far: {s.credits_used}</b>{s.max_credits != null ? ` of your limit of ${s.max_credits}` : ""} ({s.credits_spent} for the search + {s.credits_used - s.credits_spent} contact{s.credits_used - s.credits_spent === 1 ? "" : "s"}){s.mock ? " · test batch, nothing is charged" : ""}.
+          <span className="text-muted-foreground"> Website reading: about {s.stages.read} Firecrawl credits.</span>
+        </p>
+      )}
+
       {s && s.stages.waiting_credits > 0 && (
         <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
           Apollo ran out of credits: {s.stages.waiting_credits} good compan{s.stages.waiting_credits === 1 ? "y is" : "ies are"} waiting. They continue on their own after a top-up — nothing is lost.
@@ -147,7 +216,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   const [lookalikes, setLookalikes] = useState<string[]>([]);
   const [exclude, setExclude] = useState<string[]>([]);
   const [advanced, setAdvanced] = useState<Record<string, string>>({});
-  const [maxReveals, setMaxReveals] = useState(DEFAULT_MAX_REVEALS);
+  const [maxCredits, setMaxCredits] = useState(DEFAULT_MAX_CREDITS);
   const [batchName, setBatchName] = useState("");
   const [batchColor, setBatchColor] = useState("green");
   const [batchError, setBatchError] = useState(false);
@@ -176,7 +245,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
       const out = await api<{ search_id: string }>("/api/v1/prospects/search", {
         keywords, locations: countries.length ? countries : undefined, employee_ranges: sizes.length ? sizes : undefined,
         lookalike_org_ids: lookalikes.length ? lookalikes : undefined, exclude_websites: exclude.length ? exclude : undefined,
-        advanced: buildAdvanced(advanced), max_auto_reveals: maxReveals, page: 1,
+        advanced: buildAdvanced(advanced), max_auto_reveals: Math.max(0, maxCredits - 1), page: 1,
         batch_name: batchName.trim(), color: batchColor, ...buildImportAssignment(assignMode, assignTo),
       });
       setStarted({ searchId: out.search_id, batchName: batchName.trim(), color: batchColor });
@@ -216,6 +285,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
           <TagInput label="Lookalike companies (Apollo IDs)" pills={lookalikes} suggestions={[]} onChange={setLookalikes} max={5} placeholder="Optional — up to 5 best customers" tip="Apollo ranks results by similarity to these companies." />
           <TagInput label="Leave out websites" pills={exclude} suggestions={[]} onChange={setExclude} placeholder="Optional — e.g. competitor.com" />
           <CompanyAdvancedSearch value={advanced} onChange={setAdvanced} omit={["employeeRanges", "keywordTags"]} />
+          <MarketSize keywords={keywords} countries={countries} sizes={sizes} />
         </div>
       )}
 
@@ -223,11 +293,12 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
         <div className="space-y-4">
           <div className="space-y-1.5">
             <div className="flex items-center gap-1">
-              <Label htmlFor="max-reveals">Most contacts to reveal automatically</Label>
-              <InfoTip side="right" text="Good fits are revealed automatically, one contact per company, up to this number. Extra good fits wait for your review. Each reveal is 1 Apollo credit." />
+              <Label htmlFor="max-credits">Most Apollo credits to spend on this batch</Label>
+              <InfoTip side="right" text="1 credit for the search (up to 100 companies), then 1 credit per contact revealed at a good-fit company. The batch never goes over this number; extra good fits wait for your review, where each approval is 1 more credit." />
             </div>
-            <Input id="max-reveals" type="number" min={0} max={100} value={maxReveals}
-              onChange={(e) => setMaxReveals(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} className="w-32" />
+            <Input id="max-credits" type="number" min={1} max={101} value={maxCredits}
+              onChange={(e) => setMaxCredits(Math.max(1, Math.min(101, Number(e.target.value) || 1)))} className="w-32" />
+            <ExpectedUse maxCredits={maxCredits} />
           </div>
           <div className="space-y-1 text-sm text-muted-foreground">
             <p><b className="text-foreground">Good fit</b> — makes plastic products: one contact is revealed automatically. Score 9 if it makes the products you searched for, 7 if other plastic products.</p>
@@ -245,9 +316,9 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
         <div className="space-y-4">
           <AssignStrategyPicker employees={employees} mode={assignMode} onModeChange={setAssignMode} assignTo={assignTo} onAssignToChange={setAssignTo} />
           <ApolloCostNote
-            credits={1 + maxReveals}
-            spendingOn={`1 company search (up to 100 companies) + up to ${maxReveals} automatic reveals`}
-            rate="1 credit per page of up to 100 companies, then 1 credit per contact revealed (one per good-fit company). Reading and scoring don't use Apollo credits."
+            credits={maxCredits}
+            spendingOn={`1 company search (up to 100 companies) + up to ${Math.max(0, maxCredits - 1)} contacts revealed`}
+            rate="At most this many Apollo credits: 1 for the search, then 1 per contact revealed. Companies that aren't plastic makers, or have nobody with an email, cost nothing. Reading websites uses about 1 Firecrawl credit per company (up to 100)."
           />
         </div>
       )}

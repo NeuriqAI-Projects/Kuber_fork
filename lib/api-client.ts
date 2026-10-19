@@ -435,12 +435,18 @@ export type ApolloUsageHistoryEntry = {
   import_id: string | null;
   campaign_id: string | null;
   message: string | null;
+  feature: "scored_search" | "company_search" | "email_reveal";
+  detail: string | null;
 };
+
+export type ApolloFeatureSpend = { credits: number; calls: number };
+export type ApolloUsageByFeature = Record<"scored_search" | "company_search" | "email_reveal", ApolloFeatureSpend>;
 
 export type ApolloUsageData = {
   key: KeyCheck;
   allowanceMonthly: number | null;
   consumed: { today: number; week: number; month: number; allTime: number };
+  byFeature: { month: ApolloUsageByFeature; allTime: ApolloUsageByFeature };
   remainingThisMonth: number | null;
   daily: { date: string; credits: number }[];
   rateLimits: ApolloEndpointUsage[] | null;
@@ -561,6 +567,34 @@ export type FirecrawlUsageData = {
 export async function fetchFirecrawlUsage(token: string, refresh = false): Promise<FirecrawlUsageData> {
   const qs = refresh ? "?refresh=1" : "";
   return apiFetch(`/api/v1/settings/keys/usage/firecrawl${qs}`, {}, token);
+}
+
+export type JevUsageData = {
+  key: KeyCheck;
+  companies: { today: number; week: number; month: number; allTime: number };
+  tokens: { today: number; week: number; month: number; allTime: number };
+  usd: { today: number; week: number; month: number; allTime: number };
+  daily: { date: string; companies: number; usd: number }[];
+  decisions: Record<string, number>;
+  avgTokens: number;
+  history: { id: string; created_at: string; name: string; status: string; score: number | null; tokens: number; extra: number }[];
+  ledgerWindowDays: number;
+};
+export async function fetchJevUsage(token: string, refresh = false): Promise<JevUsageData> {
+  return apiFetch(`/api/v1/settings/keys/usage/jev${refresh ? "?refresh=1" : ""}`, {}, token);
+}
+
+export type TavilyUsageData = {
+  key: KeyCheck & { limit?: number | null };
+  credits: { remaining: number | null; planCredits: number | null; used: number | null };
+  calls: { today: number; week: number; month: number; allTime: number };
+  split: { linkedinReads: number; webSearches: number };
+  daily: { date: string; linkedin: number; searches: number }[];
+  history: { id: string; created_at: string; name: string; linkedinRead: boolean; webSearch: boolean; status: string }[];
+  ledgerWindowDays: number;
+};
+export async function fetchTavilyUsage(token: string, refresh = false): Promise<TavilyUsageData> {
+  return apiFetch(`/api/v1/settings/keys/usage/tavily${refresh ? "?refresh=1" : ""}`, {}, token);
 }
 
 export async function setProviderModel(token: string, provider: string, model: string | null): Promise<void> {

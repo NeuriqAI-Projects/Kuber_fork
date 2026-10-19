@@ -377,6 +377,7 @@ async function checkCredits(
 
 export const checkFirecrawlCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "firecrawl", "credit_check_firecrawl", scope, opts);
 export const checkApolloCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "apollo", "credit_check_apollo", scope, opts);
+export const checkJevCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "jev", "credit_check_jev", scope, opts);
 export const checkTavilyCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "tavily", "credit_check_tavily", scope, opts);
 export const checkInstantlyCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "instantly", "credit_check_instantly", scope, opts);
 export const checkOpenRouterCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "openrouter", "credit_check_openrouter", scope, opts);
