@@ -2,7 +2,7 @@
 
 import type React from "react";
 import { toast } from "sonner";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   User, Bot, LogOut, Plus,
   ChevronRight, PenLine, Type, Palette, Check, Sun, Moon,
@@ -334,7 +334,9 @@ export function SettingsView() {
     (section === "knowledge" && activeKnowledgeNavItem?.label) ||
     sectionLabel;
 
-  useEffect(() => {
+  // Layout effect: the cached copy is applied before the first paint, so a
+  // revisit never flashes the skeleton for a frame.
+  useLayoutEffect(() => {
     // Settings forms paint from the last loaded copy on a revisit (no
     // skeleton). The fresh copy is applied only when it actually differs from
     // what was shown, so a background refresh can't overwrite a field the user

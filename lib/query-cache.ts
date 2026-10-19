@@ -212,3 +212,8 @@ export class QueryCache {
 
 /** The app-wide instance. */
 export const queryCache = new QueryCache();
+
+// Dev-only handle for inspecting the cache from the browser console.
+if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
+  (window as unknown as { __queryCache?: QueryCache }).__queryCache = queryCache;
+}

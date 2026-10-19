@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, Fragment } from "react";
+import { useEffect, useLayoutEffect, useState, useCallback, useRef, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -840,7 +840,9 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
     }
   }
 
-  useEffect(() => {
+  // Layout effect so the cached activity/comments land before the drawer's
+  // first paint instead of one frame later.
+  useLayoutEffect(() => {
     if (!lead) {
       setFreshLead(null);
       setEnrichData(null);
