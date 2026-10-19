@@ -22,7 +22,7 @@ import { LocationsPicker } from "@/components/ui/locations-picker";
 import { Stepper } from "@/components/ui/stepper";
 import { getBatchColor } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { LEADS_PER_PAGE, minCredits, suggestedMaxCredits } from "@/lib/services/prospects/digging";
+import { FIRECRAWL_PER_PAGE, LEADS_PER_PAGE, MAX_LEADS_PER_SEARCH, MAX_PAGES_PER_SEARCH, minCredits, suggestedMaxCredits } from "@/lib/services/prospects/digging";
 
 const STEPS = ["Criteria", "Settings", "Batch", "Assign"];
 const SIZE_SUGGESTIONS = ["1,10", "11,50", "51,200", "201,500", "501,1000", "1001,5000", "5001,10000"];
@@ -37,12 +37,15 @@ interface MarketEstimate {
   leads: { low: number; high: number };
   pages_used?: number; total_pages?: number | null;
   leads_left?: { low: number; high: number };
+  /** Most leads the Apollo / Firecrawl balances can pay for (null = unknown). */
+  fits?: { apollo_leads: number | null; firecrawl_leads: number | null };
 }
+type Fits = NonNullable<MarketEstimate["fits"]>;
 
 /** The "bill" beside step 2: what a lead target is expected to cost, from the
  *  17 Oct 2026 live tests: about 33 leads per 100 companies, 1 Apollo credit
  *  per lead + 1 per page of 100 companies, never more than the limit. */
-function Bill({ target, maxCredits }: { target: number; maxCredits: number }) {
+function Bill({ target, maxCredits, firecrawlShort }: { target: number; maxCredits: number; firecrawlShort: boolean }) {
   const pages = Math.ceil(target / LEADS_PER_PAGE);
   const expected = minCredits(target);
   const minutes = Math.max(1, Math.round((pages * 100) / COMPANIES_PER_MINUTE));
@@ -50,12 +53,12 @@ function Bill({ target, maxCredits }: { target: number; maxCredits: number }) {
   return (
     <div className="space-y-1.5 rounded-xl border border-border bg-field p-4 text-sm dark:bg-card">
       <p className="text-base font-semibold">Your search</p>
-      <div className={line}><span>{target} leads × 1 credit</span><span>{target}</span></div>
+      <div className={line}><span>{target} lead{target === 1 ? "" : "s"} × 1 credit</span><span>{target}</span></div>
       <div className={line}><span>~{pages} search{pages === 1 ? "" : "es"} of 100 companies</span><span>{pages}</span></div>
       <div className={cn(line, "border-t border-dashed border-border pt-2 text-base font-bold")}><span>Expected</span><span>~{expected} credits</span></div>
       <div className={cn(line, maxCredits < expected ? "font-semibold text-destructive" : "text-muted-foreground")}><span>Your limit</span><span>{maxCredits} credits</span></div>
       <div className="space-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
-        <div className={line}><span>Website reading</span><span>~{pages * 100} Firecrawl</span></div>
+        <div className={cn(line, firecrawlShort && "font-semibold text-destructive")}><span>Website reading</span><span>~{pages * FIRECRAWL_PER_PAGE} Firecrawl</span></div>
         <div className={line}><span>Time (in the background)</span><span>~{minutes} min</span></div>
       </div>
       <p className="text-xs text-muted-foreground">Companies that aren&apos;t plastic makers, or have nobody to email, cost nothing.</p>
@@ -64,7 +67,7 @@ function Bill({ target, maxCredits }: { target: number; maxCredits: number }) {
 }
 
 /** Free size check (Apollo People Search, 0 credits): is there enough for the lead target? */
-function MarketSize({ filters, target, onPick }: { filters: Record<string, unknown> & { keywords: string[] }; target: number; onPick: (n: number) => void }) {
+function MarketSize({ filters, target, onPick, onFits }: { filters: Record<string, unknown> & { keywords: string[] }; target: number; onPick: (n: number) => void; onFits: (f: Fits | null) => void }) {
   const [est, setEst] = useState<MarketEstimate | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const key = JSON.stringify(filters);
@@ -74,7 +77,7 @@ function MarketSize({ filters, target, onPick }: { filters: Record<string, unkno
     setState("loading");
     const t = setTimeout(() => {
       api<MarketEstimate>("/api/v1/prospects/estimate", filters)
-        .then((e) => { if (alive) { setEst(e); setState("idle"); } })
+        .then((e) => { if (alive) { setEst(e); setState("idle"); onFits(e.fits ?? null); } })
         .catch(() => { if (alive) setState("error"); });
     }, 600);
     return () => { alive = false; clearTimeout(t); };
@@ -263,6 +266,16 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   const pages = Math.ceil(target / LEADS_PER_PAGE);
   const needCredits = minCredits(target);
   const creditsTooLow = maxCredits < needCredits;
+  const [fits, setFits] = useState<Fits | null>(null);
+  // What stops step 2, each with the lead count that would fit.
+  const fitBlock: { msg: string; fix: number } | null =
+    target > MAX_LEADS_PER_SEARCH
+      ? { msg: `One search can give at most ${MAX_LEADS_PER_SEARCH} leads (it checks up to ${(MAX_PAGES_PER_SEARCH * 100).toLocaleString()} companies). Ask for ${MAX_LEADS_PER_SEARCH} or fewer. To get more, run the same search again later: Kuber continues where it stopped.`, fix: MAX_LEADS_PER_SEARCH }
+      : fits?.firecrawl_leads != null && target > fits.firecrawl_leads
+        ? { msg: `Not enough Firecrawl credits. Kuber reads about 100 company websites (100 Firecrawl credits) for every ${LEADS_PER_PAGE} leads, so ${target} leads need about ${(pages * FIRECRAWL_PER_PAGE).toLocaleString()}. What is left is enough for about ${fits.firecrawl_leads} leads. Ask for fewer leads or top up Firecrawl.`, fix: fits.firecrawl_leads }
+        : fits?.apollo_leads != null && target > fits.apollo_leads
+          ? { msg: `Not enough Apollo credits. ${target} leads need at least ${needCredits} Apollo credits. What is left is enough for about ${fits.apollo_leads} leads. Ask for fewer leads or top up Apollo.`, fix: fits.apollo_leads }
+          : null;
   const creditsMsg = `${target} leads need at least ${needCredits} credits (${target} for the leads + ${pages} for searching). Raise your credits to ${needCredits} or more, or ask for fewer leads.`;
   const [batchName, setBatchName] = useDraft("scored", "batchName", "");
   const [batchColor, setBatchColor] = useDraft("scored", "batchColor", "green");
@@ -279,7 +292,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   function next() {
     setError("");
     if (step === 0 && !keywords.length) { setError("Pick at least one industry keyword."); return; }
-    if (step === 1 && creditsTooLow) return; // the red note under the credits box already says why
+    if (step === 1 && (creditsTooLow || fitBlock)) return; // the red notes on the page already say why
     if (step === 2 && !batchName.trim()) { setBatchError(true); setError("Give this batch a name so its leads are easy to find later."); return; }
     setStep((s) => s + 1);
   }
@@ -287,7 +300,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   async function startSearch() {
     if (!keywords.length) { setStep(0); setError("Pick at least one industry keyword."); return; }
     if (!batchName.trim()) { setStep(2); setBatchError(true); return; }
-    if (creditsTooLow) { setStep(1); setError(creditsMsg); return; }
+    if (creditsTooLow || fitBlock) { setStep(1); setError(fitBlock?.msg ?? creditsMsg); return; }
     if (assignMode === "manual" && !assignTo) { setError("Pick the employee who should get these leads."); return; }
     setError(""); setBusy(true);
     try {
@@ -348,14 +361,23 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
                   <InfoTip side="right" text="A lead = a plastic maker with a buyer we can email. Kuber checks companies 100 at a time until it has this many leads, your credit limit is reached, or the keywords run out. Next time you search the same filters, it continues where it stopped." />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Input id="target-leads" type="number" min={1} max={2000} value={target}
-                    onChange={(e) => setTarget(Math.max(1, Math.min(2000, Number(e.target.value) || 1)))} className="w-28" />
+                  <Input id="target-leads" type="number" min={1} max={MAX_LEADS_PER_SEARCH} value={target} aria-invalid={!!fitBlock}
+                    onChange={(e) => { setError(""); setTarget(Math.max(1, Math.min(100_000, Number(e.target.value) || 1))); }} className="w-28" />
                   {TARGET_CHIPS.map((n) => (
                     <Button key={n} type="button" size="sm" variant={target === n ? "default" : "outline"} className="rounded-full" onClick={() => setTarget(n)}>{n}</Button>
                   ))}
                 </div>
               </div>
-              <MarketSize target={target} onPick={setTarget} filters={{
+              {fitBlock && (
+                <div className="flex items-start gap-1.5 text-sm font-medium text-destructive">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                  <div className="space-y-1.5">
+                    <p>{fitBlock.msg}</p>
+                    {fitBlock.fix > 0 && <Button type="button" size="sm" variant="outline" onClick={() => setTarget(fitBlock.fix)}>Ask for {fitBlock.fix} leads instead</Button>}
+                  </div>
+                </div>
+              )}
+              <MarketSize target={target} onPick={setTarget} onFits={setFits} filters={{
                 keywords, locations: countries.length ? countries : undefined, employee_ranges: sizes.length ? sizes : undefined,
                 lookalike_org_ids: lookalikes.length ? lookalikes : undefined, exclude_websites: exclude.length ? exclude : undefined,
                 advanced: buildAdvanced(advanced),
@@ -376,7 +398,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
                   ? <p className="flex items-start gap-1.5 text-sm font-medium text-destructive"><AlertCircle className="mt-0.5 size-4 shrink-0" />Not enough credits. {creditsMsg}</p>
                   : <p className="text-xs text-muted-foreground">
                       {maxCreditsTyped === null
-                        ? `Suggested for ${target} leads: at least ${needCredits} are needed, plus 10% extra in case some companies have nobody to email. You can change it.`
+                        ? `Suggested for ${target} lead${target === 1 ? "" : "s"}: at least ${needCredits} are needed, plus 10% extra in case some companies have nobody to email. You can change it.`
                         : `At least ${needCredits} credits are needed for ${target} leads.`}
                     </p>}
               </div>
@@ -386,7 +408,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
                 <p><b className="text-foreground">Hidden</b> — not a plastic maker (traders, distributors, machine makers, brands that only use packaging). Nothing spent.</p>
               </div>
             </div>
-            <Bill target={target} maxCredits={maxCredits} />
+            <Bill target={target} maxCredits={maxCredits} firecrawlShort={fits?.firecrawl_leads != null && target > fits.firecrawl_leads} />
           </div>
         </div>
       )}
