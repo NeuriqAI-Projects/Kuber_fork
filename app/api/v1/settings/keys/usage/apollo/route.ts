@@ -32,9 +32,36 @@ function dayKey(iso: string): string {
   return iso.slice(0, 10); // YYYY-MM-DD (UTC) — enrichment_logs.created_at is timestamptz
 }
 
+/** Which feature spent the credits. The ledger rows carry `stage` for the two
+ *  company searches; email-reveal batches (leads/enrich) have no stage. */
+export type Feature = "scored_search" | "company_search" | "email_reveal";
+function featureOf(row: ApolloLedgerRow): Feature {
+  const stage = row.payload?.stage;
+  if (stage === "prospect_search") return "scored_search";
+  if (stage === "company_search") return "company_search";
+  return "email_reveal";
+}
+
+/** One short line for the Recent activity table, for the search features. */
+function detailFor(row: ApolloLedgerRow): string | null {
+  const p = row.payload ?? {};
+  const f = featureOf(row);
+  if (f === "scored_search") {
+    const kw = Array.isArray(p.keywords) ? (p.keywords as unknown[]).join(", ") : "";
+    return `${kw || "keywords"} · page ${p.page ?? 1} · ${p.returned ?? "?"} companies`;
+  }
+  if (f === "company_search") {
+    return `${(p.query as string) || (p.website as string) || "lookup"} · page ${p.page ?? 1} · ${p.returned ?? "?"} companies`;
+  }
+  return null;
+}
+
 function labelFor(row: ApolloLedgerRow): string {
   switch (row.event) {
-    case "CREDITS_CONSUMED": return "Enrichment batch";
+    case "CREDITS_CONSUMED": {
+      const f = featureOf(row);
+      return f === "scored_search" ? "Scored companies search" : f === "company_search" ? "Company lookup search" : "Email reveals";
+    }
     case "CREDITS_EXHAUSTED": return "Skipped — out of credits";
     case "EMAIL_REVEAL_FAILED": return "Email reveal failed";
     default: return row.event;
@@ -84,8 +111,18 @@ export async function GET(req: NextRequest) {
 
   let today = 0, week = 0, month = 0, allTime = 0;
   const dailyMap = new Map<string, number>();
+  const zero = () => ({ credits: 0, calls: 0 });
+  const byFeature = {
+    month: { scored_search: zero(), company_search: zero(), email_reveal: zero() },
+    allTime: { scored_search: zero(), company_search: zero(), email_reveal: zero() },
+  };
   for (const row of rows) {
     const credits = creditsOf(row);
+    if (row.event === "CREDITS_CONSUMED") {
+      const f = featureOf(row);
+      byFeature.allTime[f].credits += credits; byFeature.allTime[f].calls += 1;
+      if (row.created_at >= startOfMonth) { byFeature.month[f].credits += credits; byFeature.month[f].calls += 1; }
+    }
     allTime += credits;
     if (row.created_at >= startOfToday) today += credits;
     if (row.created_at >= startOfWeek) week += credits;
@@ -122,12 +159,15 @@ export async function GET(req: NextRequest) {
     import_id: row.payload?.import_id ?? null,
     campaign_id: row.payload?.campaign_id ?? null,
     message: row.error ?? null,
+    feature: featureOf(row),
+    detail: detailFor(row),
   }));
 
   return ok({
     key: keyCheck,
     allowanceMonthly,
     consumed: { today, week, month, allTime },
+    byFeature,
     remainingThisMonth: allowanceMonthly != null ? Math.max(0, allowanceMonthly - month) : null,
     daily,
     rateLimits: usageStatsRes.data,

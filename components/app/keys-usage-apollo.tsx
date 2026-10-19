@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Pencil, Check, X, Gauge, Coins, CalendarDays, TrendingDown, Zap } from "lucide-react";
+import { Pencil, Check, X, RefreshCw, Coins, CalendarDays, TrendingDown, Zap } from "lucide-react";
 import { useApp } from "@/lib/app-context";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -51,7 +51,12 @@ const CREDIT_POOL_LABELS: Record<keyof ApolloCreditUsageStats, string> = {
   contact_website_visitor_credit: "Contact website visitor credits",
 };
 
-function CreditPoolRow({ label, w }: { label: string; w: ApolloCreditWindow }) {
+/** Apollo can leave a pool out, or send only some of its numbers (seen live: `limit` missing).
+ *  Missing counts as 0 so one odd pool never crashes the whole Usage screen. */
+const n0 = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : 0);
+
+function CreditPoolRow({ label, w: raw }: { label: string; w: Partial<ApolloCreditWindow> | undefined }) {
+  const w = { limit: n0(raw?.limit), consumed: n0(raw?.consumed), left_over: n0(raw?.left_over) };
   if (w.limit === 0 && w.consumed === 0) {
     return (
       <div className="flex items-center justify-between text-xs">
@@ -226,20 +231,21 @@ export function ApolloUsageView() {
   }
 
   const {
-    key, consumed, allowanceMonthly, remainingThisMonth, daily, rateLimits, rateLimitsError,
+    key, consumed, byFeature, allowanceMonthly, remainingThisMonth, daily, rateLimits, rateLimitsError,
     creditUsage, creditCycle, creditUsageError, history,
   } = data;
 
   // Apollo's rate-limit payload lists every endpoint the account can call —
-  // this app only ever calls bulk_match (email reveal) and mixed_people search,
+  // this app calls bulk_match (email reveal), mixed_people search and mixed_companies search (company search),
   // so only those are worth showing instead of a 30-row wall of zeros.
   const relevantLimits = (rateLimits ?? []).filter(
-    (r) => r.action === "bulk_match" || (r.action === "api_search" && r.resource === "mixed_people"),
+    (r) => r.action === "bulk_match" || (r.action === "api_search" && r.resource === "mixed_people") || r.resource === "mixed_companies",
   );
 
   const chartData = daily.map((d) => ({ date: d.date, credits: d.credits }));
 
-  const lead = creditUsage?.lead_credit;
+  const rawLead = creditUsage?.lead_credit;
+  const lead = rawLead ? { limit: n0(rawLead.limit), consumed: n0(rawLead.consumed), left_over: n0(rawLead.left_over) } : undefined;
   const leadPctLeft = lead && lead.limit > 0 ? Math.round((lead.left_over / lead.limit) * 100) : null;
 
   return (
@@ -254,7 +260,7 @@ export function ApolloUsageView() {
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1.5">
           <Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={() => void load(true)} className="gap-1.5">
-            <Gauge className={cn("size-3.5", refreshing && "animate-pulse")} />
+            <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
             {refreshing ? "Checking…" : "Refresh"}
           </Button>
           <AllowanceEditor
@@ -305,15 +311,15 @@ export function ApolloUsageView() {
             />
             <StatTile
               label="AI words used"
-              value={creditUsage.ai_credit.consumed.toLocaleString()}
+              value={n0(creditUsage.ai_credit?.consumed).toLocaleString()}
               icon={Zap}
-              sub={`of ${creditUsage.ai_credit.limit.toLocaleString()}/mo`}
+              sub={`of ${n0(creditUsage.ai_credit?.limit).toLocaleString()}/mo`}
             />
             <StatTile
               label="Conversation minutes used"
-              value={creditUsage.conversation_credit.consumed.toLocaleString()}
+              value={n0(creditUsage.conversation_credit?.consumed).toLocaleString()}
               icon={CalendarDays}
-              sub={`of ${creditUsage.conversation_credit.limit.toLocaleString()}/mo`}
+              sub={`of ${n0(creditUsage.conversation_credit?.limit).toLocaleString()}/mo`}
             />
           </div>
 
@@ -343,11 +349,23 @@ export function ApolloUsageView() {
         />
       </div>
 
+      <div>
+        <p className="eyebrow mb-2">This app: credits by feature (this month)</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <StatTile label="Scored companies search" value={byFeature.month.scored_search.credits} icon={Coins}
+            sub={`${byFeature.month.scored_search.calls} search${byFeature.month.scored_search.calls === 1 ? "" : "es"} · ${byFeature.allTime.scored_search.credits} in 90d`} />
+          <StatTile label="Company lookup search" value={byFeature.month.company_search.credits} icon={Coins}
+            sub={`${byFeature.month.company_search.calls} search${byFeature.month.company_search.calls === 1 ? "" : "es"} · ${byFeature.allTime.company_search.credits} in 90d`} />
+          <StatTile label="Email reveals" value={byFeature.month.email_reveal.credits} icon={Coins}
+            sub={`${byFeature.month.email_reveal.calls} batch${byFeature.month.email_reveal.calls === 1 ? "" : "es"} · ${byFeature.allTime.email_reveal.credits} in 90d`} />
+        </div>
+      </div>
+
       <Card className="p-5 space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <p className="eyebrow">Credits consumed</p>
-            <p className="text-xs text-muted-foreground">Last 14 days, from every email-reveal batch this app has run.</p>
+            <p className="text-xs text-muted-foreground">Last 14 days, from every email reveal and company search this app has run.</p>
           </div>
           <p className="font-mono text-sm font-semibold tabular-nums">{consumed.allTime.toLocaleString()} total (90d)</p>
         </div>
@@ -366,7 +384,7 @@ export function ApolloUsageView() {
             Could not read rate limits ({rateLimitsError}) — this endpoint requires a Master API key.
           </p>
         ) : relevantLimits.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No bulk_match calls recorded by Apollo yet today.</p>
+          <p className="text-xs text-muted-foreground">No email-reveal or search calls recorded by Apollo yet today.</p>
         ) : (
           <div className="space-y-3">
             {relevantLimits.map((r) => (
@@ -379,7 +397,7 @@ export function ApolloUsageView() {
       <Card className="p-5 space-y-3">
         <div>
           <p className="eyebrow">Recent activity</p>
-          <p className="text-xs text-muted-foreground">Every enrichment batch and skipped/failed attempt, most recent first.</p>
+          <p className="text-xs text-muted-foreground">Every email reveal, company search and skipped/failed attempt, most recent first.</p>
         </div>
         {history.length === 0 ? (
           <p className="text-xs text-muted-foreground py-6 text-center">No Apollo activity recorded yet.</p>
@@ -416,7 +434,7 @@ export function ApolloUsageView() {
                     <td className="px-3 py-2 text-right font-mono tabular-nums">{h.matched ?? "—"}</td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">{h.archived ?? "—"}</td>
                     <td className="px-3 py-2 text-muted-foreground truncate max-w-70">
-                      {h.message ?? (h.import_id ? `import ${h.import_id.slice(0, 8)}…` : h.campaign_id ? `campaign ${h.campaign_id.slice(0, 8)}…` : "—")}
+                      {h.message ?? h.detail ?? (h.import_id ? `import ${h.import_id.slice(0, 8)}…` : h.campaign_id ? `campaign ${h.campaign_id.slice(0, 8)}…` : "—")}
                     </td>
                   </tr>
                 ))}

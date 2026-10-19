@@ -80,7 +80,33 @@ Return ONLY valid JSON, no markdown fences, exactly this shape:
   "uses_masterbatch": "yes" | "likely" | "unlikely" | "no" | "unknown",
   "best_product": the single best Kuber product name for them, or null,
   "reasons": up to 3 short strings explaining the score,
-  "red_flags": up to 3 short strings (empty array if none),
+  "red_flags": up to 3 short strings (What we did in the code
+No application code was changed for this test. Everything lives in docs/ai-scoring-real-test/, and the only edit outside it is excluding docs from tsconfig.json so these scripts are not type-checked with the app. The scripts call the real services directly and write only to files.
+
+File	What it does	Cost
+scripts/lib.ts	Shared helpers: loads .env.local, the Apollo hard stop (48), the ledger, balances, and saveApollo which writes each full Apollo response to disk.	free
+scripts/recon.ts	Preflight: Apollo, Firecrawl and Tavily balances, key presence, keyword settings.	free
+scripts/tc2.ts	One Apollo company search per keyword; counts known/new companies.	1 Apollo credit each
+scripts/tc3.ts	One search per keyword group (all words together).	1 each
+scripts/tc45.ts	Empty-page test, pages 2/5/10, country filters. Saves the full response.	1 each (0 for empty)
+scripts/tc6.ts	Scores real companies with the real pipeline (runBatch, production settings) and an in-memory store. Reveal functions are made to throw.	Firecrawl 1 per site
+scripts/tc4score.ts	Same scoring for the deeper pages.	Firecrawl 1 per site
+scripts/tc7.ts	Free People Search for every good company. No reveal.	free
+scripts/build_report.py	Builds report-data.js for this page from the data files.	free
+Data files are in data/. Raw Apollo payloads (company lists and People Search results) and full website texts are kept locally on the tester's machine and are not in git: this repository is public and the data is paid or personal. Re-run the scripts to regenerate them.
+
+How to re-run
+cd Kuber
+npx tsx docs/ai-scoring-real-test/scripts/recon.ts      # free
+npx tsx docs/ai-scoring-real-test/scripts/tc2.ts        # paid, edit the SELECT list first
+npx tsx docs/ai-scoring-real-test/scripts/tc6.ts        # Firecrawl credits
+python3 docs/ai-scoring-real-test/scripts/build_report.py
+Limits of this test
+Sample sizes are small: 4 to 5 companies per keyword, 129 in total. The overall precision has a 95% range of about 80.7% to 96.1%.
+One reviewer, and an AI. Labels came from page excerpts, not from opening each website.
+Scope: 28 keywords (every keyword group covered), 4 keyword groups, and the India and United States filters.
+The test used the code on the dev branch from 16 Oct.
+Companies the client already had were skipped, as in production. The share of new companies depends on today's database.empty array if none),
   "missing_info": up to 3 short strings naming what the page did NOT tell you that you needed (empty array if nothing),
   "evidence": up to 2 short VERBATIM quotes (under 200 chars each) copied from the page that most support your score
 }`;
