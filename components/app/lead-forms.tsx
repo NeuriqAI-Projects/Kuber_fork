@@ -690,29 +690,66 @@ export function IndustryKeywordsDropdown({
 
 const LocationsDropdown = LocationsPicker;
 
+// ─── Drafts ───────────────────────────────────────────────────────────────────
+// The Add Leads tabs unmount each form, and a reload wipes React state, so a
+// half-filled wizard used to vanish on one stray click. useDraft is useState
+// that also keeps the value in sessionStorage (same scope as the Company Lookup
+// cache: survives tab switches, close/reopen and reloads; gone when the browser
+// tab closes). clearDraft(form) empties it once the search has started.
+const DRAFT_PREFIX = "kuber:draft:";
+const DRAFT_CLEAR_EVENT = "kuber:draft-clear";
+
+export function useDraft<T>(form: string, field: string, initial: T) {
+  const key = `${DRAFT_PREFIX}${form}:${field}`;
+  const initialRef = useRef(initial);
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const raw = sessionStorage.getItem(key);
+      return raw === null ? initial : (JSON.parse(raw) as T);
+    } catch { return initial; }
+  });
+  useEffect(() => {
+    try { sessionStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode or full: keep working unsaved */ }
+  }, [key, value]);
+  useEffect(() => {
+    const onClear = (e: Event) => { if ((e as CustomEvent<string>).detail === form) setValue(initialRef.current); };
+    window.addEventListener(DRAFT_CLEAR_EVENT, onClear);
+    return () => window.removeEventListener(DRAFT_CLEAR_EVENT, onClear);
+  }, [form]);
+  return [value, setValue] as const;
+}
+
+/** Forget a form's draft and put its fields back to their starting values. */
+export function clearDraft(form: string) {
+  try {
+    Object.keys(sessionStorage).filter((k) => k.startsWith(`${DRAFT_PREFIX}${form}:`)).forEach((k) => sessionStorage.removeItem(k));
+  } catch { /* nothing saved */ }
+  window.dispatchEvent(new CustomEvent(DRAFT_CLEAR_EVENT, { detail: form }));
+}
+
 // ─── Apollo ───────────────────────────────────────────────────────────────────
 
 export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
-  const [keywords,      setKeywords     ] = useState<string[]>([]);
+  const [keywords,      setKeywords     ] = useDraft<string[]>("apollo", "keywords", []);
   const [industryKeywordGroups, setIndustryKeywordGroups] = useIndustryKeywordGroups();
-  const [locations,     setLocations    ] = useState<string[]>([]);
+  const [locations,     setLocations    ] = useDraft<string[]>("apollo", "locations", []);
   // The ONLY two knobs. Search depth is no longer a choice — the server pages
   // until these are met (apollo-search/route.ts). Every lead landed here
   // eventually costs a paid Apollo reveal call, so these bound real spend.
-  const [maxTotalLeads, setMaxTotalLeads] = useState(200);
+  const [maxTotalLeads, setMaxTotalLeads] = useDraft("apollo", "maxTotalLeads", 200);
   // null = no per-keyword ceiling; the even split governs alone. Was a fixed 50,
   // which made `keywords x 50` the real limit of every import (8 keywords could
   // never exceed 400, whatever the total said).
-  const [maxPerKeyword, setMaxPerKeyword] = useState<number | null>(null);
-  const [strictCap,     setStrictCap    ] = useState(false);
+  const [maxPerKeyword, setMaxPerKeyword] = useDraft<number | null>("apollo", "maxPerKeyword", null);
+  const [strictCap,     setStrictCap    ] = useDraft("apollo", "strictCap", false);
   const [apolloRemaining, setApolloRemaining] = useState<number | null>(null);
-  const [batchName,     setBatchName    ] = useState("");
-  const [color,         setColor        ] = useState("violet");
+  const [batchName,     setBatchName    ] = useDraft("apollo", "batchName", "");
+  const [color,         setColor        ] = useDraft("apollo", "color", "violet");
   const [batchNameError, setBatchNameError] = useState(false);
   const [importing,     setImporting    ] = useState(false);
   const [error,         setError        ] = useState("");
-  const [assignTo,      setAssignTo     ] = useState("");
-  const [assignMode,    setAssignMode   ] = useState<ImportAssignMode>("manual");
+  const [assignTo,      setAssignTo     ] = useDraft("apollo", "assignTo", "");
+  const [assignMode,    setAssignMode   ] = useDraft<ImportAssignMode>("apollo", "assignMode", "manual");
   // Pre-filled with the values every search already uses. These three were
   // ALWAYS applied — they just lived in the backend where nobody could see them,
   // so an empty Advanced panel looked like "no filters" when it meant "our
@@ -726,12 +763,12 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
   // converter is exactly the buyer Kuber wants, and that filter drops them.
   // Everything else (domains, revenue, technologies, hiring signals, exclusions)
   // is left blank because no measurement supports a default for it.
-  const [advancedRaw,   setAdvancedRaw  ] = useState<Record<string, string>>({
+  const [advancedRaw,   setAdvancedRaw  ] = useDraft<Record<string, string>>("apollo", "advanced", {
     titles: APOLLO_TITLES.join(", "),
     seniorities: APOLLO_SENIORITIES.join(", "),
     employeeRanges: EMPLOYEE_RANGES.join("   "),
   });
-  const [includeSimilarTitles, setIncludeSimilarTitles] = useState(true);
+  const [includeSimilarTitles, setIncludeSimilarTitles] = useDraft("apollo", "similarTitles", true);
   const employees = useAssignableEmployees(true);
 
   useEffect(() => {
@@ -749,7 +786,7 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
   }, []);
 
   const APOLLO_STEPS = ["Criteria", "Settings", "Batch", "Assign"];
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useDraft("apollo", "step", 0);
 
   const STRICT_TIERS = [25, 50, 100] as const;
   function toggleStrictCap(on: boolean) {
@@ -890,6 +927,7 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
       if (typeof effectiveCap === "number" && effectiveCap < maxTotalLeads) {
         toast.warning(`Apollo credits ran lower than expected — this import was capped to ${effectiveCap.toLocaleString()} leads instead of ${maxTotalLeads.toLocaleString()}.`);
       }
+      clearDraft("apollo");
       onImport(inserted);
     } catch (e) {
       setError((e as Error).message);
@@ -1048,7 +1086,10 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
         )}
 
         <div className="flex items-center justify-between pt-2">
-          <Button type="button" variant="outline" onClick={goBack} disabled={step === 0}>Back</Button>
+          <div className="flex items-center gap-1">
+            <Button type="button" variant="outline" onClick={goBack} disabled={step === 0}>Back</Button>
+            <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={() => { setError(""); setBatchNameError(false); clearDraft("apollo"); }}>Start over</Button>
+          </div>
           {step < APOLLO_STEPS.length - 1 ? (
             <Button type="submit">Continue</Button>
           ) : (

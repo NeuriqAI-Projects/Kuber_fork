@@ -10,7 +10,7 @@ import { ApolloCostNote } from "@/components/app/apollo-cost-note";
 import { TagInput } from "@/components/app/tag-input";
 import { buildAdvanced, CompanyAdvancedSearch } from "@/components/app/company-lookup-form";
 import {
-  AssignStrategyPicker, BatchNameField, buildImportAssignment, getToken, IndustryKeywordsDropdown,
+  AssignStrategyPicker, BatchNameField, buildImportAssignment, clearDraft, getToken, IndustryKeywordsDropdown, useDraft,
   useAssignableEmployees, useIndustryKeywordGroups, type ImportAssignMode,
 } from "@/components/app/lead-forms";
 import type { ScoredSearch } from "@/components/app/scored-orgs";
@@ -248,27 +248,27 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
 }
 
 export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
-  const [step, setStep] = useState(0);
-  const [keywords, setKeywords] = useState<string[]>([]);
+  const [step, setStep] = useDraft("scored", "step", 0);
+  const [keywords, setKeywords] = useDraft<string[]>("scored", "keywords", []);
   const [industryGroups, setIndustryGroups] = useIndustryKeywordGroups();
-  const [countries, setCountries] = useState<string[]>([]);
-  const [sizes, setSizes] = useState<string[]>([]);
-  const [lookalikes, setLookalikes] = useState<string[]>([]);
-  const [exclude, setExclude] = useState<string[]>([]);
-  const [advanced, setAdvanced] = useState<Record<string, string>>({});
-  const [target, setTarget] = useState(DEFAULT_TARGET);
+  const [countries, setCountries] = useDraft<string[]>("scored", "countries", []);
+  const [sizes, setSizes] = useDraft<string[]>("scored", "sizes", []);
+  const [lookalikes, setLookalikes] = useDraft<string[]>("scored", "lookalikes", []);
+  const [exclude, setExclude] = useDraft<string[]>("scored", "exclude", []);
+  const [advanced, setAdvanced] = useDraft<Record<string, string>>("scored", "advanced", {});
+  const [target, setTarget] = useDraft("scored", "target", DEFAULT_TARGET);
   // Follows the lead target until the user types their own limit.
-  const [maxCreditsTyped, setMaxCreditsTyped] = useState<number | null>(null);
+  const [maxCreditsTyped, setMaxCreditsTyped] = useDraft<number | null>("scored", "maxCredits", null);
   const maxCredits = maxCreditsTyped ?? suggestedMaxCredits(target);
   const pages = Math.ceil(target / LEADS_PER_PAGE);
   const needCredits = minCredits(target);
   const creditsTooLow = maxCredits < needCredits;
   const creditsMsg = `${target} leads need at least ${needCredits} credits (${target} for the leads + ${pages} for searching). Raise your credits to ${needCredits} or more, or ask for fewer leads.`;
-  const [batchName, setBatchName] = useState("");
-  const [batchColor, setBatchColor] = useState("green");
+  const [batchName, setBatchName] = useDraft("scored", "batchName", "");
+  const [batchColor, setBatchColor] = useDraft("scored", "batchColor", "green");
   const [batchError, setBatchError] = useState(false);
-  const [assignMode, setAssignMode] = useState<ImportAssignMode>("pool");
-  const [assignTo, setAssignTo] = useState("");
+  const [assignMode, setAssignMode] = useDraft<ImportAssignMode>("scored", "assignMode", "pool");
+  const [assignTo, setAssignTo] = useDraft("scored", "assignTo", "");
   const employees = useAssignableEmployees(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -298,6 +298,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
         batch_name: batchName.trim(), color: batchColor, ...buildImportAssignment(assignMode, assignTo),
       });
       setStarted({ searchId: out.search_id, batchName: batchName.trim(), color: batchColor });
+      clearDraft("scored");
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
 
@@ -313,7 +314,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
           else router.push(`/leads?entity=orgs&sbatch=${started.searchId}`);
           onDone?.();
         }}
-        onAnother={() => { setStarted(null); setStep(0); setBatchName(""); }}
+        onAnother={() => setStarted(null)}
       />
     );
   }
@@ -408,7 +409,10 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
       {error && <p className="flex items-center gap-1.5 text-sm text-destructive"><AlertCircle className="size-4" />{error}</p>}
 
       <div className="flex justify-between">
-        {step > 0 ? <Button type="button" variant="outline" onClick={() => { setError(""); setStep((s) => s - 1); }}>Back</Button> : <span />}
+        <div className="flex items-center gap-1">
+          {step > 0 && <Button type="button" variant="outline" onClick={() => { setError(""); setStep((s) => s - 1); }}>Back</Button>}
+          <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={() => { setError(""); setBatchError(false); clearDraft("scored"); }}>Start over</Button>
+        </div>
         {step < STEPS.length - 1 ? (
           <Button type="button" onClick={next}>Next</Button>
         ) : (
