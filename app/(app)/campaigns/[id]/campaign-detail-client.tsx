@@ -19,6 +19,12 @@ export function CampaignDetailClient({ campaignId }: Props) {
   // before that list has ever loaded, shows the skeleton.
   const campaign = campaigns.find((c) => c.id === campaignId) ?? null;
 
+  // Header/tiles come from the cached list; refresh it quietly per visit.
+  useEffect(() => {
+    if (session) void loadCampaigns(session.access_token);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per visit
+  }, [campaignId]);
+
   // Not in the cached list (e.g. created a moment ago in another tab): refetch
   // the list once before saying "not found".
   const missing = campaignsLoaded && !campaign;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -38,6 +38,13 @@ export function CampaignsClient() {
   // router.refresh(), which threw the whole router cache away).
   const { campaigns, setCampaigns, campaignsLoaded, loadCampaigns, session, role } = useApp();
   const list = campaigns;
+
+  // The cached list paints at once; refresh it quietly on every visit, as the
+  // old server-rendered page effectively did.
+  useEffect(() => {
+    if (session) void loadCampaigns(session.access_token);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per visit
+  }, []);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<CampaignStatus | "All">("All");

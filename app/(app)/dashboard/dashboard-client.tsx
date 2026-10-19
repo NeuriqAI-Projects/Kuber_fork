@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardSkeleton } from "@/components/app/page-skeletons";
 import { useApp } from "@/lib/app-context";
@@ -25,7 +26,13 @@ const EMPTY_ANALYTICS: DashboardAnalyticsData = {
 
 export function DashboardClient() {
   const router = useRouter();
-  const { session, role, campaigns, campaignsLoaded } = useApp();
+  const { session, role, campaigns, campaignsLoaded, loadCampaigns } = useApp();
+
+  // Campaign tiles: cached list now, quiet refresh per visit.
+  useEffect(() => {
+    if (session) void loadCampaigns(session.access_token);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per visit
+  }, []);
 
   // Analytics: manager = company-wide, employee = own leads/campaigns (the
   // route picks by role). Imports are a manager-only card, as before.
