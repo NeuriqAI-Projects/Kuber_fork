@@ -27,15 +27,16 @@ import { useApp } from "@/lib/app-context";
 import { Avatar, StatusBadge } from "@/components/leads/lead-ui";
 import { KanbanBoard } from "@/components/app/kanban-board";
 import {
-  EMPTY_SCORED_FILTER, GroupPill, RunningSearchesBar, scoredFilterCount, ScoredCompanyDrawer, type ScoredCompany, type DecideAction, ScoredFiltersDialog, ScoredOrgsKanban, ScoredOrgsTable,
+  EMPTY_SCORED_FILTER, GroupPill, RunningSearchesBar, scoredFilterCount, ScoredCompanyDrawer, SCORED_COLUMN_DEFS, DEFAULT_SCORED_VISIBILITY, FitPill, BatchPill, Decide as ScoredDecide, type ScoredColVisibility, type ScoredCompany, type DecideAction, ScoredFiltersDialog, ScoredOrgsKanban, ScoredOrgsTable,
   decideScored, scoredFilterActive, useScoredOrgs, type ScoredFilter,
 } from "@/components/app/scored-orgs";
-import { GROUPS, type Group } from "@/lib/services/prospects/groups";
+import { GROUPS, statusLine, type Group } from "@/lib/services/prospects/groups";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { Tip } from "@/components/ui/tip";
+import { DomainLink } from "@/components/app/domain-link";
 import { AppCheckbox } from "@/components/ui/app-checkbox";
 import { Pill } from "@/components/ui/pill";
 import { MultiSelectDropdown, type DropdownOption } from "@/components/ui/multi-select-dropdown";
@@ -172,10 +173,14 @@ const DEFAULT_VISIBILITY: ColVisibility = Object.fromEntries(
 
 const ORG_COLUMN_DEFS = [
   { key: "fit_status",  label: "Status",      defaultVisible: true  },
+  { key: "fit",         label: "Fit",         defaultVisible: true  },
   { key: "domain",      label: "Domain",      defaultVisible: true  },
-  { key: "description", label: "Description", defaultVisible: true  },
-  { key: "sells_to",    label: "Sells To",    defaultVisible: true  },
-  { key: "leads",       label: "Leads",       defaultVisible: true  },
+  { key: "why",         label: "Why",         defaultVisible: true  },
+  { key: "batch",       label: "Batch",       defaultVisible: true  },
+  { key: "decide",      label: "Decide",      defaultVisible: true  },
+  { key: "description", label: "Description", defaultVisible: false },
+  { key: "sells_to",    label: "Sells To",    defaultVisible: false },
+  { key: "leads",       label: "Leads",       defaultVisible: false },
 ] as const;
 
 type OrgColKey = typeof ORG_COLUMN_DEFS[number]["key"];
@@ -493,6 +498,7 @@ export default function LeadsPage() {
   );
   const [visibleCols,     setVisibleCols    ] = useState<ColVisibility>(DEFAULT_VISIBILITY);
   const [orgVisibleCols,  setOrgVisibleCols ] = useState<OrgColVisibility>(DEFAULT_ORG_VISIBILITY);
+  const [scoredVisibleCols, setScoredVisibleCols] = useState<ScoredColVisibility>(DEFAULT_SCORED_VISIBILITY);
   const [searchQuery,     setSearchQuery    ] = useState(searchParams.get("q") ?? "");
   const [searchResults,   setSearchResults  ] = useState<Lead[] | null>(null);
   const [searchLoading,   setSearchLoading  ] = useState(false);
@@ -593,8 +599,8 @@ export default function LeadsPage() {
   const scoredView = leadsEntityMode === "orgs" && (leadsViewMode === "kanban" || scoredFilterActive(scoredFilter));
   // Status of each organization that came from a scored search, for the classic list's Status column.
   const orgFitStatus = useMemo(() => {
-    const m = new Map<string, { group: Group; status: string }>();
-    for (const c of scored.data?.companies ?? []) if (c.organization_id) m.set(c.organization_id, { group: c.group, status: c.status });
+    const m = new Map<string, ScoredCompany>();
+    for (const c of scored.data?.companies ?? []) if (c.organization_id) m.set(c.organization_id, c);
     return m;
   }, [scored.data]);
   // Approved / contact-added companies have an organization: open the normal org
@@ -1014,7 +1020,17 @@ export default function LeadsPage() {
               </Button>
               </Tip>
             )}
-            {leadsEntityMode === "orgs" && !scoredView ? (
+            {scoredView ? (
+              // The scored list has its own optional columns (LinkedIn is off by default); the Kanban has none.
+              leadsViewMode === "list" && (
+                <ColumnsDropdown
+                  defs={SCORED_COLUMN_DEFS}
+                  visible={scoredVisibleCols}
+                  onChange={setScoredVisibleCols}
+                  defaultVisible={DEFAULT_SCORED_VISIBILITY}
+                />
+              )
+            ) : leadsEntityMode === "orgs" ? (
               <ColumnsDropdown
                 defs={ORG_COLUMN_DEFS}
                 visible={orgVisibleCols}
@@ -1079,29 +1095,23 @@ export default function LeadsPage() {
             onOpenCompany={openScoredCompany}
           />
         ) : scoredView ? (
-          <ScoredOrgsTable data={scored.data} error={scored.error} loading={scored.loading} onDecide={handleScoredDecide} onOpenCompany={openScoredCompany} />
+          <ScoredOrgsTable data={scored.data} error={scored.error} loading={scored.loading} visible={scoredVisibleCols} onDecide={handleScoredDecide} onOpenCompany={openScoredCompany} />
         ) : leadsEntityMode === "orgs" ? (
             <div>
               <div className="rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden w-full">
-                <Table>
+                {/* table-fixed: every column gets a set share of the width, so the table always fits the
+                    page and long text wraps or is cut with "…" instead of pushing it sideways. */}
+                <Table className="table-fixed">
                   <TableHeader>
                     <TableRow className="border-border hover:bg-transparent">
-                      <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Organization</TableHead>
-                      {orgVisibleCols.fit_status && (
-                        <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Status</TableHead>
-                      )}
-                      {orgVisibleCols.domain && (
-                        <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Domain</TableHead>
-                      )}
-                      {orgVisibleCols.description && (
-                        <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Description</TableHead>
-                      )}
-                      {orgVisibleCols.sells_to && (
-                        <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Sells To</TableHead>
-                      )}
-                      {orgVisibleCols.leads && (
-                        <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground text-right">Leads</TableHead>
-                      )}
+                      <TableHead className="w-[18%] font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Organization</TableHead>
+                      {([
+                        ["fit_status", "Status", "w-28"], ["fit", "Fit", "w-14"], ["domain", "Domain", "w-[16%]"], ["why", "Why", ""],
+                        ["batch", "Batch", "w-[12%]"], ["description", "Description", ""], ["sells_to", "Sells To", "w-[16%]"],
+                        ["leads", "Leads", "w-20 text-right"], ["decide", "Decide", "w-52 text-right"],
+                      ] as const).filter(([k]) => orgVisibleCols[k]).map(([k, label, w]) => (
+                        <TableHead key={k} className={cn("font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground", w)}>{label}</TableHead>
+                      ))}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1130,34 +1140,36 @@ export default function LeadsPage() {
                               <div className="size-7 rounded-md bg-secondary border border-border flex items-center justify-center shrink-0">
                                 <Building2 className="size-3.5 text-muted-foreground" />
                               </div>
-                              <p className="text-sm font-semibold">{org.name || "—"}</p>
+                              <p className="min-w-0 text-sm font-semibold break-words">{org.name || "—"}</p>
                             </div>
                           </TableCell>
-                          {orgVisibleCols.fit_status && (
-                            <TableCell>
-                              {orgFitStatus.has(org.id)
-                                ? <GroupPill group={orgFitStatus.get(org.id)!.group} status={orgFitStatus.get(org.id)!.status} />
-                                : <span className="text-xs text-muted-foreground">—</span>}
-                            </TableCell>
-                          )}
-                          {orgVisibleCols.domain && (
-                            <TableCell><span className="font-mono text-xs text-muted-foreground">{org.domain || "—"}</span></TableCell>
-                          )}
-                          {orgVisibleCols.description && (
-                            <TableCell className="max-w-xs">
-                              <span className="text-xs text-muted-foreground line-clamp-2">{org.companyDescription || "—"}</span>
-                            </TableCell>
-                          )}
-                          {orgVisibleCols.sells_to && (
-                            <TableCell className="max-w-xs">
-                              <span className="text-xs text-muted-foreground line-clamp-2">{org.sellsTo || "—"}</span>
-                            </TableCell>
-                          )}
-                          {orgVisibleCols.leads && (
-                            <TableCell className="text-right">
-                              <span className="font-mono text-xs font-semibold tabular-nums">{org.leads.length}</span>
-                            </TableCell>
-                          )}
+                          {(() => {
+                            const sc = orgFitStatus.get(org.id);
+                            const dash = <span className="text-xs text-muted-foreground">—</span>;
+                            const line = sc ? statusLine(sc) : null;
+                            return (
+                              <>
+                                {orgVisibleCols.fit_status && <TableCell>{sc ? <GroupPill group={sc.group} status={sc.status} /> : dash}</TableCell>}
+                                {orgVisibleCols.fit && <TableCell>{sc ? <FitPill score={sc.score} /> : dash}</TableCell>}
+                                {orgVisibleCols.domain && <TableCell><DomainLink text={org.domain || null} /></TableCell>}
+                                {orgVisibleCols.why && (
+                                  <TableCell>
+                                    {sc ? (
+                                      <>
+                                        <p className="line-clamp-2 break-words text-xs text-muted-foreground">{sc.reason ?? "—"}</p>
+                                        {line && <p className={cn("line-clamp-2 break-words text-[11px]", line.tone === "red" ? "text-red-600 dark:text-red-400" : line.tone === "amber" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>{line.text}</p>}
+                                      </>
+                                    ) : dash}
+                                  </TableCell>
+                                )}
+                                {orgVisibleCols.batch && <TableCell>{sc ? <BatchPill name={sc.batch_name} color={sc.batch_color} /> : dash}</TableCell>}
+                                {orgVisibleCols.description && <TableCell><span className="text-xs text-muted-foreground line-clamp-2 break-words">{org.companyDescription || "—"}</span></TableCell>}
+                                {orgVisibleCols.sells_to && <TableCell><span className="text-xs text-muted-foreground line-clamp-2 break-words">{org.sellsTo || "—"}</span></TableCell>}
+                                {orgVisibleCols.leads && <TableCell className="text-right"><span className="font-mono text-xs font-semibold tabular-nums">{org.leads.length}</span></TableCell>}
+                                {orgVisibleCols.decide && <TableCell>{sc ? <ScoredDecide c={sc} busy={false} onDecide={handleScoredDecide} /> : null}</TableCell>}
+                              </>
+                            );
+                          })()}
                         </TableRow>
                       ))
                     )}
@@ -1389,7 +1401,7 @@ export default function LeadsPage() {
       )}
 
       <ScoredCompanyDrawer company={scoredDrawerCompany} onClose={() => setScoredDrawerId(null)} onDecide={handleScoredDecide} onFilterBatch={(id) => { setScoredFilter((f) => ({ ...f, searchIds: [id] })); setScoredDrawerId(null); }} />
-      <ScoredFiltersDialog open={showScoredFilters} onOpenChange={setShowScoredFilters} value={scoredFilter} onApply={setScoredFilter} data={scored.data} />
+      {showScoredFilters && <ScoredFiltersDialog onOpenChange={setShowScoredFilters} value={scoredFilter} onApply={setScoredFilter} data={scored.data} />}
       {showFilters && (
         <FiltersModal
           filters={filters}

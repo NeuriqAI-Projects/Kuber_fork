@@ -15,6 +15,7 @@ import {
 } from "@/components/app/lead-forms";
 import type { ScoredSearch } from "@/components/app/scored-orgs";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,7 +39,7 @@ interface MarketEstimate {
   pages_used?: number; total_pages?: number | null;
   leads_left?: { low: number; high: number };
   /** Most leads the Apollo / Firecrawl balances can pay for (null = unknown). */
-  fits?: { apollo_leads: number | null; firecrawl_leads: number | null };
+  fits?: { apollo_leads: number | null; firecrawl_leads: number | null; apollo_credits?: number | null; firecrawl_credits?: number | null };
 }
 type Fits = NonNullable<MarketEstimate["fits"]>;
 
@@ -55,13 +56,41 @@ function Bill({ target, maxCredits, firecrawlShort }: { target: number; maxCredi
       <p className="text-base font-semibold">Your search</p>
       <div className={line}><span>{target} lead{target === 1 ? "" : "s"} × 1 credit</span><span>{target}</span></div>
       <div className={line}><span>~{pages} search{pages === 1 ? "" : "es"} of 100 companies</span><span>{pages}</span></div>
-      <div className={cn(line, "border-t border-dashed border-border pt-2 text-base font-bold")}><span>Expected</span><span>~{expected} credits</span></div>
+      <div className={cn(line, "border-t border-dashed border-border pt-2 text-base font-bold")}><span className="flex items-center gap-1">Expected <InfoTip side="left" text="Companies that aren't plastic makers, or have nobody to email, cost nothing." /></span><span>~{expected} credits</span></div>
       <div className={cn(line, maxCredits < expected ? "font-semibold text-destructive" : "text-muted-foreground")}><span>Your limit</span><span>{maxCredits} credits</span></div>
       <div className="space-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
         <div className={cn(line, firecrawlShort && "font-semibold text-destructive")}><span>Website reading</span><span>~{pages * FIRECRAWL_PER_PAGE} Firecrawl</span></div>
         <div className={line}><span>Time (in the background)</span><span>~{minutes} min</span></div>
       </div>
-      <p className="text-xs text-muted-foreground">Companies that aren&apos;t plastic makers, or have nobody to email, cost nothing.</p>
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button type="button" variant="outline" size="sm" className="mt-1 w-full">View detailed bill</Button>
+        </DialogTrigger>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Detailed bill</DialogTitle></DialogHeader>
+          <div className="space-y-4 text-sm">
+            <section className="space-y-1.5">
+              <p className="font-semibold">Apollo credits</p>
+              <div className={line}><span>Searching: {pages} × 100 companies</span><span>{pages}</span></div>
+              <p className="text-xs text-muted-foreground">Apollo charges 1 credit for every page of 100 companies. About 1 in {Math.round(100 / LEADS_PER_PAGE)} companies becomes a lead, so {target} leads need ~{pages} pages.</p>
+              <div className={line}><span>Lead contacts: {target} × 1</span><span>{target}</span></div>
+              <p className="text-xs text-muted-foreground">Each good-fit company gets one buyer revealed. Apollo charges 1 credit per revealed contact.</p>
+              <div className={cn(line, "border-t border-dashed border-border pt-1.5 font-bold")}><span>Expected</span><span>~{expected}</span></div>
+              <div className={cn(line, maxCredits < expected && "font-semibold text-destructive")}><span>Your limit (Kuber never goes over)</span><span>{maxCredits}</span></div>
+            </section>
+            <section className="space-y-1.5">
+              <p className="font-semibold">Firecrawl credits</p>
+              <div className={cn(line, firecrawlShort && "font-semibold text-destructive")}><span>Website reading: {pages} × 100 companies</span><span>~{pages * FIRECRAWL_PER_PAGE}</span></div>
+              <p className="text-xs text-muted-foreground">Kuber reads each company&apos;s website (1 Firecrawl credit each) so the AI can tell if it makes plastic products.</p>
+            </section>
+            <section className="space-y-1.5">
+              <p className="font-semibold">Costs nothing</p>
+              <p className="text-xs text-muted-foreground">The free size check, companies that aren&apos;t plastic makers (Hidden), and companies with nobody to email. Needs-review companies cost 1 Apollo credit only when you approve them.</p>
+            </section>
+            <div className={line}><span>Time (in the background)</span><span>~{minutes} min</span></div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -91,30 +120,26 @@ function MarketSize({ filters, target, onPick, onFits }: { filters: Record<strin
   const tooFew = !!left && left.low > 0 && target > left.low;
   return (
     <div className="space-y-2">
-      <div className="flex items-start gap-2 rounded-lg border border-border px-3 py-2.5 text-sm">
-        {state === "loading" ? <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" /> : <Search className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-field px-3 py-2 text-sm dark:bg-card">
+        {state === "loading" ? <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" /> : <Search className="size-4 shrink-0 text-muted-foreground" />}
         <div className="min-w-0 flex-1">
-          {state === "error" && <p className="text-muted-foreground">Couldn&apos;t check the size right now. You can still search.</p>}
-          {state !== "error" && !est && <p className="text-muted-foreground">Checking how many leads these keywords can give…</p>}
+          {state === "error" && <span className="text-muted-foreground">Couldn&apos;t check the size. You can still search.</span>}
+          {state !== "error" && !est && <span className="text-muted-foreground">Checking available leads…</span>}
           {state !== "error" && est && (
             est.companies.mid === 0
-              ? <p className="font-medium text-amber-600 dark:text-amber-400">Apollo has almost no companies for these keywords. Try a different keyword.</p>
+              ? <span className="font-medium text-amber-600 dark:text-amber-400">Almost no companies for these keywords.</span>
               : left!.high === 0
-                ? <p className="font-medium text-amber-600 dark:text-amber-400">You already have all the leads these keywords can give. Try other keywords or countries.</p>
-                : <p>These keywords can give you <b>about {n(left!.low)} leads</b> <span className="text-muted-foreground">(maybe up to {n(left!.high)})</span>.
-                    {used > 0 && <span className="text-muted-foreground"> You searched them before, so Kuber skips the companies you already got.</span>}
-                  </p>
+                ? <span className="font-medium text-amber-600 dark:text-amber-400">No new leads left for these keywords.</span>
+                : <span>Available: <b>~{n(left!.low)} leads</b> <span className="text-muted-foreground">(up to {n(left!.high)})</span></span>
           )}
-          <p className="flex items-center gap-1 text-xs text-muted-foreground">Free check, no credits used. It is a rough guess.
-            <InfoTip side="right" text={`A lead = a company that makes plastic products and has a person we can email. About 1 in 3 companies is a lead. Your keywords match about ${est ? n(est.companies.mid) : "…"} companies in Apollo.`} />
-          </p>
         </div>
+        <InfoTip side="left" text={`Free check, no credits used. A rough guess. A lead = a plastic maker with a person we can email (about 1 in 3 companies). Your keywords match about ${est ? n(est.companies.mid) : "…"} companies in Apollo.${used > 0 ? " You searched them before, so companies you already got are skipped." : ""}`} />
       </div>
       {est && est.companies.mid > 0 && tooFew && (
         <div className="flex items-start gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
           <CircleAlert className="mt-0.5 size-4 shrink-0" />
           <div className="space-y-1.5">
-            <p>You asked for {n(target)} leads, but these keywords have <b>only about {n(left!.low)}</b>. To get more, add keywords or countries in step 1.</p>
+            <p>Only about <b>{n(left!.low)}</b> leads available. Add keywords or countries in step 1 for more.</p>
             <Button type="button" size="sm" variant="outline" onClick={() => onPick(left!.low)}>Ask for {n(left!.low)} leads instead</Button>
           </div>
         </div>
@@ -250,6 +275,39 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
   );
 }
 
+/** A dropped connection reads "TypeError: fetch failed" / "Failed to fetch"; say what it means. */
+function friendlyError(msg: string): string {
+  return /fetch failed|failed to fetch|networkerror/i.test(msg)
+    ? "Lost the connection while contacting Apollo or the database, so the search did not finish. Check your internet and try again. If your Apollo credits went down, the search may have gone through: look for the batch in Organizations."
+    : msg;
+}
+
+type StartedInfo = { searchId: string; batchName: string; color: string };
+type StartOutcome = { ok: true; started: StartedInfo } | { ok: false; error: string };
+
+/**
+ * The search being started, and the screen that follows it, must outlive the form.
+ *
+ * Closing the modal unmounts the form but cannot cancel the request (Apollo still charges for it),
+ * and a reload or a dev hot-reload throws away anything held only in memory. Without this, reopening
+ * gave a blank Criteria step (finishing clears the draft) with no sign a search was running or had
+ * started, so people searched again and paid twice.
+ *   `starting`   the running request, in memory: a reopened form waits on it
+ *   KEY_START    a marker in the tab's session storage: survives a reload; the form then looks the
+ *                new search up by its batch name
+ *   KEY_RESULT   the answer ("search started" or the error), kept until the person dismisses it
+ */
+let starting: { batchName: string; promise: Promise<StartOutcome> } | null = null;
+const KEY_START = "kuber:scored:start";
+const KEY_RESULT = "kuber:scored:result";
+type StartMarker = { batchName: string; color: string; at: number };
+type StoredResult = { kind: "started"; started: StartedInfo } | { kind: "error"; error: string };
+function ssGet<T>(k: string): T | null { try { const r = sessionStorage.getItem(k); return r ? (JSON.parse(r) as T) : null; } catch { return null; } }
+function ssSet(k: string, v: unknown) { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch { /* storage full or private mode: the in-memory path still works */ } }
+function ssDel(k: string) { try { sessionStorage.removeItem(k); } catch { /* nothing to remove */ } }
+/** A marker older than this means the request died with the page; stop waiting for it. */
+const START_MAX_AGE_MS = 3 * 60_000;
+
 export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   const [step, setStep] = useDraft("scored", "step", 0);
   const [keywords, setKeywords] = useDraft<string[]>("scored", "keywords", []);
@@ -284,8 +342,57 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   const [assignTo, setAssignTo] = useDraft("scored", "assignTo", "");
   const employees = useAssignableEmployees(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [started, setStarted] = useState<{ searchId: string; batchName: string; color: string } | null>(null);
+  const [error, setError] = useState(() => {
+    // Read only. React runs state initialisers twice in development, so deleting here would hand the
+    // message to a render that is then thrown away. It is cleared in the mount effect below.
+    const r = ssGet<StoredResult>(KEY_RESULT);
+    return r?.kind === "error" ? friendlyError(r.error) : "";
+  });
+  const [started, setStarted] = useState<StartedInfo | null>(() => {
+    const r = ssGet<StoredResult>(KEY_RESULT);
+    return r?.kind === "started" ? r.started : null;
+  });
+  /** A search started before this form was (re)opened is still running: its batch name. */
+  const [resuming, setResuming] = useState<string | null>(() => {
+    if (starting) return starting.batchName;
+    const m = ssGet<StartMarker>(KEY_START);
+    return m && Date.now() - m.at < START_MAX_AGE_MS ? m.batchName : null;
+  });
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    if (ssGet<StoredResult>(KEY_RESULT)?.kind === "error") ssDel(KEY_RESULT); // shown once
+    const running = starting;
+    if (running) {
+      void running.promise.then((o) => {
+        if (!mountedRef.current) return;
+        setResuming(null);
+        if (o.ok) setStarted(o.started); else { ssDel(KEY_RESULT); setError(friendlyError(o.error)); }
+      });
+    } else {
+      // The page was reloaded (or hot-reloaded) mid-request: find the search by its batch name.
+      const m = ssGet<StartMarker>(KEY_START);
+      if (m && Date.now() - m.at < START_MAX_AGE_MS) {
+        let alive = true;
+        const look = async () => {
+          try {
+            const d = await api<{ searches: ScoredSearch[] }>("/api/v1/prospects?summary=1");
+            const mine = d.searches.find((x) => x.batch_name === m.batchName && new Date(x.created_at).getTime() >= m.at - 5000);
+            if (mine && alive) {
+              const info = { searchId: mine.id, batchName: m.batchName, color: m.color };
+              ssSet(KEY_RESULT, { kind: "started", started: info } satisfies StoredResult); ssDel(KEY_START);
+              setResuming(null); setStarted(info); alive = false;
+            }
+          } catch { /* try again on the next tick */ }
+          if (alive && Date.now() - m.at >= START_MAX_AGE_MS) { ssDel(KEY_START); setResuming(null); alive = false; }
+        };
+        void look();
+        const t = setInterval(() => { if (alive) void look(); else clearInterval(t); }, 3000);
+        return () => { alive = false; clearInterval(t); mountedRef.current = false; };
+      } else if (m) ssDel(KEY_START);
+    }
+    return () => { mountedRef.current = false; };
+  }, []);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -302,17 +409,52 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
     if (!batchName.trim()) { setStep(2); setBatchError(true); return; }
     if (creditsTooLow || fitBlock) { setStep(1); setError(fitBlock?.msg ?? creditsMsg); return; }
     if (assignMode === "manual" && !assignTo) { setError("Pick the employee who should get these leads."); return; }
+    // One search at a time (see `starting`).
+    if (starting) { setError("A search is still starting. Wait for it to finish."); return; }
     setError(""); setBusy(true);
-    try {
-      const out = await api<{ search_id: string }>("/api/v1/prospects/search", {
-        keywords, locations: countries.length ? countries : undefined, employee_ranges: sizes.length ? sizes : undefined,
-        lookalike_org_ids: lookalikes.length ? lookalikes : undefined, exclude_websites: exclude.length ? exclude : undefined,
-        advanced: buildAdvanced(advanced), target_leads: target, max_credits: maxCredits,
-        batch_name: batchName.trim(), color: batchColor, ...buildImportAssignment(assignMode, assignTo),
-      });
-      setStarted({ searchId: out.search_id, batchName: batchName.trim(), color: batchColor });
-      clearDraft("scored");
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    const name = batchName.trim(), color = batchColor;
+    // Show the progress screen right away. The request can take a long time (several Apollo and
+    // database round trips), so the button must not be the only sign anything is happening.
+    setResuming(name);
+    const payload = {
+      keywords, locations: countries.length ? countries : undefined, employee_ranges: sizes.length ? sizes : undefined,
+      lookalike_org_ids: lookalikes.length ? lookalikes : undefined, exclude_websites: exclude.length ? exclude : undefined,
+      advanced: buildAdvanced(advanced), target_leads: target, max_credits: maxCredits,
+      batch_name: name, color, ...buildImportAssignment(assignMode, assignTo),
+    };
+    ssDel(KEY_RESULT);
+    ssSet(KEY_START, { batchName: name, color, at: Date.now() } satisfies StartMarker);
+    const promise: Promise<StartOutcome> = (async () => {
+      try {
+        const out = await api<{ search_id: string }>("/api/v1/prospects/search", payload);
+        clearDraft("scored");
+        const started = { searchId: out.search_id, batchName: name, color };
+        // Saved here, not by the form, so it is kept even if the form was closed meanwhile.
+        ssSet(KEY_RESULT, { kind: "started", started } satisfies StoredResult);
+        return { ok: true, started } as StartOutcome;
+      } catch (e) {
+        ssSet(KEY_RESULT, { kind: "error", error: (e as Error).message } satisfies StoredResult);
+        return { ok: false, error: (e as Error).message } as StartOutcome;
+      } finally { starting = null; ssDel(KEY_START); }
+    })();
+    starting = { batchName: name, promise };
+    const o = await promise;
+    if (!mountedRef.current) return; // closed while it ran: the answer is already in session storage
+    setResuming(null);
+    if (o.ok) setStarted(o.started); else { ssDel(KEY_RESULT); setError(friendlyError(o.error)); }
+    setBusy(false);
+  }
+
+  if (resuming && !started) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-16 text-center">
+        <Loader2 className="size-6 animate-spin text-primary" />
+        <p className="text-base font-semibold">Starting your search</p>
+        <p className="max-w-sm text-xs text-muted-foreground">
+          Looking up companies for &ldquo;{resuming}&rdquo; in Apollo and saving them. This usually takes a few seconds, longer on a slow connection. You can close this window; it keeps going.
+        </p>
+      </div>
+    );
   }
 
   if (started) {
@@ -323,11 +465,12 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
         batchColor={started.color}
         onOpen={() => {
           // Already on Leads: switch it in place. Elsewhere: open Leads on this batch.
+          ssDel(KEY_RESULT);
           if (pathname === "/leads") window.dispatchEvent(new CustomEvent("kuber:open-scored-batch", { detail: { searchId: started.searchId } }));
           else router.push(`/leads?entity=orgs&sbatch=${started.searchId}`);
           onDone?.();
         }}
-        onAnother={() => setStarted(null)}
+        onAnother={() => { ssDel(KEY_RESULT); setStarted(null); }}
       />
     );
   }
@@ -353,12 +496,12 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
 
       {step === 1 && (
         <div className="@container">
-          <div className="grid items-start gap-4 @2xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+          <div className="space-y-4">
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1">
                   <Label htmlFor="target-leads">How many leads do you want?</Label>
-                  <InfoTip side="right" text="A lead = a plastic maker with a buyer we can email. Kuber checks companies 100 at a time until it has this many leads, your credit limit is reached, or the keywords run out. Next time you search the same filters, it continues where it stopped." />
+                  <InfoTip side="right" text="A lead = a plastic maker with a buyer we can email. Kuber checks companies 100 at a time until it has this many leads, your credit limit is reached, or the keywords run out. Searching the same filters again continues where it stopped." />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Input id="target-leads" type="number" min={1} max={MAX_LEADS_PER_SEARCH} value={target} aria-invalid={!!fitBlock}
@@ -385,7 +528,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1">
                   <Label htmlFor="max-credits">Most Apollo credits to spend</Label>
-                  <InfoTip side="right" text="1 credit per search of 100 companies, then 1 credit per lead. Kuber never goes over this number; if it is reached first, it stops and tells you how many leads it found. Each approval in review is 1 more credit." />
+                  <InfoTip side="right" text={`1 credit per search of 100 companies, then 1 per lead. Kuber never goes over this number; it stops and tells you how many leads it found. Each approval in review is 1 more credit. Suggested for ${target} lead${target === 1 ? "" : "s"}: at least ${needCredits}, plus 10% extra in case some companies have nobody to email.`} />
                 </div>
                 <div className="flex items-center gap-2">
                   <Input id="max-credits" type="number" min={needCredits} max={5000} value={maxCredits} aria-invalid={creditsTooLow}
@@ -394,21 +537,30 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
                     <Button type="button" variant="ghost" size="sm" onClick={() => setMaxCreditsTyped(null)}>Use suggested ({suggestedMaxCredits(target)})</Button>
                   )}
                 </div>
-                {creditsTooLow
-                  ? <p className="flex items-start gap-1.5 text-sm font-medium text-destructive"><AlertCircle className="mt-0.5 size-4 shrink-0" />Not enough credits. {creditsMsg}</p>
-                  : <p className="text-xs text-muted-foreground">
-                      {maxCreditsTyped === null
-                        ? `Suggested for ${target} lead${target === 1 ? "" : "s"}: at least ${needCredits} are needed, plus 10% extra in case some companies have nobody to email. You can change it.`
-                        : `At least ${needCredits} credits are needed for ${target} leads.`}
-                    </p>}
+                {creditsTooLow && <p className="flex items-start gap-1.5 text-sm font-medium text-destructive"><AlertCircle className="mt-0.5 size-4 shrink-0" />Not enough credits. {creditsMsg}</p>}
               </div>
-              <div className="space-y-1 text-sm text-muted-foreground">
-                <p><b className="text-foreground">Good fit</b> — makes plastic products: one buyer is revealed automatically (1 credit).</p>
-                <p><b className="text-foreground">Needs review</b> — the AI can&apos;t tell, no website, unclear LinkedIn, or website down. Waits for you; no cost until you approve.</p>
-                <p><b className="text-foreground">Hidden</b> — not a plastic maker (traders, distributors, machine makers, brands that only use packaging). Nothing spent.</p>
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium">What happens to each company</p>
+                <div className="flex flex-nowrap items-center gap-2">
+                  {[
+                    { label: "Good fit", tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400", tip: "Makes plastic products: one buyer is revealed automatically (1 credit)." },
+                    { label: "Needs review", tone: "bg-amber-500/15 text-amber-700 dark:text-amber-400", tip: "The AI can't tell, no website, unclear LinkedIn, or website down. Waits for you; no cost until you approve." },
+                    { label: "Hidden", tone: "bg-secondary text-muted-foreground", tip: "Not a plastic maker (traders, distributors, machine makers, brands that only use packaging). Nothing spent." },
+                  ].map((g) => (
+                    <span key={g.label} className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium", g.tone)}>
+                      {g.label}<InfoTip side="top" text={g.tip} />
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
             <Bill target={target} maxCredits={maxCredits} firecrawlShort={fits?.firecrawl_leads != null && target > fits.firecrawl_leads} />
+            {fits && (fits.apollo_leads != null || fits.firecrawl_leads != null) && (
+              <div className="space-y-1 text-sm font-medium text-amber-700 dark:text-amber-400">
+                {fits.apollo_leads != null && <p>Apollo credits left: {fits.apollo_credits != null ? `${fits.apollo_credits.toLocaleString()} → ` : ""}enough for about {fits.apollo_leads.toLocaleString()} leads</p>}
+                {fits.firecrawl_leads != null && <p>Firecrawl credits left: {fits.firecrawl_credits != null ? `${fits.firecrawl_credits.toLocaleString()} → ` : ""}enough for about {fits.firecrawl_leads.toLocaleString()} leads</p>}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -433,10 +585,9 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
       <div className="flex justify-between">
         <div className="flex items-center gap-1">
           {step > 0 && <Button type="button" variant="outline" onClick={() => { setError(""); setStep((s) => s - 1); }}>Back</Button>}
-          <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={() => { setError(""); setBatchError(false); clearDraft("scored"); }}>Start over</Button>
         </div>
         {step < STEPS.length - 1 ? (
-          <Button type="button" onClick={next}>Next</Button>
+          <Button type="button" onClick={next} disabled={step === 1 && (creditsTooLow || !!fitBlock)} className="disabled:bg-gray-400 disabled:text-white disabled:opacity-100">Next</Button>
         ) : (
           <Button type="button" onClick={startSearch} disabled={busy}>
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />} Find {target} leads

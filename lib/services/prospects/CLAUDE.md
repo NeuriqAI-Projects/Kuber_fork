@@ -14,7 +14,11 @@ no site → LinkedIn via Tavily) → **Jev** classifier → reveal ONE contact o
 | `fit-rules.ts` | ≥0.65 good, ≤0.35 hidden, else unsure → About page → Tavily → review; scores 9/7/2 |
 | `groups.ts`, `decisions.ts` | UI groups + approve/decline/retry transitions |
 | `text.ts`, `tavily.ts` | text cleaning, second-page picker, sitemap; Tavily search |
+| `digging.ts` | "N leads" rules: when to read the next page or stop (target, credit limit, Firecrawl < 100, dry pages, 20-page cap = 660 leads); page-memory `filterKey` |
+| `estimate.ts` | free size check: People Search count → company and lead range |
+
+- Lead target (19 Oct 2026): `continueRun` in `search.ts`, called by `worker.ts` for `run_status = running` searches, reads the next page; `prospect_page_memory` + `claim_prospect_page` RPC remember pages per filter set.
 
 - Tests: `npx tsx --test lib/services/prospects/*.test.mts` (fake DB in `fake-db.mts`).
-- Mock scenarios by batch-name words (Dev only): `[no-credits] [credits-run-out] [sites-down] [no-socials] [jev-down] [flaky] [apollo-down] [apollo-timeout] [apollo-0] [apollo-empty]`.
-- Tables: `prospect_searches`, `prospect_companies` (migrations `2026_10_08_*`, `2026_10_09_*`).
+- Mock scenarios by batch-name words (Dev only): `[no-credits] [credits-run-out] [sites-down] [no-socials] [jev-down] [flaky] [apollo-down] [apollo-timeout] [apollo-0] [apollo-empty] [pages-N] [firecrawl-low]`.
+- Tables: `prospect_searches`, `prospect_companies`, `prospect_page_memory` (migrations `2026_10_08_*`, `2026_10_09_*`, `2026_10_19_*`).

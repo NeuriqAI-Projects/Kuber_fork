@@ -15,6 +15,7 @@ import { MultiSelectDropdown, type DropdownOption } from "@/components/ui/multi-
 import { EmptyState } from "@/components/ui/empty-state";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Tip } from "@/components/ui/tip";
+import { DomainLink } from "@/components/app/domain-link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getBatchColor } from "@/lib/constants";
 import { GROUP_LABEL, GROUPS, statusLine, type Group, type Tone } from "@/lib/services/prospects/groups";
@@ -136,14 +137,14 @@ function problemLabel(c: ScoredCompany, text: string): string {
   return "Error";
 }
 
-function FitPill({ score }: { score: number | null }) {
+export function FitPill({ score }: { score: number | null }) {
   if (score == null) return <Tip text="Not scored yet."><span className="text-xs text-muted-foreground">–</span></Tip>;
   const tip = score === 9 ? "Fit score 9: makes the products you searched." : score === 7 ? "Fit score 7: makes other plastic products." : `Fit score ${score}: not a fit.`;
   // A circle in the primary shade for a real fit (7+); neutral for the rest.
   return <Tip text={tip}><span className={cn("inline-flex size-7 shrink-0 items-center justify-center rounded-full border font-mono text-xs font-bold tabular-nums", score >= 7 ? "border-primary/25 bg-primary/10 text-primary" : TONE.gray)}>{score}</span></Tip>;
 }
 
-function BatchPill({ name, color, wide = false }: { name: string; color: string; wide?: boolean }) {
+export function BatchPill({ name, color, wide = false }: { name: string; color: string; wide?: boolean }) {
   // Only as wide as its text; a long name is cut with "…" (full name on hover).
   return <Tip text={`Batch: ${name.replace(/^Batch: /, "")}`} className={wide ? "max-w-full" : "max-w-[150px]"}><span className={cn("inline-flex w-fit min-w-0 max-w-full items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold", getBatchColor(color).pill)}><span className="truncate">{name}</span></span></Tip>;
 }
@@ -158,7 +159,7 @@ function Links({ c, linkedin = true }: { c: ScoredCompany; linkedin?: boolean })
   );
 }
 
-function Decide({ c, busy, onDecide, large = false }: { c: ScoredCompany; busy: boolean; onDecide: (ids: string[], a: DecideAction) => void; large?: boolean }) {
+export function Decide({ c, busy, onDecide, large = false }: { c: ScoredCompany; busy: boolean; onDecide: (ids: string[], a: DecideAction) => void; large?: boolean }) {
   const act = (a: DecideAction) => (e: React.MouseEvent) => { e.stopPropagation(); onDecide([c.id], a); };
   // `large` = the drawer footer: full-width, taller buttons. Cards keep the compact size.
   const btn = large ? "h-10 flex-1 gap-1.5 px-4 text-sm [&_svg]:size-4" : "h-7 gap-1 px-2 text-xs [&_svg]:size-3";
@@ -250,21 +251,21 @@ export function RunningSearchesBar({ data, onOpen }: { data: ScoredData | null; 
 }
 
 // ── filters ──────────────────────────────────────────────────────────────────
-export function ScoredFiltersDialog({ open, onOpenChange, value, onApply, data }: {
-  open: boolean; onOpenChange: (o: boolean) => void; value: ScoredFilter; onApply: (f: ScoredFilter) => void; data: ScoredData | null;
+/** Mounted only while open (see the caller), so `draft` starts as a fresh copy of the applied filter
+ *  every time. Picking things edits the draft only; nothing changes behind the dialog until Apply. */
+export function ScoredFiltersDialog({ onOpenChange, value, onApply, data }: {
+  onOpenChange: (o: boolean) => void; value: ScoredFilter; onApply: (f: ScoredFilter) => void; data: ScoredData | null;
 }) {
-  const [draft, setDraft] = useState<ScoredFilter>(value);
-  useEffect(() => { if (open) setDraft(value); }, [open, value]);
-  if (!open) return null;
+  const [draft, setDraft] = useState<ScoredFilter>(() => ({ searchIds: [...value.searchIds], groups: [...value.groups], hidden: value.hidden }));
   const allCounts = (data?.searches ?? []).reduce((acc, s) => { for (const g of GROUPS) acc[g] += s.groups[g]; return acc; }, { checking: 0, review: 0, good: 0, approved: 0, declined: 0, hidden: 0 } as Record<Group, number>);
 
   // "Hidden" is one more Status option in the dropdown (same as the Leads
   // filter's single Status list); it maps to the `hidden` flag, which adds the
   // Hidden column to the Kanban.
-  const statusOptions: DropdownOption<Group>[] = GROUPS.map((g) => ({ value: g, label: `${GROUP_LABEL[g]} (${allCounts[g]})`, dot: STATUS_DOT[g] }));
+  const statusOptions: DropdownOption<Group>[] = GROUPS.map((g) => ({ value: g, label: `${GROUP_LABEL[g]} (${allCounts[g]})`, chip: GROUP_LABEL[g], dot: STATUS_DOT[g] }));
   const statusSelected = new Set<Group>([...draft.groups, ...(draft.hidden ? (["hidden"] as Group[]) : [])]);
   const batchOptions: DropdownOption<string>[] = (data?.searches ?? []).map((s) => ({
-    value: s.id, label: `${s.batch_name} (${s.in_progress > 0 ? "running" : s.total})`, dot: getBatchColor(s.color).bg,
+    value: s.id, label: `${s.batch_name} (${s.in_progress > 0 ? "running" : s.total})`, chip: s.batch_name, dot: getBatchColor(s.color).bg,
   }));
 
   return (
@@ -294,8 +295,20 @@ export function ScoredFiltersDialog({ open, onOpenChange, value, onApply, data }
 }
 
 // ── list ─────────────────────────────────────────────────────────────────────
-export function ScoredOrgsTable({ data, error, loading, onDecide, onOpenCompany }: {
-  data: ScoredData | null; error: string | null; loading: boolean;
+/** Optional columns of the scored list (Organization, Status, Fit and Decide are always there).
+ *  LinkedIn is off by default: it is rarely needed and costs width the Why column needs. */
+export const SCORED_COLUMN_DEFS = [
+  { key: "domain", label: "Domain", defaultVisible: true },
+  { key: "linkedin", label: "LinkedIn", defaultVisible: false },
+  { key: "why", label: "Why", defaultVisible: true },
+  { key: "batch", label: "Batch", defaultVisible: true },
+] as const;
+export type ScoredColKey = (typeof SCORED_COLUMN_DEFS)[number]["key"];
+export type ScoredColVisibility = Record<ScoredColKey, boolean>;
+export const DEFAULT_SCORED_VISIBILITY = Object.fromEntries(SCORED_COLUMN_DEFS.map((c) => [c.key, c.defaultVisible])) as ScoredColVisibility;
+
+export function ScoredOrgsTable({ data, error, loading, visible = DEFAULT_SCORED_VISIBILITY, onDecide, onOpenCompany }: {
+  data: ScoredData | null; error: string | null; loading: boolean; visible?: ScoredColVisibility;
   onDecide: (ids: string[], a: DecideAction) => Promise<void>; onOpenCompany: (c: ScoredCompany) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -309,17 +322,19 @@ export function ScoredOrgsTable({ data, error, loading, onDecide, onOpenCompany 
       {error && <p className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400"><AlertTriangle className="size-4" />Couldn&apos;t refresh: {error}. Showing the last loaded list; it retries on its own.</p>}
       {reviewIds.length > 0 && <ApolloCostNote credits={reviewIds.length} spendingOn={`revealing one contact at each of the ${reviewIds.length} companies you approve`} rate="1 credit per contact revealed. Retry on a website that was down uses 1 Firecrawl credit, not Apollo." />}
       <div className="w-full overflow-hidden rounded-xl border border-border bg-field shadow-sm dark:bg-card">
-        <Table>
+        {/* table-fixed with set column widths: the table always fits the page, and the long "Why"
+            text wraps in its own column instead of pushing Decide off to the right. */}
+        <Table className="table-fixed">
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
-              {["Organization", "Status", "Fit", "Why", "Batch", "Leads", "Decide"].map((h) => (
-                <TableHead key={h} className={cn("font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground", h === "Leads" && "text-right")}>{h}</TableHead>
+              {([["Organization", "w-[18%]", true], ["Status", "w-28", true], ["Fit", "w-14", true], ["Domain", "w-[16%]", visible.domain], ["LinkedIn", "w-24", visible.linkedin], ["Why", "", visible.why], ["Batch", "w-[12%]", visible.batch], ["Decide", "w-52", true]] as const).filter(([, , show]) => show).map(([h, w]) => (
+                <TableHead key={h} className={cn("font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground", w, h === "Decide" && "text-right")}>{h}</TableHead>
               ))}
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="p-0"><EmptyState boxed={false} message="No companies match these filters." /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="p-0"><EmptyState boxed={false} message="No companies match these filters." /></TableCell></TableRow>
             ) : rows.map((c) => {
               const line = statusLine(c);
               return (
@@ -327,14 +342,15 @@ export function ScoredOrgsTable({ data, error, loading, onDecide, onOpenCompany 
                   <TableCell>
                     <div className="flex items-center gap-2.5">
                       <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-secondary"><Building2 className="size-3.5 text-muted-foreground" /></div>
-                      <div className="min-w-0"><p className="truncate text-sm font-semibold">{c.name}</p><Links c={c} /></div>
+                      <p className="min-w-0 line-clamp-2 break-words text-sm font-semibold">{c.name}</p>
                     </div>
                   </TableCell>
                   <TableCell><GroupPill group={c.group} status={c.status} /></TableCell>
                   <TableCell><FitPill score={c.score} /></TableCell>
-                  <TableCell className="max-w-sm"><p className="line-clamp-2 text-xs text-muted-foreground">{c.reason ?? "—"}</p><p className={cn("text-[11px]", line.tone === "red" ? "text-red-600 dark:text-red-400" : line.tone === "amber" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>{line.text}</p></TableCell>
-                  <TableCell className="max-w-40"><BatchPill name={c.batch_name} color={c.batch_color} /></TableCell>
-                  <TableCell className="text-right font-mono text-xs font-semibold tabular-nums">{c.status === "promoted" ? 1 : 0}</TableCell>
+                  {visible.domain && <TableCell><DomainLink text={c.domain} href={c.website_url} /></TableCell>}
+                  {visible.linkedin && <TableCell><DomainLink text={c.linkedin_url ? "LinkedIn" : null} href={c.linkedin_url} tip="Open the LinkedIn page in a new tab." /></TableCell>}
+                  {visible.why && <TableCell><p className="line-clamp-2 break-words text-xs text-muted-foreground">{c.reason ?? "—"}</p><p className={cn("line-clamp-2 break-words text-[11px]", line.tone === "red" ? "text-red-600 dark:text-red-400" : line.tone === "amber" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>{line.text}</p></TableCell>}
+                  {visible.batch && <TableCell><BatchPill name={c.batch_name} color={c.batch_color} /></TableCell>}
                   <TableCell><Decide c={c} busy={busy} onDecide={run} /></TableCell>
                 </TableRow>
               );

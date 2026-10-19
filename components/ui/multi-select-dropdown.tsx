@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
 export type DropdownOption<T extends string> = {
   value: T;
   label: string;
+  /** Shorter text for the chip shown once picked (e.g. the name without its count). */
+  chip?: string;
   dot?: string;
 };
 
@@ -72,7 +74,7 @@ export function MultiSelectDropdown<T extends string>({
                 className="inline-flex items-center gap-1 bg-secondary border border-border rounded px-1.5 py-0.5 text-xs font-medium"
               >
                 {o.dot && <span className={cn("size-1.5 rounded-full shrink-0", o.dot)} />}
-                {o.label}
+                {o.chip ?? o.label}
                 <span
                   role="button"
                   tabIndex={0}
