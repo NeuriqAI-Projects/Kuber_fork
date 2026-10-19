@@ -3,7 +3,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { format } from "date-fns";
+import {
+  ArrowLeft,
+  AtSign,
+  Briefcase,
+  Building2,
+  Clock,
+  ExternalLink,
+  Inbox,
+  Loader2,
+  Mail,
+  Megaphone,
+  MessagesSquare,
+  RefreshCw,
+  Thermometer,
+  User,
+  UserRound,
+  Zap,
+} from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-context";
@@ -13,6 +31,8 @@ import {
   fetchUniboxThread,
   fetchUniboxThreads,
   markThreadRead,
+  prefetchCampaign,
+  prefetchLead,
   setThreadStatus,
   syncUnibox,
   type ReplyDraft,
@@ -28,6 +48,11 @@ import type { UniboxInterestFilter, UniboxReadStateFilter } from "@/components/a
 import { Avatar } from "@/components/leads/lead-ui";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { DetailRow, DetailSection } from "@/components/ui/record-layout";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 const READ_STATE_VALUES: UniboxReadStateFilter[] = ["all", "unread", "read", "replied", "needs_reply", "no_reply"];
 
@@ -116,6 +141,7 @@ export function UniboxClient() {
   const [threadsTotal, setThreadsTotal] = useState<number | null>(initialPage?.counts.total ?? null);
   const [cursor, setCursor] = useState<string | null>(initialPage?.next_cursor ?? null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pinnedSummary, setPinnedSummary] = useState<UniboxThreadSummary | null>(null);
   const [view, setView] = useState<"list" | "detail">("list");
   const [loading, setLoading] = useState(!initialPage);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -260,140 +286,67 @@ export function UniboxClient() {
     }
   }
 
-  const selectedSummary = threads.find((t) => t.thread_id === selectedId);
+  // Only the selected thread's own detail is ever rendered. Right after a click
+  // the previous thread's detail is still in state (and a cached revisit skips
+  // the loading flag), so without this check the view would mount with the
+  // wrong — or no — messages and never expand the newest one.
+  const detail = threadDetail?.thread_id === selectedId ? threadDetail : null;
+
+  // The open thread stays open even when a filter change or refresh drops it
+  // from the list — the list is the newest copy when it has one.
+  const selectedSummary = threads.find((t) => t.thread_id === selectedId)
+    ?? (pinnedSummary?.thread_id === selectedId ? pinnedSummary : undefined);
   const leadName = selectedSummary
     ? [selectedSummary.lead?.first_name, selectedSummary.lead?.last_name].filter(Boolean).join(" ") || selectedSummary.lead_email || "Unknown"
     : "";
 
   const latestDraft = useMemo(
-    () => pickLatestDraft(threadDetail?.messages ?? [], threadDetail?.reply_drafts ?? []),
-    [threadDetail],
+    () => pickLatestDraft(detail?.messages ?? [], detail?.reply_drafts ?? []),
+    [detail],
   );
 
-  const leadTemperature = threadDetail?.lead_temperature ?? selectedSummary?.lead_temperature ?? null;
+  const leadTemperature = detail?.lead_temperature ?? selectedSummary?.lead_temperature ?? null;
+  // Below lg the panes stack: the list, or the open thread with a back button.
   const showDetail = view === "detail" && !!selectedSummary;
   // A deleted lead's thread stays fully functional by design (planning.md
   // §3.6/§5.6) — history and reply rights are unaffected — but the viewer
   // should know the underlying lead record no longer exists.
-  const leadIsDeleted = !!(threadDetail?.lead as { is_deleted?: boolean } | null)?.is_deleted;
+  const leadRecord = detail?.lead as { id?: string; title?: string | null; is_deleted?: boolean } | null | undefined;
+  const leadIsDeleted = !!leadRecord?.is_deleted;
+  const threadSubject =
+    detail?.messages?.find((m) => m.subject)?.subject ?? selectedSummary?.subject ?? "(no subject)";
+
+  function handleInterestChange(v: number | null) {
+    if (!token || !selectedId || !selectedSummary) return;
+    void setThreadStatus(token, selectedId, v, selectedSummary.lead_email ?? undefined)
+      .then(() => { void loadThreads(false); void loadDetail(selectedId, { silent: true }); })
+      .catch((e) => toast.error((e as Error).message));
+  }
+
+  const interestStatus = detail?.interest_status ?? selectedSummary?.interest_status ?? null;
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Page identity now lives in the shell's top bar (icon + "Unibox" label) —
-          this strip only carries the page-level action that doesn't belong there. */}
-      <div className="border-b border-border pl-6 pr-6 py-2 flex items-center justify-end shrink-0">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => void handleSync()}
-          disabled={syncing}
-          className="gap-1.5 text-xs font-mono uppercase tracking-wide text-muted-foreground hover:text-foreground"
-        >
-          {syncing ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-          Sync now
-        </Button>
-      </div>
+    <div className="flex h-full flex-col">
+      <PageHeader
+        title="Unibox"
+        icon={<Inbox />}
+        description={unreadTotal > 0 ? `${unreadTotal} unread` : undefined}
+        actions={
+          <Button type="button" variant="outline" onClick={() => void handleSync()} disabled={syncing}>
+            {syncing ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+            Sync now
+          </Button>
+        }
+      />
 
-      <div className="flex-1 min-h-0 flex flex-col">
-        {showDetail ? (
-          <>
-            <div className="swatch-bar border-b border-border pl-6 pr-6 py-3 flex items-center justify-between gap-4 shrink-0">
-              <div className="flex items-center gap-3 min-w-0">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => setView("list")}
-                  aria-label="Back to conversations"
-                  className="shrink-0 text-muted-foreground"
-                >
-                  <ArrowLeft className="size-4" />
-                </Button>
-                <Avatar name={leadName} size="sm" />
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="font-display font-semibold truncate">{leadName}</p>
-                    {leadIsDeleted && (
-                      <Badge
-                        variant="secondary"
-                        title="This lead's record has been deleted. Thread history and reply rights are unaffected."
-                        className="shrink-0 rounded-full text-[10px] font-semibold uppercase tracking-wide"
-                      >
-                        Lead deleted
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="font-mono text-xs text-muted-foreground truncate">{selectedSummary.lead_email}</p>
-                </div>
-                {selectedSummary.campaign && (
-                  <Link
-                    href={`/campaigns/${selectedSummary.campaign.id}`}
-                    className="inline-flex items-center gap-1 shrink-0 rounded-md border border-border px-2 py-1 text-xs text-primary hover:bg-primary/10 transition-colors"
-                  >
-                    {selectedSummary.campaign.name}
-                    <ExternalLink className="size-3 opacity-70" />
-                  </Link>
-                )}
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <UniboxTemperatureBadge temperature={leadTemperature} />
-                <UniboxInstantlyInterestMenu
-                  interestStatus={threadDetail?.interest_status ?? selectedSummary.interest_status}
-                  onChange={(v) => {
-                    if (!token || !selectedId) return;
-                    void setThreadStatus(token, selectedId, v, selectedSummary.lead_email ?? undefined)
-                      .then(() => { void loadThreads(false); void loadDetail(selectedId, { silent: true }); })
-                      .catch((e) => toast.error((e as Error).message));
-                  }}
-                />
-              </div>
-            </div>
-            {detailLoading ? (
-              <div className="flex-1 min-h-0 p-6 space-y-5 animate-pulse">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className={`flex ${i % 2 === 0 ? "" : "justify-end"}`}>
-                    <div className="space-y-1.5">
-                      <div className="h-3 w-20 bg-secondary rounded" />
-                      <div className="h-14 w-56 bg-secondary rounded-xl" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex-1 overflow-y-auto min-h-0">
-                <UniboxThreadView
-                  key={selectedId}
-                  messages={threadDetail?.messages ?? []}
-                  leadName={leadName}
-                  leadEmail={selectedSummary.lead_email}
-                  campaign={selectedSummary.campaign}
-                  threadId={selectedId!}
-                  token={token}
-                  canReply={!!threadDetail?.reply_to_uuid}
-                  latestDraft={latestDraft}
-                  // Prefer what they wrote, but fall back to ANY message with a
-                  // subject. A thread where the lead has never replied has no
-                  // received message at all, and seeding null there left the
-                  // Subject box empty and the Send button silently dead —
-                  // exactly the case where you most want to chase them.
-                  replyToSubject={
-                    threadDetail?.messages?.find((m) => m.direction === "received" && m.subject)?.subject
-                    ?? threadDetail?.messages?.find((m) => m.subject)?.subject
-                    ?? null
-                  }
-                  // Our mailbox on this thread — keeps it out of the CC list we
-                  // build from the thread's participants.
-                  eaccount={threadDetail?.eaccount ?? null}
-                  knownLeadEmails={threadDetail?.known_lead_emails ?? []}
-                  organizationName={threadDetail?.lead_organization_name ?? null}
-                  ownerName={threadDetail?.lead_owner_name ?? null}
-                  onChanged={() => { void loadThreads(false); void loadDetail(selectedId!, { silent: true }); }}
-                />
-              </div>
-            )}
-          </>
-        ) : (
+      <div className="flex min-h-0 flex-1">
+        {/* Left: thread list */}
+        <aside
+          className={cn(
+            "min-h-0 w-full shrink-0 flex-col border-border bg-card lg:flex lg:w-[360px] lg:border-r",
+            showDetail ? "hidden" : "flex",
+          )}
+        >
           <UniboxThreadList
             threads={threads}
             threadsTotal={threadsTotal}
@@ -413,10 +366,193 @@ export function UniboxClient() {
             onReadState={setReadState}
             onInterest={setInterest}
             onSearch={setSearch}
-            onSelect={(id) => { setSelectedId(id); setView("detail"); }}
+            onSelect={(id) => {
+              setPinnedSummary(threads.find((t) => t.thread_id === id) ?? null);
+              setSelectedId(id);
+              setView("detail");
+            }}
             hasMore={!!cursor}
             onLoadMore={() => void loadThreads(true)}
           />
+        </aside>
+
+        {/* Middle: open thread */}
+        <main className={cn("min-h-0 min-w-0 flex-1 flex-col lg:flex", showDetail ? "flex" : "hidden")}>
+          {selectedSummary ? (
+            <>
+              <div className="flex shrink-0 items-start gap-3 border-b border-border px-6 py-3">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => setView("list")}
+                  aria-label="Back to conversations"
+                  className="-ml-2 mt-0.5 shrink-0 text-muted-foreground lg:hidden"
+                >
+                  <ArrowLeft className="size-4" />
+                </Button>
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate text-[15px] font-semibold leading-snug text-foreground" title={threadSubject}>
+                    {threadSubject}
+                  </h2>
+                  <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
+                    <span className="truncate font-medium text-foreground">{leadName}</span>
+                    {selectedSummary.lead_email && selectedSummary.lead_email !== leadName && (
+                      <span className="truncate">{selectedSummary.lead_email}</span>
+                    )}
+                    {leadIsDeleted && (
+                      <Badge
+                        variant="secondary"
+                        title="This lead's record has been deleted. Thread history and reply rights are unaffected."
+                        className="shrink-0"
+                      >
+                        Lead deleted
+                      </Badge>
+                    )}
+                    {selectedSummary.campaign && (
+                      <>
+                        <span className="shrink-0 text-muted-foreground/50">·</span>
+                        <Link
+                          href={`/campaigns/${selectedSummary.campaign.id}`}
+                          onMouseEnter={() => prefetchCampaign(selectedSummary.campaign!.id)}
+                          className="inline-flex min-w-0 items-center gap-1 text-primary hover:underline"
+                        >
+                          <span className="truncate">{selectedSummary.campaign.name}</span>
+                          <ExternalLink className="size-3 shrink-0 opacity-70" />
+                        </Link>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {/* The Details rail carries these from xl up. */}
+                <div className="flex shrink-0 items-center gap-2 xl:hidden">
+                  <UniboxTemperatureBadge temperature={leadTemperature} />
+                  <UniboxInstantlyInterestMenu interestStatus={interestStatus} onChange={handleInterestChange} />
+                </div>
+              </div>
+              {detailLoading || !detail ? (
+                <div className="min-h-0 flex-1 space-y-3 px-6 py-5">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
+                      <Skeleton className="size-7 rounded-full shrink-0" />
+                      <Skeleton className="h-3.5 w-28 shrink-0" />
+                      <Skeleton className="h-3 flex-1" />
+                      <Skeleton className="h-3 w-12 shrink-0" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <UniboxThreadView
+                  key={selectedId}
+                  messages={detail?.messages ?? []}
+                  leadName={leadName}
+                  leadEmail={selectedSummary.lead_email}
+                  campaign={selectedSummary.campaign}
+                  threadId={selectedId!}
+                  token={token}
+                  canReply={!!detail?.reply_to_uuid}
+                  latestDraft={latestDraft}
+                  // Prefer what they wrote, but fall back to ANY message with a
+                  // subject. A thread where the lead has never replied has no
+                  // received message at all, and seeding null there left the
+                  // Subject box empty and the Send button silently dead —
+                  // exactly the case where you most want to chase them.
+                  replyToSubject={
+                    detail?.messages?.find((m) => m.direction === "received" && m.subject)?.subject
+                    ?? detail?.messages?.find((m) => m.subject)?.subject
+                    ?? null
+                  }
+                  // Our mailbox on this thread — keeps it out of the CC list we
+                  // build from the thread's participants.
+                  eaccount={detail?.eaccount ?? null}
+                  knownLeadEmails={detail?.known_lead_emails ?? []}
+                  organizationName={detail?.lead_organization_name ?? null}
+                  ownerName={detail?.lead_owner_name ?? null}
+                  onChanged={() => { void loadThreads(false); void loadDetail(selectedId!, { silent: true }); }}
+                />
+              )}
+            </>
+          ) : (
+            <div className="flex min-h-0 flex-1 items-center justify-center px-6">
+              <EmptyState
+                boxed={false}
+                icon={Mail}
+                title="No conversation selected"
+                message="Pick a thread on the left to read it and reply."
+              />
+            </div>
+          )}
+        </main>
+
+        {/* Right: Details rail (xl and up) */}
+        {selectedSummary && (
+          <aside className="hidden w-[300px] shrink-0 overflow-y-auto border-l border-border bg-card xl:block">
+            <DetailSection title="Lead">
+              <DetailRow icon={<User />} label="Name">
+                {leadRecord?.id && !leadIsDeleted ? (
+                  <Link
+                    href={`/leads/${leadRecord.id}`}
+                    onMouseEnter={() => prefetchLead(leadRecord.id!)}
+                    className="flex min-w-0 items-center gap-1.5 hover:underline"
+                  >
+                    <Avatar name={leadName} size="sm" />
+                    <span className="truncate">{leadName}</span>
+                  </Link>
+                ) : (
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <Avatar name={leadName} size="sm" />
+                    <span className="truncate">{leadName}</span>
+                  </span>
+                )}
+              </DetailRow>
+              <DetailRow icon={<AtSign />} label="Email">
+                <span title={selectedSummary.lead_email ?? undefined}>{selectedSummary.lead_email ?? "—"}</span>
+              </DetailRow>
+              {(leadRecord?.title ?? selectedSummary.lead?.title) && (
+                <DetailRow icon={<Briefcase />} label="Title">
+                  {leadRecord?.title ?? selectedSummary.lead?.title}
+                </DetailRow>
+              )}
+              <DetailRow icon={<Building2 />} label="Company">
+                {detail?.lead_organization_name ?? <span className="text-muted-foreground">—</span>}
+              </DetailRow>
+              <DetailRow icon={<UserRound />} label="Owner">
+                {detail?.lead_owner_name ?? <span className="text-muted-foreground">Unassigned</span>}
+              </DetailRow>
+            </DetailSection>
+            <DetailSection title="Conversation">
+              <DetailRow icon={<Thermometer />} label="Temperature">
+                <UniboxTemperatureBadge temperature={leadTemperature} />
+              </DetailRow>
+              <DetailRow icon={<Zap />} label="Instantly status">
+                <UniboxInstantlyInterestMenu variant="inline" interestStatus={interestStatus} onChange={handleInterestChange} />
+              </DetailRow>
+              <DetailRow icon={<Megaphone />} label="Campaign">
+                {selectedSummary.campaign ? (
+                  <Link
+                    href={`/campaigns/${selectedSummary.campaign.id}`}
+                    onMouseEnter={() => prefetchCampaign(selectedSummary.campaign!.id)}
+                    className="text-primary hover:underline"
+                  >
+                    {selectedSummary.campaign.name}
+                  </Link>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </DetailRow>
+              <DetailRow icon={<Inbox />} label="Inbox">
+                <span title={detail?.eaccount ?? selectedSummary.eaccount ?? undefined}>
+                  {detail?.eaccount ?? selectedSummary.eaccount ?? "—"}
+                </span>
+              </DetailRow>
+              <DetailRow icon={<MessagesSquare />} label="Messages">
+                <span className="tabular-nums">{detail?.messages?.length ?? selectedSummary.message_count}</span>
+              </DetailRow>
+              <DetailRow icon={<Clock />} label="Last activity">
+                <span className="tabular-nums">{format(new Date(selectedSummary.latest_at), "MMM d, h:mm a")}</span>
+              </DetailRow>
+            </DetailSection>
+          </aside>
         )}
       </div>
     </div>

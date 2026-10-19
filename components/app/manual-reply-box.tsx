@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { ReplyAttachButton, ReplyAttachmentChips } from "@/components/app/reply-attach-controls";
 import { ReplyCcBccFields, normalizeReplyEmails, validateCcBcc } from "@/components/app/reply-cc-bcc-fields";
-import { LeadExcludedWarning, ReplyToField } from "@/components/app/reply-recipients";
+import { ComposerRow, LeadExcludedWarning, ReplyToField } from "@/components/app/reply-recipients";
 import { appendReplyAttachments, type ReplyAttachment } from "@/lib/reply-attachments";
 
 /**
@@ -126,13 +126,10 @@ export function ManualReplyBox({
   }
 
   return (
-    <div className="enter swatch-bar mt-4 rounded-xl border border-primary/20 bg-primary/5 overflow-hidden">
-      <div className="px-4 py-2 border-b border-primary/10 flex items-center justify-between">
-        <div>
-          <p className="eyebrow">Manual reply</p>
-          <span className="font-display text-xs font-semibold text-primary">Your reply</span>
-        </div>
-        <div className="flex items-center gap-2">
+    <div className="rounded-lg border border-border bg-card shadow-sm">
+      <div className="flex h-10 items-center gap-2 border-b border-border px-3">
+        <p className="text-[13px] font-medium text-foreground">Reply</p>
+        <div className="ml-auto flex items-center gap-1">
           {onNewAiDraft && (
             <Button
               type="button"
@@ -140,10 +137,10 @@ export function ManualReplyBox({
               size="sm"
               disabled={newAiDraftPending}
               onClick={onNewAiDraft}
-              className="h-6 gap-1 text-[11px] px-2 text-primary hover:text-primary"
+              className="px-2 text-primary hover:text-primary"
               title="Write this reply with AI"
             >
-              {newAiDraftPending ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
+              {newAiDraftPending ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
               {newAiDraftPending ? "Generating…" : "AI draft"}
             </Button>
           )}
@@ -152,13 +149,13 @@ export function ManualReplyBox({
             variant="ghost"
             size="sm"
             onClick={onCancel}
-            className="h-auto px-0 py-0 text-[11px] font-normal text-muted-foreground hover:text-foreground hover:bg-transparent"
+            className="px-2 text-muted-foreground"
           >
             Cancel
           </Button>
         </div>
       </div>
-      <div className="p-4 space-y-3">
+      <div className="space-y-2 p-3">
         {recipients && (
           <>
             <ReplyToField
@@ -177,7 +174,6 @@ export function ManualReplyBox({
             />
           </>
         )}
-        <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" className="text-sm" />
         <ReplyCcBccFields
           token={token}
           cc={cc}
@@ -186,23 +182,26 @@ export function ManualReplyBox({
           onBccChange={setBcc}
           disabled={sending}
         />
+        <ComposerRow label="Subject" htmlFor={`manual-reply-subject-${threadId}`}>
+          <Input id={`manual-reply-subject-${threadId}`} value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" />
+        </ComposerRow>
         <RichTextEditor value={body} onChange={setBody} placeholder="Write your reply…" minHeight={120} />
         <ReplyAttachmentChips
           attachments={attachments}
           onRemove={(i) => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
         />
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <ReplyAttachButton
-            token={token}
-            disabled={sending}
-            currentCount={attachments.length}
-            onUploaded={(a) => setAttachments((prev) => [...prev, a])}
-          />
-          <Button size="sm" disabled={sending || !canSend} onClick={() => void handleSend()} className="gap-1.5">
-            {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-            Send reply
-          </Button>
-        </div>
+      </div>
+      <div className="flex items-center gap-2 border-t border-border px-3 py-2">
+        <ReplyAttachButton
+          token={token}
+          disabled={sending}
+          currentCount={attachments.length}
+          onUploaded={(a) => setAttachments((prev) => [...prev, a])}
+        />
+        <Button disabled={sending || !canSend} onClick={() => void handleSend()} className="ml-auto">
+          {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+          Send reply
+        </Button>
       </div>
     </div>
   );

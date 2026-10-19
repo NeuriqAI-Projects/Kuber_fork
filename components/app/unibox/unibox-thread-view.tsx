@@ -1,9 +1,9 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import Link from "next/link";
-import { ChevronDown, CornerDownRight, ExternalLink, Loader2, Reply, ReplyAll, UserPlus } from "lucide-react";
+import { ChevronDown, CornerDownRight, ExternalLink, Loader2, MailOpen, Reply, ReplyAll, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { splitQuotedBody, emailPreview } from "@/lib/email-display";
@@ -28,6 +28,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/leads/lead-ui";
 import { EmptyState } from "@/components/ui/empty-state";
+
+const NOT_ANSWERED_CLS =
+  "border-amber-200/70 bg-amber-100 text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/15 dark:text-amber-300";
 
 // The reply composers carry tiptap; load them when a thread opens instead of
 // with the Unibox route. Placeholders keep the composer's height.
@@ -63,19 +66,19 @@ type Props = {
 function QuotedBlock({ quoted, isHtml }: { quoted: string; isHtml: boolean }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="mt-2 pt-2 border-t border-border/50">
+    <div className="mt-3 pt-2 border-t border-border">
       <Button
         type="button"
         variant="ghost"
         size="sm"
         onClick={() => setOpen((o) => !o)}
-        className="h-auto px-0 py-0 gap-1 text-[11px] font-normal text-muted-foreground hover:text-foreground hover:bg-transparent"
+        className="h-auto px-0 py-0 gap-1 text-xs font-normal text-muted-foreground hover:text-foreground hover:bg-transparent"
       >
-        <span className="tracking-widest">⋯</span>
+        <span>⋯</span>
         {open ? "Hide quoted text" : "Show quoted text"}
       </Button>
       {open && (
-        <div className="mt-2 pl-3 border-l-2 border-muted-foreground/30 text-muted-foreground/90 text-xs leading-relaxed">
+        <div className="mt-2 pl-3 border-l-2 border-border text-muted-foreground text-[13px] leading-relaxed">
           {isHtml ? (
             <div
               className="[&_p]:mb-1.5 [&_blockquote]:opacity-80"
@@ -175,43 +178,46 @@ function MessageRow({
         onClick={onToggle}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
         className={cn(
-          "w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-border/60 hover:bg-secondary transition-colors cursor-pointer",
+          "w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-hover transition-colors cursor-pointer",
           isUnread && "bg-primary/5",
         )}
       >
         <Avatar name={senderName} size="sm" />
-        <span className={cn("shrink-0 max-w-[160px] truncate text-sm", isUnread ? "font-semibold" : "font-medium text-foreground/90")}>
+        <span className={cn("shrink-0 max-w-[180px] truncate text-[13px]", isUnread ? "font-semibold text-foreground" : "font-medium text-foreground")}>
           {senderName}
         </span>
         {!isOutbound && !isFromLead && (
-          <Badge variant="outline" className="shrink-0 rounded font-mono text-[9px] px-1.5 py-0 text-muted-foreground">
+          <Badge variant="secondary" className="shrink-0">
             via cc
           </Badge>
         )}
         {/* Collapsed is how the thread is read at a glance, so the signal that
             demands action has to survive here — not only once expanded. */}
         {isUnanswered && (
-          <Badge variant="outline" className="shrink-0 rounded font-mono text-[9px] px-1.5 py-0 border-amber-500/40 text-amber-500">
+          <Badge variant="outline" className={cn("shrink-0", NOT_ANSWERED_CLS)}>
             Not answered
           </Badge>
         )}
-        <span className="flex-1 min-w-0 truncate text-xs text-muted-foreground">
+        <span className="flex-1 min-w-0 truncate text-[13px] text-muted-foreground">
           {snippet || "(empty message)"}
         </span>
         {/* Reply without expanding first — same eligibility/target logic as
             the full button below, just reachable from the collapsed row. */}
         {canReply && canReplyToThis && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             onClick={(e) => { e.stopPropagation(); onReplyTo(); }}
             title={`Reply to ${replyTargetName ?? senderName}`}
-            className="shrink-0 rounded p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+            aria-label={`Reply to ${replyTargetName ?? senderName}`}
+            className="shrink-0 text-muted-foreground hover:text-foreground"
           >
             <Reply className="size-3.5" />
-          </button>
+          </Button>
         )}
-        {isUnread && <span className="size-1.5 rounded-full bg-primary shrink-0" />}
-        <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+        {isUnread && <span aria-label="Unread" className="size-2 rounded-full bg-primary shrink-0" />}
+        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
           {format(new Date(m.timestamp_email), "MMM d")}
         </span>
       </div>
@@ -219,39 +225,39 @@ function MessageRow({
   }
 
   return (
-    <div className={cn("border-b border-border/60", isUnread && "bg-primary/5")}>
+    <div className={cn(isUnread && "bg-primary/5")}>
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-secondary transition-colors"
+        className="w-full flex items-start gap-3 px-4 pt-3 pb-2 text-left hover:bg-hover transition-colors"
       >
         <Avatar name={senderName} size="sm" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-sm">{senderName}</span>
+            <span className="font-semibold text-[13px] text-foreground">{senderName}</span>
             {fromAddress && fromAddress !== senderName && (
-              <span className="font-mono text-[11px] text-muted-foreground">{fromAddress}</span>
+              <span className="text-xs text-muted-foreground">{fromAddress}</span>
             )}
             {!isOutbound && !isFromLead && (
-              <Badge variant="outline" className="rounded font-mono text-[9px] px-1.5 py-0.5 text-muted-foreground">
-                not the lead
+              <Badge variant="secondary">
+                Not the lead
               </Badge>
             )}
             {/* Answering someone else does not answer this person — without
                 this marker a prospect's question disappears behind a reply
                 that went to a colleague CC'd onto the thread. */}
             {isUnanswered && (
-              <Badge variant="outline" className="rounded font-mono text-[9px] px-1.5 py-0.5 border-amber-500/40 text-amber-500">
+              <Badge variant="outline" className={NOT_ANSWERED_CLS}>
                 Not answered
               </Badge>
             )}
             {isReplyTarget && (
-              <Badge variant="selected" className="rounded font-mono text-[9px] px-1.5 py-0.5">
+              <Badge variant="selected">
                 Replying to this
               </Badge>
             )}
             {isUnread && (
-              <Badge variant="selected" className="rounded font-mono text-[9px] px-1.5 py-0.5">
+              <Badge variant="selected">
                 Unread
               </Badge>
             )}
@@ -260,17 +266,17 @@ function MessageRow({
               colleague is indistinguishable from a reply to the prospect —
               the thread just reads as one flat chain. */}
           {inReplyToLabel && (
-            <p className="flex items-center gap-1 font-mono text-[11px] text-primary/80 truncate">
+            <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground truncate">
               <CornerDownRight className="size-3 shrink-0" />
               in reply to {inReplyToLabel}
             </p>
           )}
-          <p className="font-mono text-xs text-muted-foreground truncate">
+          <p className="mt-0.5 text-xs text-muted-foreground truncate">
             to {toAddresses.length > 0 ? toAddresses.join(", ") : "—"}
             {ccAddresses.length > 0 && ` · cc ${ccAddresses.join(", ")}`}
           </p>
         </div>
-        <div className="shrink-0 flex items-center gap-2 text-[11px] text-muted-foreground">
+        <div className="shrink-0 flex items-center gap-2 text-xs text-muted-foreground">
           {campaign && isOutbound && (
             <Link
               href={`/campaigns/${campaign.id}`}
@@ -281,10 +287,10 @@ function MessageRow({
               <ExternalLink className="size-2.5 opacity-70" />
             </Link>
           )}
-          <span className="font-mono tabular-nums">{format(new Date(m.timestamp_email), "MMM d, h:mm a")}</span>
+          <span className="tabular-nums">{format(new Date(m.timestamp_email), "MMM d, h:mm a")}</span>
         </div>
       </button>
-      <div className="px-4 pb-4 pl-[52px] text-sm">
+      <div className="px-4 pb-4 pl-14 text-sm leading-relaxed text-foreground">
         {main ? (
           isHtml ? (
             <div
@@ -302,9 +308,9 @@ function MessageRow({
             Same wording as the campaign Outbox so one thread reads identically
             in both places. */}
         {m.step && isOutbound && sequenceStepLabel(m.step) && (
-          <span className="inline-block mt-2 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-            {sequenceStepLabel(m.step)}
-          </span>
+          <div className="mt-3">
+            <Badge variant="secondary">{sequenceStepLabel(m.step)}</Badge>
+          </div>
         )}
         {/* Any message can start a reply now, Gmail-style — but Instantly
             derives the To from the sender of whichever message actually gets
@@ -312,15 +318,15 @@ function MessageRow({
             nearest earlier inbound message), so the button is hidden only
             when there is truly no inbound message yet to answer. */}
         {canReply && canReplyToThis && (
-          <div className="mt-2 flex items-center gap-1">
+          <div className="mt-3 -ml-2.5 flex flex-wrap items-center gap-1">
             <Button
               type="button"
               variant="ghost"
               size="sm"
               onClick={onReplyTo}
-              className="h-7 gap-1.5 px-2 text-[11px] text-primary hover:text-primary"
+              className="text-muted-foreground hover:text-foreground"
             >
-              <Reply className="size-3" />
+              <Reply className="size-3.5" />
               Reply to {replyTargetName ?? senderName}
             </Button>
             <Button
@@ -328,10 +334,10 @@ function MessageRow({
               variant="ghost"
               size="sm"
               onClick={onReplyAll}
-              className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground"
               title="Answer this message with everyone on the thread in the To line"
             >
-              <ReplyAll className="size-3" />
+              <ReplyAll className="size-3.5" />
               Reply all
             </Button>
             {/* A stakeholder who joins a thread is the strongest signal a cold
@@ -345,10 +351,10 @@ function MessageRow({
                 size="sm"
                 disabled={addingLead}
                 onClick={onAddAsLead}
-                className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                className="text-muted-foreground hover:text-foreground"
                 title="Add this person as a lead in the same organization"
               >
-                {addingLead ? <Loader2 className="size-3 animate-spin" /> : <UserPlus className="size-3" />}
+                {addingLead ? <Loader2 className="size-3.5 animate-spin" /> : <UserPlus className="size-3.5" />}
                 Add as lead
               </Button>
             )}
@@ -546,14 +552,14 @@ export function UniboxThreadView({
 
   if (messages.length === 0) {
     return (
-      <div className="p-6">
-        <EmptyState boxed={false} message="No messages in this thread yet." />
+      <div className="flex min-h-0 flex-1 items-center justify-center px-6">
+        <EmptyState boxed={false} icon={MailOpen} title="No messages yet" message="Nothing has been sent or received on this thread." />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <AddParticipantLeadDialog
         open={!!addLeadFor}
         email={addLeadFor}
@@ -563,7 +569,7 @@ export function UniboxThreadView({
         onCancel={() => setAddLeadFor(null)}
         onConfirm={(f, l) => void handleConfirmAddLead(f, l)}
       />
-      <div className="enter rounded-xl border border-border bg-field dark:bg-card overflow-hidden mx-6 mt-6">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-5">
         {topLevelMessages.map((m) => {
           const row = (msg: UniboxMessage) => {
             const replyTarget = replyTargetFor(msg, sorted);
@@ -618,7 +624,7 @@ export function UniboxThreadView({
           };
           const children = repliesByParent.get(m.instantly_email_id) ?? [];
           return (
-            <Fragment key={m.id}>
+            <div key={m.id} className="overflow-hidden rounded-lg border border-border bg-card shadow-xs">
               {row(m)}
               {/* Our replies sit under the message they answer, so an
                   unanswered question is visible as a branch with nothing
@@ -628,32 +634,31 @@ export function UniboxThreadView({
                   its own — unrelated to who can click Reply (see
                   replyTargetFor, which now lets any message be a target). */}
               {children.map((child) => (
-                <div key={child.id} className="border-l-2 border-primary/25 bg-secondary pl-4">
+                <div key={child.id} className="border-t border-border pl-6">
                   {row(child)}
                 </div>
               ))}
-            </Fragment>
+            </div>
           );
         })}
       </div>
 
-      <div className="px-6 pb-6 pt-4">
-        {canReply && (
-          <Button
-            size="sm"
-            onClick={handleReplyClick}
-            className="gap-1.5 rounded-full px-4"
-          >
+      {/* Composer dock: pinned under the messages so the reply is always in
+          reach; it scrolls on its own when the composer is taller than it. */}
+      {canReply && (
+      <div className={cn("shrink-0 overflow-y-auto border-t border-border bg-background px-6 py-3", replyOpen && "max-h-[70%]")}>
+        <div className="flex items-center">
+          <Button onClick={handleReplyClick} variant={replyOpen ? "outline" : "default"}>
             <Reply className="size-3.5" />
             Reply
             <ChevronDown className={cn("size-3.5 transition-transform", replyOpen && "rotate-180")} />
           </Button>
-        )}
+        </div>
 
-        {replyOpen && canReply && (
-          <div className="pl-0 mt-3">
+        {replyOpen && (
+          <div className="mt-3">
             {isGenerating && !hasDraftReady ? (
-              <div className="mt-2 py-4 space-y-3 animate-pulse">
+              <div className="py-4 space-y-3 animate-pulse">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" />
                   Writing reply…
@@ -695,6 +700,7 @@ export function UniboxThreadView({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

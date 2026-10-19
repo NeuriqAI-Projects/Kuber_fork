@@ -15,21 +15,20 @@ const ICONS: Partial<Record<string, React.ReactNode>> = {
   cold: <Snowflake className="size-3" />,
 };
 
+/** The shared map labels are upper case ("OUT OF OFFICE"); tags read in sentence case. */
+export function temperatureLabel(temperature: string | null | undefined): string {
+  const { label } = temperatureBadge(temperature);
+  return label.charAt(0) + label.slice(1).toLowerCase();
+}
+
 export function UniboxTemperatureBadge({ temperature, className }: Props) {
   const badge = temperatureBadge(temperature);
   const icon = ICONS[temperature ?? ""] ?? null;
 
   return (
-    <Badge
-      variant="outline"
-      className={cn(
-        "gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded-md shrink-0",
-        badge.cls,
-        className,
-      )}
-    >
+    <Badge variant="outline" className={cn("shrink-0 gap-1", badge.cls, className)}>
       {icon}
-      {badge.label}
+      {temperatureLabel(temperature)}
     </Badge>
   );
 }

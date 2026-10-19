@@ -60,11 +60,11 @@ export function AddParticipantLeadDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="rounded-lg border border-border bg-secondary p-3 space-y-2">
-            <Row label="Email" value={email ?? "—"} mono />
+          <div className="rounded-lg border border-border bg-secondary px-3 py-2">
+            <Row label="Email" value={email ?? "—"} />
             <Row label="Organization" value={organizationName ?? "—"} />
             <Row label="Owner" value={ownerName ?? "Unassigned"} />
-            <p className="pt-1 text-[11px] leading-relaxed text-muted-foreground">
+            <p className="pt-1.5 pb-1 text-xs leading-relaxed text-muted-foreground">
               Organization and owner are inherited from this thread&apos;s lead. The new
               contact starts in no campaign — add them to one when you are ready.
             </p>
@@ -116,11 +116,11 @@ export function AddParticipantLeadDialog({
   );
 }
 
-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="eyebrow shrink-0 text-muted-foreground">{label}</span>
-      <span className={`min-w-0 truncate text-right text-xs ${mono ? "font-mono" : "font-medium"}`} title={value}>
+    <div className="flex h-7 items-center justify-between gap-3 text-[13px]">
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className="min-w-0 truncate text-right text-foreground" title={value}>
         {value}
       </span>
     </div>

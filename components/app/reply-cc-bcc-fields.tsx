@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ChevronDown, X } from "lucide-react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { fetchReplyMailingList } from "@/lib/api-client";
+import { chipClass, chipFieldClass, ComposerRow } from "@/components/app/reply-recipients";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_PER_LIST = 10;
@@ -134,20 +135,11 @@ function EmailChipList({
   }, []);
 
   return (
-    <div className="space-y-1" ref={wrapRef}>
-      <Label className="eyebrow text-muted-foreground">{label}</Label>
-      <div className="relative">
-        <div
-          className={cn(
-            "flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-input bg-field px-2 py-1.5",
-            disabled && "opacity-50 pointer-events-none",
-          )}
-        >
+    <ComposerRow label={label}>
+      <div className="relative" ref={wrapRef}>
+        <div className={cn(chipFieldClass, disabled && "opacity-50 pointer-events-none")}>
           {emails.map((email) => (
-            <span
-              key={email}
-              className="inline-flex max-w-full items-center gap-1 rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-[11px] text-foreground"
-            >
+            <span key={email} className={cn(chipClass, "bg-secondary text-foreground")}>
               <span className="truncate">{email}</span>
               <button
                 type="button"
@@ -181,13 +173,13 @@ function EmailChipList({
               }, 120);
             }}
             placeholder={emails.length === 0 ? "Add email, press Enter" : ""}
-            className="min-w-40 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+            className="h-6 min-w-40 flex-1 bg-transparent px-1 text-[13px] outline-none placeholder:text-muted-foreground/80"
             autoComplete="off"
           />
         </div>
         {open && filtered.length > 0 && (
           <ul
-            className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 overflow-y-auto rounded-md border border-border bg-popover py-1 shadow-md"
+            className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-lg"
             role="listbox"
           >
             {filtered.map((email, i) => (
@@ -197,8 +189,8 @@ function EmailChipList({
                   role="option"
                   aria-selected={i === activeIdx}
                   className={cn(
-                    "flex w-full px-2.5 py-1.5 text-left font-mono text-[11px] text-foreground",
-                    i === activeIdx ? "bg-secondary" : "hover:bg-secondary",
+                    "flex h-8 w-full items-center rounded-md px-2 text-left text-[13px] text-foreground",
+                    i === activeIdx ? "bg-hover" : "hover:bg-hover",
                   )}
                   onMouseDown={(ev) => {
                     ev.preventDefault();
@@ -212,9 +204,9 @@ function EmailChipList({
           </ul>
         )}
       </div>
-      <p className="text-[10px] text-muted-foreground">{helper}</p>
-      {error && <p className="text-[10px] text-destructive">{error}</p>}
-    </div>
+      <p className="pt-1 text-xs text-muted-foreground">{helper}</p>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </ComposerRow>
   );
 }
 
@@ -260,49 +252,41 @@ export function ReplyCcBccFields({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-1">
-        {!showCc && (
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => setShowCc(true)}
-            className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
-          >
-            Cc
-            <ChevronDown className="size-3 opacity-70" />
-          </button>
-        )}
-        {!showBcc && (
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => setShowBcc(true)}
-            className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
-          >
-            Bcc
-            <ChevronDown className="size-3 opacity-70" />
-          </button>
-        )}
-        {(showCc || showBcc) && cc.length === 0 && bcc.length === 0 && (
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => {
-              setShowCc(false);
-              setShowBcc(false);
-            }}
-            className="ml-auto text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-50"
-          >
-            Hide
-          </button>
-        )}
-      </div>
+      {(!showCc || !showBcc || (cc.length === 0 && bcc.length === 0)) && (
+        <div className="ml-[60px] flex items-center gap-0.5">
+          {!showCc && (
+            <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => setShowCc(true)} className="-ml-2 px-2 text-muted-foreground">
+              Cc
+            </Button>
+          )}
+          {!showBcc && (
+            <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => setShowBcc(true)} className={cn("px-2 text-muted-foreground", showCc && "-ml-2")}>
+              Bcc
+            </Button>
+          )}
+          {(showCc || showBcc) && cc.length === 0 && bcc.length === 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={disabled}
+              onClick={() => {
+                setShowCc(false);
+                setShowBcc(false);
+              }}
+              className="ml-auto px-2 text-muted-foreground"
+            >
+              Hide
+            </Button>
+          )}
+        </div>
+      )}
 
       {(showCc || showBcc) && (
-        <div className={cn("grid gap-3", showCc && showBcc && "sm:grid-cols-2")}>
+        <div className="space-y-2">
           {showCc && (
             <EmailChipList
-              label="CC"
+              label="Cc"
               emails={cc}
               onChange={onCcChange}
               disabled={disabled}
@@ -312,7 +296,7 @@ export function ReplyCcBccFields({
           )}
           {showBcc && (
             <EmailChipList
-              label="BCC"
+              label="Bcc"
               emails={bcc}
               onChange={onBccChange}
               disabled={disabled}

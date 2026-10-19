@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { ReplyAttachButton, ReplyAttachmentChips } from "@/components/app/reply-attach-controls";
 import { ReplyCcBccFields, normalizeReplyEmails, validateCcBcc } from "@/components/app/reply-cc-bcc-fields";
-import { LeadExcludedWarning, ReplyToField } from "@/components/app/reply-recipients";
+import { ComposerRow, LeadExcludedWarning, ReplyToField } from "@/components/app/reply-recipients";
 import type { ReplyRecipientContext } from "@/components/app/manual-reply-box";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -27,11 +27,11 @@ import { appendReplyAttachments, type ReplyAttachment } from "@/lib/reply-attach
 
 const DRAFT_STATUS_STYLE: Record<string, string> = {
   generating: "bg-secondary text-muted-foreground",
-  draft: "bg-blue-500/15 text-blue-400",
-  approved: "bg-cyan-500/15 text-cyan-400",
-  sent: "bg-green-500/15 text-green-400",
-  failed: "bg-red-500/15 text-red-400",
-  rejected: "bg-red-500/10 text-red-400/70",
+  draft: "bg-blue-100 text-blue-800 dark:bg-blue-500/15 dark:text-blue-300",
+  approved: "bg-cyan-100 text-cyan-800 dark:bg-cyan-500/15 dark:text-cyan-300",
+  sent: "bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-300",
+  failed: "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300",
+  rejected: "bg-secondary text-muted-foreground",
 };
 
 // Moved to lib/reply-draft-content.ts (importable without tiptap); re-exported
@@ -248,19 +248,17 @@ export function ReplyDraftBox({
     }
   }
 
+  const busy = saving || sending || regenerating;
+
   return (
-    <div className="enter swatch-bar w-full rounded-xl rounded-br-sm border border-primary/20 bg-primary/5 overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-primary/10 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="leading-tight">
-            <p className="eyebrow">AI draft · review</p>
-            <span className="font-display text-xs font-semibold text-primary">Your reply</span>
-          </div>
-          <Badge variant="outline" className={cn("rounded-md border-transparent font-mono text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5", DRAFT_STATUS_STYLE[status] ?? "")}>
-            {status}
-          </Badge>
-        </div>
-        <div className="flex items-center gap-1">
+    <div className="w-full rounded-lg border border-border bg-card shadow-sm">
+      <div className="flex h-10 items-center gap-2 border-b border-border px-3">
+        <p className="text-[13px] font-medium text-foreground">Reply</p>
+        <Badge variant="secondary" className={cn("capitalize", DRAFT_STATUS_STYLE[status] ?? "")}>
+          {status}
+        </Badge>
+        {aiUsed && <span className="hidden text-xs text-muted-foreground sm:inline">AI draft · review before sending</span>}
+        <div className="ml-auto flex items-center gap-1">
           {/* Only meaningful once there is AI text to throw away — while the box
               is still blank the button on the right already reads
               "Generate with AI" and does the same job. */}
@@ -270,10 +268,10 @@ export function ReplyDraftBox({
               variant="ghost"
               disabled={regenerating || newAiDraftPending}
               onClick={onNewAiDraft}
-              className="h-6 gap-1 text-[11px] px-2 text-primary hover:text-primary"
+              className="px-2 text-primary hover:text-primary"
               title="Write a fresh AI draft, discarding what is in the editor"
             >
-              {newAiDraftPending ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
+              {newAiDraftPending ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
               {newAiDraftPending ? "Generating…" : "New AI draft"}
             </Button>
           )}
@@ -283,23 +281,45 @@ export function ReplyDraftBox({
             disabled={regenerating || newAiDraftPending}
             onClick={() => (aiUsed ? setRegenOpen((o) => !o) : void handleRegenerate())}
             className={cn(
-              "h-6 gap-1 text-[11px] px-2",
-              aiUsed && regenOpen ? "text-primary bg-primary/10 hover:text-primary hover:bg-primary/10" :
+              "px-2",
+              aiUsed && regenOpen ? "bg-accent text-foreground hover:bg-accent" :
               aiUsed ? "text-muted-foreground hover:text-foreground" : "text-primary hover:text-primary",
             )}
           >
             {regenerating ? (
-              <Loader2 className="size-3 animate-spin" />
+              <Loader2 className="size-3.5 animate-spin" />
             ) : aiUsed ? (
-              <RotateCcw className="size-3" />
+              <RotateCcw className="size-3.5" />
             ) : (
-              <Sparkles className="size-3" />
+              <Sparkles className="size-3.5" />
             )}
             {regenerating ? "Generating…" : aiUsed ? "Regenerate" : "Generate with AI"}
           </Button>
         </div>
       </div>
-      <div className="p-4 space-y-3">
+
+      {regenOpen && (
+        <div className="space-y-2 border-b border-border bg-secondary p-3">
+          <p className="text-[13px] font-medium text-foreground">Regenerate instructions</p>
+          <Textarea
+            ref={regenTextareaRef}
+            value={regenQuery}
+            onChange={(e) => setRegenQuery(e.target.value)}
+            rows={3}
+            placeholder={aiUsed ? 'Describe the change, e.g. "remove the last paragraph"…' : "Optional instruction, e.g. Focus on pricing…"}
+            className="text-sm resize-y"
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void handleRegenerate(); }}
+          />
+          <div className="flex justify-end">
+            <Button disabled={regenerating || (aiUsed && !regenQuery.trim())} onClick={() => void handleRegenerate()}>
+              {regenerating ? <Loader2 className="size-3.5 animate-spin" /> : (aiUsed ? <RotateCcw className="size-3.5" /> : <Sparkles className="size-3.5" />)}
+              {aiUsed ? "Regenerate" : "Generate with AI"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2 p-3">
         {recipients && (
           <>
             <ReplyToField
@@ -307,7 +327,7 @@ export function ReplyDraftBox({
               onChange={setTo}
               lockedTo={recipients.lockedTo}
               suggestions={recipients.participants}
-              disabled={saving || sending || regenerating}
+              disabled={busy}
             />
             <LeadExcludedWarning
               to={to}
@@ -318,73 +338,56 @@ export function ReplyDraftBox({
             />
           </>
         )}
-        <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" className="text-sm font-medium" />
         <ReplyCcBccFields
           token={token}
           cc={cc}
           bcc={bcc}
           onCcChange={setCc}
           onBccChange={setBcc}
-          disabled={saving || sending || regenerating}
+          disabled={busy}
         />
+        <ComposerRow label="Subject" htmlFor={`reply-draft-subject-${draftId}`}>
+          <Input id={`reply-draft-subject-${draftId}`} value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" />
+        </ComposerRow>
         <RichTextEditor value={body} onChange={setBody} minHeight={180} />
         <ReplyAttachmentChips
           attachments={attachments}
           onRemove={(i) => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
         />
+        {status === "failed" && error && (
+          <p className="text-xs text-destructive">Error: {error}</p>
+        )}
+      </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <ReplyAttachButton
-            token={token}
-            disabled={saving || sending}
-            currentCount={attachments.length}
-            onUploaded={(a) => setAttachments((prev) => [...prev, a])}
-          />
-          <Button size="sm" variant="outline" disabled={saving} onClick={() => void handleSave()} className="gap-1.5">
+      <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
+        <ReplyAttachButton
+          token={token}
+          disabled={saving || sending}
+          currentCount={attachments.length}
+          onUploaded={(a) => setAttachments((prev) => [...prev, a])}
+        />
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {status === "draft" && (
+            <Button variant="outline" disabled={saving} onClick={() => void handleReject()} className="text-destructive hover:text-destructive">
+              <ThumbsDown className="size-3.5" /> Reject
+            </Button>
+          )}
+          <Button variant="outline" disabled={saving} onClick={() => void handleSave()}>
             {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />} Save
           </Button>
 
           {status !== "approved" && (
-            <Button size="sm" disabled={saving} onClick={() => void handleApprove()} className="gap-1.5">
+            <Button disabled={saving} onClick={() => void handleApprove()}>
               <Check className="size-3.5" /> Approve
             </Button>
           )}
 
           {status === "approved" && (
-            <Button size="sm" disabled={sending} onClick={() => void handleSend()} className="gap-1.5 bg-green-600 hover:bg-green-700">
+            <Button disabled={sending} onClick={() => void handleSend()}>
               {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />} Send reply
             </Button>
           )}
-
-          {status === "draft" && (
-            <Button size="sm" variant="outline" disabled={saving} onClick={() => void handleReject()} className="gap-1.5 text-red-400 border-red-500/30 hover:bg-red-500/10">
-              <ThumbsDown className="size-3.5" /> Reject
-            </Button>
-          )}
         </div>
-
-        {regenOpen && (
-          <div className="enter swatch-bar-top rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2">
-            <p className="eyebrow">Regenerate instructions</p>
-            <Textarea
-              ref={regenTextareaRef}
-              value={regenQuery}
-              onChange={(e) => setRegenQuery(e.target.value)}
-              rows={3}
-              placeholder={aiUsed ? 'Describe the change, e.g. "remove the last paragraph"…' : "Optional instruction, e.g. Focus on pricing…"}
-              className="text-sm resize-y"
-              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void handleRegenerate(); }}
-            />
-            <Button size="sm" disabled={regenerating || (aiUsed && !regenQuery.trim())} onClick={() => void handleRegenerate()} className="gap-1.5">
-              {regenerating ? <Loader2 className="size-3.5 animate-spin" /> : (aiUsed ? <RotateCcw className="size-3.5" /> : <Sparkles className="size-3.5" />)}
-              {aiUsed ? "Regenerate" : "Generate with AI"}
-            </Button>
-          </div>
-        )}
-
-        {status === "failed" && error && (
-          <p className="font-mono text-xs text-red-400 mt-1">Error: {error}</p>
-        )}
       </div>
     </div>
   );
