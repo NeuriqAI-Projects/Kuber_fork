@@ -604,7 +604,7 @@ export type CampaignCreditsData = {
   jev: { companies: number; tokens: number; usd: number; exact: boolean };
   tavily: { linkedinReads: number; webSearches: number; calls: number; exact: boolean };
   ai: { calls: number; usd: number; tokens: number; failed: number; exact: boolean };
-  instantly: { emailsSent: number; exact: boolean };
+  instantly: { emailsSent: number; openings: number; followUps: number; exact: boolean };
 };
 export async function fetchCampaignCredits(token: string, campaignId: string): Promise<CampaignCreditsData> {
   return apiFetch(`/api/v1/campaigns/${campaignId}/credits`, {}, token);

@@ -16,7 +16,7 @@ import { jevUsd, tavilyCallsOf, type ProspectUsageRow } from "@/lib/services/pro
  *   Jev        companies scored by Scored Companies (tokens and estimated $)
  *   Tavily     LinkedIn reads and web searches Scored Companies made for those companies
  *   AI         llm_usage rows tagged with this campaign (exact)
- *   Instantly  emails sent (Instantly has no credits, so this is volume)
+ *   Instantly  every email delivered, opening and follow-ups (Instantly has no credits, so this is volume)
  * `exact` says which numbers are counted and which are derived.
  */
 const CHUNK = 200;
@@ -42,7 +42,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       if ((data?.length ?? 0) < 1000) break;
     }
     const leadIds = cls.map((c) => c.lead_id);
-    const emailsSent = cls.filter((c) => c.first_sent_at).length;
+    // Every delivered email is one lead_events row (event "email_delivered", step in metadata), so the
+    // follow-ups count too. Follow-up drafts are never marked "sent" and first_sent_at only marks the
+    // first email, so neither can be used here.
+    const delivered = async (extra: Record<string, unknown>) => {
+      const { count } = await db.from("lead_events").select("id", { count: "exact", head: true })
+        .eq("event", "email_delivered").contains("metadata", { campaign_id: id, ...extra });
+      return count ?? 0;
+    };
+    const [emailsSent, openingsSent] = await Promise.all([delivered({}), delivered({ step: 1 })]);
 
     const leads = await inChunks(leadIds, async (ids) =>
       ((await db.from("leads").select("id, organization_id, lead_source, email").in("id", ids)).data ?? []) as { id: string; organization_id: string | null; lead_source: string | null; email: string | null }[]);
@@ -73,7 +81,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       jev: { companies: jevRows.length, tokens: jevTokens, usd: jevUsd(jevTokens), exact: false },
       tavily: { linkedinReads: tavilyLinkedin, webSearches: tavilySearch, calls: tavilyLinkedin + tavilySearch, exact: false },
       ai: { calls: aiCalls, usd: aiCost, tokens: aiTokens, failed: (llm ?? []).filter((r) => r.error).length, exact: true },
-      instantly: { emailsSent, exact: true },
+      instantly: { emailsSent, openings: openingsSent, followUps: Math.max(0, emailsSent - openingsSent), exact: true },
     });
   } catch (e) {
     return fail(500, "INTERNAL", (e as Error).message);

@@ -35,8 +35,8 @@ export function CampaignCredits({ campaignId }: { campaignId: string }) {
     { name: "Firecrawl", used: `${data.firecrawl.credits.toLocaleString()} credits`, how: "Company websites read", exact: data.firecrawl.exact },
     { name: "AI", used: `${usd(data.ai.usd)} · ${data.ai.calls.toLocaleString()} calls`, how: "Drafts, follow-ups and replies written for this campaign", exact: data.ai.exact },
     { name: "Jev", used: `${usd(data.jev.usd)} · ${data.jev.companies.toLocaleString()} companies`, how: "Companies scored before they became leads", exact: data.jev.exact },
-    { name: "Tavily", used: `${data.tavily.calls.toLocaleString()} calls`, how: `${data.tavily.linkedinReads} LinkedIn reads · ${data.tavily.webSearches} web searches`, exact: data.tavily.exact },
-    { name: "Instantly", used: `${data.instantly.emailsSent.toLocaleString()} emails`, how: "Emails sent (Instantly has no credits)", exact: data.instantly.exact },
+    { name: "Tavily", used: `${data.tavily.calls.toLocaleString()} calls`, how: <><b className="font-semibold text-foreground">{data.tavily.linkedinReads}</b> LinkedIn reads · <b className="font-semibold text-foreground">{data.tavily.webSearches}</b> web searches</>, exact: data.tavily.exact },
+    { name: "Instantly", used: `${data.instantly.emailsSent.toLocaleString()} emails`, how: <><b className="font-semibold text-foreground">{data.instantly.openings.toLocaleString()}</b> first emails + <b className="font-semibold text-foreground">{data.instantly.followUps.toLocaleString()}</b> follow-ups (Instantly has no credits)</>, exact: data.instantly.exact },
   ] : [];
 
   return (
@@ -60,7 +60,7 @@ export function CampaignCredits({ campaignId }: { campaignId: string }) {
             <StatTile label="AI" value={usd(data.ai.usd)} icon={Sparkles} sub={`${data.ai.calls.toLocaleString()} calls${data.ai.failed ? ` · ${data.ai.failed} failed` : ""}`} />
             <StatTile label="Jev" value={usd(data.jev.usd)} icon={Bot} sub={`${data.jev.companies.toLocaleString()} companies scored`} />
             <StatTile label="Tavily" value={data.tavily.calls.toLocaleString()} icon={Search} sub={`${data.tavily.linkedinReads} LinkedIn · ${data.tavily.webSearches} searches`} />
-            <StatTile label="Instantly" value={data.instantly.emailsSent.toLocaleString()} icon={Send} sub="emails sent" />
+            <StatTile label="Instantly" value={data.instantly.emailsSent.toLocaleString()} icon={Send} sub={`${data.instantly.openings.toLocaleString()} first + ${data.instantly.followUps.toLocaleString()} follow-ups`} />
           </div>
 
           <div className="rounded-xl border border-border bg-field dark:bg-card overflow-hidden">
