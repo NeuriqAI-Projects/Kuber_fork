@@ -6,9 +6,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   LayoutDashboard, Users, Megaphone, Settings, Inbox, FlaskConical,
-  PanelLeft, Bug, Coins, Search, User,
+  PanelLeft, Bug, Coins, Search, User, LogOut,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CommandMenu, type CommandGroup } from "@/components/ui/command-menu";
 import { useApp } from "@/lib/app-context";
 import { ThemeProvider } from "@/lib/theme-context";
@@ -16,6 +17,7 @@ import { APP_LOGO_INITIAL, APP_NAME, BRAND_LOGO_CHANGED } from "@/lib/branding";
 import { isCampaignEligible, type Lead } from "@/lib/leads";
 import { deleteLead, fetchLogo, fetchUniboxUnread, fetchApolloCredits } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
 
 const CreateCampaignModal = dynamic(
   () => import("@/components/app/create-campaign-modal").then((m) => m.CreateCampaignModal),
@@ -422,15 +424,38 @@ function AppShell({ children }: { children: React.ReactNode }) {
               {!sidebarCollapsed && <span>Report an issue</span>}
             </a>
 
-            <div
-              className={cn("flex items-center", sidebarCollapsed ? "justify-center" : "h-8 gap-2 px-2")}
-              title={session.user.email}
-            >
-              <div className="size-5 rounded-full bg-secondary border border-border flex items-center justify-center text-[10px] leading-none font-semibold text-muted-foreground shrink-0">
-                {session.user.email?.[0]?.toUpperCase() ?? "?"}
-              </div>
-              {!sidebarCollapsed && <span className="text-[13px] text-foreground/75 truncate">{session.user.email}</span>}
-            </div>
+            {/* Account menu: same sign-out as Settings > Session. Signing out clears the
+                session, and the redirect-to-"/" effect above takes it from there. */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  title={session.user.email}
+                  className={cn(
+                    "flex items-center rounded-md hover:bg-hover transition-colors data-[state=open]:bg-hover",
+                    sidebarCollapsed ? "size-8 justify-center" : "h-8 w-full gap-2 px-2 text-left",
+                  )}
+                >
+                  <div className="size-5 rounded-full bg-secondary border border-border flex items-center justify-center text-[10px] leading-none font-semibold text-muted-foreground shrink-0">
+                    {session.user.email?.[0]?.toUpperCase() ?? "?"}
+                  </div>
+                  {!sidebarCollapsed && <span className="text-[13px] text-foreground/75 truncate">{session.user.email}</span>}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent side="top" align="start" className="w-56 p-1">
+                <p className="px-2 pt-1.5 pb-2 text-xs text-muted-foreground truncate border-b border-border mb-1">
+                  {session.user.email}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => supabase.auth.signOut()}
+                  className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-[13px] text-foreground hover:bg-hover transition-colors"
+                >
+                  <LogOut className="size-4 text-muted-foreground" />
+                  Sign out
+                </button>
+              </PopoverContent>
+            </Popover>
           </div>
         </aside>
 
