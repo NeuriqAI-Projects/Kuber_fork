@@ -16,8 +16,8 @@ import {
 import type { ScoredSearch } from "@/components/app/scored-orgs";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { NumberInput } from "@/components/ui/number-input";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LocationsPicker } from "@/components/ui/locations-picker";
 import { Stepper } from "@/components/ui/stepper";
@@ -504,8 +504,8 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
                   <InfoTip side="right" text="A lead = a plastic maker with a buyer we can email. Kuber checks companies 100 at a time until it has this many leads, your credit limit is reached, or the keywords run out. Searching the same filters again continues where it stopped." />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Input id="target-leads" type="number" min={1} max={MAX_LEADS_PER_SEARCH} value={target} aria-invalid={!!fitBlock}
-                    onChange={(e) => { setError(""); setTarget(Math.max(1, Math.min(100_000, Number(e.target.value) || 1))); }} className="w-28" />
+                  <NumberInput id="target-leads" min={1} max={100_000} value={target} aria-invalid={!!fitBlock}
+                    onValueChange={(n) => { setError(""); setTarget(n); }} className="w-28" />
                   {TARGET_CHIPS.map((n) => (
                     <Button key={n} type="button" size="sm" variant={target === n ? "default" : "outline"} className="rounded-full" onClick={() => setTarget(n)}>{n}</Button>
                   ))}
@@ -531,8 +531,8 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
                   <InfoTip side="right" text={`1 credit per search of 100 companies, then 1 per lead. Kuber never goes over this number; it stops and tells you how many leads it found. Each approval in review is 1 more credit. Suggested for ${target} lead${target === 1 ? "" : "s"}: at least ${needCredits}, plus 10% extra in case some companies have nobody to email.`} />
                 </div>
                 <div className="flex items-center gap-2">
-                  <Input id="max-credits" type="number" min={needCredits} max={5000} value={maxCredits} aria-invalid={creditsTooLow}
-                    onChange={(e) => { setError(""); setMaxCreditsTyped(Math.min(5000, Math.max(0, Number(e.target.value) || 0))); }} className="w-28" />
+                  <NumberInput id="max-credits" min={0} max={5000} value={maxCredits} aria-invalid={creditsTooLow}
+                    onValueChange={(n) => { setError(""); setMaxCreditsTyped(n); }} className="w-28" />
                   {maxCreditsTyped !== null && (
                     <Button type="button" variant="ghost" size="sm" onClick={() => setMaxCreditsTyped(null)}>Use suggested ({suggestedMaxCredits(target)})</Button>
                   )}

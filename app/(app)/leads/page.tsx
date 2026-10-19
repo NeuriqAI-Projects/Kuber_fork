@@ -27,7 +27,7 @@ import { useApp } from "@/lib/app-context";
 import { Avatar, StatusBadge } from "@/components/leads/lead-ui";
 import { KanbanBoard } from "@/components/app/kanban-board";
 import {
-  EMPTY_SCORED_FILTER, GroupPill, RunningSearchesBar, scoredFilterCount, ScoredCompanyDrawer, SCORED_COLUMN_DEFS, DEFAULT_SCORED_VISIBILITY, FitPill, BatchPill, Decide as ScoredDecide, type ScoredColVisibility, type ScoredCompany, type DecideAction, ScoredFiltersDialog, ScoredOrgsKanban, ScoredOrgsTable,
+  EMPTY_SCORED_FILTER, GroupPill, RunningSearchesBar, RunningSearchesPill, scoredFilterCount, ScoredCompanyDrawer, SCORED_COLUMN_DEFS, DEFAULT_SCORED_VISIBILITY, FitPill, BatchPill, Decide as ScoredDecide, type ScoredColVisibility, type ScoredCompany, type DecideAction, ScoredFiltersDialog, ScoredOrgsKanban, ScoredOrgsTable,
   decideScored, scoredFilterActive, useScoredOrgs, type ScoredFilter,
 } from "@/components/app/scored-orgs";
 import { GROUPS, statusLine, type Group } from "@/lib/services/prospects/groups";
@@ -900,6 +900,12 @@ export default function LeadsPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {leadsEntityMode === "orgs" && (
+            <RunningSearchesPill
+              data={scored.data}
+              onOpen={(searchId, group) => { setLeadsViewMode("list"); setScoredFilter({ ...EMPTY_SCORED_FILTER, searchIds: [searchId], groups: group ? [group] : [] }); }}
+            />
+          )}
           {(leadsEntityMode === "individual" || leadsEntityMode === "orgs") && (
             <SegmentedTabs
               value={leadsViewMode}
