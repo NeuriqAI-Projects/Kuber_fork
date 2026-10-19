@@ -15,6 +15,7 @@ import {
 } from "@/components/app/lead-forms";
 import type { ScoredSearch } from "@/components/app/scored-orgs";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,7 +39,7 @@ interface MarketEstimate {
   pages_used?: number; total_pages?: number | null;
   leads_left?: { low: number; high: number };
   /** Most leads the Apollo / Firecrawl balances can pay for (null = unknown). */
-  fits?: { apollo_leads: number | null; firecrawl_leads: number | null };
+  fits?: { apollo_leads: number | null; firecrawl_leads: number | null; apollo_credits?: number | null; firecrawl_credits?: number | null };
 }
 type Fits = NonNullable<MarketEstimate["fits"]>;
 
@@ -55,13 +56,41 @@ function Bill({ target, maxCredits, firecrawlShort }: { target: number; maxCredi
       <p className="text-base font-semibold">Your search</p>
       <div className={line}><span>{target} lead{target === 1 ? "" : "s"} × 1 credit</span><span>{target}</span></div>
       <div className={line}><span>~{pages} search{pages === 1 ? "" : "es"} of 100 companies</span><span>{pages}</span></div>
-      <div className={cn(line, "border-t border-dashed border-border pt-2 text-base font-bold")}><span>Expected</span><span>~{expected} credits</span></div>
+      <div className={cn(line, "border-t border-dashed border-border pt-2 text-base font-bold")}><span className="flex items-center gap-1">Expected <InfoTip side="left" text="Companies that aren't plastic makers, or have nobody to email, cost nothing." /></span><span>~{expected} credits</span></div>
       <div className={cn(line, maxCredits < expected ? "font-semibold text-destructive" : "text-muted-foreground")}><span>Your limit</span><span>{maxCredits} credits</span></div>
       <div className="space-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
         <div className={cn(line, firecrawlShort && "font-semibold text-destructive")}><span>Website reading</span><span>~{pages * FIRECRAWL_PER_PAGE} Firecrawl</span></div>
         <div className={line}><span>Time (in the background)</span><span>~{minutes} min</span></div>
       </div>
-      <p className="text-xs text-muted-foreground">Companies that aren&apos;t plastic makers, or have nobody to email, cost nothing.</p>
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button type="button" variant="outline" size="sm" className="mt-1 w-full">View detailed bill</Button>
+        </DialogTrigger>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Detailed bill</DialogTitle></DialogHeader>
+          <div className="space-y-4 text-sm">
+            <section className="space-y-1.5">
+              <p className="font-semibold">Apollo credits</p>
+              <div className={line}><span>Searching: {pages} × 100 companies</span><span>{pages}</span></div>
+              <p className="text-xs text-muted-foreground">Apollo charges 1 credit for every page of 100 companies. About 1 in {Math.round(100 / LEADS_PER_PAGE)} companies becomes a lead, so {target} leads need ~{pages} pages.</p>
+              <div className={line}><span>Lead contacts: {target} × 1</span><span>{target}</span></div>
+              <p className="text-xs text-muted-foreground">Each good-fit company gets one buyer revealed. Apollo charges 1 credit per revealed contact.</p>
+              <div className={cn(line, "border-t border-dashed border-border pt-1.5 font-bold")}><span>Expected</span><span>~{expected}</span></div>
+              <div className={cn(line, maxCredits < expected && "font-semibold text-destructive")}><span>Your limit (Kuber never goes over)</span><span>{maxCredits}</span></div>
+            </section>
+            <section className="space-y-1.5">
+              <p className="font-semibold">Firecrawl credits</p>
+              <div className={cn(line, firecrawlShort && "font-semibold text-destructive")}><span>Website reading: {pages} × 100 companies</span><span>~{pages * FIRECRAWL_PER_PAGE}</span></div>
+              <p className="text-xs text-muted-foreground">Kuber reads each company&apos;s website (1 Firecrawl credit each) so the AI can tell if it makes plastic products.</p>
+            </section>
+            <section className="space-y-1.5">
+              <p className="font-semibold">Costs nothing</p>
+              <p className="text-xs text-muted-foreground">The free size check, companies that aren&apos;t plastic makers (Hidden), and companies with nobody to email. Needs-review companies cost 1 Apollo credit only when you approve them.</p>
+            </section>
+            <div className={line}><span>Time (in the background)</span><span>~{minutes} min</span></div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -91,30 +120,26 @@ function MarketSize({ filters, target, onPick, onFits }: { filters: Record<strin
   const tooFew = !!left && left.low > 0 && target > left.low;
   return (
     <div className="space-y-2">
-      <div className="flex items-start gap-2 rounded-lg border border-border px-3 py-2.5 text-sm">
-        {state === "loading" ? <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" /> : <Search className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-field px-3 py-2 text-sm dark:bg-card">
+        {state === "loading" ? <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" /> : <Search className="size-4 shrink-0 text-muted-foreground" />}
         <div className="min-w-0 flex-1">
-          {state === "error" && <p className="text-muted-foreground">Couldn&apos;t check the size right now. You can still search.</p>}
-          {state !== "error" && !est && <p className="text-muted-foreground">Checking how many leads these keywords can give…</p>}
+          {state === "error" && <span className="text-muted-foreground">Couldn&apos;t check the size. You can still search.</span>}
+          {state !== "error" && !est && <span className="text-muted-foreground">Checking available leads…</span>}
           {state !== "error" && est && (
             est.companies.mid === 0
-              ? <p className="font-medium text-amber-600 dark:text-amber-400">Apollo has almost no companies for these keywords. Try a different keyword.</p>
+              ? <span className="font-medium text-amber-600 dark:text-amber-400">Almost no companies for these keywords.</span>
               : left!.high === 0
-                ? <p className="font-medium text-amber-600 dark:text-amber-400">You already have all the leads these keywords can give. Try other keywords or countries.</p>
-                : <p>These keywords can give you <b>about {n(left!.low)} leads</b> <span className="text-muted-foreground">(maybe up to {n(left!.high)})</span>.
-                    {used > 0 && <span className="text-muted-foreground"> You searched them before, so Kuber skips the companies you already got.</span>}
-                  </p>
+                ? <span className="font-medium text-amber-600 dark:text-amber-400">No new leads left for these keywords.</span>
+                : <span>Available: <b>~{n(left!.low)} leads</b> <span className="text-muted-foreground">(up to {n(left!.high)})</span></span>
           )}
-          <p className="flex items-center gap-1 text-xs text-muted-foreground">Free check, no credits used. It is a rough guess.
-            <InfoTip side="right" text={`A lead = a company that makes plastic products and has a person we can email. About 1 in 3 companies is a lead. Your keywords match about ${est ? n(est.companies.mid) : "…"} companies in Apollo.`} />
-          </p>
         </div>
+        <InfoTip side="left" text={`Free check, no credits used. A rough guess. A lead = a plastic maker with a person we can email (about 1 in 3 companies). Your keywords match about ${est ? n(est.companies.mid) : "…"} companies in Apollo.${used > 0 ? " You searched them before, so companies you already got are skipped." : ""}`} />
       </div>
       {est && est.companies.mid > 0 && tooFew && (
         <div className="flex items-start gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
           <CircleAlert className="mt-0.5 size-4 shrink-0" />
           <div className="space-y-1.5">
-            <p>You asked for {n(target)} leads, but these keywords have <b>only about {n(left!.low)}</b>. To get more, add keywords or countries in step 1.</p>
+            <p>Only about <b>{n(left!.low)}</b> leads available. Add keywords or countries in step 1 for more.</p>
             <Button type="button" size="sm" variant="outline" onClick={() => onPick(left!.low)}>Ask for {n(left!.low)} leads instead</Button>
           </div>
         </div>
@@ -353,12 +378,12 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
 
       {step === 1 && (
         <div className="@container">
-          <div className="grid items-start gap-4 @2xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+          <div className="space-y-4">
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1">
                   <Label htmlFor="target-leads">How many leads do you want?</Label>
-                  <InfoTip side="right" text="A lead = a plastic maker with a buyer we can email. Kuber checks companies 100 at a time until it has this many leads, your credit limit is reached, or the keywords run out. Next time you search the same filters, it continues where it stopped." />
+                  <InfoTip side="right" text="A lead = a plastic maker with a buyer we can email. Kuber checks companies 100 at a time until it has this many leads, your credit limit is reached, or the keywords run out. Searching the same filters again continues where it stopped." />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Input id="target-leads" type="number" min={1} max={MAX_LEADS_PER_SEARCH} value={target} aria-invalid={!!fitBlock}
@@ -385,7 +410,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1">
                   <Label htmlFor="max-credits">Most Apollo credits to spend</Label>
-                  <InfoTip side="right" text="1 credit per search of 100 companies, then 1 credit per lead. Kuber never goes over this number; if it is reached first, it stops and tells you how many leads it found. Each approval in review is 1 more credit." />
+                  <InfoTip side="right" text={`1 credit per search of 100 companies, then 1 per lead. Kuber never goes over this number; it stops and tells you how many leads it found. Each approval in review is 1 more credit. Suggested for ${target} lead${target === 1 ? "" : "s"}: at least ${needCredits}, plus 10% extra in case some companies have nobody to email.`} />
                 </div>
                 <div className="flex items-center gap-2">
                   <Input id="max-credits" type="number" min={needCredits} max={5000} value={maxCredits} aria-invalid={creditsTooLow}
@@ -394,21 +419,30 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
                     <Button type="button" variant="ghost" size="sm" onClick={() => setMaxCreditsTyped(null)}>Use suggested ({suggestedMaxCredits(target)})</Button>
                   )}
                 </div>
-                {creditsTooLow
-                  ? <p className="flex items-start gap-1.5 text-sm font-medium text-destructive"><AlertCircle className="mt-0.5 size-4 shrink-0" />Not enough credits. {creditsMsg}</p>
-                  : <p className="text-xs text-muted-foreground">
-                      {maxCreditsTyped === null
-                        ? `Suggested for ${target} lead${target === 1 ? "" : "s"}: at least ${needCredits} are needed, plus 10% extra in case some companies have nobody to email. You can change it.`
-                        : `At least ${needCredits} credits are needed for ${target} leads.`}
-                    </p>}
+                {creditsTooLow && <p className="flex items-start gap-1.5 text-sm font-medium text-destructive"><AlertCircle className="mt-0.5 size-4 shrink-0" />Not enough credits. {creditsMsg}</p>}
               </div>
-              <div className="space-y-1 text-sm text-muted-foreground">
-                <p><b className="text-foreground">Good fit</b> — makes plastic products: one buyer is revealed automatically (1 credit).</p>
-                <p><b className="text-foreground">Needs review</b> — the AI can&apos;t tell, no website, unclear LinkedIn, or website down. Waits for you; no cost until you approve.</p>
-                <p><b className="text-foreground">Hidden</b> — not a plastic maker (traders, distributors, machine makers, brands that only use packaging). Nothing spent.</p>
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium">What happens to each company</p>
+                <div className="flex flex-nowrap items-center gap-2">
+                  {[
+                    { label: "Good fit", tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400", tip: "Makes plastic products: one buyer is revealed automatically (1 credit)." },
+                    { label: "Needs review", tone: "bg-amber-500/15 text-amber-700 dark:text-amber-400", tip: "The AI can't tell, no website, unclear LinkedIn, or website down. Waits for you; no cost until you approve." },
+                    { label: "Hidden", tone: "bg-secondary text-muted-foreground", tip: "Not a plastic maker (traders, distributors, machine makers, brands that only use packaging). Nothing spent." },
+                  ].map((g) => (
+                    <span key={g.label} className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium", g.tone)}>
+                      {g.label}<InfoTip side="top" text={g.tip} />
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
             <Bill target={target} maxCredits={maxCredits} firecrawlShort={fits?.firecrawl_leads != null && target > fits.firecrawl_leads} />
+            {fits && (fits.apollo_leads != null || fits.firecrawl_leads != null) && (
+              <div className="space-y-1 text-sm font-medium text-amber-700 dark:text-amber-400">
+                {fits.apollo_leads != null && <p>Apollo credits left: {fits.apollo_credits != null ? `${fits.apollo_credits.toLocaleString()} → ` : ""}enough for about {fits.apollo_leads.toLocaleString()} leads</p>}
+                {fits.firecrawl_leads != null && <p>Firecrawl credits left: {fits.firecrawl_credits != null ? `${fits.firecrawl_credits.toLocaleString()} → ` : ""}enough for about {fits.firecrawl_leads.toLocaleString()} leads</p>}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -433,7 +467,6 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
       <div className="flex justify-between">
         <div className="flex items-center gap-1">
           {step > 0 && <Button type="button" variant="outline" onClick={() => { setError(""); setStep((s) => s - 1); }}>Back</Button>}
-          <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={() => { setError(""); setBatchError(false); clearDraft("scored"); }}>Start over</Button>
         </div>
         {step < STEPS.length - 1 ? (
           <Button type="button" onClick={next}>Next</Button>

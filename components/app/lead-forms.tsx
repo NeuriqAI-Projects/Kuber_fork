@@ -374,7 +374,9 @@ export function IndustryKeywordsDropdown({
     if (allSelected) {
       onChange(selected.filter((s) => !kws.includes(s)));
     } else {
-      onChange([...selected, ...kws.filter((k) => !selected.includes(k))]);
+      // A group can list the same label twice (e.g. "Blown Film" under two headings), and filtering
+      // against `selected` alone lets both through, which made two chips with the same React key.
+      onChange([...new Set([...selected, ...kws])]);
     }
   }
 
@@ -665,7 +667,7 @@ export function IndustryKeywordsDropdown({
       {/* Selected pills */}
       {selected.length > 0 && (
         <div className="flex flex-wrap gap-1 pt-1">
-          {selected.map((kw) => (
+          {[...new Set(selected)].map((kw) => (
             <span key={kw} className={badgeVariants({ variant: "selected" })}>
               {kw}
               <button

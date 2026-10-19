@@ -31,8 +31,8 @@ export async function POST(req: NextRequest) {
   const { data: kw } = await db.from("settings").select("value").eq("key", "industry_keyword_groups").maybeSingle();
   const groups = parseIndustryKeywordGroups(kw?.value);
   const keywordTags = [...new Set(parsed.data.keywords.map((k) => resolveApolloKeyword(groups, k)))];
-  // How many leads the Apollo and Firecrawl balances can pay for. Only super
-  // admins see exact balances (settings/usage), so managers get lead counts.
+  // How many leads the Apollo and Firecrawl balances can pay for, plus the balances themselves
+  // (the Credits page already shows managers these exact numbers).
   const balances = Promise.all([
     checkApolloCredits(db, "any" /* one shared Apollo account */).then((c) => c.remaining).catch(() => null),
     checkFirecrawlCredits(db, user.companyId ?? "any").then((c) => c.remaining).catch(() => null),
@@ -49,7 +49,10 @@ export async function POST(req: NextRequest) {
     const [apolloLeft, firecrawlLeft] = await balances;
     return ok({
       free: true, ...est,
-      fits: { apollo_leads: leadsApolloFits(apolloLeft), firecrawl_leads: leadsFirecrawlFits(firecrawlLeft) },
+      fits: {
+        apollo_leads: leadsApolloFits(apolloLeft), firecrawl_leads: leadsFirecrawlFits(firecrawlLeft),
+        apollo_credits: apolloLeft, firecrawl_credits: firecrawlLeft,
+      },
       pages_used: pagesUsed, total_pages: mem?.total_pages ?? null,
       leads_left: { low: Math.round(est.leads.low * leftShare), high: Math.round(est.leads.high * leftShare) },
     });
