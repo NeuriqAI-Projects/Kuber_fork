@@ -4,6 +4,7 @@ import { bulkDeleteLeads, bulkAssignLeads, retryAllFailedEnrichment, useCached, 
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader, Toolbar } from "@/components/ui/page-header";
 import { getBatchColor, type BatchColorName } from "@/lib/constants";
 import { ServiceHealthBanner } from "@/components/app/service-health-banner";
 
@@ -29,9 +30,9 @@ import { KanbanBoard } from "@/components/app/kanban-board";
 import {
   EMPTY_SCORED_FILTER, GroupPill, RunningSearchesBar, RunningSearchesPill, scoredFilterCount, ScoredCompanyDrawer, SCORED_COLUMN_DEFS, DEFAULT_SCORED_VISIBILITY, FitPill, BatchPill, Decide as ScoredDecide, type ScoredColVisibility, type ScoredCompany, type DecideAction, ScoredFiltersDialog, ScoredOrgsKanban, ScoredOrgsTable,
   decideScored, scoredFilterActive, useScoredOrgs, type ScoredFilter,
+  GRID_TABLE, HEAD_CELL, STICKY_CELL, ColHead, OrgTile, WhyCell,
 } from "@/components/app/scored-orgs";
 import { GROUPS, statusLine, type Group } from "@/lib/services/prospects/groups";
-import { InfoTip } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
@@ -54,7 +55,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Field, FieldLabel } from "@/components/ui/field";
 import {
@@ -67,6 +68,9 @@ import {
 import {
   Users, Megaphone, Plus, List, Kanban, RefreshCw, Columns3,
   Building2, SlidersHorizontal, Trash2, UserPlus, User,
+  ArrowUpDown, Mail, Phone, Briefcase, CircleDot, UserCheck, ArrowDownToLine,
+  Globe, MapPin, Tag, CalendarDays, Gauge, MessageSquareText, FileText, Target,
+  CheckCheck, type LucideIcon,
 } from "lucide-react";
 
 // ── Types & constants ─────────────────────────────────────────────────────────
@@ -151,7 +155,7 @@ type OrgRow = {
 
 const COLUMN_DEFS = [
   { key: "email",        label: "Email",        defaultVisible: true  },
-  { key: "job_title",   label: "Job Title",    defaultVisible: false },
+  { key: "job_title",   label: "Job title",    defaultVisible: false },
   { key: "status",      label: "Status",       defaultVisible: true  },
   { key: "assigned",    label: "Assigned",     defaultVisible: true  },
   { key: "source",      label: "Source",       defaultVisible: false },
@@ -179,7 +183,7 @@ const ORG_COLUMN_DEFS = [
   { key: "batch",       label: "Batch",       defaultVisible: true  },
   { key: "decide",      label: "Decide",      defaultVisible: true  },
   { key: "description", label: "Description", defaultVisible: false },
-  { key: "sells_to",    label: "Sells To",    defaultVisible: false },
+  { key: "sells_to",    label: "Sells to",    defaultVisible: false },
   { key: "leads",       label: "Leads",       defaultVisible: false },
 ] as const;
 
@@ -193,12 +197,12 @@ const DEFAULT_ORG_VISIBILITY: OrgColVisibility = Object.fromEntries(
 // ── Status dot ────────────────────────────────────────────────────────────────
 
 const STATUS_DOT: Record<LeadStatus, string> = {
-  "Input Required": "bg-yellow-400",
+  "Input Required": "bg-yellow-500",
   New:       "bg-zinc-400",
-  Enriching: "bg-amber-400",
-  Enriched:  "bg-blue-400",
-  Open:      "bg-green-400",
-  Closed:    "bg-zinc-300",
+  Enriching: "bg-amber-500",
+  Enriched:  "bg-blue-500",
+  Open:      "bg-green-500",
+  Closed:    "bg-zinc-300 dark:bg-zinc-600",
 };
 
 function StatusDot({ status }: { status: LeadStatus }) {
@@ -240,26 +244,26 @@ function ColumnsDropdown<K extends string>({
 
   return (
     <div ref={ref} className="relative">
-      <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setOpen((o) => !o)}>
+      <Button variant="outline" size="sm" data-state={open ? "open" : "closed"} className="data-[state=open]:bg-hover" onClick={() => setOpen((o) => !o)}>
         <Columns3 className="size-3.5" />
         Columns
       </Button>
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 z-50 w-44 rounded-xl border border-border bg-card shadow-xl overflow-hidden">
-          <div className="px-3 py-2 border-b border-border">
-            <p className="eyebrow">Toggle columns</p>
+        <div className="absolute left-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
+          <div className="border-b border-border px-3 py-2">
+            <p className="text-xs text-muted-foreground">Toggle columns</p>
           </div>
-          <div className="py-1">
+          <div className="p-1">
             {defs.map((col) => (
               <Button
                 key={col.key}
                 type="button"
                 variant="ghost"
                 onClick={() => toggle(col.key)}
-                className="w-full h-auto justify-start gap-2.5 rounded-none px-3 py-2 text-sm font-normal"
+                className="h-8 w-full justify-start gap-2 px-2 font-normal"
               >
                 <AppCheckbox checked={!!visible[col.key]} />
-                <span className="text-sm text-foreground">{col.label}</span>
+                <span className="text-[13px] text-foreground">{col.label}</span>
               </Button>
             ))}
           </div>
@@ -269,7 +273,7 @@ function ColumnsDropdown<K extends string>({
               variant="ghost"
               size="sm"
               onClick={() => onChange(defaultVisible)}
-              className="h-auto p-0 text-[11px] font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
+              className="h-auto p-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
             >
               Reset to default
             </Button>
@@ -301,6 +305,8 @@ function sortOrgs(rows: OrgRow[], sort: LeadsSort): OrgRow[] {
 
 const ALL_SOURCES: LeadSource[] = ["Apollo", "Excel", "Manual"];
 
+// Kept as Popover + Calendar rather than the shared DatePicker: DatePicker has
+// no disabled-days matcher, and the From/To pair must stop From > To.
 function DateRangePicker({
   from,
   to,
@@ -314,20 +320,20 @@ function DateRangePicker({
 }) {
   return (
     <div>
-      <p className="eyebrow mb-2">Created Date</p>
+      <p className="mb-2 text-[13px] font-medium text-foreground">Created date</p>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <p className="text-[10px] text-muted-foreground mb-1">From</p>
+          <p className="mb-1 text-xs text-muted-foreground">From</p>
           <Popover>
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
                 className={cn(
-                  "w-full justify-start text-left font-normal h-9 px-3 text-xs bg-card",
+                  "h-8 w-full justify-start px-2.5 text-left text-[13px] font-normal",
                   !from && "text-muted-foreground"
                 )}
               >
-                <CalendarIcon className="size-3.5 mr-2 shrink-0" />
+                <CalendarIcon className="size-3.5 shrink-0" />
                 {from ? format(from, "MMM d, yyyy") : "Pick a date"}
               </Button>
             </PopoverTrigger>
@@ -342,17 +348,17 @@ function DateRangePicker({
           </Popover>
         </div>
         <div>
-          <p className="text-[10px] text-muted-foreground mb-1">To</p>
+          <p className="mb-1 text-xs text-muted-foreground">To</p>
           <Popover>
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
                 className={cn(
-                  "w-full justify-start text-left font-normal h-9 px-3 text-xs bg-card",
+                  "h-8 w-full justify-start px-2.5 text-left text-[13px] font-normal",
                   !to && "text-muted-foreground"
                 )}
               >
-                <CalendarIcon className="size-3.5 mr-2 shrink-0" />
+                <CalendarIcon className="size-3.5 shrink-0" />
                 {to ? format(to, "MMM d, yyyy") : "Pick a date"}
               </Button>
             </PopoverTrigger>
@@ -372,9 +378,8 @@ function DateRangePicker({
 }
 
 // ── Filters modal ─────────────────────────────────────────────────────────────
-// Overlay (not the shared Dialog primitive — matches this file's own
-// bulk-assign modal precedent below: a custom fixed overlay with
-// swatch-bar-top + eyebrow chrome) triggered by the "Filters" button in the
+// The shared FilterModal shell (a custom overlay, like this file's
+// bulk-assign modal below) triggered by the "Filters" button in the
 // toolbar. Uses a draft/Apply step (unlike an always-live rail) since this is
 // an explicit commit surface, not a persistent layout element.
 
@@ -458,6 +463,74 @@ function FiltersModal({
             onToChange={(d) => setDraft((prev) => ({ ...prev, createdTo: d }))}
           />
     </FilterModal>
+  );
+}
+
+// ── Attio grid pieces (GRID_TABLE / ColHead / STICKY_CELL live in scored-orgs) ──
+
+const ORG_GRID_COLS: { key: OrgColKey; label: string; icon: LucideIcon; className?: string }[] = [
+  { key: "fit_status",  label: "Status",      icon: CircleDot },
+  { key: "fit",         label: "Fit",         icon: Gauge },
+  { key: "domain",      label: "Domain",      icon: Globe },
+  { key: "why",         label: "Why",         icon: MessageSquareText, className: "min-w-[280px]" },
+  { key: "batch",       label: "Batch",       icon: Tag },
+  { key: "description", label: "Description", icon: FileText },
+  { key: "sells_to",    label: "Sells to",    icon: Target },
+  { key: "leads",       label: "Leads",       icon: Users },
+  { key: "decide",      label: "Decide",      icon: CheckCheck, className: "text-right" },
+];
+
+function Dash() {
+  return <span className="text-muted-foreground">—</span>;
+}
+
+/** One-line cell text: cut with "…", full text on hover. */
+function Clip({ text, className }: { text: string | null | undefined; className?: string }) {
+  if (!text) return <Dash />;
+  return <span className={cn("block max-w-[240px] truncate text-muted-foreground", className)} title={text}>{text}</span>;
+}
+
+/** 20px avatar for 36px grid rows (the shared Avatar's smallest is 28px). */
+function SmallAvatar({ name }: { name: string }) {
+  return (
+    <span className="shrink-0 [&>div]:size-5 [&>div]:text-[9px]">
+      <Avatar name={name} size="sm" />
+    </span>
+  );
+}
+
+function FilterCount({ n }: { n: number }) {
+  return (
+    <span className="ml-0.5 grid h-4 min-w-4 place-items-center rounded-[4px] bg-primary/15 px-1 text-[11px] font-semibold leading-none tabular-nums">
+      {n}
+    </span>
+  );
+}
+
+/** Table placeholder in the grid's own shape (header + 36px rows). */
+function GridSkeleton() {
+  return (
+    <div className="animate-pulse">
+      <div className="flex h-8 items-center border-b border-border">
+        <div className="w-10 shrink-0" />
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="flex h-full flex-1 items-center border-l border-border px-3">
+            <div className="h-2.5 w-16 rounded bg-secondary" />
+          </div>
+        ))}
+      </div>
+      {Array.from({ length: 14 }).map((_, r) => (
+        <div key={r} className="flex h-9 items-center border-b border-border">
+          <div className="flex w-10 shrink-0 justify-center"><div className="size-3.5 rounded-[4px] border border-border" /></div>
+          {Array.from({ length: 7 }).map((_, c) => (
+            <div key={c} className="flex h-full flex-1 items-center gap-2 border-l border-border px-3">
+              {c === 0 && <div className="size-5 shrink-0 rounded-full bg-secondary" />}
+              <div className={cn("h-2.5 rounded bg-secondary", c === 0 ? "w-28" : c % 2 ? "w-16" : "w-20")} />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -865,343 +938,291 @@ export default function LeadsPage() {
     });
   }
 
-  return (
-    <div className="flex flex-col h-full">
-      {/* ── Top bar ── */}
-      {/* No redundant page-title block here — the app shell's top bar already
-          shows "Leads" as the section identity; this row is action controls only. */}
-      <div className="flex items-center justify-between px-8 py-4 border-b border-border shrink-0">
-        <div className="flex items-center gap-4 flex-wrap">
-          <SegmentedTabs
-            value={leadsEntityMode}
-            onValueChange={setLeadsEntityMode}
-            className="shrink-0"
-            options={[
-              { value: "individual", label: "Individual", icon: Users, tip: "One row per person." },
-              { value: "orgs", label: "Organization", icon: Building2, tip: "One row per company, including scored companies waiting for review." },
-            ]}
-          />
+  const countLabel = leadsEntityMode === "orgs"
+    ? scoredView ? `${scored.data?.companies.length ?? 0} companies` : `${orgRows.length} organizations`
+    : searchLoading ? "…" : `${displayLeads.length} leads`;
+  const openScoredBatch = (searchId: string, group?: Group) => {
+    setLeadsViewMode("list");
+    setScoredFilter({ ...EMPTY_SCORED_FILTER, searchIds: [searchId], groups: group ? [group] : [] });
+  };
+  const leadFiltersOn = !isFiltersEmpty(filters);
+  const scoredFiltersOn = scoredFilterActive(scoredFilter);
+  const orgColCount = 1 + Object.values(orgVisibleCols).filter(Boolean).length;
+  const firstRow = displayLeads.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const lastRow = Math.min(safePage * pageSize, displayLeads.length);
 
-          {role === "manager" && (
-            <Tip text={checkedIds.size === 0 ? "Select leads first, then give them to a team member." : "Give the selected leads to a team member."}>
+  return (
+    <div className="flex h-full flex-col">
+      {/* ── Page header: breadcrumb + actions ── */}
+      <PageHeader
+        icon={<Users />}
+        title="Leads"
+        actions={
+          <>
+            {leadsEntityMode === "orgs" && <RunningSearchesPill data={scored.data} onOpen={openScoredBatch} />}
+            <Tip text="Reload the latest data.">
               <Button
-                size="sm" variant="outline" className="gap-1.5"
-                disabled={checkedIds.size === 0}
-                onClick={() => { if (checkedIds.size > 0) { setAssignOverwriteConfirmed(false); setAssignSkipAssigned(false); setShowBulkAssign(true); } }}
+                variant="ghost" size="icon-sm" aria-label="Refresh"
+                className="text-muted-foreground"
+                disabled={loadingLeads}
+                onClick={() => {
+                  if (!session) return;
+                  void loadLeads(session.access_token);
+                }}
               >
-                <UserPlus className="size-3.5" /> Assign{checkedIds.size > 0 ? ` (${checkedIds.size})` : ""}
+                <RefreshCw className={cn("size-3.5", loadingLeads && "animate-spin")} />
               </Button>
             </Tip>
-          )}
-          <Tip text={!canCreateCampaign ? "Only enriched leads with a domain can be added to campaigns. Select some first." : "Start a campaign from the selected leads."}>
+            {role === "manager" && (
+              <Tip text={checkedIds.size === 0 ? "Select leads first, then give them to a team member." : "Give the selected leads to a team member."}>
+                <Button
+                  size="sm" variant="outline"
+                  disabled={checkedIds.size === 0}
+                  onClick={() => { if (checkedIds.size > 0) { setAssignOverwriteConfirmed(false); setAssignSkipAssigned(false); setShowBulkAssign(true); } }}
+                >
+                  <UserPlus className="size-3.5" /> Assign{checkedIds.size > 0 ? ` (${checkedIds.size})` : ""}
+                </Button>
+              </Tip>
+            )}
+            <Tip text={!canCreateCampaign ? "Only enriched leads with a domain can be added to campaigns. Select some first." : "Start a campaign from the selected leads."}>
+              <Button
+                size="sm"
+                variant={role === "manager" ? "outline" : "default"}
+                disabled={!canCreateCampaign}
+                onClick={() => { setShowCreateCampaign(true); }}
+              >
+                <Megaphone className="size-3.5" /> Create campaign{eligibleCheckedCount > 0 ? ` (${eligibleCheckedCount})` : ""}
+              </Button>
+            </Tip>
+            {role === "manager" && (
+              <Tip text="Import leads from Apollo, Excel or add one manually.">
+                <Button size="sm" onClick={() => setShowAddLeads(true)}>
+                  <Plus className="size-3.5" /> Add leads
+                </Button>
+              </Tip>
+            )}
+          </>
+        }
+      />
+
+      {/* ── Toolbar: view switches, sort, filters, columns, search, count ── */}
+      <Toolbar className="lg:flex-nowrap">
+        <SegmentedTabs
+          value={leadsEntityMode}
+          onValueChange={setLeadsEntityMode}
+          size="sm"
+          className="shrink-0"
+          options={[
+            { value: "individual", label: "Individual", icon: Users, tip: "One row per person." },
+            { value: "orgs", label: "Organization", icon: Building2, tip: "One row per company, including scored companies waiting for review." },
+          ]}
+        />
+        <SegmentedTabs
+          value={leadsViewMode}
+          onValueChange={setLeadsViewMode}
+          size="sm"
+          className="shrink-0"
+          options={[
+            { value: "list", label: "List", icon: List, tip: "Show as a table." },
+            { value: "kanban", label: "Kanban", icon: Kanban, tip: "Show as columns by stage." },
+          ]}
+        />
+        <span aria-hidden className="mx-1 h-4 w-px bg-border" />
+        <Tip text="Order the list.">
+          <Select value={leadsSort} onValueChange={(value) => setLeadsSort(value as LeadsSort)}>
+            <SelectTrigger className="h-7 w-auto min-w-[8.5rem] gap-1.5 px-2.5 text-[13px]">
+              <ArrowUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent align="start" className="min-w-36">
+              <SelectItem value="newest">Newest first</SelectItem>
+              <SelectItem value="oldest">Oldest first</SelectItem>
+              <SelectItem value="az">A – Z</SelectItem>
+              <SelectItem value="za">Z – A</SelectItem>
+            </SelectContent>
+          </Select>
+        </Tip>
+        {leadsEntityMode === "individual" ? (
+          <Tip text="Filter by status, owner, source, batch and date.">
             <Button
-              size="sm" className="gap-1.5"
-              disabled={!canCreateCampaign}
-              onClick={() => { setShowCreateCampaign(true); }}
+              type="button" variant="outline" size="sm"
+              className={cn(leadFiltersOn && "border-primary/40 bg-primary/5 text-primary hover:bg-primary/10")}
+              onClick={() => setShowFilters(true)}
             >
-              <Megaphone className="size-3.5" /> Create campaign{eligibleCheckedCount > 0 ? ` (${eligibleCheckedCount})` : ""}
+              <SlidersHorizontal className="size-3.5" />
+              Filters
+              {leadFiltersOn && <FilterCount n={activeFilterCount(filters)} />}
             </Button>
           </Tip>
-          {someChecked && (
+        ) : (
+          <Tip text="Filter companies by stage and batch.">
             <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setCheckedIds(new Set())}
-              className="h-auto p-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
+              type="button" variant="outline" size="sm"
+              className={cn(scoredFiltersOn && "border-primary/40 bg-primary/5 text-primary hover:bg-primary/10")}
+              onClick={() => setShowScoredFilters(true)}
             >
+              <SlidersHorizontal className="size-3.5" />
+              Filters
+              {scoredFiltersOn && <FilterCount n={scoredFilterCount(scoredFilter)} />}
+            </Button>
+          </Tip>
+        )}
+        {scoredView ? (
+          // The scored list has its own optional columns (LinkedIn is off by default); the Kanban has none.
+          leadsViewMode === "list" && (
+            <ColumnsDropdown
+              defs={SCORED_COLUMN_DEFS}
+              visible={scoredVisibleCols}
+              onChange={setScoredVisibleCols}
+              defaultVisible={DEFAULT_SCORED_VISIBILITY}
+            />
+          )
+        ) : leadsEntityMode === "orgs" ? (
+          <ColumnsDropdown
+            defs={ORG_COLUMN_DEFS}
+            visible={orgVisibleCols}
+            onChange={setOrgVisibleCols}
+            defaultVisible={DEFAULT_ORG_VISIBILITY}
+          />
+        ) : (
+          leadsViewMode === "list" && (
+            <ColumnsDropdown
+              defs={COLUMN_DEFS}
+              visible={visibleCols}
+              onChange={setVisibleCols}
+              defaultVisible={DEFAULT_VISIBILITY}
+            />
+          )
+        )}
+        {someChecked && (
+          <>
+            <span aria-hidden className="mx-1 h-4 w-px bg-border" />
+            <span className="text-[13px] tabular-nums text-muted-foreground">{checkedIds.size} selected</span>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setCheckedIds(new Set())} className="text-muted-foreground">
               Clear
             </Button>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          {leadsEntityMode === "orgs" && (
-            <RunningSearchesPill
-              data={scored.data}
-              onOpen={(searchId, group) => { setLeadsViewMode("list"); setScoredFilter({ ...EMPTY_SCORED_FILTER, searchIds: [searchId], groups: group ? [group] : [] }); }}
-            />
-          )}
-          {(leadsEntityMode === "individual" || leadsEntityMode === "orgs") && (
-            <SegmentedTabs
-              value={leadsViewMode}
-              onValueChange={setLeadsViewMode}
-              options={[
-                { value: "list", label: "List", icon: List, tip: "Show as a table." },
-                { value: "kanban", label: "Kanban", icon: Kanban, tip: "Show as columns by stage." },
-              ]}
-            />
-          )}
-          <Tip text="Reload the latest data.">
-            <Button
-              variant="outline" size="sm" className="gap-1.5"
-              disabled={loadingLeads}
-              onClick={() => {
-                if (!session) return;
-                void loadLeads(session.access_token);
-              }}
-            >
-              <RefreshCw className={cn("size-3.5", loadingLeads && "animate-spin")} />
-              Refresh
-            </Button>
-          </Tip>
-          {role === "manager" && (
-            <Tip text="Import leads from Apollo, Excel or add one manually.">
-              <Button size="sm" onClick={() => setShowAddLeads(true)} className="gap-1.5">
-                <Plus className="size-3.5" /> Add leads
+            {leadsEntityMode === "individual" && role === "manager" && (
+              <Button
+                type="button" variant="ghost" size="sm"
+                className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-500/10 dark:hover:text-red-300"
+                onClick={() => { if (checkedIds.size > 0) setShowBulkDelete(true); }}
+              >
+                <Trash2 className="size-3.5" /> Delete ({checkedIds.size})
               </Button>
-            </Tip>
-          )}
-        </div>
-      </div>
-
-      {/* Upstream credit/API-key failures — previously only shown on Dashboard,
-          so a stalled queue here (leads stuck in New) had no visible cause. */}
-      <div className="px-8 pt-3">
-        <ServiceHealthBanner />
-      </div>
-      {leadsEntityMode === "orgs" && (
-        <div className="px-8 pt-3">
-          <RunningSearchesBar
-            data={scored.data}
-            onOpen={(searchId, group) => { setLeadsViewMode("list"); setScoredFilter({ ...EMPTY_SCORED_FILTER, searchIds: [searchId], groups: group ? [group] : [] }); }}
-          />
-        </div>
-      )}
-
-      {/* ── Search + Columns toolbar ── */}
-      {(leadsEntityMode === "orgs" || (leadsEntityMode === "individual" && (leadsViewMode === "list" || leadsViewMode === "kanban"))) && (
-        <div className="flex items-center gap-3 px-8 py-3 border-b border-border shrink-0 bg-secondary">
-          <Tip block text={leadsEntityMode === "orgs" ? "Search by company name." : "Search by lead name, email or company."} className="flex-1 max-w-xs">
+            )}
+          </>
+        )}
+        <div className="ml-auto flex min-w-0 items-center gap-3">
+          <Tip text={leadsEntityMode === "orgs" ? "Search by company name." : "Search by lead name, email or company."} className="min-w-0">
             <SearchInput
               value={searchQuery}
               onChange={setSearchQuery}
               placeholder={leadsEntityMode === "orgs" ? "Search organizations…" : "Search leads or organization…"}
               size="sm"
-              wrapperClassName="w-full"
-              className="bg-field"
+              wrapperClassName="w-56 min-w-28 max-w-full"
             />
           </Tip>
-          {leadsEntityMode === "individual" && someChecked && role === "manager" && (
-            <Button
-              size="sm" variant="destructive" className="gap-1.5 text-white!"
-              onClick={() => { if (checkedIds.size > 0) setShowBulkDelete(true); }}
-            >
-              <Trash2 className="size-3.5" /> Delete ({checkedIds.size})
-            </Button>
-          )}
-          <div className="ml-auto flex items-center gap-3">
-            <Tip text="Order the list.">
-            <Select value={leadsSort} onValueChange={(value) => setLeadsSort(value as LeadsSort)}>
-              <SelectTrigger className="h-8 w-36 gap-2 rounded-md border-border bg-field px-3 text-xs shadow-sm">
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent align="end" className="min-w-36">
-                <SelectItem value="newest">Newest first</SelectItem>
-                <SelectItem value="oldest">Oldest first</SelectItem>
-                <SelectItem value="az">A – Z</SelectItem>
-                <SelectItem value="za">Z – A</SelectItem>
-              </SelectContent>
-            </Select>
-            </Tip>
-            {leadsEntityMode === "individual" && (
-              <Tip text="Filter by status, owner, source, batch and date.">
-              <Button
-                type="button"
-                variant={isFiltersEmpty(filters) ? "outline" : "default"}
-                size="sm"
-                className="relative gap-1.5"
-                onClick={() => setShowFilters(true)}
-              >
-                <SlidersHorizontal className="size-3.5" />
-                Filters
-                {!isFiltersEmpty(filters) && (
-                  <span className="ml-0.5 size-4 rounded-full bg-primary-foreground/20 font-mono text-[9px] leading-none font-bold tabular-nums flex items-center justify-center">
-                    <span className="translate-y-px">{activeFilterCount(filters)}</span>
-                  </span>
-                )}
-              </Button>
-              </Tip>
-            )}
-            {leadsEntityMode === "orgs" && (
-              <Tip text="Filter companies by stage and batch.">
-              <Button
-                type="button"
-                variant={scoredFilterActive(scoredFilter) ? "default" : "outline"}
-                size="sm"
-                className="relative gap-1.5"
-                onClick={() => setShowScoredFilters(true)}
-              >
-                <SlidersHorizontal className="size-3.5" />
-                Filters
-                {scoredFilterActive(scoredFilter) && (
-                  <span className="ml-0.5 size-4 rounded-full bg-primary-foreground/20 font-mono text-[9px] leading-none font-bold tabular-nums flex items-center justify-center">
-                    <span className="translate-y-px">{scoredFilterCount(scoredFilter)}</span>
-                  </span>
-                )}
-              </Button>
-              </Tip>
-            )}
-            {scoredView ? (
-              // The scored list has its own optional columns (LinkedIn is off by default); the Kanban has none.
-              leadsViewMode === "list" && (
-                <ColumnsDropdown
-                  defs={SCORED_COLUMN_DEFS}
-                  visible={scoredVisibleCols}
-                  onChange={setScoredVisibleCols}
-                  defaultVisible={DEFAULT_SCORED_VISIBILITY}
-                />
-              )
-            ) : leadsEntityMode === "orgs" ? (
-              <ColumnsDropdown
-                defs={ORG_COLUMN_DEFS}
-                visible={orgVisibleCols}
-                onChange={setOrgVisibleCols}
-                defaultVisible={DEFAULT_ORG_VISIBILITY}
-              />
-            ) : (
-              leadsViewMode === "list" && (
-                <ColumnsDropdown
-                  defs={COLUMN_DEFS}
-                  visible={visibleCols}
-                  onChange={setVisibleCols}
-                  defaultVisible={DEFAULT_VISIBILITY}
-                />
-              )
-            )}
-            <span className="font-mono text-xs text-muted-foreground tabular-nums">
-              {leadsEntityMode === "orgs"
-                ? scoredView ? `${scored.data?.companies.length ?? 0} companies` : `${orgRows.length} orgs`
-                : searchLoading ? "…" : `${displayLeads.length} leads`}
-            </span>
-          </div>
+          <span className="whitespace-nowrap text-[13px] tabular-nums text-muted-foreground">{countLabel}</span>
+        </div>
+      </Toolbar>
+
+      {/* Upstream credit/API-key failures — previously only shown on Dashboard,
+          so a stalled queue here (leads stuck in New) had no visible cause.
+          `empty:hidden` drops the padding when there is nothing to show. */}
+      <div className="px-4 pt-3 empty:hidden">
+        <ServiceHealthBanner />
+      </div>
+      {leadsEntityMode === "orgs" && (
+        <div className="px-4 pt-3 empty:hidden">
+          <RunningSearchesBar data={scored.data} onOpen={openScoredBatch} />
         </div>
       )}
 
       {/* ── Content ── */}
-      <div className="flex-1 overflow-auto px-4 py-5">
+      <div className="min-h-0 flex-1 overflow-auto">
         {/* Not gated on `q`: a filter with no search text also fetches from the
             server, and skipping the skeleton there rendered the stale 500-row
             window through matchesFilters — i.e. "No leads yet" — until it landed. */}
         {loadingLeads || searchLoading ? (
-          <div className="rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden">
-            <div className="divide-y divide-border animate-pulse">
-              <div className="flex items-center gap-4 px-4 py-3">
-                {[10, 8, 32, 20, 20, 14, 12, 10].map((w, i) => (
-                  <div key={i} className="h-3 bg-secondary rounded" style={{ width: `${w}%` }} />
-                ))}
-              </div>
-              {Array.from({ length: 9 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-4 px-4 py-3.5">
-                  <div className="size-4 rounded bg-secondary shrink-0" />
-                  <div className="size-2 rounded-full bg-secondary shrink-0" />
-                  <div className="size-8 rounded-full bg-secondary shrink-0" />
-                  <div className="h-3 bg-secondary rounded" style={{ width: `${12 + (i % 3) * 4}%` }} />
-                  <div className="h-3 bg-secondary rounded" style={{ width: `${8 + (i % 4) * 3}%` }} />
-                  <div className="h-3 bg-secondary rounded ml-auto" style={{ width: "10%" }} />
-                  <div className="h-5 w-14 bg-secondary rounded-md" />
-                  <div className="h-3 bg-secondary rounded" style={{ width: "8%" }} />
-                  <div className="h-3 bg-secondary rounded" style={{ width: "7%" }} />
-                </div>
-              ))}
-            </div>
-          </div>
+          <GridSkeleton />
         ) : scoredView && leadsViewMode === "kanban" ? (
-          <ScoredOrgsKanban
-            data={scored.data}
-            error={scored.error}
-            loading={scored.loading}
-            onDecide={handleScoredDecide}
-            groups={scoredFilter.groups}
-            showHidden={scoredFilter.hidden}
-            onOpenCompany={openScoredCompany}
-          />
+          <div className="p-4">
+            <ScoredOrgsKanban
+              data={scored.data}
+              error={scored.error}
+              loading={scored.loading}
+              onDecide={handleScoredDecide}
+              groups={scoredFilter.groups}
+              showHidden={scoredFilter.hidden}
+              onOpenCompany={openScoredCompany}
+            />
+          </div>
         ) : scoredView ? (
           <ScoredOrgsTable data={scored.data} error={scored.error} loading={scored.loading} visible={scoredVisibleCols} onDecide={handleScoredDecide} onOpenCompany={openScoredCompany} />
         ) : leadsEntityMode === "orgs" ? (
-            <div>
-              <div className="rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden w-full">
-                {/* table-fixed: every column gets a set share of the width, so the table always fits the
-                    page and long text wraps or is cut with "…" instead of pushing it sideways. */}
-                <Table className="table-fixed">
-                  <TableHeader>
-                    <TableRow className="border-border hover:bg-transparent">
-                      <TableHead className="w-[18%] font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Organization</TableHead>
-                      {([
-                        ["fit_status", "Status", "w-28"], ["fit", "Fit", "w-14"], ["domain", "Domain", "w-[16%]"], ["why", "Why", ""],
-                        ["batch", "Batch", "w-[12%]"], ["description", "Description", ""], ["sells_to", "Sells To", "w-[16%]"],
-                        ["leads", "Leads", "w-20 text-right"], ["decide", "Decide", "w-52 text-right"],
-                      ] as const).filter(([k]) => orgVisibleCols[k]).map(([k, label, w]) => (
-                        <TableHead key={k} className={cn("font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground", w)}>{label}</TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {orgRows.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={1 + Object.values(orgVisibleCols).filter(Boolean).length} className="p-0">
-                          <EmptyState
-                            boxed={false}
-                            message={
-                              q
-                                ? `No organizations match "${q}".`
-                                : "No organizations found. Add leads with a domain to populate this view."
-                            }
-                          />
+          <table className={GRID_TABLE}>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <ColHead icon={Building2} label="Organization" className="left-0 z-30 min-w-[220px]" />
+                {ORG_GRID_COLS.filter((c) => orgVisibleCols[c.key]).map((c) => (
+                  <ColHead key={c.key} icon={c.icon} label={c.label} className={c.className} />
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {orgRows.length === 0 ? (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={orgColCount} className="border-r-0 p-0">
+                    <EmptyState
+                      boxed={false}
+                      icon={Building2}
+                      title={q ? "No matches" : "No organizations yet"}
+                      message={
+                        q
+                          ? `No organizations match "${q}".`
+                          : "No organizations found. Add leads with a domain to populate this view."
+                      }
+                    />
+                  </TableCell>
+                </TableRow>
+              ) : (
+                orgRows.map((org) => {
+                  const sc = orgFitStatus.get(org.id);
+                  const line = sc ? statusLine(sc) : null;
+                  return (
+                    <TableRow
+                      key={org.id}
+                      onClick={() => setSelectedOrgId(org.id)}
+                      onMouseEnter={() => prefetchOrg(org.id)}
+                      className="group cursor-pointer"
+                    >
+                      <TableCell className={cn(STICKY_CELL, "left-0")}>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <OrgTile />
+                          <span className="max-w-[240px] truncate font-medium" title={org.name || undefined}>{org.name || "—"}</span>
+                        </div>
+                      </TableCell>
+                      {orgVisibleCols.fit_status && <TableCell>{sc ? <GroupPill group={sc.group} status={sc.status} /> : <Dash />}</TableCell>}
+                      {orgVisibleCols.fit && <TableCell>{sc ? <FitPill score={sc.score} /> : <Dash />}</TableCell>}
+                      {orgVisibleCols.domain && <TableCell><DomainLink text={org.domain || null} /></TableCell>}
+                      {orgVisibleCols.why && (
+                        <TableCell>
+                          {sc ? <WhyCell reason={sc.reason} line={line} /> : <Dash />}
                         </TableCell>
-                      </TableRow>
-                    ) : (
-                      orgRows.map((org) => (
-                        <TableRow
-                          key={org.id}
-                          onClick={() => setSelectedOrgId(org.id)}
-                          onMouseEnter={() => prefetchOrg(org.id)}
-                          className="cursor-pointer border-border border-l-2 border-l-transparent transition-colors hover:border-l-primary hover:bg-secondary"
-                        >
-                          <TableCell>
-                            <div className="flex items-center gap-2.5">
-                              <div className="size-7 rounded-md bg-secondary border border-border flex items-center justify-center shrink-0">
-                                <Building2 className="size-3.5 text-muted-foreground" />
-                              </div>
-                              <p className="min-w-0 text-sm font-semibold break-words">{org.name || "—"}</p>
-                            </div>
-                          </TableCell>
-                          {(() => {
-                            const sc = orgFitStatus.get(org.id);
-                            const dash = <span className="text-xs text-muted-foreground">—</span>;
-                            const line = sc ? statusLine(sc) : null;
-                            return (
-                              <>
-                                {orgVisibleCols.fit_status && <TableCell>{sc ? <GroupPill group={sc.group} status={sc.status} /> : dash}</TableCell>}
-                                {orgVisibleCols.fit && <TableCell>{sc ? <FitPill score={sc.score} /> : dash}</TableCell>}
-                                {orgVisibleCols.domain && <TableCell><DomainLink text={org.domain || null} /></TableCell>}
-                                {orgVisibleCols.why && (
-                                  <TableCell>
-                                    {sc ? (
-                                      <>
-                                        <p className="line-clamp-2 break-words text-xs text-muted-foreground">{sc.reason ?? "—"}</p>
-                                        {line && <p className={cn("line-clamp-2 break-words text-[11px]", line.tone === "red" ? "text-red-600 dark:text-red-400" : line.tone === "amber" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>{line.text}</p>}
-                                      </>
-                                    ) : dash}
-                                  </TableCell>
-                                )}
-                                {orgVisibleCols.batch && <TableCell>{sc ? <BatchPill name={sc.batch_name} color={sc.batch_color} /> : dash}</TableCell>}
-                                {orgVisibleCols.description && <TableCell><span className="text-xs text-muted-foreground line-clamp-2 break-words">{org.companyDescription || "—"}</span></TableCell>}
-                                {orgVisibleCols.sells_to && <TableCell><span className="text-xs text-muted-foreground line-clamp-2 break-words">{org.sellsTo || "—"}</span></TableCell>}
-                                {orgVisibleCols.leads && <TableCell className="text-right"><span className="font-mono text-xs font-semibold tabular-nums">{org.leads.length}</span></TableCell>}
-                                {orgVisibleCols.decide && <TableCell>{sc ? <ScoredDecide c={sc} busy={false} onDecide={handleScoredDecide} /> : null}</TableCell>}
-                              </>
-                            );
-                          })()}
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
+                      )}
+                      {orgVisibleCols.batch && <TableCell>{sc ? <BatchPill name={sc.batch_name} color={sc.batch_color} /> : <Dash />}</TableCell>}
+                      {orgVisibleCols.description && <TableCell><Clip text={org.companyDescription} className="max-w-[320px]" /></TableCell>}
+                      {orgVisibleCols.sells_to && <TableCell><Clip text={org.sellsTo} className="max-w-[240px]" /></TableCell>}
+                      {orgVisibleCols.leads && <TableCell className="text-right tabular-nums">{org.leads.length}</TableCell>}
+                      {orgVisibleCols.decide && <TableCell>{sc ? <ScoredDecide c={sc} busy={false} onDecide={handleScoredDecide} /> : null}</TableCell>}
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </table>
         ) : leadsViewMode === "kanban" ? (
-          <>
+          <div className="p-4">
             <KanbanBoard
               leads={displayLeads}
               columnTotals={searchResults ? undefined : kanbanTotals}
@@ -1210,174 +1231,156 @@ export default function LeadsPage() {
               retryingAll={retryingAll}
             />
             {leadsTotal !== null && leads.length < leadsTotal && (
-              <div className="flex flex-col items-center gap-1 pt-4">
+              <div className="flex justify-center pt-2">
                 <Button
                   type="button"
                   variant="outline"
+                  size="sm"
                   onClick={() => session && loadAllLeads(session.access_token)}
                   disabled={loadingAllLeads}
-                  className="text-xs"
                 >
                   {loadingAllLeads ? `Loading… (${leads.length} of ${leadsTotal})` : `Load all leads (${leads.length} of ${leadsTotal})`}
                 </Button>
               </div>
             )}
-          </>
+          </div>
         ) : (
-          <div className="rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden">
-            {/* Compact cells so all columns (incl. Created) fit without clipping */}
-            <Table className="[&_th]:px-3 [&_td]:px-3 [&_td]:py-3">
-              <TableHeader>
-                <TableRow className="border-border hover:bg-transparent">
-                  <TableHead className="w-10 pl-4">
+          <table className={GRID_TABLE}>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className={cn(HEAD_CELL, "left-0 z-30 w-10 min-w-10 max-w-10 px-0 text-center")}>
+                  <span className="inline-flex align-middle">
                     <AppCheckbox
                       checked={allEligibleChecked ? true : someChecked ? "indeterminate" : false}
                       onClick={toggleAll}
                     />
-                  </TableHead>
-                  <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Lead</TableHead>
-                  {visibleCols.organization && <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Organization</TableHead>}
-                  {visibleCols.email     && <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Email</TableHead>}
-                  {visibleCols.phone     && <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Phone</TableHead>}
-                  {visibleCols.job_title && <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Job Title</TableHead>}
-                  {visibleCols.status    && (
-                    <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      <span className="inline-flex items-center gap-0.5">
-                        Status <InfoTip text={CAMPAIGN_ACTION_HELP.statusColumn} />
-                      </span>
-                    </TableHead>
-                  )}
-                  {visibleCols.assigned  && <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Assigned</TableHead>}
-                  {visibleCols.source    && <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Source</TableHead>}
-                  {visibleCols.domain    && <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Domain</TableHead>}
-                  {visibleCols.country   && <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Country</TableHead>}
-                  {visibleCols.campaign  && <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Campaign</TableHead>}
-                  {visibleCols.batch     && <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Batch</TableHead>}
-                  {visibleCols.added     && <TableHead className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Created</TableHead>}
+                  </span>
+                </TableHead>
+                <ColHead icon={User} label="Lead" className="left-10 z-30 min-w-[200px]" />
+                {visibleCols.organization && <ColHead icon={Building2} label="Organization" />}
+                {visibleCols.email     && <ColHead icon={Mail} label="Email" />}
+                {visibleCols.phone     && <ColHead icon={Phone} label="Phone" />}
+                {visibleCols.job_title && <ColHead icon={Briefcase} label="Job title" />}
+                {visibleCols.status    && <ColHead icon={CircleDot} label="Status" info={CAMPAIGN_ACTION_HELP.statusColumn} />}
+                {visibleCols.assigned  && <ColHead icon={UserCheck} label="Assigned" />}
+                {visibleCols.source    && <ColHead icon={ArrowDownToLine} label="Source" />}
+                {visibleCols.domain    && <ColHead icon={Globe} label="Domain" />}
+                {visibleCols.country   && <ColHead icon={MapPin} label="Country" />}
+                {visibleCols.campaign  && <ColHead icon={Megaphone} label="Campaign" />}
+                {visibleCols.batch     && <ColHead icon={Tag} label="Batch" />}
+                {visibleCols.added     && <ColHead icon={CalendarDays} label="Created" />}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pagedLeads.length === 0 ? (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={13} className="border-r-0 p-0">
+                    <EmptyState
+                      boxed={false}
+                      icon={Users}
+                      title={searchQuery ? "No matches" : "No leads yet"}
+                      message={searchQuery ? `No leads match "${searchQuery}".` : "No leads yet. Click \"Add leads\" to get started."}
+                    />
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pagedLeads.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={13} className="p-0">
-                      <EmptyState
-                        boxed={false}
-                        message={searchQuery ? `No leads match "${searchQuery}".` : "No leads yet. Click \"Add leads\" to get started."}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  pagedLeads.map((lead) => {
-                    const isChecked = checkedIds.has(lead.id);
-                    const eligible = isCampaignEligible(lead);
-                    const ineligibleReason = campaignIneligibleReason(lead);
-                    return (
-                      <TableRow
-                        key={lead.id}
-                        onClick={() => setSelectedLead(lead)}
-                        onMouseEnter={() => prefetchLead(lead.id)}
-                        className={cn(
-                          "cursor-pointer border-border border-l-2 border-l-transparent transition-colors hover:border-l-primary hover:bg-secondary",
-                          isChecked && "bg-secondary border-l-primary",
-                        )}
+              ) : (
+                pagedLeads.map((lead) => {
+                  const isChecked = checkedIds.has(lead.id);
+                  const eligible = isCampaignEligible(lead);
+                  const ineligibleReason = campaignIneligibleReason(lead);
+                  const fullName = `${lead.firstName} ${lead.lastName}`;
+                  return (
+                    <TableRow
+                      key={lead.id}
+                      data-state={isChecked ? "selected" : undefined}
+                      onClick={() => setSelectedLead(lead)}
+                      onMouseEnter={() => prefetchLead(lead.id)}
+                      className="group cursor-pointer"
+                    >
+                      <TableCell
+                        className={cn(STICKY_CELL, "left-0 w-10 min-w-10 max-w-10 px-0 text-center")}
+                        onClick={(e) => {
+                          // Ineligible (still-enriching) leads must not be
+                          // selectable — the disabled checkbox alone left the
+                          // cell click as a loophole to select them.
+                          e.stopPropagation();
+                          if (eligible) toggleOne(lead.id, e);
+                        }}
                       >
-                        <TableCell
-                          className="pl-4"
-                          onClick={(e) => {
-                            // Ineligible (still-enriching) leads must not be
-                            // selectable — the disabled checkbox alone left the
-                            // cell click as a loophole to select them.
-                            e.stopPropagation();
-                            if (eligible) toggleOne(lead.id, e);
-                          }}
-                        >
+                        <span className="inline-flex align-middle">
                           <AppCheckbox
                             checked={isChecked && eligible}
                             disabled={!eligible}
                             title={ineligibleReason ?? undefined}
                           />
-                        </TableCell>
+                        </span>
+                      </TableCell>
+                      <TableCell className={cn(STICKY_CELL, "left-10")}>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <SmallAvatar name={fullName} />
+                          <span className="max-w-[220px] truncate font-medium" title={fullName}>{fullName}</span>
+                        </div>
+                      </TableCell>
+                      {visibleCols.organization && <TableCell><Clip text={lead.company} className="max-w-[200px] text-foreground" /></TableCell>}
+                      {visibleCols.email     && <TableCell><Clip text={lead.email} className="max-w-[220px]" /></TableCell>}
+                      {visibleCols.phone     && <TableCell><Clip text={lead.phone} className="tabular-nums" /></TableCell>}
+                      {visibleCols.job_title && <TableCell><Clip text={lead.jobTitle} className="max-w-[200px] text-foreground" /></TableCell>}
+                      {visibleCols.status    && <TableCell><StatusBadge status={lead.status} /></TableCell>}
+                      {visibleCols.assigned  && (
                         <TableCell>
-                          <div className="flex items-center gap-2.5">
-                            <Avatar name={`${lead.firstName} ${lead.lastName}`} size="sm" />
-                            <p className="text-sm font-semibold">{lead.firstName} {lead.lastName}</p>
-                          </div>
+                          {lead.assignedTo ? (
+                            <span className="inline-flex max-w-[180px] items-center gap-1.5">
+                              <User className="size-3 shrink-0 text-muted-foreground" />
+                              <span className="truncate">{assigneeDisplayName(lead.assignedTo, session, employees)}</span>
+                            </span>
+                          ) : (
+                            <Pill shape="sm" className="border-yellow-200/70 bg-yellow-100 text-yellow-800 dark:border-yellow-500/25 dark:bg-yellow-500/15 dark:text-yellow-300">
+                              Unassigned
+                            </Pill>
+                          )}
                         </TableCell>
-                        {visibleCols.organization && <TableCell><span className="text-sm">{lead.company || "—"}</span></TableCell>}
-                        {visibleCols.email     && <TableCell><span className="font-mono text-xs text-muted-foreground block max-w-[190px] truncate" title={lead.email}>{lead.email}</span></TableCell>}
-                        {visibleCols.phone     && <TableCell><span className="font-mono text-xs text-muted-foreground">{lead.phone || "—"}</span></TableCell>}
-                        {visibleCols.job_title && <TableCell><span className="text-sm">{lead.jobTitle}</span></TableCell>}
-                        {visibleCols.status    && <TableCell><StatusBadge status={lead.status} /></TableCell>}
-                        {visibleCols.assigned  && (
-                          <TableCell>
-                            {lead.assignedTo ? (
-                              <span className="inline-flex items-center gap-1.5 text-xs text-foreground">
-                                <User className="size-3 text-muted-foreground shrink-0" />
-                                {assigneeDisplayName(lead.assignedTo, session, employees)}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-sm text-[10px] leading-none font-mono font-semibold uppercase tracking-wider bg-yellow-500/10 text-yellow-400 border border-yellow-500/25">
-                                <span className="translate-y-px">Unassigned</span>
-                              </span>
-                            )}
-                          </TableCell>
-                        )}
-                        {visibleCols.source    && <TableCell><span className="text-xs text-muted-foreground">{lead.source}</span></TableCell>}
-                        {visibleCols.domain    && <TableCell><span className="font-mono text-xs text-muted-foreground">{lead.domain || "—"}</span></TableCell>}
-                        {visibleCols.country   && <TableCell><span className="text-xs text-muted-foreground">{lead.country || "—"}</span></TableCell>}
-                        {visibleCols.campaign && (
-                          <TableCell>
-                            {lead.campaigns.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {lead.campaigns.map((c) => (
-                                  <span key={c.id} className="font-mono text-[10px] leading-none font-medium bg-secondary border border-border rounded-sm px-1.5 py-0.5 text-muted-foreground whitespace-nowrap">
-                                    <span className="translate-y-px inline-block">{c.name}</span>
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
-                          </TableCell>
-                        )}
-                        {visibleCols.batch && (
-                          <TableCell>
-                            {lead.batchLabel ? (
-                              <Pill color={(lead.batchColor ?? "violet") as BatchColorName}>{lead.batchLabel}</Pill>
-                            ) : <span className="text-xs text-muted-foreground">—</span>}
-                          </TableCell>
-                        )}
-                        {visibleCols.added     && <TableCell><span className="font-mono text-xs text-muted-foreground tabular-nums whitespace-nowrap">{new Date(lead.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</span></TableCell>}
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                      )}
+                      {visibleCols.source    && <TableCell><span className="text-muted-foreground">{lead.source}</span></TableCell>}
+                      {visibleCols.domain    && <TableCell><Clip text={lead.domain} className="max-w-[200px]" /></TableCell>}
+                      {visibleCols.country   && <TableCell><Clip text={lead.country} /></TableCell>}
+                      {visibleCols.campaign && (
+                        <TableCell>
+                          {lead.campaigns.length > 0 ? (
+                            <div className="flex max-w-[260px] items-center gap-1 overflow-hidden" title={lead.campaigns.map((c) => c.name).join(", ")}>
+                              {lead.campaigns.map((c) => (
+                                <span key={c.id} className="shrink-0 rounded-[5px] border border-border bg-secondary px-1.5 py-[3px] text-xs leading-none text-muted-foreground">
+                                  {c.name}
+                                </span>
+                              ))}
+                            </div>
+                          ) : <Dash />}
+                        </TableCell>
+                      )}
+                      {visibleCols.batch && (
+                        <TableCell>
+                          {lead.batchLabel ? (
+                            <Pill color={(lead.batchColor ?? "violet") as BatchColorName} className="max-w-[180px]" title={lead.batchLabel}>
+                              <span className="truncate">{lead.batchLabel}</span>
+                            </Pill>
+                          ) : <Dash />}
+                        </TableCell>
+                      )}
+                      {visibleCols.added     && <TableCell><span className="tabular-nums text-muted-foreground">{new Date(lead.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</span></TableCell>}
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </table>
         )}
       </div>
 
-      {/* ── Pagination bar (list view only) ── */}
+      {/* ── Footer: rows shown + pagination (list view only) ── */}
       {leadsEntityMode === "individual" && leadsViewMode === "list" && displayLeads.length > 0 && (
-        <div className="shrink-0 border-t border-border px-8 py-3 flex items-center justify-between gap-4">
-          <Field orientation="horizontal" className="w-fit">
-            <FieldLabel htmlFor="leads-per-page">Leads per page</FieldLabel>
-            <Select
-              value={String(pageSize)}
-              onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}
-            >
-              <SelectTrigger className="w-20 h-8 text-xs" id="leads-per-page">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="start">
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="25">25</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-                <SelectItem value="100">100</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
+        <div className="flex h-11 shrink-0 items-center gap-3 border-t border-border px-4 text-[13px]">
+          <span className="tabular-nums text-muted-foreground">
+            {firstRow}–{lastRow} of {displayLeads.length}
+          </span>
           {/* Kanban had a "Show more" button but list view never did, so the
               paginator could only page within the leads already fetched — its
               "of N" counts loaded rows, not leadsTotal. With 1627 leads and a
@@ -1395,13 +1398,29 @@ export default function LeadsPage() {
               size="sm"
               onClick={() => session && loadMoreLeads(session.access_token)}
               disabled={loadingMoreLeads}
-              className="h-8 text-xs"
             >
               {loadingMoreLeads ? "Loading…" : `Show more (${leads.length} of ${leadsTotal})`}
             </Button>
           )}
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-xs text-muted-foreground tabular-nums">
+          <div className="ml-auto flex items-center gap-4">
+            <Field orientation="horizontal" className="w-fit">
+              <FieldLabel htmlFor="leads-per-page" className="text-[13px] font-normal text-muted-foreground">Rows per page</FieldLabel>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}
+              >
+                <SelectTrigger className="h-7 w-[4.5rem] text-[13px]" id="leads-per-page">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="25">25</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <span className="tabular-nums text-muted-foreground">
               Page {safePage} of {totalPages}
             </span>
             <Pagination className="mx-0 w-auto">
@@ -1468,16 +1487,15 @@ export default function LeadsPage() {
         const needsOverwriteConfirm = alreadyAssignedCount > 0 && !assignSkipAssigned && !assignOverwriteConfirmed;
         return (
         <div className="fixed inset-0 z-200 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => { if (!bulkAssigning) setShowBulkAssign(false); }} />
-          <div className="swatch-bar-top relative z-10 w-full max-w-sm mx-4 rounded-2xl border border-border bg-card shadow-2xl p-6 flex flex-col gap-5">
-            <div className="flex items-start gap-4">
-              <div className="shrink-0 size-10 rounded-full bg-primary/15 border border-primary/25 flex items-center justify-center">
-                <UserPlus className="size-5 text-primary" />
+          <div className="absolute inset-0 bg-black/25 dark:bg-black/60" onClick={() => { if (!bulkAssigning) setShowBulkAssign(false); }} />
+          <div className="relative z-10 mx-4 flex w-full max-w-sm flex-col gap-4 rounded-lg border border-border bg-popover p-5 shadow-xl">
+            <div className="flex items-start gap-3">
+              <div className="grid size-8 shrink-0 place-items-center rounded-md border border-border bg-field text-muted-foreground">
+                <UserPlus className="size-4" />
               </div>
               <div>
-                <p className="eyebrow">Routing</p>
-                <p className="font-display text-base font-semibold mt-0.5">Assign {checkedIds.size} lead{checkedIds.size !== 1 ? "s" : ""}</p>
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">Choose how these leads should be routed to employees.</p>
+                <p className="text-[15px] font-semibold">Assign {checkedIds.size} lead{checkedIds.size !== 1 ? "s" : ""}</p>
+                <p className="mt-0.5 text-[13px] text-muted-foreground">Choose how these leads should be routed to employees.</p>
               </div>
             </div>
 
@@ -1489,13 +1507,13 @@ export default function LeadsPage() {
                     key={s.value}
                     onClick={() => setAssignStrategy(s.value)}
                     className={cn(
-                      "flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer bg-field hover:bg-field",
-                      checked && "border-primary bg-primary/5",
+                      "flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors",
+                      checked ? "border-primary/50 bg-primary/5" : "border-border bg-field hover:bg-hover",
                     )}
                   >
-                    <AppRadio checked={checked} className="mt-1" />
+                    <AppRadio checked={checked} className="mt-0.5" />
                     <div>
-                      <p className="text-sm font-medium">{s.label}</p>
+                      <p className="text-[13px] font-medium">{s.label}</p>
                       <p className="text-xs text-muted-foreground">{s.description}</p>
                     </div>
                   </label>
@@ -1505,7 +1523,7 @@ export default function LeadsPage() {
 
             {assignStrategy === "manual" && (
               employeesLoading ? (
-                <div className="h-10 rounded-md border border-border bg-secondary animate-pulse" />
+                <div className="h-8 animate-pulse rounded-md border border-border bg-secondary" />
               ) : (
                 <Select value={assignTarget} onValueChange={setAssignTarget}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -1526,17 +1544,20 @@ export default function LeadsPage() {
                   tabIndex={0}
                   onClick={() => setAssignSkipAssigned((v) => !v)}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setAssignSkipAssigned((v) => !v); } }}
-                  className="flex items-start gap-2.5 rounded-lg border border-border p-3 text-xs cursor-pointer hover:bg-secondary"
+                  className={cn(
+                    "flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 text-xs transition-colors",
+                    assignSkipAssigned ? "border-primary/50 bg-primary/5" : "border-border bg-field hover:bg-hover",
+                  )}
                 >
                   <AppCheckbox checked={assignSkipAssigned} className="mt-0.5" />
                   <span>
-                    <span className="font-medium text-foreground">Skip already assigned leads</span>
+                    <span className="text-[13px] font-medium text-foreground">Skip already assigned leads</span>
                     <br />
                     <span className="text-muted-foreground">Leave the {alreadyAssignedCount} already-owned {alreadyAssignedCount !== 1 ? "leads" : "lead"} untouched and only assign the rest.</span>
                   </span>
                 </div>
                 {!assignSkipAssigned && (
-                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
                     {alreadyAssignedCount} of these {alreadyAssignedCount !== 1 ? "leads are" : "lead is"} already assigned to someone else — proceeding will reassign {alreadyAssignedCount !== 1 ? "them" : "it"}.
                   </div>
                 )}
@@ -1549,7 +1570,6 @@ export default function LeadsPage() {
                 variant="outline"
                 onClick={() => setShowBulkAssign(false)}
                 disabled={bulkAssigning}
-                className="rounded-lg bg-secondary"
               >
                 Cancel
               </Button>
@@ -1599,7 +1619,6 @@ export default function LeadsPage() {
                     setBulkAssigning(false);
                   }
                 }}
-                className="gap-2 rounded-lg"
               >
                 {bulkAssigning ? <RefreshCw className="size-3.5 animate-spin" /> : <UserPlus className="size-3.5" />}
                 {needsOverwriteConfirm ? "Reassign anyway" : "Assign"}

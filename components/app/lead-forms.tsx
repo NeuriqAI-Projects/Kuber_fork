@@ -65,48 +65,48 @@ export function BatchNameField({
   }, []);
 
   return (
-    <div className="rounded-xl p-4">
+    <div>
       <div className="flex items-end gap-3">
-        <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex-1 min-w-0 space-y-1.5">
           <div className="flex items-center gap-1">
-            <span className="text-xs font-medium text-muted-foreground">Batch Name</span>
-            <span className="text-destructive text-xs">*</span>
+            <span className="text-[13px] font-medium text-foreground">Batch name</span>
+            <span className="text-destructive text-[13px]">*</span>
             <InfoTip
               side="right"
               text="Name this import so you can recognise it later (e.g. 'India Plastics Q3'). The name becomes a coloured tag on every lead in this batch."
             />
             {value.trim() && (
-              <Pill color={color as BatchColorName} dot className="ml-1 px-1.5 text-[10px]">{value}</Pill>
+              <Pill color={color as BatchColorName} dot className="ml-1">{value}</Pill>
             )}
           </div>
           <Input
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="e.g. India Plastics Q3…"
-            className={cn("h-8 text-sm", error && "border-destructive")}
+            className={cn(error && "border-destructive")}
           />
           {error && (
-            <p className="text-[10px] text-destructive flex items-center gap-1">
+            <p className="text-xs text-destructive flex items-center gap-1">
               <AlertCircle className="size-3 shrink-0" /> Batch name is required
             </p>
           )}
         </div>
-        <div ref={swatchRef} className="relative shrink-0 space-y-1">
-          <span className="text-xs font-medium text-muted-foreground block">Colour</span>
+        <div ref={swatchRef} className="relative shrink-0 space-y-1.5">
+          <span className="text-[13px] font-medium text-foreground block">Colour</span>
           <Button
             type="button"
             variant="outline"
             onClick={() => setSwatchOpen((o) => !o)}
             className={cn(
-              "h-8 gap-2 rounded-md px-3 text-sm font-normal bg-field hover:bg-field",
-              swatchOpen && "ring-2 ring-ring border-transparent",
+              "gap-2 px-2.5 font-normal",
+              swatchOpen && "border-primary/60",
             )}
           >
             <span className={cn("size-3.5 rounded-full shrink-0", c.bg)} />
-            <span className="capitalize text-xs">{color}</span>
+            <span className="capitalize">{color}</span>
           </Button>
           {swatchOpen && (
-            <div className="absolute right-0 top-full mt-1.5 z-10 rounded-xl border border-border bg-popover shadow-xl p-3.5 grid grid-cols-4 gap-3.5 w-[188px]">
+            <div className="absolute right-0 top-full mt-1.5 z-10 rounded-lg border border-border bg-popover shadow-lg p-3 grid grid-cols-4 gap-3 w-[176px]">
               {BATCH_COLORS.map((bc) => (
                 <button
                   key={bc.name}
@@ -114,11 +114,11 @@ export function BatchNameField({
                   title={bc.name}
                   onClick={() => { onColorChange(bc.name); setSwatchOpen(false); }}
                   className={cn(
-                    "size-8 rounded-full transition-all",
+                    "size-7 rounded-full transition-opacity",
                     bc.bg,
                     color === bc.name
-                      ? "ring-2 ring-white ring-offset-2 ring-offset-popover scale-110"
-                      : "hover:scale-110 opacity-80 hover:opacity-100",
+                      ? "ring-2 ring-foreground/70 ring-offset-2 ring-offset-popover"
+                      : "opacity-80 hover:opacity-100",
                   )}
                 />
               ))}
@@ -247,14 +247,14 @@ export function AssignStrategyPicker({
             variant="outline"
             onClick={() => onModeChange(opt.value)}
             className={cn(
-              "h-auto flex-col items-start justify-start gap-0 rounded-lg p-3 text-left font-normal",
+              "h-auto flex-col items-start justify-start gap-0 rounded-lg p-3 text-left font-normal shadow-none",
               mode === opt.value
-                ? "border-primary bg-primary/10 hover:bg-primary/10 hover:text-foreground"
-                : "border-border bg-field hover:bg-field hover:border-muted-foreground/40",
+                ? "border-primary/50 bg-primary/5 hover:bg-primary/5 hover:text-foreground"
+                : "border-border bg-field hover:bg-hover",
             )}
           >
-            <p className="text-sm font-medium">{opt.label}</p>
-            <p className="text-xs text-muted-foreground mt-1 whitespace-normal">{opt.hint}</p>
+            <p className="text-[13px] font-medium">{opt.label}</p>
+            <p className="text-xs text-muted-foreground mt-1 whitespace-normal leading-snug">{opt.hint}</p>
           </Button>
         ))}
       </div>
@@ -437,7 +437,7 @@ export function IndustryKeywordsDropdown({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1">
           <Label>
-            Industry Segments <span className="text-destructive ml-0.5">*</span>
+            Industry segments <span className="text-destructive ml-0.5">*</span>
           </Label>
           <InfoTip side="right" text="Keywords filter Apollo's database by industry. Use 'plastics', 'polymer', 'moulding' or 'packaging' to target the right segment. At least one is required." />
         </div>
@@ -447,7 +447,7 @@ export function IndustryKeywordsDropdown({
             variant="ghost"
             size="sm"
             onClick={() => onChange([])}
-            className="h-auto p-0 text-[10px] font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
+            className="h-auto p-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
           >
             Clear all ({selectedCount})
           </Button>
@@ -461,26 +461,26 @@ export function IndustryKeywordsDropdown({
           variant="outline"
           onClick={() => setOpen((o) => !o)}
           className={cn(
-            "w-full justify-between px-3 py-2 text-sm font-normal text-left bg-field hover:bg-field",
-            open ? "border-ring ring-1 ring-ring" : "border-input hover:border-muted-foreground",
+            "w-full justify-between px-2.5 text-sm font-normal text-left hover:bg-field",
+            open ? "border-primary/60" : "border-input hover:border-muted-foreground/30",
           )}
         >
-          <span className={selectedCount === 0 ? "text-muted-foreground/60" : "text-foreground"}>
+          <span className={selectedCount === 0 ? "text-muted-foreground" : "text-foreground"}>
             {selectedCount === 0
               ? "Select industry segments…"
               : `${selectedCount} segment${selectedCount !== 1 ? "s" : ""} selected`}
           </span>
-          <svg viewBox="0 0 24 24" className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} fill="none" stroke="currentColor" strokeWidth={2}>
+          <svg viewBox="0 0 24 24" className={cn("size-3.5 shrink-0 text-muted-foreground", open && "rotate-180")} fill="none" stroke="currentColor" strokeWidth={2}>
             <path d="M6 9l6 6 6-6" />
           </svg>
         </Button>
 
         {/* Panel */}
         {open && (
-          <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+          <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-lg border border-border bg-popover shadow-lg overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary">
-              <p className="eyebrow">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+              <p className="text-xs text-muted-foreground tabular-nums">
                 {selectedCount > 0 ? `${selectedCount} of ${allKeywordLabels.length} selected` : "Select industry segments"}
               </p>
               <Button
@@ -488,7 +488,7 @@ export function IndustryKeywordsDropdown({
                 variant="link"
                 size="sm"
                 onClick={() => onChange([...allKeywordLabels])}
-                className="h-auto p-0 text-[11px]"
+                className="h-auto p-0 text-xs"
               >
                 Select all
               </Button>
@@ -512,14 +512,14 @@ export function IndustryKeywordsDropdown({
                             type="button"
                             variant="ghost"
                             onClick={() => toggleCategoryKws(groupKws)}
-                            className="w-full h-auto flex-col items-center gap-1.5 mb-2 rounded-none p-0 font-normal group hover:bg-transparent"
+                            className="w-full h-auto flex-col items-start gap-1.5 mb-1.5 rounded-none p-0 font-normal group hover:bg-transparent"
                           >
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 px-2">
                               <AppCheckbox
                                 size="sm"
                                 checked={allGroupSelected ? true : someGroupSelected ? "indeterminate" : false}
                               />
-                              <span className="text-[11px] font-bold uppercase tracking-wide transition-colors text-center leading-tight text-foreground group-hover:text-primary">
+                              <span className="text-[13px] font-medium transition-colors text-left leading-tight text-foreground">
                                 {group.label}
                               </span>
                             </div>
@@ -533,8 +533,8 @@ export function IndustryKeywordsDropdown({
                                 <div
                                   key={kw.id}
                                   className={cn(
-                                    "group/kw w-full flex items-center gap-2 px-2 py-1 rounded transition-colors",
-                                    checked ? "bg-primary/10" : "hover:bg-secondary",
+                                    "group/kw w-full flex items-center gap-2 px-2 py-1 rounded-md transition-colors",
+                                    checked ? "bg-primary/5" : "hover:bg-hover",
                                   )}
                                 >
                                   <Button
@@ -545,7 +545,7 @@ export function IndustryKeywordsDropdown({
                                   >
                                     <AppCheckbox size="sm" checked={checked} />
                                     <span className="min-w-0 flex flex-col items-start gap-0.5">
-                                      <span className={cn("text-xs leading-tight truncate", checked ? "text-foreground font-medium" : "text-muted-foreground")}>
+                                      <span className={cn("text-[13px] leading-tight truncate", checked ? "text-foreground font-medium" : "text-foreground/80")}>
                                         {kw.label}
                                       </span>
                                       {/* The name and the term Apollo actually receives are often
@@ -555,7 +555,7 @@ export function IndustryKeywordsDropdown({
                                           they know this industry far better than the catalogue does.
                                           Only shown when it differs, so identical rows stay quiet. */}
                                       {kw.query && kw.query.toLowerCase() !== kw.label.toLowerCase() && (
-                                        <span className="text-[10px] leading-tight text-muted-foreground/70 truncate font-mono">
+                                        <span className="text-[11px] leading-tight text-muted-foreground truncate">
                                           searches &ldquo;{kw.query}&rdquo;
                                         </span>
                                       )}
@@ -574,10 +574,10 @@ export function IndustryKeywordsDropdown({
             </div>
 
             {/* Add a keyword to an existing group — saved to Settings immediately */}
-            <div className="border-t border-border px-4 py-3 bg-secondary">
+            <div className="border-t border-border px-3 py-3 bg-secondary">
               <div className="flex items-center justify-between mb-2">
-                <p className="eyebrow">Add keyword to a group</p>
-                <a href="/settings?section=knowledge&knowledge=industry-segments" className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2">
+                <p className="text-[13px] font-medium text-foreground">Add keyword to a group</p>
+                <a href="/settings?section=knowledge&knowledge=industry-segments" className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2">
                   Manage groups in Settings
                 </a>
               </div>
@@ -592,10 +592,10 @@ export function IndustryKeywordsDropdown({
                     if (e.key === "Escape") setOpen(false);
                   }}
                   placeholder="Short trade words, e.g. shopping bags"
-                  className="h-auto flex-1 rounded-md px-3 py-1.5 text-xs"
+                  className="h-7 flex-1 text-[13px]"
                 />
                 <Select value={targetGroupId} onValueChange={setTargetGroupId}>
-                  <SelectTrigger className="h-auto w-40 shrink-0 rounded-md px-3 py-1.5 text-xs">
+                  <SelectTrigger className="h-7 w-40 shrink-0 text-[13px]">
                     <SelectValue placeholder="Group…" />
                   </SelectTrigger>
                   <SelectContent>
@@ -609,18 +609,18 @@ export function IndustryKeywordsDropdown({
                   size="sm"
                   onClick={addKeywordToGroup}
                   disabled={!customInput.trim() || !targetGroupId || adding}
-                  className="h-auto shrink-0 gap-1 px-3 py-1.5 text-xs [&_svg]:size-3"
+                  className="shrink-0 gap-1 [&_svg]:size-3.5"
                 >
                   <Plus /> Add
                 </Button>
               </div>
               {customInput.trim().length >= 3 && (
-                <p className="mt-1.5 text-[11px] leading-tight">
+                <p className="mt-1.5 text-xs leading-tight">
                   {checking ? (
                     <span className="text-muted-foreground">Checking &ldquo;{customInput.trim()}&rdquo;…</span>
                   ) : kwCheck === null ? null : kwCheck.total >= 25 ? (
                     <span className="text-muted-foreground">
-                      <span className="font-medium text-foreground">{kwCheck.total.toLocaleString()}</span> people found worldwide. Looks good.
+                      <span className="font-medium text-foreground tabular-nums">{kwCheck.total.toLocaleString()}</span> people found worldwide. Looks good.
                     </span>
                   ) : (
                     <span className="text-destructive">
@@ -633,7 +633,7 @@ export function IndustryKeywordsDropdown({
                           <button
                             type="button"
                             onClick={() => setCustomInput(kwCheck.suggestion!.term)}
-                            className="font-mono underline underline-offset-2 font-medium"
+                            className="underline underline-offset-2 font-medium"
                           >
                             {kwCheck.suggestion.term}
                           </button>
@@ -649,13 +649,13 @@ export function IndustryKeywordsDropdown({
             </div>
 
             {/* Footer */}
-            <div className="border-t border-border px-4 py-2 flex items-center justify-end bg-secondary">
+            <div className="border-t border-border px-3 py-2 flex items-center justify-end">
               <Button
                 type="button"
                 variant="link"
                 size="sm"
                 onClick={() => setOpen(false)}
-                className="h-auto p-0 text-xs"
+                className="h-auto p-0 text-[13px]"
               >
                 Done
               </Button>
@@ -945,7 +945,7 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
 
   return (
     <div className="space-y-5">
-      <Stepper steps={APOLLO_STEPS} current={step} className="pb-4 mb-6 border-b border-border" />
+      <Stepper steps={APOLLO_STEPS} current={step} className="pb-4 mb-5 border-b border-border" />
       <form onSubmit={handleFormSubmit} className="space-y-4">
         {step === 0 && (
           <div className="space-y-4">
@@ -970,12 +970,12 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
 
         {step === 1 && (
           <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Strict cap</Label>
-              <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2.5">
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-1">
+                <Label>Strict cap</Label>
                 <p className="text-xs text-muted-foreground">Limit this import to a small, safe size (25/50/100)</p>
-                <Switch tone="success" checked={strictCap} onCheckedChange={toggleStrictCap} />
               </div>
+              <Switch tone="success" checked={strictCap} onCheckedChange={toggleStrictCap} />
             </div>
 
             <div className="space-y-1.5">
@@ -994,7 +994,7 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
                 </SelectContent>
               </Select>
               {apolloRemaining != null && apolloRemaining < maxTotalLeads && (
-                <p className="text-[11px] text-amber-500">
+                <p className="text-xs text-amber-700 dark:text-amber-300">
                   Only ~{apolloRemaining.toLocaleString()} Apollo credits remaining — the import will stop there even if you pick a higher number.
                 </p>
               )}
@@ -1021,13 +1021,13 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
               </Select>
             </div>
 
-            <p className="text-[11px] text-muted-foreground">
-              You selected <strong>{keywords.length}</strong> keyword{keywords.length === 1 ? "" : "s"}
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              You selected <strong className="font-medium text-foreground tabular-nums">{keywords.length}</strong> keyword{keywords.length === 1 ? "" : "s"}
               {keywordGroupCount !== keywords.length && (
-                <>, which search Apollo as <strong>{keywordGroupCount}</strong> distinct term{keywordGroupCount === 1 ? "" : "s"} (some labels share the same Apollo query)</>
+                <>, which search Apollo as <strong className="font-medium text-foreground tabular-nums">{keywordGroupCount}</strong> distinct term{keywordGroupCount === 1 ? "" : "s"} (some labels share the same Apollo query)</>
               )}. The{" "}
-              <strong>{maxTotalLeads.toLocaleString()}</strong> leads are split evenly between them —{" "}
-              <strong>
+              <strong className="font-medium text-foreground tabular-nums">{maxTotalLeads.toLocaleString()}</strong> leads are split evenly between them —{" "}
+              <strong className="font-medium text-foreground tabular-nums">
                 ~{effectivePerKeyword.toLocaleString()} per keyword
               </strong>
               {keywordGroupCount > 1 ? ", and whatever one keyword can't fill is passed to the others" : ""}.{" "}
@@ -1040,7 +1040,7 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
                 is the main reason an import lands short of the number typed
                 above, and a client who reads the reason afterwards has already
                 decided it is broken. */}
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs leading-relaxed text-muted-foreground">
               <span className="font-medium text-foreground">One lead per company.</span>{" "}
               You get a single contact at each company — the person most likely to
               buy, favouring purchasing and procurement roles over job titles that
@@ -1112,9 +1112,9 @@ const PLATFORM_FIELDS = [
   { key: "email",               label: "Email",           required: true,  note: "Blocks progress if unmapped" },
   // Mapped to first_name in the API payload; backend splits full names into first + last.
   { key: "first_name",          label: "Name",            required: true,  note: "Full name OK — split into first & last on import" },
-  { key: "organization_name",   label: "Company Name",    required: false, note: "" },
-  { key: "organization_domain", label: "Company Domain",  required: true,  note: "Required for Firecrawl enrichment" },
-  { key: "title",               label: "Job Title",       required: false, note: "" },
+  { key: "organization_name",   label: "Company name",    required: false, note: "" },
+  { key: "organization_domain", label: "Company domain",  required: true,  note: "Required for Firecrawl enrichment" },
+  { key: "title",               label: "Job title",       required: false, note: "" },
 ];
 
 type ParseResult = {
@@ -1262,11 +1262,11 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
   if (stage === "result") {
     return (
       <div className="space-y-4">
-        <div className="rounded-xl border border-green-500/20 bg-green-500/5 px-5 py-4 flex items-center gap-3">
-          <CheckCircle2 className="size-5 text-green-400 shrink-0" />
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center gap-3 dark:border-emerald-500/25 dark:bg-emerald-500/10">
+          <CheckCircle2 className="size-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <div>
-            <p className="font-semibold text-green-400"><span className="font-mono tabular-nums">{result?.inserted}</span> leads imported</p>
-            <p className="text-xs text-muted-foreground mt-0.5">from <span className="font-mono">{fileName}</span></p>
+            <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300"><span className="tabular-nums">{result?.inserted}</span> leads imported</p>
+            <p className="text-xs text-muted-foreground mt-0.5">from <span>{fileName}</span></p>
           </div>
         </div>
         <div className="grid grid-cols-3 gap-3">
@@ -1311,7 +1311,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
 
   return (
     <div className="space-y-4">
-      <Stepper steps={EXCEL_STEPS} current={currentStepIndex} className="pb-4 mb-6 border-b border-border" />
+      <Stepper steps={EXCEL_STEPS} current={currentStepIndex} className="pb-4 mb-5 border-b border-border" />
 
       {stage === "upload" && (
         <div className="space-y-4">
@@ -1319,10 +1319,12 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
             onClick={() => fileRef.current?.click()}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-            className="border-2 border-dashed border-border hover:border-muted-foreground rounded-xl p-12 flex flex-col items-center gap-3 cursor-pointer transition-colors"
+            className="rounded-lg border border-dashed border-border bg-card hover:bg-hover hover:border-muted-foreground/40 p-10 flex flex-col items-center gap-2 cursor-pointer transition-colors"
           >
-            <Upload className="size-8 text-muted-foreground/50" />
-            <p className="font-medium text-sm">Click or drag to upload</p>
+            <div className="grid size-10 place-items-center rounded-lg border border-border bg-field text-muted-foreground shadow-sm">
+              <Upload className="size-[18px]" />
+            </div>
+            <p className="font-medium text-sm mt-1">Click or drag to upload</p>
             <p className="text-xs text-muted-foreground">.xlsx or .csv · any column layout supported</p>
             {/* eslint-disable-next-line no-restricted-syntax -- hidden file picker; the visible control is the Button beside it */}
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
@@ -1337,11 +1339,11 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
 
       {(stage === "map" || stage === "batch" || stage === "assign") && (
         <form className="space-y-4" onSubmit={handleFormSubmit}>
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-secondary px-4 py-3">
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5">
             <FileText className="size-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="font-mono text-sm font-medium truncate">{fileName}</p>
-              <p className="font-mono text-xs text-muted-foreground tabular-nums">{rows.length} rows · {headers.length} columns detected</p>
+              <p className="text-[13px] font-medium truncate">{fileName}</p>
+              <p className="text-xs text-muted-foreground tabular-nums">{rows.length} rows · {headers.length} columns detected</p>
             </div>
             <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setShowRawPreview(true)}>View</Button>
             <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={reset}>Change</Button>
@@ -1349,17 +1351,17 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
 
           {stage === "map" && (
             <>
-              <div className="space-y-3">
-                <p className="eyebrow">Column mapping</p>
-                <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <p className="text-[13px] font-medium text-foreground">Column mapping</p>
+                <div className="rounded-lg border border-border bg-card divide-y divide-border">
                   {PLATFORM_FIELDS.map((pf) => {
                     const mapped = mapping[pf.key];
                     const isName = pf.key === "first_name";
                     return (
-                      <div key={pf.key} className="grid grid-cols-2 items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5">
+                      <div key={pf.key} className="grid grid-cols-2 items-center gap-3 px-3 py-2">
                         <div>
-                          <span className="text-sm">{pf.label}{pf.required && <span className="text-destructive ml-1 text-xs">*</span>}</span>
-                          {pf.note && <p className="text-[10px] text-muted-foreground/60 mt-0.5">{pf.note}</p>}
+                          <span className="text-[13px] font-medium">{pf.label}{pf.required && <span className="text-destructive ml-1 text-xs">*</span>}</span>
+                          {pf.note && <p className="text-xs text-muted-foreground mt-0.5">{pf.note}</p>}
                         </div>
                         <Select
                           value={mapped || "__none"}
@@ -1376,7 +1378,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
                             });
                           }}
                         >
-                          <SelectTrigger className="h-8 text-xs">
+                          <SelectTrigger className="text-[13px]">
                             <SelectValue placeholder="Not mapped" />
                           </SelectTrigger>
                           <SelectContent>
@@ -1393,14 +1395,14 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
               <div className="space-y-1.5">
                 {!emailMapped && <div className="flex items-center gap-2 text-xs text-destructive rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2"><AlertCircle className="size-3.5 shrink-0" />Email column must be mapped before importing</div>}
                 {emailMapped && !nameMapped && <div className="flex items-center gap-2 text-xs text-destructive rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2"><AlertCircle className="size-3.5 shrink-0" />Name column must be mapped before importing</div>}
-                {emailMapped && nameMapped && !domainMapped && <div className="flex items-center gap-2 text-xs text-destructive rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2"><AlertCircle className="size-3.5 shrink-0" />Company Domain must be mapped before importing</div>}
+                {emailMapped && nameMapped && !domainMapped && <div className="flex items-center gap-2 text-xs text-destructive rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2"><AlertCircle className="size-3.5 shrink-0" />Company domain must be mapped before importing</div>}
                 {fileError && <div className="flex items-center gap-2 text-xs text-destructive rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2"><AlertCircle className="size-3.5 shrink-0" />{fileError}</div>}
               </div>
 
               <div className="flex items-center justify-between gap-3 pt-2">
                 <p className="text-xs text-muted-foreground">{rows.length} rows detected</p>
                 <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={reset}>Back</Button>
+                  <Button type="button" variant="outline" onClick={reset}>Back</Button>
                   <Button type="submit" disabled={!emailMapped || !nameMapped || !domainMapped}>
                     Continue
                   </Button>
@@ -1424,7 +1426,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
               <div className="flex items-center justify-between gap-3 pt-2">
                 <p className="text-xs text-muted-foreground">{rows.length} rows will be processed</p>
                 <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => setStage("map")}>Back</Button>
+                  <Button type="button" variant="outline" onClick={() => setStage("map")}>Back</Button>
                   <Button type="submit">
                     Continue
                   </Button>
@@ -1453,9 +1455,9 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
               <div className="flex items-center justify-between gap-3 pt-2">
                 <p className="text-xs text-muted-foreground">{rows.length} rows will be processed</p>
                 <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => setStage("batch")}>Back</Button>
+                  <Button type="button" variant="outline" onClick={() => setStage("batch")}>Back</Button>
                   <Button type="submit" disabled={importing}>
-                    Preview & Import
+                    Preview & import
                   </Button>
                 </div>
               </div>
@@ -1476,27 +1478,27 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
       )}
 
       <Dialog open={showRawPreview} onOpenChange={setShowRawPreview}>
-        <DialogContent className="max-w-5xl w-full p-0 gap-0 flex flex-col max-h-[85vh]">
-          <DialogHeader className="px-5 py-4 border-b border-border shrink-0">
-            <DialogTitle className="font-mono text-sm font-semibold">{fileName}</DialogTitle>
-            <p className="font-mono text-xs text-muted-foreground mt-0.5 tabular-nums">{rows.length} rows · {headers.length} columns</p>
+        <DialogContent className="max-w-5xl w-full rounded-lg p-0 gap-0 flex flex-col max-h-[85vh]">
+          <DialogHeader className="px-5 py-3.5 border-b border-border shrink-0 text-left">
+            <DialogTitle>{fileName}</DialogTitle>
+            <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">{rows.length} rows · {headers.length} columns</p>
           </DialogHeader>
           <div className="flex-1 overflow-auto min-h-0">
-            <table className="text-xs border-collapse min-w-max w-full">
-              <thead className="sticky top-0 bg-secondary backdrop-blur-sm z-10">
+            <table className="text-[13px] border-collapse min-w-max w-full">
+              <thead className="sticky top-0 bg-popover z-10">
                 <tr>
-                  <th className="px-3 py-2 text-left font-mono font-semibold uppercase tracking-wider text-muted-foreground border-b border-border w-10">#</th>
+                  <th className="h-8 px-3 text-left text-xs font-medium text-muted-foreground border-b border-border w-10">#</th>
                   {headers.map((h) => (
-                    <th key={h} className="px-3 py-2 text-left font-mono font-semibold uppercase tracking-wider text-muted-foreground border-b border-border whitespace-nowrap">{h}</th>
+                    <th key={h} className="h-8 px-3 text-left text-xs font-medium text-muted-foreground border-b border-border whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row, i) => (
-                  <tr key={i} className="border-b border-border/50 hover:bg-secondary transition-colors">
-                    <td className="px-3 py-2 font-mono text-muted-foreground/60 tabular-nums">{i + 1}</td>
+                  <tr key={i} className="border-b border-border hover:bg-hover transition-colors">
+                    <td className="px-3 py-2 text-muted-foreground tabular-nums">{i + 1}</td>
                     {headers.map((h) => (
-                      <td key={h} className="px-3 py-2 font-mono text-foreground/80 max-w-[200px] truncate whitespace-nowrap" title={String(row[h] ?? "")}>
+                      <td key={h} className="px-3 py-2 text-foreground/80 max-w-[200px] truncate whitespace-nowrap" title={String(row[h] ?? "")}>
                         {String(row[h] ?? "") || <span className="text-muted-foreground/40">—</span>}
                       </td>
                     ))}
@@ -1661,11 +1663,11 @@ export function ManualForm({ onImport, prefillOrg, prefillLeads, editMode = fals
       className="space-y-6"
       onSubmit={handleFormSubmit}
     >
-      <Stepper steps={MANUAL_STEPS} current={step} className="pb-4 mb-6 border-b border-border" />
+      <Stepper steps={MANUAL_STEPS} current={step} className="pb-4 mb-5 border-b border-border" />
 
       {step === 0 && (
         <div className="space-y-4">
-          <p className="eyebrow">Organization</p>
+          <p className="text-[15px] font-semibold text-foreground">Organization</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>Organization name <span className="text-destructive">*</span></Label>
@@ -1673,8 +1675,8 @@ export function ManualForm({ onImport, prefillOrg, prefillLeads, editMode = fals
             </div>
             <div className="space-y-1.5">
               <Label>Company website / domain <span className="text-destructive">*</span></Label>
-              <Input className="font-mono" value={org.domain} onChange={(e) => setOrg((o) => ({ ...o, domain: e.target.value }))} placeholder="acmeplastics.com" />
-              <p className="text-[10px] text-muted-foreground/60">Used for Firecrawl enrichment</p>
+              <Input value={org.domain} onChange={(e) => setOrg((o) => ({ ...o, domain: e.target.value }))} placeholder="acmeplastics.com" />
+              <p className="text-xs text-muted-foreground">Used for Firecrawl enrichment</p>
             </div>
             <div className="space-y-1.5">
               <Label>Industry</Label>
@@ -1690,7 +1692,7 @@ export function ManualForm({ onImport, prefillOrg, prefillLeads, editMode = fals
 
       {step === 1 && (
         <div className="space-y-4">
-          <p className="eyebrow">People</p>
+          <p className="text-[15px] font-semibold text-foreground">People</p>
           {leads.map((lead, index) => (
             <div key={index} className={cn("space-y-3 relative rounded-lg border border-border bg-card p-4", index > 0 && "mt-3")}>
               {leads.length > 1 && (
@@ -1699,7 +1701,7 @@ export function ManualForm({ onImport, prefillOrg, prefillLeads, editMode = fals
                   variant="ghost"
                   size="icon"
                   onClick={() => removeLead(index)}
-                  className="absolute top-2 right-2 size-6 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                  className="absolute top-2 right-2 size-6 text-muted-foreground hover:bg-hover hover:text-foreground"
                   aria-label="Remove lead"
                 >
                   <X className="size-4" />
@@ -1716,7 +1718,7 @@ export function ManualForm({ onImport, prefillOrg, prefillLeads, editMode = fals
                 </div>
                 <div className="space-y-1.5">
                   <Label>Email <span className="text-destructive">*</span></Label>
-                  <Input className="font-mono" type="email" value={lead.email} onChange={(e) => updateLead(index, "email", e.target.value)} placeholder="raj@company.com" />
+                  <Input type="email" value={lead.email} onChange={(e) => updateLead(index, "email", e.target.value)} placeholder="raj@company.com" />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Job title</Label>
@@ -1748,10 +1750,10 @@ export function ManualForm({ onImport, prefillOrg, prefillLeads, editMode = fals
       <div className="flex items-center justify-between pt-2">
         <Button type="button" variant="outline" onClick={goBack} disabled={step === 0}>Back</Button>
         <Button type="submit" disabled={saving}>
-          {isLastStep ? (saving ? "Saving…" : editMode ? "Save changes" : "Preview & Save") : "Continue"}
+          {isLastStep ? (saving ? "Saving…" : editMode ? "Save changes" : "Preview & save") : "Continue"}
         </Button>
       </div>
-      {saved && <p className="text-sm text-green-400">Saved successfully.</p>}
+      {saved && <p className="text-sm text-emerald-600 dark:text-emerald-400">Saved successfully.</p>}
 
       {showConfirm && (
         <BatchConfirmModal

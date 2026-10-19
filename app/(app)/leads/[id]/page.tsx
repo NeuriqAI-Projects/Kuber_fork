@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Building2, Globe2, Mail, Megaphone, Target, User } from "lucide-react";
+import { Building2, CalendarDays, Globe2, LayoutGrid, Mail, Megaphone, Target, User, Users, Zap } from "lucide-react";
 import { isAppUser } from "@/lib/auth/roles";
 import { supabase } from "@/lib/supabase";
 import { useCached, cacheKeys, cachedFetchers } from "@/lib/api-client";
@@ -11,26 +11,15 @@ import { useApp } from "@/lib/app-context";
 import type { Lead } from "@/lib/leads";
 import { Avatar, PipelineStepper, ScoreBadge, StatusBadge } from "@/components/leads/lead-ui";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { RecordLayout, RecordHeader, DetailSection, DetailRow } from "@/components/ui/record-layout";
+import { SegmentedTabs } from "@/components/ui/segmented-tabs";
+import { RecordSkeleton } from "@/components/app/page-skeletons";
 
-function DetailRow({
-  icon: Icon,
-  label,
-  children,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-card p-5 space-y-2">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-        <Icon className="size-3.5" />
-        {label}
-      </div>
-      <div className="text-sm leading-relaxed">{children}</div>
-    </div>
-  );
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
 export default function LeadDetailPage() {
@@ -64,102 +53,102 @@ export default function LeadDetailPage() {
     return () => { mounted = false; };
   }, [leadId, router]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-xs font-mono text-muted-foreground tracking-widest uppercase">Loading lead...</p>
-      </div>
-    );
-  }
+  if (loading) return <RecordSkeleton />;
 
   if (error || !lead) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-8">
-        <p className="text-lg font-semibold">{error || "Lead not found"}</p>
-        <Button variant="outline" asChild>
-          <Link href="/leads">Back to leads</Link>
-        </Button>
+      <div className="flex h-full flex-col">
+        <PageHeader crumbs={[{ icon: <Users />, label: "Leads", href: "/leads" }, { label: "Lead" }]} />
+        <EmptyState boxed={false} icon={User} title={error || "Lead not found"} message="It may have been deleted, or you may not have access to it." className="flex-1">
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/leads">Back to leads</Link>
+          </Button>
+        </EmptyState>
       </div>
     );
   }
 
+  const fullName = `${lead.firstName} ${lead.lastName}`.trim();
+
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-3xl mx-auto p-8 space-y-8">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" className="gap-1.5 -ml-2" asChild>
-            <Link href="/leads">
-              <ArrowLeft className="size-3.5" />
-              Back
-            </Link>
-          </Button>
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex items-start gap-4">
-            <Avatar name={`${lead.firstName} ${lead.lastName}`} size="lg" />
-            <div className="min-w-0 flex-1 space-y-2">
-              <p className="text-sm text-muted-foreground">{lead.company}</p>
-              <h1 className="text-2xl font-bold break-all">{lead.email}</h1>
-              <p className="text-sm text-muted-foreground">
-                {lead.firstName} {lead.lastName} · {lead.jobTitle}
-              </p>
-              <div className="flex flex-wrap items-center gap-2 pt-1">
+    <div className="flex h-full flex-col">
+      <PageHeader crumbs={[{ icon: <Users />, label: "Leads", href: "/leads" }, { label: fullName || lead.email || "Lead" }]} />
+      <RecordLayout
+        header={
+          <RecordHeader
+            avatar={<Avatar name={fullName} size="md" />}
+            title={fullName || lead.email}
+            subtitle={[lead.jobTitle, lead.company].filter(Boolean).join(" · ") || undefined}
+            badges={
+              <>
                 <StatusBadge status={lead.status} />
-                <ScoreBadge score={lead.score} />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <Separator />
-
-        <div className="grid gap-4">
-          {lead.companyDescription && (
-            <DetailRow icon={Building2} label="What the company does">
-              {lead.companyDescription}
-            </DetailRow>
-          )}
-
-          <div className="grid sm:grid-cols-2 gap-4">
-            <DetailRow icon={Globe2} label="Fetched from">
-              <span className="font-medium">{lead.source}</span>
-              <p className="text-xs text-muted-foreground mt-1">Added {lead.createdAt}</p>
-            </DetailRow>
-
-            <DetailRow icon={Megaphone} label="Campaign">
-              {lead.campaign ? (
-                <span className="font-medium">{lead.campaign}</span>
-              ) : (
-                <span className="text-muted-foreground">Not assigned to any campaign</span>
-              )}
-            </DetailRow>
-          </div>
-
-          <DetailRow icon={User} label="Lead status">
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
+                {lead.score !== "—" && <ScoreBadge score={lead.score} />}
+              </>
+            }
+          />
+        }
+        tabs={
+          <SegmentedTabs
+            variant="underline"
+            value="overview"
+            onValueChange={() => {}}
+            options={[{ value: "overview", label: "Overview", icon: LayoutGrid }]}
+          />
+        }
+        details={
+          <>
+            <DetailSection title="Record details">
+              <DetailRow icon={<Zap />} label="Status"><StatusBadge status={lead.status} /></DetailRow>
+              <DetailRow icon={<Mail />} label="Email"><span title={lead.email}>{lead.email || "—"}</span></DetailRow>
+              <DetailRow icon={<Globe2 />} label="Domain"><span title={lead.domain}>{lead.domain || "—"}</span></DetailRow>
+              <DetailRow icon={<Building2 />} label="Organization"><span title={lead.company}>{lead.company || "—"}</span></DetailRow>
+              <DetailRow icon={<Megaphone />} label="Campaign">
+                {lead.campaign ? <span title={lead.campaign}>{lead.campaign}</span> : <span className="text-muted-foreground">Not assigned to any campaign</span>}
+              </DetailRow>
+              <DetailRow icon={<Globe2 />} label="Fetched from">{lead.source}</DetailRow>
+              <DetailRow icon={<CalendarDays />} label="Added"><span className="tabular-nums">{formatDate(lead.createdAt)}</span></DetailRow>
+            </DetailSection>
+          </>
+        }
+      >
+        <div className="max-w-3xl space-y-6">
+          <section>
+            <h3 className="pb-3 text-[15px] font-semibold">Lead status</h3>
+            <div className="rounded-lg border border-border bg-card p-4">
+              <div className="mb-4 flex items-center gap-2">
                 <StatusBadge status={lead.status} />
                 <span className="text-xs text-muted-foreground">Current pipeline stage</span>
               </div>
               <PipelineStepper currentStatus={lead.status} />
             </div>
-          </DetailRow>
+          </section>
 
-          <DetailRow icon={Mail} label="Contact">
-            <div className="space-y-2">
-              <p><span className="text-muted-foreground">Email:</span> {lead.email}</p>
-              <p><span className="text-muted-foreground">Domain:</span> {lead.domain || "—"}</p>
-            </div>
-          </DetailRow>
+          {lead.companyDescription && (
+            <section>
+              <h3 className="flex items-center gap-1.5 pb-2 text-[15px] font-semibold"><Building2 className="size-4 text-muted-foreground" />What the company does</h3>
+              <p className="text-sm leading-relaxed">{lead.companyDescription}</p>
+            </section>
+          )}
 
           {lead.sellsTo && (
-            <DetailRow icon={Target} label="Who they sell to">
-              {lead.sellsTo}
-            </DetailRow>
+            <section>
+              <h3 className="flex items-center gap-1.5 pb-2 text-[15px] font-semibold"><Target className="size-4 text-muted-foreground" />Who they sell to</h3>
+              <p className="text-sm leading-relaxed">{lead.sellsTo}</p>
+            </section>
           )}
+
+          {/* Below lg the Details rail is hidden — keep the contact facts reachable. */}
+          <section className="lg:hidden">
+            <h3 className="pb-2 text-[15px] font-semibold">Contact</h3>
+            <div className="space-y-1 text-[13px]">
+              <p><span className="text-muted-foreground">Email:</span> {lead.email}</p>
+              <p><span className="text-muted-foreground">Domain:</span> {lead.domain || "—"}</p>
+              <p><span className="text-muted-foreground">Fetched from:</span> {lead.source} · added {formatDate(lead.createdAt)}</p>
+              <p><span className="text-muted-foreground">Campaign:</span> {lead.campaign || "Not assigned to any campaign"}</p>
+            </div>
+          </section>
         </div>
-      </div>
+      </RecordLayout>
     </div>
   );
 }

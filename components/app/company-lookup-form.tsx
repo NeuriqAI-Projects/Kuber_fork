@@ -82,7 +82,7 @@ function LookupPaginationBar({
             onPageChange(1);
           }}
         >
-          <SelectTrigger className="h-8 w-20 text-xs" id={id}>
+          <SelectTrigger className="w-20 text-[13px]" id={id}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent align="start">
@@ -96,7 +96,7 @@ function LookupPaginationBar({
       </Field>
       {middle}
       <div className="flex items-center gap-3">
-        <span className="font-mono text-xs text-muted-foreground tabular-nums">
+        <span className="text-xs text-muted-foreground tabular-nums">
           Page {safePage} of {totalPages}
         </span>
         <Pagination className="mx-0 w-auto">
@@ -123,26 +123,26 @@ function LookupPaginationBar({
 /** Mirrors the company results table so loading does not jump once data arrives. */
 function CompanyTableSkeleton({ rows = 8 }: { rows?: number }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-field dark:bg-card" aria-busy="true" aria-label="Loading companies">
-      <table className="w-full text-xs">
-        <thead className="bg-secondary text-muted-foreground">
+    <div className="overflow-hidden rounded-lg border border-border bg-card" aria-busy="true" aria-label="Loading companies">
+      <table className="w-full text-[13px]">
+        <thead className="text-xs text-muted-foreground">
           <tr>
-            <th className="px-3 py-2 text-left font-medium">Company</th>
-            <th className="px-3 py-2 text-right font-medium">Founded</th>
-            <th className="px-3 py-2 text-left font-medium">Website</th>
+            <th className="h-8 border-b border-border px-3 text-left font-medium">Company</th>
+            <th className="h-8 border-b border-border px-3 text-right font-medium">Founded</th>
+            <th className="h-8 border-b border-border px-3 text-left font-medium">Website</th>
           </tr>
         </thead>
         <tbody>
           {Array.from({ length: rows }).map((_, i) => (
-            <tr key={i} className="border-t border-border">
-              <td className="px-3 py-2.5">
+            <tr key={i} className="border-t border-border first:border-t-0">
+              <td className="px-3 py-2">
                 <div className="flex items-center gap-2">
                   <Skeleton className="size-7 rounded-md" />
                   <Skeleton className="h-3.5 w-36" />
                 </div>
               </td>
-              <td className="px-3 py-2.5"><Skeleton className="ml-auto h-3.5 w-10" /></td>
-              <td className="px-3 py-2.5"><Skeleton className="h-3.5 w-28" /></td>
+              <td className="px-3 py-2"><Skeleton className="ml-auto h-3.5 w-10" /></td>
+              <td className="px-3 py-2"><Skeleton className="h-3.5 w-28" /></td>
             </tr>
           ))}
         </tbody>
@@ -154,11 +154,11 @@ function CompanyTableSkeleton({ rows = 8 }: { rows?: number }) {
 /** Mirrors the people checklist rows. */
 function PeopleListSkeleton({ rows = 8 }: { rows?: number }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-field dark:bg-card" aria-busy="true" aria-label="Loading people">
+    <div className="overflow-hidden rounded-lg border border-border bg-card" aria-busy="true" aria-label="Loading people">
       {Array.from({ length: rows }).map((_, i) => (
         <div
           key={i}
-          className="flex items-center gap-3 border-b border-border px-3 py-2.5 last:border-b-0"
+          className="flex items-center gap-3 border-b border-border px-3 py-2 last:border-b-0"
         >
           <Skeleton className="size-8 shrink-0 rounded-full" />
           <div className="min-w-0 flex-1 space-y-1.5">
@@ -248,7 +248,7 @@ function CompanyWebsiteLink({ company }: { company: Company }) {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="block max-w-60 truncate font-medium text-blue-500 hover:text-blue-600 hover:underline"
+      className="block max-w-60 truncate text-primary hover:underline"
       title={label}
       onClick={(e) => e.stopPropagation()}
     >
@@ -315,7 +315,7 @@ function CompanySocialLinks({ company }: { company: Company }) {
           rel="noopener noreferrer"
           title={l.label}
           aria-label={l.label}
-          className="flex size-6 items-center justify-center rounded-full border border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-primary"
+          className="flex size-6 items-center justify-center rounded-md border border-border bg-field text-muted-foreground transition-colors hover:bg-hover hover:text-foreground"
           onClick={(e) => e.stopPropagation()}
         >
           <l.icon className="size-3.5" aria-hidden />
@@ -329,8 +329,8 @@ function DetailFact({ label, value }: { label: string; value: ReactNode }) {
   if (value == null || value === "") return null;
   return (
     <div className="min-w-0">
-      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-0.5 truncate text-xs text-foreground">{value}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-0.5 truncate text-[13px] text-foreground">{value}</p>
     </div>
   );
 }
@@ -355,7 +355,7 @@ function CompanyPreview({ company, actions }: { company: Company; actions?: Reac
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <DetailFact label="Founded" value={company.founded_year} />
       <DetailFact label="Domain" value={company.domain} />
-      <p className="sm:col-span-2 lg:col-span-2 text-[11px] leading-relaxed text-muted-foreground">
+      <p className="sm:col-span-2 lg:col-span-2 text-xs leading-relaxed text-muted-foreground">
         Apollo does not return location, staff count or industry when searching for
         companies by name. They fill in on their own once this company is imported.
       </p>
@@ -364,7 +364,7 @@ function CompanyPreview({ company, actions }: { company: Company; actions?: Reac
           <div className="min-w-0">
             {socials.length > 0 && (
               <>
-                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Also on</p>
+                <p className="text-xs text-muted-foreground">Also on</p>
                 <div className="mt-1">
                   <CompanySocialLinks company={company} />
                 </div>
@@ -375,12 +375,12 @@ function CompanyPreview({ company, actions }: { company: Company; actions?: Reac
         </div>
       )}
       {!hasFacts && (
-        <p className="sm:col-span-2 lg:col-span-4 text-[11px] text-muted-foreground">
+        <p className="sm:col-span-2 lg:col-span-4 text-xs text-muted-foreground">
           No extra details from Apollo for this company.
         </p>
       )}
       {company.already_in_system && (
-        <p className="sm:col-span-2 lg:col-span-4 text-[11px] text-muted-foreground">
+        <p className="sm:col-span-2 lg:col-span-4 text-xs text-muted-foreground">
           Already tracked — Company Lookup only adds companies that are not yet in the system.
         </p>
       )}
@@ -470,7 +470,6 @@ function DateField({ value, onChange }: { value: string; onChange: (v: string) =
       date={parseYmd(value)}
       onChangeDate={(d) => onChange(d ? format(d, "yyyy-MM-dd") : "")}
       displayFormat="MMM d, yyyy"
-      size="sm"
       showQuickActions
     />
   );
@@ -516,17 +515,17 @@ export function CompanyAdvancedSearch({ value, onChange, omit = [] }: {
       <button
         type="button"
         onClick={() => setAdvancedOpen((o) => !o)}
-        className="flex w-full items-center justify-between py-1.5 text-left"
+        className="flex w-full items-center justify-between rounded-md py-1.5 text-left"
       >
-        <span className="text-xs font-medium">
+        <span className="text-[13px] font-medium text-foreground">
           Advanced search
           {activeAdvanced.length > 0 && (
-            <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+            <span className="ml-2 rounded-[5px] bg-primary/10 px-1.5 py-[3px] text-[11px] font-medium tabular-nums text-primary">
               {activeAdvanced.length} active
             </span>
           )}
         </span>
-        <ChevronDown className={cn("size-3.5 text-muted-foreground transition-transform", advancedOpen && "rotate-180")} />
+        <ChevronDown className={cn("size-3.5 text-muted-foreground", advancedOpen && "rotate-180")} />
       </button>
 
       {/* Active filters stay visible when collapsed — results must never be
@@ -538,7 +537,7 @@ export function CompanyAdvancedSearch({ value, onChange, omit = [] }: {
               key={k}
               type="button"
               onClick={() => onChange({ ...value, [k]: "" })}
-              className="rounded border border-border bg-field px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+              className="rounded-[5px] border border-border bg-secondary px-1.5 py-[3px] text-xs text-muted-foreground hover:bg-hover hover:text-foreground"
               title="Remove filter"
             >
               {k}: {v} ✕
@@ -551,8 +550,8 @@ export function CompanyAdvancedSearch({ value, onChange, omit = [] }: {
         <div className="space-y-3 border-t border-border pt-3 pb-1">
           {groups.map((g) => (
             <div key={g.group} className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{g.group}</p>
-              <div className="grid grid-cols-2 gap-2">
+              <p className="text-[13px] font-medium text-foreground">{g.group}</p>
+              <div className="grid grid-cols-2 gap-3">
                 {g.fields.map((f) => (
                   f.kind === "locations" ? (
                     <div key={f.key} className="col-span-2">
@@ -562,14 +561,14 @@ export function CompanyAdvancedSearch({ value, onChange, omit = [] }: {
                         placeholder={f.placeholder ?? "Select countries…"}
                         selected={csvToList(value[f.key])}
                         onChangeSelected={(v) => onChange({ ...value, [f.key]: v.join(", ") })}
-                        labelClassName="text-[11px] font-normal text-muted-foreground"
-                        triggerClassName="h-8 text-xs"
+                        labelClassName="text-[13px] font-medium text-foreground"
+                        triggerClassName="h-8 text-sm"
                       />
                     </div>
                   ) : f.kind === "date" ? (
                     <div key={f.key} className="space-y-1">
                       <div className="flex items-center gap-0.5">
-                        <Label className="text-[11px] font-normal text-muted-foreground">{f.label}</Label>
+                        <Label>{f.label}</Label>
                         <InfoTip side="right" text={f.tip} />
                       </div>
                       <DateField
@@ -580,7 +579,7 @@ export function CompanyAdvancedSearch({ value, onChange, omit = [] }: {
                   ) : (
                     <div key={f.key} className="space-y-1">
                       <div className="flex items-center gap-0.5">
-                        <Label className="text-[11px] font-normal text-muted-foreground">{f.label}</Label>
+                        <Label>{f.label}</Label>
                         <InfoTip side="right" text={f.tip} />
                       </div>
                       <Input
@@ -588,7 +587,6 @@ export function CompanyAdvancedSearch({ value, onChange, omit = [] }: {
                         onChange={(e) => onChange({ ...value, [f.key]: e.target.value })}
                         placeholder={f.placeholder}
                         type={f.kind === "num" ? "number" : "text"}
-                        className="h-8 text-xs"
                       />
                     </div>
                   )
@@ -596,7 +594,7 @@ export function CompanyAdvancedSearch({ value, onChange, omit = [] }: {
               </div>
             </div>
           ))}
-          <p className="text-[10px] text-muted-foreground">Separate multiple values with commas. Location filters use the country picker. Filters change which companies come back — they don&apos;t change the cost.</p>
+          <p className="text-xs text-muted-foreground">Separate multiple values with commas. Location filters use the country picker. Filters change which companies come back — they don&apos;t change the cost.</p>
         </div>
       )}
     </div>
@@ -972,11 +970,11 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
 
   return (
     <div className="space-y-5">
-      <Stepper steps={STEPS} current={step} className="pb-4 mb-6 border-b border-border" />
+      <Stepper steps={STEPS} current={step} className="pb-4 mb-5 border-b border-border" />
 
       {mock && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-600 dark:text-amber-400">
-          <strong>Test mode</strong> — this workspace runs Company Lookup against sample data. No Apollo
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
+          <strong className="font-semibold">Test mode</strong> — this workspace runs Company Lookup against sample data. No Apollo
           credits are spent, and imported contacts carry placeholder emails rather than real ones.
         </div>
       )}
@@ -1013,13 +1011,13 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
           <CompanyAdvancedSearch value={advanced} onChange={setAdvanced} />
 
           {cached && cached.criteria === criteria && cached.companies.length > 0 ? (
-            <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
-              You already searched this — <strong>{cached.companies.length}</strong> companies are saved.
+            <p className="text-xs text-emerald-700 dark:text-emerald-300">
+              You already searched this — <strong className="font-semibold tabular-nums">{cached.companies.length}</strong> companies are saved.
               Searching again reuses them and costs nothing.
             </p>
           ) : (
-            <p className="text-[11px] text-amber-500">
-              Searching costs <strong>1 Apollo credit</strong> per page of up to 100 companies. A search that matches nothing costs nothing.
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              Searching costs <strong className="font-semibold">1 Apollo credit</strong> per page of up to 100 companies. A search that matches nothing costs nothing.
             </p>
           )}
         </div>
@@ -1035,15 +1033,15 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
             </>
           ) : (
             <>
-              <p className="text-[11px] text-muted-foreground">
-                Showing <strong>{visibleCompanies.length === 0 ? 0 : companyStart + 1}–{companyStart + visibleCompanies.length}</strong> of{" "}
-                <strong>{companies.length}</strong> retrieved · <strong>{totalEntries.toLocaleString()}</strong> match in Apollo ·{" "}
-                <strong>{creditsSpent}</strong> credit{creditsSpent === 1 ? "" : "s"} spent
+              <p className="text-xs text-muted-foreground tabular-nums">
+                Showing <strong className="font-medium text-foreground">{visibleCompanies.length === 0 ? 0 : companyStart + 1}–{companyStart + visibleCompanies.length}</strong> of{" "}
+                <strong className="font-medium text-foreground">{companies.length}</strong> retrieved · <strong className="font-medium text-foreground">{totalEntries.toLocaleString()}</strong> match in Apollo ·{" "}
+                <strong className="font-medium text-foreground">{creditsSpent}</strong> credit{creditsSpent === 1 ? "" : "s"} spent
                 {" "}· click a row for details, then select it below
               </p>
 
               {companies.length === 0 ? (
-                <div className="rounded-lg border border-border bg-secondary px-4 py-6 text-center">
+                <div className="rounded-lg border border-border bg-card px-4 py-8 text-center">
                   <Building2 className="mx-auto mb-2 size-5 text-muted-foreground" />
                   <p className="text-sm font-medium">No companies matched</p>
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -1053,18 +1051,18 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                 </div>
               ) : (
                 <>
-                  <div className="overflow-hidden rounded-lg border border-border bg-field dark:bg-card">
-                    <table className="w-full text-xs">
+                  <div className="overflow-hidden rounded-lg border border-border bg-card">
+                    <table className="w-full text-[13px]">
                       {/* Columns are limited to what Apollo's Organization Search
                           actually returns. Location and staff count are NOT in that
                           response — they only arrive with the paid reveal after
                           import — so showing them here rendered a dash on every row
                           of every search. See CompanyPreview for the full note. */}
-                      <thead className="bg-secondary text-muted-foreground">
+                      <thead className="text-xs text-muted-foreground">
                         <tr>
-                          <th className="px-3 py-2 text-left font-medium">Company</th>
-                          <th className="px-3 py-2 text-right font-medium">Founded</th>
-                          <th className="px-3 py-2 text-left font-medium">Website</th>
+                          <th className="h-8 border-b border-border px-3 text-left font-medium">Company</th>
+                          <th className="h-8 border-b border-border px-3 text-right font-medium">Founded</th>
+                          <th className="h-8 border-b border-border px-3 text-left font-medium">Website</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1075,31 +1073,31 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                             <Fragment key={c.apollo_org_id}>
                             <tr
                               className={cn(
-                                "border-t border-border transition-colors cursor-pointer",
-                                open ? "bg-secondary" : "hover:bg-secondary",
+                                "border-t border-border first:border-t-0 transition-colors cursor-pointer",
+                                open ? "bg-hover" : "hover:bg-hover",
                                 c.already_in_system && "opacity-60",
                               )}
                               title={`View details for ${c.name ?? "company"}`}
                               aria-expanded={open}
                               onClick={() => setPreviewId(open ? null : c.apollo_org_id)}
                             >
-                              <td className="px-3 py-2.5">
+                              <td className="px-3 py-1.5">
                                 <div className="flex min-w-0 items-center gap-2">
                                   <CompanyLogo src={c.logo_url} name={c.name} />
                                   <span className="min-w-0">
                                     <span className="font-medium">{c.name ?? "—"}</span>
                                     {c.already_in_system && (
-                                      <span className="ml-2 rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                      <span className="ml-2 rounded-[5px] bg-secondary px-1.5 py-[3px] text-[11px] text-muted-foreground">
                                         Already in system
                                       </span>
                                     )}
                                   </span>
                                 </div>
                               </td>
-                              <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
+                              <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
                                 {c.founded_year ?? "—"}
                               </td>
-                              <td className="px-3 py-2.5">
+                              <td className="px-3 py-1.5">
                                 <CompanyWebsiteLink company={c} />
                               </td>
                             </tr>
@@ -1109,15 +1107,12 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                                   <CompanyPreview
                                     company={c}
                                     actions={
-                                      <button
+                                      <Button
                                         type="button"
+                                        size="sm"
+                                        variant={c.already_in_system ? "secondary" : "default"}
                                         disabled={unavailable}
-                                        className={cn(
-                                          "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium",
-                                          c.already_in_system
-                                            ? "bg-secondary text-muted-foreground/40"
-                                            : "bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground",
-                                        )}
+                                        className="shrink-0 gap-1"
                                         title={c.already_in_system ? "Already in system" : `Select ${c.name ?? "company"}`}
                                         aria-label={c.already_in_system ? "Unavailable" : `Select ${c.name ?? "company"}`}
                                         onClick={(e) => {
@@ -1127,7 +1122,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                                       >
                                         {c.already_in_system ? "Already in system" : "Select company"}
                                         <ChevronRight className="size-3.5" aria-hidden />
-                                      </button>
+                                      </Button>
                                     }
                                   />
                                 </td>
@@ -1160,9 +1155,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                         <Button
                           type="button"
                           variant="outline"
-                          size="sm"
                           disabled={busy}
-                          className="h-8 text-xs bg-field"
                           onClick={() => {
                             if (confirm("Fetch 100 more companies from Apollo? This costs 1 credit.")) {
                               void runSearch(apolloPage + 1);
@@ -1175,7 +1168,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                     }
                   />
                   {!canBuyMorePages && companies.length < totalEntries && (
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       Page limit reached for this search. Narrow it with a country, website or Advanced filter instead.
                     </p>
                   )}
@@ -1190,13 +1183,13 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
       {step === 2 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-[11px] text-muted-foreground">
-              People at <strong>{selectedCompany?.name}</strong> · listing is free
+            <p className="text-xs text-muted-foreground">
+              People at <strong className="font-medium text-foreground">{selectedCompany?.name}</strong> · listing is free
             </p>
             {loadingList === "people" ? (
               <Skeleton className="h-3.5 w-16" />
             ) : (
-              <span className={cn("text-xs font-medium", atPickLimit && "text-primary")}>
+              <span className={cn("text-xs font-medium tabular-nums", atPickLimit && "text-primary")}>
                 {picked.length} / {COMPANY_LOOKUP_MAX_CONTACTS} selected
               </span>
             )}
@@ -1205,7 +1198,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
           {loadingList === "people" ? (
             <PeopleListSkeleton rows={Math.min(contactPageSize, 8)} />
           ) : contacts.length === 0 ? (
-            <div className="rounded-lg border border-border bg-secondary px-4 py-6 text-center">
+            <div className="rounded-lg border border-border bg-card px-4 py-8 text-center">
               <Users className="mx-auto mb-2 size-5 text-muted-foreground" />
               <p className="text-sm font-medium">No contactable people found</p>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -1214,7 +1207,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
             </div>
           ) : (
             <>
-              <div className="overflow-hidden rounded-lg border border-border bg-field dark:bg-card">
+              <div className="overflow-hidden rounded-lg border border-border bg-card">
                 {visibleContacts.map((c) => {
                   const blocked = c.already_imported || c.unenrichable;
                   const on = picked.includes(c.apollo_id);
@@ -1225,13 +1218,13 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                       key={c.apollo_id}
                       onClick={() => { if (!disabled) togglePick(c.apollo_id); }}
                       className={cn(
-                        "flex items-center gap-3 border-b border-border px-3 py-2.5 last:border-b-0",
-                        blocked ? "opacity-50" : "cursor-pointer hover:bg-secondary",
+                        "flex items-center gap-3 border-b border-border px-3 py-2 last:border-b-0 transition-colors",
+                        blocked ? "opacity-50" : on ? "cursor-pointer bg-primary/5" : "cursor-pointer hover:bg-hover",
                       )}
                     >
                       <Avatar name={displayName} size="sm" />
                       <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium leading-snug truncate">
+                        <span className="block text-[13px] font-medium leading-snug truncate">
                           {displayName}
                         </span>
                         <span className="mt-0.5 block text-xs text-muted-foreground truncate">
@@ -1239,13 +1232,13 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                         </span>
                       </span>
                       {c.already_imported && (
-                        <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                          already imported
+                        <span className="shrink-0 rounded-[5px] bg-secondary px-1.5 py-[3px] text-[11px] text-muted-foreground">
+                          Already imported
                         </span>
                       )}
                       {c.unenrichable && (
-                        <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                          no email available
+                        <span className="shrink-0 rounded-[5px] bg-secondary px-1.5 py-[3px] text-[11px] text-muted-foreground">
+                          No email available
                         </span>
                       )}
                       <AppCheckbox checked={on} disabled={disabled} />
@@ -1269,7 +1262,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
 
           {loadingList !== "people" && (
             <>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Surnames show as an initial until the email is revealed.
               </p>
               <ApolloCostNote
@@ -1314,7 +1307,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
       )}
 
       <div className="flex items-center justify-between pt-2">
-        <Button type="button" variant="outline" className="bg-field dark:bg-card" disabled={step === 0 || busy}
+        <Button type="button" variant="outline" disabled={step === 0 || busy}
           onClick={() => { setError(""); setStep((s) => Math.max(0, s - 1)); }}>
           Back
         </Button>

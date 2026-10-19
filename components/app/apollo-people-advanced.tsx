@@ -171,7 +171,6 @@ function DateField({ value, onChange }: { value: string; onChange: (v: string) =
       date={parseYmd(value)}
       onChangeDate={(d) => onChange(d ? format(d, "yyyy-MM-dd") : "")}
       displayFormat="MMM d, yyyy"
-      size="sm"
       showQuickActions
     />
   );
@@ -253,7 +252,7 @@ function PrimaryFilterPicker({
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
-          <Label className="text-[11px] font-normal text-muted-foreground">{label}</Label>
+          <Label>{label}</Label>
           <InfoTip side="right" text={tip} />
         </div>
         {selectedCount > 0 && (
@@ -262,7 +261,7 @@ function PrimaryFilterPicker({
             variant="ghost"
             size="sm"
             onClick={clearAll}
-            className="h-auto p-0 text-[10px] font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
+            className="h-auto p-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
           >
             Clear ({selectedCount})
           </Button>
@@ -275,22 +274,22 @@ function PrimaryFilterPicker({
           variant="outline"
           onClick={() => setOpen((o) => !o)}
           className={cn(
-            "w-full justify-between px-3 py-2 text-sm font-normal text-left bg-field hover:bg-field",
-            open ? "border-ring ring-1 ring-ring" : "border-input hover:border-muted-foreground",
+            "w-full justify-between px-2.5 text-sm font-normal text-left hover:bg-field",
+            open ? "border-primary/60" : "border-input hover:border-muted-foreground/30",
           )}
         >
-          <span className={selectedCount === 0 ? "text-muted-foreground/60" : "text-foreground"}>
+          <span className={selectedCount === 0 ? "text-muted-foreground" : "text-foreground"}>
             {selectedCount === 0
               ? placeholder
               : `${selectedCount} ${selectedCount === 1 ? unit : unitPlural} selected`}
           </span>
-          <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+          <ChevronDown className={cn("size-3.5 shrink-0 text-muted-foreground", open && "rotate-180")} />
         </Button>
 
         {open && (
-          <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary">
-              <p className="eyebrow">
+          <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-lg border border-border bg-popover shadow-lg overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+              <p className="text-xs text-muted-foreground tabular-nums">
                 {selectedCount > 0
                   ? `${selectedCount} of ${options.length} selected`
                   : "Select options"}
@@ -302,7 +301,7 @@ function PrimaryFilterPicker({
                     variant="link"
                     size="sm"
                     onClick={clearAll}
-                    className="h-auto p-0 text-[11px] text-muted-foreground"
+                    className="h-auto p-0 text-xs text-muted-foreground"
                   >
                     Clear
                   </Button>
@@ -312,29 +311,29 @@ function PrimaryFilterPicker({
                   variant="link"
                   size="sm"
                   onClick={selectAll}
-                  className="h-auto p-0 text-[11px]"
+                  className="h-auto p-0 text-xs"
                 >
                   Select all
                 </Button>
               </div>
             </div>
 
-            <div className="max-h-56 overflow-y-auto p-2">
+            <div className="max-h-56 overflow-y-auto p-1">
               <Button
                 type="button"
                 variant="ghost"
                 onClick={() => (allSelected ? clearAll() : selectAll())}
                 className={cn(
-                  "w-full h-auto justify-start gap-2 rounded px-2 py-1.5 mb-1 font-normal",
-                  allSelected ? "bg-primary/10 hover:bg-primary/10" : "hover:bg-secondary",
+                  "w-full h-7 justify-start gap-2 rounded-md px-2 mb-0.5 font-normal",
+                  allSelected ? "bg-primary/5 hover:bg-primary/5" : "hover:bg-hover",
                 )}
               >
                 <AppCheckbox size="sm" checked={allSelected ? true : someSelected ? "indeterminate" : false} />
-                <span className={cn("text-xs", allSelected ? "text-foreground font-medium" : "text-muted-foreground")}>
+                <span className={cn("text-[13px]", allSelected ? "text-foreground font-medium" : "text-foreground/80")}>
                   Select all
                 </span>
               </Button>
-              <div className="h-px bg-border/60 my-1" />
+              <div className="h-px bg-border my-1" />
               {options.map((opt) => {
                 const checked = values.includes(opt);
                 const isCustom = !defaultSet.has(opt);
@@ -342,8 +341,8 @@ function PrimaryFilterPicker({
                   <div
                     key={opt}
                     className={cn(
-                      "w-full flex items-center gap-2 px-2 py-1 rounded transition-colors",
-                      checked ? "bg-primary/10" : "hover:bg-secondary",
+                      "w-full flex items-center gap-2 px-2 h-7 rounded-md transition-colors",
+                      checked ? "bg-primary/5" : "hover:bg-hover",
                     )}
                   >
                     <Button
@@ -353,7 +352,7 @@ function PrimaryFilterPicker({
                       className="h-auto flex-1 justify-start gap-2 rounded-none p-0 text-left font-normal min-w-0 hover:bg-transparent"
                     >
                       <AppCheckbox size="sm" checked={checked} />
-                      <span className={cn("text-xs leading-tight truncate", checked ? "text-foreground font-medium" : "text-muted-foreground")}>
+                      <span className={cn("text-[13px] leading-tight truncate", checked ? "text-foreground font-medium" : "text-foreground/80")}>
                         {formatValue(opt)}
                       </span>
                     </Button>
@@ -377,8 +376,8 @@ function PrimaryFilterPicker({
               })}
             </div>
 
-            <div className="border-t border-border px-4 py-3 bg-secondary">
-              <p className="eyebrow mb-2">Add custom</p>
+            <div className="border-t border-border px-3 py-3 bg-secondary">
+              <p className="text-[13px] font-medium text-foreground mb-2">Add custom</p>
               <div className="flex items-center gap-2">
                 <Input
                   type="text"
@@ -389,22 +388,22 @@ function PrimaryFilterPicker({
                     if (e.key === "Escape") setOpen(false);
                   }}
                   placeholder={customPlaceholder}
-                  className="h-auto flex-1 rounded-md px-3 py-1.5 text-xs"
+                  className="h-7 flex-1 text-[13px]"
                 />
                 <Button
                   type="button"
                   size="sm"
                   onClick={addCustom}
                   disabled={!normalizeCustom(customInput) || values.includes(normalizeCustom(customInput)!)}
-                  className="h-auto shrink-0 gap-1 px-3 py-1.5 text-xs [&_svg]:size-3"
+                  className="shrink-0 gap-1 [&_svg]:size-3.5"
                 >
                   <Plus /> Add
                 </Button>
               </div>
             </div>
 
-            <div className="border-t border-border px-4 py-2.5 flex items-center justify-end bg-secondary">
-              <Button type="button" variant="link" size="sm" onClick={() => setOpen(false)} className="h-auto p-0 text-xs">
+            <div className="border-t border-border px-3 py-2 flex items-center justify-end">
+              <Button type="button" variant="link" size="sm" onClick={() => setOpen(false)} className="h-auto p-0 text-[13px]">
                 Done
               </Button>
             </div>
@@ -514,17 +513,17 @@ export function ApolloPeopleAdvanced({
           type="button"
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
-          className="flex w-full items-center justify-between py-1 text-left"
+          className="flex w-full items-center justify-between rounded-md py-1 text-left"
         >
-          <span className="text-xs font-medium">
+          <span className="text-[13px] font-medium text-foreground">
             Advanced search
             {activeCount > 0 && (
-              <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+              <span className="ml-2 rounded-[5px] bg-primary/10 px-1.5 py-[3px] text-[11px] font-medium tabular-nums text-primary">
                 {activeCount} active
               </span>
             )}
           </span>
-          <ChevronDown className={cn("size-3.5 text-muted-foreground transition-transform", open && "rotate-180")} />
+          <ChevronDown className={cn("size-3.5 text-muted-foreground", open && "rotate-180")} />
         </button>
 
         {!open && activeCount > 0 && (
@@ -533,7 +532,7 @@ export function ApolloPeopleAdvanced({
               <button
                 type="button"
                 onClick={() => onIncludeSimilarTitlesChange(true)}
-                className="rounded border border-border bg-field px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+                className="rounded-[5px] border border-border bg-secondary px-1.5 py-[3px] text-xs text-muted-foreground hover:bg-hover hover:text-foreground"
                 title="Remove filter"
               >
                 similar titles off ✕
@@ -544,7 +543,7 @@ export function ApolloPeopleAdvanced({
                 key={k}
                 type="button"
                 onClick={() => onRawChange({ ...raw, [k]: "" })}
-                className="rounded border border-border bg-field px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+                className="rounded-[5px] border border-border bg-secondary px-1.5 py-[3px] text-xs text-muted-foreground hover:bg-hover hover:text-foreground"
                 title="Remove filter"
               >
                 {FIELD_LABEL[k] ?? k}: {v} ✕
@@ -555,9 +554,9 @@ export function ApolloPeopleAdvanced({
 
         {open && (
           <div className="space-y-3 pt-3">
-            <div className="flex items-center justify-between rounded-md border border-border bg-field px-3 py-2">
+            <div className="flex items-center justify-between py-1">
               <div className="flex items-center gap-1 min-w-0 pr-3">
-                <Label className="text-[11px] font-normal">Match similar titles</Label>
+                <Label>Match similar titles</Label>
                 <InfoTip side="right" text="On (default): Apollo also returns close title variants — Head of Purchasing for purchase manager. Off: only the titles you list (or the default list) match." />
               </div>
               <Switch tone="success" checked={includeSimilarTitles} onCheckedChange={onIncludeSimilarTitlesChange} />
@@ -565,8 +564,8 @@ export function ApolloPeopleAdvanced({
 
             {GROUPS.map((g) => (
               <div key={g.group} className="space-y-2">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{g.group}</p>
-                <div className="grid grid-cols-2 gap-2">
+                <p className="text-[13px] font-medium text-foreground">{g.group}</p>
+                <div className="grid grid-cols-2 gap-3">
                   {g.fields.map((f) => (
                     f.kind === "locations" ? (
                       <div key={f.key} className="col-span-2">
@@ -576,14 +575,14 @@ export function ApolloPeopleAdvanced({
                           placeholder={f.placeholder ?? "Select countries…"}
                           selected={csvToList(raw[f.key])}
                           onChangeSelected={(v) => onRawChange({ ...raw, [f.key]: v.join(", ") })}
-                          labelClassName="text-[11px] font-normal text-muted-foreground"
-                          triggerClassName="h-8 text-xs"
+                          labelClassName="text-[13px] font-medium text-foreground"
+                          triggerClassName="h-8 text-sm"
                         />
                       </div>
                     ) : f.kind === "date" ? (
                       <div key={f.key} className="space-y-1">
                         <div className="flex items-center gap-0.5">
-                          <Label className="text-[11px] font-normal text-muted-foreground">{f.label}</Label>
+                          <Label>{f.label}</Label>
                           <InfoTip side="right" text={f.tip} />
                         </div>
                         <DateField
@@ -594,7 +593,7 @@ export function ApolloPeopleAdvanced({
                     ) : (
                       <div key={f.key} className="space-y-1">
                         <div className="flex items-center gap-0.5">
-                          <Label className="text-[11px] font-normal text-muted-foreground">{f.label}</Label>
+                          <Label>{f.label}</Label>
                           <InfoTip side="right" text={f.tip} />
                         </div>
                         <Input
@@ -602,7 +601,6 @@ export function ApolloPeopleAdvanced({
                           onChange={(e) => onRawChange({ ...raw, [f.key]: e.target.value })}
                           placeholder={f.placeholder}
                           type={f.kind === "num" ? "number" : "text"}
-                          className="h-8 text-xs"
                         />
                       </div>
                     )
@@ -610,7 +608,7 @@ export function ApolloPeopleAdvanced({
                 </div>
               </div>
             ))}
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Separate multiple values with commas. Job titles, seniorities and employee ranges are edited above — empty Advanced here adds no further filters. Email status stays verified / likely to engage so we never import people Apollo cannot contact.
             </p>
           </div>
