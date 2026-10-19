@@ -1,45 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
 import { Send, MailOpen, Reply, MailX, Inbox } from "lucide-react";
-import { useApp } from "@/lib/app-context";
-import { cn } from "@/lib/utils";
 import { Paged } from "@/components/ui/paged";
-import { Card } from "@/components/ui/card";
 import { StatTile } from "@/components/ui/stat-tile";
-import { UsageHeader } from "@/components/app/usage-header";
-import { UsageBarChart } from "@/components/app/usage-bar-chart";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { UsageHeader, UsagePanel, UsageEmpty, UsageNotice, UsageStatus, useCachedUsage } from "@/components/app/usage-header";
+import { UsageBarChart, CHART_COLORS } from "@/components/app/usage-bar-chart";
 import { UsageHeaderSkeleton, StatTileGridSkeleton, ChartCardSkeleton, RowsCardSkeleton } from "@/components/app/usage-skeletons";
 import { fetchInstantlyUsage, type InstantlyUsageData } from "@/lib/api-client";
 
-const ACCOUNT_STATUS_LABEL: Record<number, { label: string; tone: string }> = {
-  1: { label: "Active", tone: "text-emerald-500" },
-  2: { label: "Paused", tone: "text-amber-400" },
-  0: { label: "Inactive", tone: "text-muted-foreground" },
+const ACCOUNT_STATUS_LABEL: Record<number, { label: string; tone: "ok" | "warn" | "muted" }> = {
+  1: { label: "Active", tone: "ok" },
+  2: { label: "Paused", tone: "warn" },
+  0: { label: "Inactive", tone: "muted" },
 };
 
 export function InstantlyUsageView() {
-  const { session } = useApp();
-  const [data, setData] = useState<InstantlyUsageData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const load = useCallback(async (refresh = false) => {
-    if (!session) return;
-    if (refresh) setRefreshing(true); else setLoading(true);
-    try {
-      const result = await fetchInstantlyUsage(session.access_token, refresh);
-      setData(result);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [session]);
-
-  useEffect(() => { void load(false); }, [load]);
+  const { data, loading, refreshing, load } = useCachedUsage<InstantlyUsageData>("/api/v1/settings/keys/usage/instantly", fetchInstantlyUsage);
 
   if (loading || !data) {
     return (
@@ -61,11 +38,7 @@ export function InstantlyUsageView() {
     <div className="space-y-6">
       <UsageHeader info="Live from Instantly's analytics: sending accounts, workspace-wide send, open and reply totals, and a daily breakdown." refreshing={refreshing} onRefresh={() => void load(true)} />
 
-      {!key.ok && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {key.message}
-        </div>
-      )}
+      {!key.ok && <UsageNotice tone="error">{key.message}</UsageNotice>}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatTile label="Emails sent" value={overview.data?.emails_sent_count ?? "—"} icon={Send} />
@@ -79,73 +52,68 @@ export function InstantlyUsageView() {
         />
       </div>
       {overview.error && (
-        <p className="text-xs text-muted-foreground">Campaign analytics overview unavailable: {overview.error}</p>
+        <p className="text-[13px] text-muted-foreground">Campaign analytics overview unavailable: {overview.error}</p>
       )}
 
-      <Card className="p-5 space-y-3">
-        <div>
-          <p className="eyebrow">Send activity</p>
-          <p className="text-xs text-muted-foreground">Last 14 days across every campaign.</p>
-        </div>
+      <UsagePanel title="Send activity" description="Last 14 days across every campaign.">
         {daily.error ? (
-          <p className="text-xs text-muted-foreground">Daily analytics unavailable: {daily.error}</p>
+          <p className="text-[13px] text-muted-foreground">Daily analytics unavailable: {daily.error}</p>
         ) : chartData.every((d) => d.sent === 0 && d.opened === 0 && d.replied === 0) ? (
-          <p className="text-xs text-muted-foreground py-6 text-center">No send activity in the last 14 days.</p>
+          <UsageEmpty>No send activity in the last 14 days.</UsageEmpty>
         ) : (
           <UsageBarChart
             data={chartData}
             bars={[
-              { dataKey: "sent", name: "Sent", color: "var(--primary)" },
-              { dataKey: "opened", name: "Opened", color: "#38bdf8" },
-              { dataKey: "replied", name: "Replied", color: "#fbbf24" },
+              { dataKey: "sent", name: "Sent", color: CHART_COLORS.primary },
+              { dataKey: "opened", name: "Opened", color: CHART_COLORS.primarySoft },
+              { dataKey: "replied", name: "Replied", color: CHART_COLORS.amber },
             ]}
           />
         )}
-      </Card>
+      </UsagePanel>
 
-      <Card className="p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="eyebrow">Sending accounts</p>
-            <p className="text-xs text-muted-foreground">Mailboxes available to campaigns and their daily send caps.</p>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <UsagePanel
+        title="Sending accounts"
+        description="Mailboxes available to campaigns and their daily send caps."
+        aside={
+          <span className="flex items-center gap-1.5">
             <Inbox className="size-3.5" />
             {accounts.activeCount} / {accounts.totalCount} active · {accounts.totalDailyCapacity.toLocaleString()}/day capacity
-          </div>
-        </div>
+          </span>
+        }
+      >
         {accounts.error ? (
-          <p className="text-xs text-muted-foreground">Could not load sending accounts: {accounts.error}</p>
+          <p className="text-[13px] text-muted-foreground">Could not load sending accounts: {accounts.error}</p>
         ) : !accounts.data?.length ? (
-          <p className="text-xs text-muted-foreground py-6 text-center">No sending accounts configured.</p>
+          <UsageEmpty>No sending accounts configured.</UsageEmpty>
         ) : (
           <Paged items={accounts.data}>{(rows) => (
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full text-xs">
-              <thead className="bg-secondary text-muted-foreground">
-                <tr>
-                  <th className="text-left font-medium px-3 py-2">Mailbox</th>
-                  <th className="text-left font-medium px-3 py-2">Status</th>
-                  <th className="text-right font-medium px-3 py-2">Daily limit</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+          <div className="rounded-md border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Mailbox</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Daily limit</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {rows.map((a) => {
-                  const s = ACCOUNT_STATUS_LABEL[a.status] ?? { label: `Status ${a.status}`, tone: "text-muted-foreground" };
+                  const s = ACCOUNT_STATUS_LABEL[a.status] ?? { label: `Status ${a.status}`, tone: "muted" as const };
                   return (
-                    <tr key={a.email}>
-                      <td className="px-3 py-2 font-mono">{a.email}</td>
-                      <td className={cn("px-3 py-2", s.tone)}>{s.label}</td>
-                      <td className="px-3 py-2 text-right font-mono tabular-nums">{a.daily_limit ?? "—"}</td>
-                    </tr>
+                    <TableRow key={a.email}>
+                      <TableCell>{a.email}</TableCell>
+                      <TableCell><UsageStatus tone={s.tone}>{s.label}</UsageStatus></TableCell>
+                      <TableCell className="text-right tabular-nums">{a.daily_limit ?? "—"}</TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
           )}</Paged>
         )}
-      </Card>
+      </UsagePanel>
     </div>
   );
 }

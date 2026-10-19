@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Pencil, Coins, CalendarDays, TrendingDown, Zap } from "lucide-react";
 import { useApp } from "@/lib/app-context";
@@ -8,11 +8,13 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Paged } from "@/components/ui/paged";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { StatTile } from "@/components/ui/stat-tile";
-import { UsageHeader } from "@/components/app/usage-header";
-import { UsageBarChart } from "@/components/app/usage-bar-chart";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  UsageHeader, UsagePanel, UsageEmpty, UsageNotice, UsageProgress, UsageStatus, useCachedUsage,
+} from "@/components/app/usage-header";
+import { UsageBarChart, CHART_COLORS } from "@/components/app/usage-bar-chart";
 import {
   UsageHeaderSkeleton, StatTileGridSkeleton, ChartCardSkeleton, RowsCardSkeleton, ProgressRowSkeleton,
 } from "@/components/app/usage-skeletons";
@@ -64,27 +66,20 @@ function CreditPoolRow({ label, w: raw }: { label: string; w: Partial<ApolloCred
     return (
       <div className="flex items-center justify-between text-xs">
         <span className="text-muted-foreground">{label}</span>
-        <span className="text-muted-foreground/60">not on plan</span>
+        <span className="text-muted-foreground">not on plan</span>
       </div>
     );
   }
   const pct = w.limit > 0 ? Math.min(100, Math.round((w.consumed / w.limit) * 100)) : 0;
   return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">{label}</span>
-        <span className="font-mono tabular-nums">
-          {w.consumed.toLocaleString()} / {w.limit.toLocaleString()}
-          <span className="text-muted-foreground/70"> · {w.left_over.toLocaleString()} left</span>
-        </span>
-      </div>
-      <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-        <div
-          className={cn("h-full rounded-full", pct >= 90 ? "bg-destructive" : pct >= 60 ? "bg-amber-400" : "bg-primary")}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
+    <UsageProgress
+      label={label}
+      pct={pct}
+      value={<>
+        {w.consumed.toLocaleString()} / {w.limit.toLocaleString()}
+        <span className="text-muted-foreground"> · {w.left_over.toLocaleString()} left</span>
+      </>}
+    />
   );
 }
 
@@ -115,7 +110,7 @@ function AllowanceEditor({
 
   return (
     <>
-      <Button type="button" size="sm" className="gap-1.5" onClick={() => setOpen(true)}>
+      <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
         <Pencil className="size-3.5" />
         {allowance != null ? `Budget: ${allowance.toLocaleString()}/mo` : "Set monthly budget"}
       </Button>
@@ -161,48 +156,17 @@ function RateLimitRow({ label, endpoint }: { label: string; endpoint: ApolloEndp
     return (
       <div className="flex items-center justify-between text-xs">
         <span className="text-muted-foreground">{label}</span>
-        <span className="text-muted-foreground/60">no data</span>
+        <span className="text-muted-foreground">no data</span>
       </div>
     );
   }
   const pct = w.limit > 0 ? Math.min(100, Math.round((w.consumed / w.limit) * 100)) : 0;
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">{label}</span>
-        <span className="font-mono tabular-nums">{w.consumed} / {w.limit} {windowLabel}</span>
-      </div>
-      <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-        <div
-          className={cn("h-full rounded-full", pct >= 90 ? "bg-destructive" : pct >= 60 ? "bg-amber-400" : "bg-primary")}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
+  return <UsageProgress label={label} pct={pct} value={`${w.consumed} / ${w.limit} ${windowLabel}`} />;
 }
 
 export function ApolloUsageView() {
   const { session } = useApp();
-  const [data, setData] = useState<ApolloUsageData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const load = useCallback(async (refresh = false) => {
-    if (!session) return;
-    if (refresh) setRefreshing(true); else setLoading(true);
-    try {
-      const result = await fetchApolloUsage(session.access_token, refresh);
-      setData(result);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [session]);
-
-  useEffect(() => { void load(false); }, [load]);
+  const { data, loading, refreshing, load } = useCachedUsage<ApolloUsageData>("/api/v1/settings/keys/usage/apollo", fetchApolloUsage);
 
   if (loading || !data) {
     return (
@@ -266,25 +230,19 @@ export function ApolloUsageView() {
         }
       />
 
-      {!key.ok && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {key.message}
-        </div>
-      )}
+      {!key.ok && <UsageNotice tone="error">{key.message}</UsageNotice>}
 
       {creditUsageError ? (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-500">
+        <UsageNotice tone="warning">
           Could not read live team credits ({creditUsageError}) — this endpoint requires a Master API key. Falling back to
           this app&apos;s own ledger below.
-        </div>
+        </UsageNotice>
       ) : creditUsage && creditCycle ? (
         <div className="space-y-4">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <p className="eyebrow">Billing cycle</p>
-              <p className="text-sm font-medium">{formatDate(creditCycle.start_date)} – {formatDate(creditCycle.end_date)}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Usage renews {formatDateTimeTz(creditCycle.end_date)}</p>
-            </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Billing cycle</p>
+            <p className="text-sm font-medium tabular-nums">{formatDate(creditCycle.start_date)} – {formatDate(creditCycle.end_date)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Usage renews {formatDateTimeTz(creditCycle.end_date)}</p>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -315,17 +273,16 @@ export function ApolloUsageView() {
             />
           </div>
 
-          <div className="pt-1">
-            <p className="eyebrow mb-2">All credit pools (live from Apollo)</p>
-            <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
+          <UsagePanel title="All credit pools" description="Live from Apollo.">
+            <div className="grid sm:grid-cols-2 gap-x-8 gap-y-3.5">
               {(Object.keys(CREDIT_POOL_LABELS) as (keyof ApolloCreditUsageStats)[]).map((k) => (
                 <CreditPoolRow key={k} label={CREDIT_POOL_LABELS[k]} w={creditUsage[k]} />
               ))}
             </div>
-          </div>
+          </UsagePanel>
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground">Loading live team credits…</p>
+        <p className="text-[13px] text-muted-foreground">Loading live team credits…</p>
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -342,7 +299,7 @@ export function ApolloUsageView() {
       </div>
 
       <div>
-        <p className="eyebrow mb-2">This app: credits by feature (this month)</p>
+        <p className="mb-2 text-[13px] font-medium">This app: credits by feature (this month)</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <StatTile label="Scored companies search" value={byFeature.month.scored_search.credits} icon={Coins}
             sub={`${byFeature.month.scored_search.calls} search${byFeature.month.scored_search.calls === 1 ? "" : "es"} · ${byFeature.allTime.scored_search.credits} in 90d`} />
@@ -353,90 +310,73 @@ export function ApolloUsageView() {
         </div>
       </div>
 
-      <Card className="p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="eyebrow">Credits consumed</p>
-            <p className="text-xs text-muted-foreground">Last 14 days, from every email reveal and company search this app has run.</p>
-          </div>
-          <p className="font-mono text-sm font-semibold tabular-nums">{consumed.allTime.toLocaleString()} total (90d)</p>
-        </div>
-        <UsageBarChart data={chartData} bars={[{ dataKey: "credits", name: "Credits", color: "var(--primary)" }]} />
-      </Card>
+      <UsagePanel
+        title="Credits consumed"
+        description="Last 14 days, from every email reveal and company search this app has run."
+        aside={<span className="text-[13px] font-semibold text-foreground">{consumed.allTime.toLocaleString()} total (90d)</span>}
+      >
+        <UsageBarChart data={chartData} bars={[{ dataKey: "credits", name: "Credits", color: CHART_COLORS.primary }]} />
+      </UsagePanel>
 
-      <Card className="p-5 space-y-3">
-        <div>
-          <p className="eyebrow">API rate limits</p>
-          <p className="text-xs text-muted-foreground">
-            Live from Apollo&apos;s usage_stats endpoint — the closest thing to &quot;usage&quot; their API actually exposes.
-          </p>
-        </div>
+      <UsagePanel
+        title="API rate limits"
+        description={<>Live from Apollo&apos;s usage_stats endpoint — the closest thing to &quot;usage&quot; their API actually exposes.</>}
+      >
         {rateLimitsError ? (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-[13px] text-muted-foreground">
             Could not read rate limits ({rateLimitsError}) — this endpoint requires a Master API key.
           </p>
         ) : relevantLimits.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No email-reveal or search calls recorded by Apollo yet today.</p>
+          <p className="text-[13px] text-muted-foreground">No email-reveal or search calls recorded by Apollo yet today.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3.5">
             {relevantLimits.map((r) => (
               <RateLimitRow key={`${r.resource}-${r.action}`} label={`${r.resource} · ${r.action}`} endpoint={r} />
             ))}
           </div>
         )}
-      </Card>
+      </UsagePanel>
 
-      <Card className="p-5 space-y-3">
-        <div>
-          <p className="eyebrow">Recent activity</p>
-          <p className="text-xs text-muted-foreground">Every email reveal, company search and skipped/failed attempt, most recent first.</p>
-        </div>
+      <UsagePanel title="Recent activity" description="Every email reveal, company search and skipped/failed attempt, most recent first.">
         {history.length === 0 ? (
-          <p className="text-xs text-muted-foreground py-6 text-center">No Apollo activity recorded yet.</p>
+          <UsageEmpty>No Apollo activity recorded yet.</UsageEmpty>
         ) : (
           <Paged items={history}>{(rows) => (
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full text-xs">
-              <thead className="bg-secondary text-muted-foreground">
-                <tr>
-                  <th className="text-left font-medium px-3 py-2">When</th>
-                  <th className="text-left font-medium px-3 py-2">Event</th>
-                  <th className="text-right font-medium px-3 py-2">Credits</th>
-                  <th className="text-right font-medium px-3 py-2">Matched</th>
-                  <th className="text-right font-medium px-3 py-2">Archived</th>
-                  <th className="text-left font-medium px-3 py-2">Detail</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+          <div className="rounded-md border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>Event</TableHead>
+                  <TableHead className="text-right">Credits</TableHead>
+                  <TableHead className="text-right">Matched</TableHead>
+                  <TableHead className="text-right">Archived</TableHead>
+                  <TableHead>Detail</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {rows.map((h) => (
-                  <tr key={h.id} className={cn(h.credits_consumed === 0 && h.event !== "CREDITS_CONSUMED" ? "text-muted-foreground" : "")}>
-                    <td className="px-3 py-2 whitespace-nowrap font-mono">{formatDateTime(h.created_at)}</td>
-                    <td className="px-3 py-2">
-                      <span className={cn(
-                        "inline-flex items-center gap-1.5",
-                        h.event === "CREDITS_CONSUMED" ? "text-emerald-500" : h.event === "CREDITS_EXHAUSTED" ? "text-destructive" : "text-amber-400",
-                      )}>
-                        <span className={cn(
-                          "size-1.5 rounded-full",
-                          h.event === "CREDITS_CONSUMED" ? "bg-emerald-400" : h.event === "CREDITS_EXHAUSTED" ? "bg-destructive" : "bg-amber-400",
-                        )} />
+                  <TableRow key={h.id} className={cn(h.credits_consumed === 0 && h.event !== "CREDITS_CONSUMED" ? "text-muted-foreground" : "")}>
+                    <TableCell className="whitespace-nowrap tabular-nums">{formatDateTime(h.created_at)}</TableCell>
+                    <TableCell>
+                      <UsageStatus tone={h.event === "CREDITS_CONSUMED" ? "ok" : h.event === "CREDITS_EXHAUSTED" ? "bad" : "warn"}>
                         {h.label}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums">{h.credits_consumed}</td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums">{h.matched ?? "—"}</td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums">{h.archived ?? "—"}</td>
-                    <td className="px-3 py-2 text-muted-foreground truncate max-w-70">
+                      </UsageStatus>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{h.credits_consumed}</TableCell>
+                    <TableCell className="text-right tabular-nums">{h.matched ?? "—"}</TableCell>
+                    <TableCell className="text-right tabular-nums">{h.archived ?? "—"}</TableCell>
+                    <TableCell className="text-muted-foreground truncate max-w-70">
                       {h.message ?? h.detail ?? (h.import_id ? `import ${h.import_id.slice(0, 8)}…` : h.campaign_id ? `campaign ${h.campaign_id.slice(0, 8)}…` : "—")}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
           )}</Paged>
         )}
-      </Card>
+      </UsagePanel>
     </div>
   );
 }

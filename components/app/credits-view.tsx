@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { Coins } from "lucide-react";
 import { useApp } from "@/lib/app-context";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PageHeader } from "@/components/ui/page-header";
+import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { LlmKeysPanel, ServiceKeysPanel } from "@/components/app/keys-view";
 import { ApolloUsageView } from "@/components/app/keys-usage-apollo";
 import { InstantlyUsageView } from "@/components/app/keys-usage-instantly";
@@ -22,10 +24,13 @@ const TABS: { id: Tab; label: string; blurb: string }[] = [
   { id: "tavily", label: "Tavily", blurb: "Reads LinkedIn pages and searches the web when a website says too little." },
 ];
 
-function Section({ eyebrow, title, children }: { eyebrow: string; title?: string; children: React.ReactNode }) {
+function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
     <section className="space-y-3">
-      <div className="px-1"><h3 className="font-display text-2xl font-bold tracking-tight flex items-center gap-2">{eyebrow}{title && <InfoTip side="bottom" text={title} />}</h3></div>
+      <div className="border-b border-border pb-3">
+        <h3 className="text-[15px] font-semibold leading-tight">{title}</h3>
+        {description && <p className="mt-1 text-[13px] text-muted-foreground">{description}</p>}
+      </div>
       {children}
     </section>
   );
@@ -38,46 +43,48 @@ export function CreditsView() {
   if (role !== "manager") {
     return <p className="text-sm text-muted-foreground px-6 py-10 text-center">Only managers can see credits and keys.</p>;
   }
-  const blurb = TABS.find((t) => t.id === tab)?.blurb;
+  const active = TABS.find((t) => t.id === tab);
 
   return (
-    <div className="w-full p-6 space-y-6 enter">
-      <div className="space-y-1">
-        <p className="eyebrow px-1">Credits</p>
-        <h2 className="font-display text-lg font-semibold px-1 flex items-center gap-1.5">Keys &amp; credits <InfoTip side="bottom" text="Each service has its own tab: its API key and what it has used. A service with no key set falls back to the matching value in .env.local." /></h2>
+    <div className="flex h-full flex-col">
+      <PageHeader
+        title="Credits"
+        icon={<Coins />}
+        description={
+          <span className="inline-flex items-center gap-1.5">
+            Keys &amp; usage per service
+            <InfoTip side="bottom" text="Each service has its own tab: its API key and what it has used. A service with no key set falls back to the matching value in .env.local." />
+          </span>
+        }
+      />
+      <div className="shrink-0 px-4">
+        <SegmentedTabs
+          variant="underline"
+          value={tab}
+          onValueChange={setTab}
+          options={TABS.map((t) => ({ value: t.id, label: t.label }))}
+        />
       </div>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
-        <TabsList className="w-full max-w-2xl">
-          {TABS.map((t) => <TabsTrigger key={t.id} value={t.id}>{t.label}</TabsTrigger>)}
-        </TabsList>
-
-        {(["apollo", "instantly", "firecrawl", "jev", "tavily"] as const).map((id) => (
-          <TabsContent key={id} value={id} className="mt-6 space-y-8">
-            {tab === id && (
-              <>
-                <Section eyebrow="Keys" title={blurb}><ServiceKeysPanel providerId={id} /></Section>
-                <div>
-                  {id === "apollo" && <ApolloUsageView />}
-                  {id === "instantly" && <InstantlyUsageView />}
-                  {id === "firecrawl" && <FirecrawlUsageView />}
-                  {id === "jev" && <JevUsageView />}
-                  {id === "tavily" && <TavilyUsageView />}
-                </div>
-              </>
-            )}
-          </TabsContent>
-        ))}
-
-        <TabsContent value="ai" className="mt-6 space-y-8">
-          {tab === "ai" && (
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-6xl space-y-8 px-6 py-6">
+          {tab === "ai" ? (
             <>
-              <Section eyebrow="Keys" title={blurb}><LlmKeysPanel /></Section>
-              <div><AiUsageView /></div>
+              <Section title="Keys" description={active?.blurb}><LlmKeysPanel /></Section>
+              <AiUsageView />
+            </>
+          ) : (
+            <>
+              <Section title="Key" description={active?.blurb}><ServiceKeysPanel key={tab} providerId={tab} /></Section>
+              {tab === "apollo" && <ApolloUsageView />}
+              {tab === "instantly" && <InstantlyUsageView />}
+              {tab === "firecrawl" && <FirecrawlUsageView />}
+              {tab === "jev" && <JevUsageView />}
+              {tab === "tavily" && <TavilyUsageView />}
             </>
           )}
-        </TabsContent>
-      </Tabs>
+        </div>
+      </div>
     </div>
   );
 }

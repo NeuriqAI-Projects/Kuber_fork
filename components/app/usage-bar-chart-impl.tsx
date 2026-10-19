@@ -21,13 +21,13 @@ function ChartTooltip({ active, payload, label }: {
 }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-border bg-card shadow-xl px-3 py-2.5 text-xs space-y-1">
-      {label && <p className="font-medium text-muted-foreground mb-1">{shortDate(label)}</p>}
+    <div className="space-y-1 rounded-md border border-border bg-popover px-2.5 py-2 text-xs shadow-lg">
+      {label && <p className="mb-1 font-medium text-muted-foreground">{shortDate(label)}</p>}
       {payload.map((p) => (
         <div key={p.name} className="flex items-center gap-2">
-          <span className="size-1.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-          <span className="text-muted-foreground">{p.name}:</span>
-          <span className="font-mono font-semibold text-foreground tabular-nums">{p.value}</span>
+          <span className="size-2 shrink-0 rounded-[3px]" style={{ backgroundColor: p.color }} />
+          <span className="text-muted-foreground">{p.name}</span>
+          <span className="ml-auto pl-3 font-semibold tabular-nums text-foreground">{p.value}</span>
         </div>
       ))}
     </div>
@@ -48,19 +48,19 @@ export function UsageBarChart({
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ left: -10, right: 4, top: 4, bottom: 0 }}>
-        <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" vertical={false} />
+        <CartesianGrid stroke={GRID_COLOR} vertical={false} />
         <XAxis
           dataKey="date"
           tickFormatter={shortDate}
-          tick={{ fill: TICK_COLOR, fontSize: 11 }}
+          tick={{ fill: TICK_COLOR, fontSize: 12 }}
           axisLine={false}
           tickLine={false}
           interval={Math.max(0, Math.floor(data.length / 7) - 1)}
         />
-        <YAxis tick={{ fill: TICK_COLOR, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} width={30} />
-        <Tooltip content={<ChartTooltip />} cursor={{ fill: "var(--primary)", opacity: 0.06 }} />
+        <YAxis tick={{ fill: TICK_COLOR, fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} width={30} />
+        <Tooltip content={<ChartTooltip />} cursor={{ fill: "var(--hover)" }} />
         {bars.map((b) => (
-          <Bar key={b.dataKey} dataKey={b.dataKey} name={b.name} fill={b.color} radius={[3, 3, 0, 0]} maxBarSize={22} />
+          <Bar key={b.dataKey} isAnimationActive={false} dataKey={b.dataKey} name={b.name} fill={b.color} radius={[3, 3, 0, 0]} maxBarSize={22} />
         ))}
       </BarChart>
     </ResponsiveContainer>

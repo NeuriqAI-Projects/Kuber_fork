@@ -1,37 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
 import { Coins, CalendarDays, Flame, Sparkles, Search, Link2 } from "lucide-react";
-import { useApp } from "@/lib/app-context";
-import { cn } from "@/lib/utils";
 import { Paged } from "@/components/ui/paged";
-import { Card } from "@/components/ui/card";
-import { UsageHeader } from "@/components/app/usage-header";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  UsageHeader, UsagePanel, UsageEmpty, UsageNotice, UsageProgress, UsageStatus, useCachedUsage,
+} from "@/components/app/usage-header";
 import { StatTile } from "@/components/ui/stat-tile";
-import { UsageBarChart } from "@/components/app/usage-bar-chart";
+import { UsageBarChart, CHART_COLORS } from "@/components/app/usage-bar-chart";
 import { UsageHeaderSkeleton, StatTileGridSkeleton, ChartCardSkeleton, RowsCardSkeleton } from "@/components/app/usage-skeletons";
 import { fetchJevUsage, fetchTavilyUsage, type JevUsageData, type TavilyUsageData } from "@/lib/api-client";
 
 const fmtTime = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const usd = (n: number) => `$${n < 0.01 && n > 0 ? n.toFixed(4) : n.toFixed(2)}`;
-
-/** Load + refresh plumbing shared by both screens. */
-function useUsage<T>(fetcher: (token: string, refresh: boolean) => Promise<T>) {
-  const { session } = useApp();
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const load = useCallback(async (refresh = false) => {
-    if (!session) return;
-    if (refresh) setRefreshing(true); else setLoading(true);
-    try { setData(await fetcher(session.access_token, refresh)); }
-    catch (e) { toast.error((e as Error).message); }
-    finally { setLoading(false); setRefreshing(false); }
-  }, [session, fetcher]);
-  useEffect(() => { void load(false); }, [load]);
-  return { data, loading, refreshing, load };
-}
 
 function Intro({ text, refreshing, onRefresh }: { text: string; refreshing: boolean; onRefresh: () => void }) {
   return <UsageHeader info={text} refreshing={refreshing} onRefresh={onRefresh} />;
@@ -44,21 +25,18 @@ const Loading = () => (
 function StatusPill({ status }: { status: string }) {
   const good = status === "good" || status === "approved" || status === "promoted";
   const bad = status === "hidden" || status === "rejected";
-  return <span className={cn("inline-flex items-center gap-1.5", good ? "text-emerald-500" : bad ? "text-muted-foreground" : "text-amber-400")}>
-    <span className={cn("size-1.5 rounded-full", good ? "bg-emerald-400" : bad ? "bg-muted-foreground" : "bg-amber-400")} />{status}</span>;
+  return <UsageStatus tone={good ? "ok" : bad ? "muted" : "warn"}>{status}</UsageStatus>;
 }
 
 export function JevUsageView() {
-  const { data, loading, refreshing, load } = useUsage<JevUsageData>(fetchJevUsage);
+  const { data, loading, refreshing, load } = useCachedUsage<JevUsageData>("/api/v1/settings/keys/usage/jev", fetchJevUsage);
   if (loading || !data) return <Loading />;
   const { key, companies, tokens, usd: cost, daily, decisions, avgTokens, history, ledgerWindowDays } = data;
   return (
     <div className="space-y-6">
       <Intro refreshing={refreshing} onRefresh={() => void load(true)}
         text="Jev is the AI that decides whether a scored company makes plastic. It has no balance to read, only a key check, so the numbers below are what this app recorded: the tokens Jev read for each company it scored." />
-      <div className={cn("rounded-lg border px-4 py-3 text-sm", key.ok ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400" : "border-destructive/30 bg-destructive/5 text-destructive")}>
-        {key.message}
-      </div>
+      <UsageNotice tone={key.ok ? "ok" : "error"}>{key.message}</UsageNotice>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatTile label="Scored today" value={companies.today} icon={Flame} sub={usd(cost.today)} />
         <StatTile label="Scored this week" value={companies.week} icon={CalendarDays} sub={usd(cost.week)} />
@@ -69,46 +47,44 @@ export function JevUsageView() {
         <StatTile label="Avg tokens per company" value={avgTokens.toLocaleString()} icon={Coins} sub="about $0.042 per million" />
         {["good", "hidden", "review"].map((s) => <StatTile key={s} label={`Decided: ${s}`} value={decisions[s] ?? 0} icon={Sparkles} sub={`last ${ledgerWindowDays}d`} />)}
       </div>
-      <Card className="p-5 space-y-3">
-        <div><p className="eyebrow">Companies scored</p><p className="text-xs text-muted-foreground">Last 14 days.</p></div>
+      <UsagePanel title="Companies scored" description="Last 14 days.">
         {daily.every((d) => d.companies === 0)
-          ? <p className="text-xs text-muted-foreground py-6 text-center">No companies scored recently.</p>
-          : <UsageBarChart data={daily} bars={[{ dataKey: "companies", name: "Companies", color: "var(--primary)" }]} />}
-      </Card>
-      <Card className="p-5 space-y-3">
-        <div><p className="eyebrow">Recent scoring</p><p className="text-xs text-muted-foreground">Most recent first.</p></div>
-        {history.length === 0 ? <p className="text-xs text-muted-foreground py-6 text-center">Nothing scored yet.</p> : (
+          ? <UsageEmpty>No companies scored recently.</UsageEmpty>
+          : <UsageBarChart data={daily} bars={[{ dataKey: "companies", name: "Companies", color: CHART_COLORS.primary }]} />}
+      </UsagePanel>
+      <UsagePanel title="Recent scoring" description="Most recent first.">
+        {history.length === 0 ? <UsageEmpty>Nothing scored yet.</UsageEmpty> : (
           <Paged items={history}>{(rows) => (
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full text-xs">
-              <thead className="bg-secondary text-muted-foreground"><tr>
-                <th className="text-left font-medium px-3 py-2">When</th><th className="text-left font-medium px-3 py-2">Company</th>
-                <th className="text-left font-medium px-3 py-2">Decision</th><th className="text-right font-medium px-3 py-2">Score</th>
-                <th className="text-right font-medium px-3 py-2">Tokens</th><th className="text-right font-medium px-3 py-2">Extra sources</th>
-              </tr></thead>
-              <tbody className="divide-y divide-border">
+          <div className="rounded-md border border-border overflow-hidden">
+            <Table>
+              <TableHeader><TableRow>
+                <TableHead>When</TableHead><TableHead>Company</TableHead>
+                <TableHead>Decision</TableHead><TableHead className="text-right">Score</TableHead>
+                <TableHead className="text-right">Tokens</TableHead><TableHead className="text-right">Extra sources</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
                 {rows.map((h) => (
-                  <tr key={h.id}>
-                    <td className="px-3 py-2 whitespace-nowrap font-mono">{fmtTime(h.created_at)}</td>
-                    <td className="px-3 py-2 truncate max-w-56">{h.name}</td>
-                    <td className="px-3 py-2"><StatusPill status={h.status} /></td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums">{h.score ?? "—"}</td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums">{h.tokens.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums">{h.extra || "—"}</td>
-                  </tr>
+                  <TableRow key={h.id}>
+                    <TableCell className="whitespace-nowrap tabular-nums">{fmtTime(h.created_at)}</TableCell>
+                    <TableCell className="truncate max-w-56">{h.name}</TableCell>
+                    <TableCell><StatusPill status={h.status} /></TableCell>
+                    <TableCell className="text-right tabular-nums">{h.score ?? "—"}</TableCell>
+                    <TableCell className="text-right tabular-nums">{h.tokens.toLocaleString()}</TableCell>
+                    <TableCell className="text-right tabular-nums">{h.extra || "—"}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
           )}</Paged>
         )}
-      </Card>
+      </UsagePanel>
     </div>
   );
 }
 
 export function TavilyUsageView() {
-  const { data, loading, refreshing, load } = useUsage<TavilyUsageData>(fetchTavilyUsage);
+  const { data, loading, refreshing, load } = useCachedUsage<TavilyUsageData>("/api/v1/settings/keys/usage/tavily", fetchTavilyUsage);
   if (loading || !data) return <Loading />;
   const { key, credits, calls, split, daily, history, ledgerWindowDays } = data;
   const usedPct = credits.used != null && credits.planCredits ? Math.min(100, Math.round((credits.used / credits.planCredits) * 100)) : null;
@@ -116,7 +92,7 @@ export function TavilyUsageView() {
     <div className="space-y-6">
       <Intro refreshing={refreshing} onRefresh={() => void load(true)}
         text="Tavily reads LinkedIn pages when a company's website is down, and runs a web search when the AI is unsure. The balance is live from Tavily. The activity below is what Scored Companies recorded, so a read that came back too thin may be missing." />
-      {!key.ok && <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{key.message}</div>}
+      {!key.ok && <UsageNotice tone="error">{key.message}</UsageNotice>}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatTile label="Credits remaining" value={credits.remaining != null ? credits.remaining.toLocaleString() : "—"} icon={Coins}
           tone={credits.remaining != null && credits.remaining <= 0 ? "red" : usedPct != null && usedPct >= 80 ? "amber" : "sky"}
@@ -126,52 +102,46 @@ export function TavilyUsageView() {
         <StatTile label={`This app (${ledgerWindowDays}d)`} value={calls.allTime} icon={Search} sub={`${split.linkedinReads} LinkedIn · ${split.webSearches} searches`} />
       </div>
       {credits.planCredits != null && credits.used != null && (
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">Plan usage this month (all apps on this key)</span>
-            <span className="font-mono tabular-nums">{credits.used.toLocaleString()} / {credits.planCredits.toLocaleString()}</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-            <div className={cn("h-full rounded-full", (usedPct ?? 0) >= 90 ? "bg-destructive" : (usedPct ?? 0) >= 60 ? "bg-amber-400" : "bg-primary")} style={{ width: `${usedPct ?? 0}%` }} />
-          </div>
-        </div>
+        <UsageProgress
+          label="Plan usage this month (all apps on this key)"
+          pct={usedPct ?? 0}
+          value={`${credits.used.toLocaleString()} / ${credits.planCredits.toLocaleString()}`}
+        />
       )}
-      <Card className="p-5 space-y-3">
-        <div><p className="eyebrow">Tavily calls</p><p className="text-xs text-muted-foreground">Last 14 days, LinkedIn reads and web searches.</p></div>
+      <UsagePanel title="Tavily calls" description="Last 14 days, LinkedIn reads and web searches.">
         {daily.every((d) => d.linkedin + d.searches === 0)
-          ? <p className="text-xs text-muted-foreground py-6 text-center">No Tavily calls recorded recently.</p>
-          : <UsageBarChart data={daily} bars={[{ dataKey: "linkedin", name: "LinkedIn reads", color: "var(--primary)" }, { dataKey: "searches", name: "Web searches", color: "#f59e0b" }]} />}
-      </Card>
-      <Card className="p-5 space-y-3">
-        <div><p className="eyebrow">Recent activity</p><p className="text-xs text-muted-foreground">Companies that used Tavily, most recent first.</p></div>
-        {history.length === 0 ? <p className="text-xs text-muted-foreground py-6 text-center">No Tavily activity recorded yet.</p> : (
+          ? <UsageEmpty>No Tavily calls recorded recently.</UsageEmpty>
+          : <UsageBarChart data={daily} bars={[{ dataKey: "linkedin", name: "LinkedIn reads", color: CHART_COLORS.primary }, { dataKey: "searches", name: "Web searches", color: CHART_COLORS.amber }]} />}
+      </UsagePanel>
+      <UsagePanel title="Recent activity" description="Companies that used Tavily, most recent first.">
+        {history.length === 0 ? <UsageEmpty>No Tavily activity recorded yet.</UsageEmpty> : (
           <Paged items={history}>{(rows) => (
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full text-xs">
-              <thead className="bg-secondary text-muted-foreground"><tr>
-                <th className="text-left font-medium px-3 py-2">When</th><th className="text-left font-medium px-3 py-2">Company</th>
-                <th className="text-left font-medium px-3 py-2">Used for</th><th className="text-left font-medium px-3 py-2">Decision</th>
-              </tr></thead>
-              <tbody className="divide-y divide-border">
+          <div className="rounded-md border border-border overflow-hidden">
+            <Table>
+              <TableHeader><TableRow>
+                <TableHead>When</TableHead><TableHead>Company</TableHead>
+                <TableHead>Used for</TableHead><TableHead>Decision</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
                 {rows.map((h) => (
-                  <tr key={h.id}>
-                    <td className="px-3 py-2 whitespace-nowrap font-mono">{fmtTime(h.created_at)}</td>
-                    <td className="px-3 py-2 truncate max-w-56">{h.name}</td>
-                    <td className="px-3 py-2">
+                  <TableRow key={h.id}>
+                    <TableCell className="whitespace-nowrap tabular-nums">{fmtTime(h.created_at)}</TableCell>
+                    <TableCell className="truncate max-w-56">{h.name}</TableCell>
+                    <TableCell>
                       <span className="inline-flex items-center gap-2">
                         {h.linkedinRead && <span className="inline-flex items-center gap-1"><Link2 className="size-3" />LinkedIn read</span>}
                         {h.webSearch && <span className="inline-flex items-center gap-1"><Search className="size-3" />Web search</span>}
                       </span>
-                    </td>
-                    <td className="px-3 py-2"><StatusPill status={h.status} /></td>
-                  </tr>
+                    </TableCell>
+                    <TableCell><StatusPill status={h.status} /></TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
           )}</Paged>
         )}
-      </Card>
+      </UsagePanel>
     </div>
   );
 }

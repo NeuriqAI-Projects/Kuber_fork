@@ -23,7 +23,7 @@ import { SearchInput } from "@/components/ui/search-input";
 import {
   fetchProviderKeys, createProviderKey, patchProviderKey, deleteProviderKey,
   checkProviderKey, setProviderModel, setLlmTierRoles,
-  reorderProviderKeys, fetchProviderModels,
+  reorderProviderKeys, fetchProviderModels, useCached,
   type ProviderConfig, type ProviderKey, type ProviderModelOption,
 } from "@/lib/api-client";
 
@@ -33,9 +33,26 @@ const OTHER_MODEL = "__other__";
 // registry as deep fallbacks but aren't managed from this page.
 const VISIBLE_LLM_PROVIDERS = ["openrouter", "openai", "anthropic"] as const;
 
+/** GET /api/v1/settings/keys through the shared query cache, so switching
+ *  Credits tabs (or coming back to the page) paints the last copy at once. Any
+ *  key write under /api/v1/settings marks it stale; `reload` refetches now. */
+function useProviderKeys() {
+  const { session } = useApp();
+  const token = session?.access_token ?? "";
+  const query = useCached(session ? "/api/v1/settings/keys" : null, () => fetchProviderKeys(token));
+  useEffect(() => {
+    if (query.error) toast.error((query.error as Error).message ?? "Could not load keys");
+  }, [query.error]);
+  const { revalidate } = query;
+  const reload = useCallback(async () => {
+    try { await revalidate(); } catch (e) { toast.error((e as Error).message); }
+  }, [revalidate]);
+  return { data: query.data, loading: query.isLoading, reload };
+}
+
 function statusMeta(status: ProviderKey["status"]): { label: string; dot: string; text: string } {
-  if (status === "healthy") return { label: "Healthy", dot: "bg-emerald-400", text: "text-emerald-400" };
-  if (status === "cooling_off") return { label: "Cooling off", dot: "bg-amber-400", text: "text-amber-400" };
+  if (status === "healthy") return { label: "Healthy", dot: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-400" };
+  if (status === "cooling_off") return { label: "Cooling off", dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-400" };
   return { label: "Dead", dot: "bg-destructive", text: "text-destructive" };
 }
 
@@ -49,7 +66,7 @@ function ConfigSummary({ provider }: { provider: ProviderConfig }) {
   if (active.length === 0 && provider.envFallback) {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-        <span className="size-1.5 rounded-full bg-sky-400" aria-hidden />
+        <span className="size-1.5 rounded-full bg-sky-500" aria-hidden />
         Using .env.local value
       </span>
     );
@@ -65,9 +82,9 @@ function ConfigSummary({ provider }: { provider: ProviderConfig }) {
   return (
     <span className={cn(
       "inline-flex items-center gap-1.5 text-xs",
-      dead > 0 ? "text-destructive" : "text-emerald-500",
+      dead > 0 ? "text-destructive" : "text-emerald-700 dark:text-emerald-400",
     )}>
-      <span className={cn("size-1.5 rounded-full", dead > 0 ? "bg-destructive" : "bg-emerald-400")} aria-hidden />
+      <span className={cn("size-1.5 rounded-full", dead > 0 ? "bg-destructive" : "bg-emerald-500")} aria-hidden />
       Key added
       <span className="text-muted-foreground">
         · {active.length} active{dead > 0 ? ` · ${dead} dead` : ""} · •••{active[0]?.secret_last4}
@@ -122,30 +139,16 @@ function useFlip(order: string[]) {
 
 /** One service tab (Apollo, Instantly, Firecrawl, Jev, Tavily): just that provider's key(s). */
 export function ServiceKeysPanel({ providerId }: { providerId: string }) {
-  const { session } = useApp();
-  const [providers, setProviders] = useState<ProviderConfig[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, loading, reload: load } = useProviderKeys();
+  const providers = data?.providers ?? [];
   const [editing, setEditing] = useState<ProviderConfig | null>(null);
-
-  const load = useCallback(async (initial = false) => {
-    if (!session) return;
-    if (initial) setLoading(true);
-    try {
-      setProviders((await fetchProviderKeys(session.access_token)).providers);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      if (initial) setLoading(false);
-    }
-  }, [session]);
-  useEffect(() => { void load(true); }, [load]);
 
   const provider = providers.find((p) => p.id === providerId);
   // Same height in every state (loading, missing, loaded), so the Usage section below
   // never jumps when you switch tabs or the key finishes loading.
-  const slot = "min-h-[84px] rounded-xl border border-border bg-field dark:bg-card";
+  const slot = "min-h-[64px] rounded-lg border border-border bg-card";
   if (loading) return <div className={`${slot} animate-pulse`} />;
-  if (!provider) return <div className={`${slot} flex items-center px-5 text-sm text-muted-foreground`}>This provider is not available.</div>;
+  if (!provider) return <div className={`${slot} flex items-center px-4 text-[13px] text-muted-foreground`}>This provider is not available.</div>;
 
   return (
     <>
@@ -166,30 +169,14 @@ export function ServiceKeysPanel({ providerId }: { providerId: string }) {
 /** The AI tab: OpenRouter, OpenAI and Anthropic share one try-order (Primary, then Fallback). */
 export function LlmKeysPanel() {
   const { session } = useApp();
-  const [providers, setProviders] = useState<ProviderConfig[]>([]);
-  const [tierOrder, setTierOrder] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, loading, reload: load } = useProviderKeys();
+  const providers = useMemo(() => data?.providers ?? [], [data]);
+  const tierOrder = useMemo(() => data?.tierOrder ?? [], [data]);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<ProviderConfig | null>(null);
   // Optimistic order shown while a move is being persisted — null when the
   // list matches whatever the server last confirmed.
   const [pendingOrderIds, setPendingOrderIds] = useState<string[] | null>(null);
-
-  const load = useCallback(async (initial = false) => {
-    if (!session) return;
-    if (initial) setLoading(true);
-    try {
-      const data = await fetchProviderKeys(session.access_token);
-      setProviders(data.providers);
-      setTierOrder(data.tierOrder);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      if (initial) setLoading(false);
-    }
-  }, [session]);
-
-  useEffect(() => { void load(true); }, [load]);
 
   const llmProviders = useMemo(
     () => VISIBLE_LLM_PROVIDERS
@@ -249,17 +236,17 @@ export function LlmKeysPanel() {
   }
 
   if (loading) {
-    return <p className="text-sm text-muted-foreground px-5 py-10 text-center">Loading provider keys…</p>;
+    return <div className="min-h-[64px] rounded-lg border border-border bg-card animate-pulse" />;
   }
 
   return (
     <div className="space-y-8">
       {/* ── LLM providers ────────────────────────────────────────────────── */}
       <section className="space-y-3">
-        <div className="flex items-end justify-between gap-4 px-1">
+        <div className="flex items-end justify-between gap-4">
           <div className="min-w-0">
-            <p className="eyebrow">LLM providers</p>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-[13px] font-medium">LLM providers</p>
+            <p className="text-[13px] text-muted-foreground mt-0.5">
               {configuredLlm.length === 0
                 ? "None configured yet — drafts can't be generated until you add one."
                 : configuredLlm.length > 1
@@ -275,7 +262,7 @@ export function LlmKeysPanel() {
             onClick={() => setAddOpen(true)}
             title={availableLlm.length === 0 ? "Every supported provider is already configured" : undefined}
           >
-            <Plus className="size-3.5 mr-1.5" /> Add provider
+            <Plus className="size-3.5" /> Add provider
           </Button>
         </div>
 
@@ -283,16 +270,16 @@ export function LlmKeysPanel() {
           <button
             type="button"
             onClick={() => setAddOpen(true)}
-            className="w-full rounded-xl border border-dashed border-border bg-card px-5 py-8 text-center transition-colors hover:border-primary/50 hover:bg-secondary"
+            className="w-full rounded-lg border border-dashed border-border bg-card px-5 py-8 text-center transition-colors hover:bg-hover"
           >
-            <KeyRound className="size-5 mx-auto text-muted-foreground/50" />
+            <KeyRound className="size-5 mx-auto text-muted-foreground" />
             <p className="mt-2 text-sm font-medium">Add your first LLM provider</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Pick a provider, choose a model, paste an API key.
             </p>
           </button>
         ) : (
-          <div className="rounded-xl border border-border bg-field dark:bg-card overflow-hidden divide-y divide-border relative">
+          <div className="rounded-lg border border-border bg-card overflow-hidden divide-y divide-border relative">
             {orderedConfiguredLlm.map((p, i) => (
               <ProviderRow
                 key={p.id}
@@ -377,7 +364,7 @@ function ProviderRow({
   return (
     <div
       ref={rowRef}
-      className="flex items-center gap-3 px-5 py-3.5 min-w-0"
+      className="flex items-center gap-3 px-4 py-3 min-w-0"
     >
       {showMoveColumn ? (
         <span className="shrink-0 flex flex-col -my-1">
@@ -404,21 +391,21 @@ function ProviderRow({
 
       <div className={cn(
         "shrink-0 size-8 rounded-md flex items-center justify-center",
-        hasKeys ? "bg-emerald-500/10 text-emerald-500" : "bg-secondary text-muted-foreground",
+        hasKeys ? "border border-emerald-500/15 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "border border-border bg-field text-muted-foreground",
       )}>
         <KeyRound className="size-4" />
       </div>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 min-w-0">
-          <p className="text-sm font-semibold truncate">{provider.label}</p>
+          <p className="text-[13px] font-semibold truncate">{provider.label}</p>
           {!!rank && (
             <Badge variant={rank === 1 ? "selected" : "unselected"} className="shrink-0 normal-case">
               {RANK_LABEL[rank] ?? `Backup #${rank - 1}`}
             </Badge>
           )}
           {provider.modelInputMode !== "none" && model && (
-            <span className="shrink-0 font-mono text-[10px] text-muted-foreground bg-secondary rounded px-1.5 py-0.5 truncate max-w-56">
+            <span className="shrink-0 font-mono text-[11px] text-muted-foreground bg-secondary rounded-[4px] px-1.5 py-0.5 truncate max-w-56">
               {model}
             </span>
           )}
@@ -426,7 +413,7 @@ function ProviderRow({
         <div className="mt-0.5 flex items-center gap-2">
           <ConfigSummary provider={provider} />
           {provider.description && (
-            <span className="text-xs text-muted-foreground/70 truncate hidden sm:inline">
+            <span className="text-xs text-muted-foreground truncate hidden sm:inline">
               · {provider.description}
             </span>
           )}
@@ -435,7 +422,7 @@ function ProviderRow({
 
       <div className="flex items-center gap-1 shrink-0">
         <Button
-          size="icon-sm" variant="outline" className="size-8"
+          size="icon-sm" variant="outline"
           onClick={onManage}
           aria-label={`Manage ${provider.label}`}
         >
@@ -444,7 +431,7 @@ function ProviderRow({
         {topKey && (
           <Button
             size="icon-sm" variant="ghost"
-            className="size-8 text-muted-foreground hover:text-destructive"
+            className="text-muted-foreground hover:text-destructive"
             onClick={() => setConfirmOpen(true)}
             aria-label={`Remove ${provider.label} key`}
           >
@@ -587,9 +574,9 @@ function AddProviderModal({ available, onClose, onAdded }: {
           </div>
 
           <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
             <Button type="submit" disabled={saving || !provider}>
-              {saving && <RefreshCw className="size-3.5 mr-1.5 animate-spin" />} Add provider
+              {saving && <RefreshCw className="size-3.5 animate-spin" />} Add provider
             </Button>
           </div>
         </form>
@@ -645,7 +632,7 @@ function ModelField({ provider, value, onChange }: {
 
   if (loading) {
     return (
-      <div className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-field px-3 text-xs text-muted-foreground">
+      <div className="flex h-8 w-full items-center gap-2 rounded-md border border-input bg-field px-3 text-[13px] text-muted-foreground">
         <RefreshCw className="size-3.5 animate-spin" /> Loading models…
       </div>
     );
@@ -679,7 +666,7 @@ function ModelField({ provider, value, onChange }: {
           <PopoverTrigger asChild>
             <button
               type="button"
-              className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-field px-3 text-left"
+              className="flex h-8 w-full items-center justify-between gap-2 rounded-md border border-input bg-field px-3 text-left"
             >
               <span className={cn("truncate font-mono text-xs", !value && "text-muted-foreground font-sans")}>
                 {value || "Choose a model"}
@@ -914,11 +901,11 @@ function ManageProviderModal({ provider, onClose, onChanged }: {
                     <ModelField provider={provider} value={model} onChange={setModel} />
                   </div>
                   <Button
-                    size="sm" variant="outline" className="h-9 shrink-0"
+                    variant="outline" className="shrink-0"
                     disabled={savingModel || model === (provider.selectedModel ?? provider.defaultModel ?? "")}
                     onClick={() => void handleModelSave()}
                   >
-                    {savingModel && <RefreshCw className="size-3.5 mr-1.5 animate-spin" />} Save
+                    {savingModel && <RefreshCw className="size-3.5 animate-spin" />} Save
                   </Button>
                 </div>
               </div>
@@ -927,13 +914,13 @@ function ManageProviderModal({ provider, onClose, onChanged }: {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>API keys</Label>
-                <Button size="sm" className="h-7" onClick={() => setShowAdd((v) => !v)}>
-                  <Plus className="size-3.5 mr-1.5" /> Add key
+                <Button size="sm" variant="outline" onClick={() => setShowAdd((v) => !v)}>
+                  <Plus className="size-3.5" /> Add key
                 </Button>
               </div>
 
               {keys.length === 0 && !showAdd && (
-                <p className="text-xs text-muted-foreground rounded-md border border-dashed border-border px-3 py-4 text-center">
+                <p className="text-[13px] text-muted-foreground rounded-md border border-dashed border-border px-3 py-4 text-center">
                   {provider.envFallback
                     ? <>No key stored here — running on the <code className="font-mono">.env.local</code> value.</>
                     : "No key configured."}
@@ -970,8 +957,8 @@ function ManageProviderModal({ provider, onClose, onChanged }: {
                               </button>
                             </span>
                           )}
-                          <span className="shrink-0 text-[10px] font-mono text-muted-foreground/70 w-3.5 text-center">{i + 1}</span>
-                          <span className="text-sm font-medium truncate">{key.label}</span>
+                          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground w-3.5 text-center">{i + 1}</span>
+                          <span className="text-[13px] font-medium truncate">{key.label}</span>
                           <span className="font-mono text-xs text-muted-foreground">•••{key.secret_last4}</span>
                           <span
                             className={cn("ml-auto inline-flex items-center gap-1.5 text-xs font-medium shrink-0", meta.text)}
@@ -982,17 +969,17 @@ function ManageProviderModal({ provider, onClose, onChanged }: {
                           </span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <Button size="sm" variant="ghost" className="h-7 text-xs" disabled={busy} onClick={() => void handleCheck(key)}>
+                          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void handleCheck(key)}>
                             {busy ? <RefreshCw className="size-3.5 animate-spin" /> : "Re-check"}
                           </Button>
                           {key.status === "dead" && (
                             <Button
-                              size="sm" variant="ghost" className="h-7 text-xs text-emerald-400"
+                              size="sm" variant="ghost" className="text-emerald-700 dark:text-emerald-400"
                               disabled={busy}
                               onClick={() => void handlePatch(key, { status: "healthy" })}
                               title="Mark healthy again"
                             >
-                              <ShieldCheck className="size-3.5 mr-1" /> Revive
+                              <ShieldCheck className="size-3.5" /> Revive
                             </Button>
                           )}
                           <Button
@@ -1021,7 +1008,7 @@ function ManageProviderModal({ provider, onClose, onChanged }: {
               )}
 
               {showAdd && (
-                <form onSubmit={handleAdd} className="space-y-3 rounded-md border border-border bg-secondary p-3 enter">
+                <form onSubmit={handleAdd} className="space-y-3 rounded-md border border-border bg-secondary p-3">
                   <div className="space-y-1.5">
                     <Label>Label</Label>
                     <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Backup" required />
@@ -1051,7 +1038,7 @@ function ManageProviderModal({ provider, onClose, onChanged }: {
                   <div className="flex justify-end gap-2">
                     <Button type="button" size="sm" variant="ghost" onClick={() => setShowAdd(false)}>Cancel</Button>
                     <Button type="submit" size="sm" disabled={saving}>
-                      {saving && <RefreshCw className="size-3.5 mr-1.5 animate-spin" />} Add key
+                      {saving && <RefreshCw className="size-3.5 animate-spin" />} Add key
                     </Button>
                   </div>
                 </form>

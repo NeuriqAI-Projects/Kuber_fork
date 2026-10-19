@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AvailabilityToggle } from "@/components/ui/availability-toggle";
 import { StatTile } from "@/components/ui/stat-tile";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -245,59 +247,57 @@ export function TeamView() {
   if (loadingSession || role !== "manager") return null;
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-6 enter">
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-lg font-semibold leading-tight">Team</h1>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            Who can sign in, their role, territory and the mailbox their leads are sent from.
+          </p>
+        </div>
+        <Button size="sm" onClick={() => setShowAdd((v) => !v)} className="shrink-0">
+          <UserPlus className="size-3.5" /> Add user
+        </Button>
+      </div>
+
       {uncoveredTerritories.length > 0 && (
-        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[13px] text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
           <span className="font-semibold">No active employee covers {uncoveredTerritories.map((t) => t.label).join(", ")}.</span>{" "}
           Leads from {uncoveredTerritories.length > 1 ? "these regions" : "this region"} will pile up unassigned in the manager pool until someone is added or reactivated there.
         </div>
       )}
 
       {/* Overview strip — headcount + coverage at a glance, above the roster. */}
-      <div className="space-y-3">
-        <p className="eyebrow px-1">Team · overview</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          <StatTile layout="row" label="Active" value={loading ? "—" : activeCount} icon={Users} sub={`of ${users.length} total`} />
-          <StatTile layout="row" label="Managers" value={loading ? "—" : managerCount} icon={ShieldCheck} />
-          <StatTile layout="row" label="Employees" value={loading ? "—" : employeeCount} icon={Users} />
-          <StatTile
-            layout="row"
-            label="Away"
-            value={loading ? "—" : awayCount}
-            icon={Radio}
-            tone={awayCount > 0 ? "amber" : "neutral"}
-            sub="excluded from routing"
-          />
-          <StatTile
-            layout="row"
-            label="Territory gaps"
-            value={loading ? "—" : uncoveredTerritories.length}
-            icon={MapPinOff}
-            tone={uncoveredTerritories.length > 0 ? "red" : "neutral"}
-            sub={uncoveredTerritories.length > 0
-              ? uncoveredTerritories.slice(0, 3).map((t) => t.label).join(", ") + (uncoveredTerritories.length > 3 ? ` +${uncoveredTerritories.length - 3}` : "")
-              : "fully covered"}
-          />
-        </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <StatTile layout="row" label="Active" value={loading ? "—" : activeCount} icon={Users} sub={`of ${users.length} total`} />
+        <StatTile layout="row" label="Managers" value={loading ? "—" : managerCount} icon={ShieldCheck} />
+        <StatTile layout="row" label="Employees" value={loading ? "—" : employeeCount} icon={Users} />
+        <StatTile
+          layout="row"
+          label="Away"
+          value={loading ? "—" : awayCount}
+          icon={Radio}
+          tone={awayCount > 0 ? "amber" : "neutral"}
+          sub="excluded from routing"
+        />
+        <StatTile
+          layout="row"
+          label="Territory gaps"
+          value={loading ? "—" : uncoveredTerritories.length}
+          icon={MapPinOff}
+          tone={uncoveredTerritories.length > 0 ? "red" : "neutral"}
+          sub={uncoveredTerritories.length > 0
+            ? uncoveredTerritories.slice(0, 3).map((t) => t.label).join(", ") + (uncoveredTerritories.length > 3 ? ` +${uncoveredTerritories.length - 3}` : "")
+            : "fully covered"}
+        />
       </div>
 
-      <div className="rounded-md border border-border bg-card overflow-hidden min-w-0">
-        <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-border">
-          <div className="min-w-0">
-            <p className="eyebrow">Team</p>
-            <h2 className="font-display text-lg font-semibold mt-0.5">Users</h2>
+      {showAdd && (
+        <form onSubmit={handleCreate} className="rounded-lg border border-border bg-card">
+          <div className="border-b border-border px-4 py-3">
+            <h3 className="text-sm font-semibold">New user</h3>
           </div>
-          <Button size="sm" onClick={() => setShowAdd((v) => !v)}>
-            <UserPlus className="size-3.5 mr-1.5" /> Add user
-          </Button>
-        </div>
-
-        {showAdd && (
-          <form
-            onSubmit={handleCreate}
-            className="grid grid-cols-1 sm:grid-cols-2 gap-3 px-5 py-4 border-b border-border bg-secondary enter"
-          >
-            <p className="eyebrow sm:col-span-2 -mb-1">New user</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4">
             <div className="space-y-1.5">
               <Label>Full name</Label>
               <Input value={fullName} onChange={(e) => setFullName(e.target.value)} required />
@@ -357,197 +357,194 @@ export function TeamView() {
                 </p>
               </div>
             )}
-            <div className="sm:col-span-2 flex justify-end gap-2 pt-1">
-              <Button type="button" variant="ghost" onClick={() => setShowAdd(false)}>Cancel</Button>
-              <Button type="submit" disabled={saving}>
-                {saving && <RefreshCw className="size-3.5 mr-1.5 animate-spin" />} Create
-              </Button>
-            </div>
-          </form>
-        )}
+          </div>
+          <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
+            <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
+            <Button type="submit" disabled={saving}>
+              {saving && <RefreshCw className="size-3.5 animate-spin" />} Create user
+            </Button>
+          </div>
+        </form>
+      )}
 
+      <div className="rounded-lg border border-border bg-card overflow-hidden min-w-0">
         {loading ? (
-          <p className="text-sm text-muted-foreground px-5 py-10 text-center">Loading users…</p>
+          <p className="text-[13px] text-muted-foreground px-4 py-10 text-center">Loading users…</p>
         ) : users.length === 0 ? (
-          <p className="text-sm text-muted-foreground px-5 py-10 text-center">No users yet. Add one to get started.</p>
+          <EmptyState boxed={false} icon={Users} message="No users yet. Add one to get started." />
         ) : (
-          <ul className="divide-y divide-border">
-            {users.map((u) => {
-              const canEditRole = !u.is_super_admin && isSuperAdmin;
-              const canToggleActive = !u.is_super_admin && (isSuperAdmin || u.role === "employee");
-              // Mirrors the API's rule exactly: the Super Admin edits anyone
-              // (themselves included), a manager only employees. Unlike
-              // deactivation, there is nothing dangerous about a Super Admin
-              // choosing their own sending mailbox.
-              const canEditMailbox = isSuperAdmin || u.role === "employee";
-              const leadCount = counts[u.id]?.assigned_lead_count ?? 0;
-              const campaignCount = counts[u.id]?.campaign_count ?? 0;
-              const displayName = u.full_name || u.email;
-              const expanded = expandedId === u.id;
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead className="w-32">Role</TableHead>
+                <TableHead className="hidden w-52 md:table-cell">Workload</TableHead>
+                <TableHead className="w-28">Status</TableHead>
+                <TableHead className="w-10" aria-label="Expand" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {users.map((u) => {
+                const canEditRole = !u.is_super_admin && isSuperAdmin;
+                const canToggleActive = !u.is_super_admin && (isSuperAdmin || u.role === "employee");
+                // Mirrors the API's rule exactly: the Super Admin edits anyone
+                // (themselves included), a manager only employees. Unlike
+                // deactivation, there is nothing dangerous about a Super Admin
+                // choosing their own sending mailbox.
+                const canEditMailbox = isSuperAdmin || u.role === "employee";
+                const leadCount = counts[u.id]?.assigned_lead_count ?? 0;
+                const campaignCount = counts[u.id]?.campaign_count ?? 0;
+                const displayName = u.full_name || u.email;
+                const expanded = expandedId === u.id;
+                const toggle = () => setExpandedId(expanded ? null : u.id);
+                const statusLabel = u.is_active
+                  ? (u.role === "employee" && u.availability_status === "offline" ? "Away" : "Active")
+                  : "Inactive";
 
-              return (
-                <li
-                  key={u.id}
-                  className={cn(
-                    "min-w-0 transition-colors",
-                    !u.is_active && "opacity-60",
-                    expanded && "bg-secondary",
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setExpandedId(expanded ? null : u.id)}
-                    aria-expanded={expanded}
-                    className="flex w-full items-center gap-3 px-5 py-3.5 text-left hover:bg-secondary"
-                  >
-                    <Avatar name={displayName} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-                        <p className="text-sm font-semibold truncate">{displayName}</p>
-                        {u.is_super_admin && (
-                          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-primary/15 text-primary border border-primary/25">
-                            Super Admin
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-0.5 flex items-center gap-2 min-w-0 flex-wrap">
-                        <p className="text-xs font-mono text-muted-foreground truncate">{u.email}</p>
-                        <span className="text-muted-foreground/40 hidden sm:inline" aria-hidden>·</span>
-                        <span className="text-xs text-muted-foreground hidden sm:inline">{roleLabel(u)}</span>
-                        {u.role === "employee" && (
-                          <>
-                            <span className="text-muted-foreground/40 hidden sm:inline" aria-hidden>·</span>
-                            <span className="text-xs font-mono text-muted-foreground tabular-nums hidden sm:inline">
-                              {leadCount} leads · {campaignCount} campaigns
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2.5">
-                      <span
-                        className={cn(
-                          "inline-flex items-center gap-1.5 text-xs font-medium",
-                          u.is_active ? "text-emerald-400" : "text-muted-foreground",
-                        )}
-                      >
+                return (
+                  <Fragment key={u.id}>
+                    <TableRow
+                      onClick={toggle}
+                      className={cn("cursor-pointer", expanded && "bg-hover")}
+                    >
+                      <TableCell className={cn("h-12", !u.is_active && "opacity-60")}>
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <Avatar name={displayName} size="sm" />
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{displayName}</p>
+                            <p className="truncate text-xs text-muted-foreground">{u.email}</p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className={cn("text-muted-foreground", !u.is_active && "opacity-60")}>{roleLabel(u)}</TableCell>
+                      <TableCell className={cn("hidden tabular-nums text-muted-foreground md:table-cell", !u.is_active && "opacity-60")}>
+                        {u.role === "employee" ? `${leadCount} leads · ${campaignCount} campaigns` : "—"}
+                      </TableCell>
+                      <TableCell>
                         <span
                           className={cn(
-                            "size-1.5 rounded-full",
-                            u.is_active ? "bg-emerald-400" : "bg-muted-foreground/50",
+                            "inline-flex items-center gap-1.5 rounded-[5px] px-1.5 py-[3px] text-xs font-medium leading-none",
+                            statusLabel === "Active" && "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300",
+                            statusLabel === "Away" && "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
+                            statusLabel === "Inactive" && "bg-secondary text-muted-foreground",
                           )}
-                          aria-hidden
-                        />
-                        {u.is_active
-                          ? (u.role === "employee" && u.availability_status === "offline" ? "Away" : "Active")
-                          : "Inactive"}
-                      </span>
-                      <ChevronDown
-                        className={cn(
-                          "size-4 text-muted-foreground transition-transform duration-200",
-                          expanded && "rotate-180",
-                        )}
-                        aria-hidden
-                      />
-                    </div>
-                  </button>
+                        >
+                          {statusLabel}
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-1.5 text-center">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); toggle(); }}
+                          aria-expanded={expanded}
+                          aria-label={expanded ? `Collapse ${displayName}` : `Edit ${displayName}`}
+                          className="inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                        >
+                          <ChevronDown className={cn("size-4", expanded && "rotate-180")} aria-hidden />
+                        </button>
+                      </TableCell>
+                    </TableRow>
 
-                  {expanded && (
-                    <div className="space-y-4 border-t border-border/60 px-5 pb-4 pt-3 enter">
-                      {u.role === "employee" && (
-                        <div className="grid grid-cols-2 gap-3 sm:hidden">
-                          <div className="rounded-md border border-border bg-card px-3 py-2">
-                            <p className="eyebrow">Leads</p>
-                            <p className="mt-0.5 font-mono text-sm tabular-nums">{leadCount}</p>
-                          </div>
-                          <div className="rounded-md border border-border bg-card px-3 py-2">
-                            <p className="eyebrow">Campaigns</p>
-                            <p className="mt-0.5 font-mono text-sm tabular-nums">{campaignCount}</p>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs text-muted-foreground">Role</Label>
-                          {canEditRole ? (
-                            <Select value={u.role} onValueChange={(v) => handlePatch(u.id, { role: v as "manager" | "employee" })}>
-                              <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="employee">Employee</SelectItem>
-                                <SelectItem value="manager">Manager</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <span className="inline-flex h-9 w-full items-center px-2.5 rounded-md border border-border bg-secondary font-mono text-xs text-muted-foreground">
-                              {roleLabel(u)}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <Label className="text-xs text-muted-foreground">Sends from</Label>
-                          <MailboxCell
-                            value={u.sending_email}
-                            accounts={mailboxes}
-                            defaultMailbox={defaultMailbox}
-                            disabled={!canEditMailbox}
-                            onChange={(next) => handlePatch(u.id, { sending_email: next })}
-                          />
-                        </div>
-
-                        {u.role === "employee" && (
-                          <div className="space-y-1.5 sm:col-span-2">
-                            <Label className="text-xs text-muted-foreground">Territory</Label>
-                            <TerritoryCell
-                              countries={u.territory_countries ?? []}
-                              onSave={(next) => handlePatch(u.id, { territory_countries: next })}
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
-                        {u.is_active && u.role === "employee" ? (
-                          <AvailabilityToggle
-                            status={u.availability_status}
-                            showLabel
-                            onToggle={() =>
-                              void handlePatch(u.id, {
-                                availability_status: u.availability_status === "offline" ? "online" : "offline",
-                              })
-                            }
-                          />
-                        ) : (
-                          <span className="text-xs text-muted-foreground">
-                            {u.is_active ? "Always available" : "Account inactive"}
-                          </span>
-                        )}
-
-                        {canToggleActive ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={deactivatingId === u.id}
-                            className={cn(
-                              "h-8 text-xs",
-                              u.is_active
-                                ? "border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                : "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-400",
+                    {expanded && (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={5} className="bg-secondary p-0">
+                          <div className="space-y-4 px-4 py-4">
+                            {u.role === "employee" && (
+                              <div className="grid grid-cols-2 gap-3 md:hidden">
+                                <div className="rounded-md border border-border bg-card px-3 py-2">
+                                  <p className="text-xs text-muted-foreground">Leads</p>
+                                  <p className="mt-0.5 text-sm font-medium tabular-nums">{leadCount}</p>
+                                </div>
+                                <div className="rounded-md border border-border bg-card px-3 py-2">
+                                  <p className="text-xs text-muted-foreground">Campaigns</p>
+                                  <p className="mt-0.5 text-sm font-medium tabular-nums">{campaignCount}</p>
+                                </div>
+                              </div>
                             )}
-                            onClick={() => (u.is_active ? void handleDeactivateClick(u) : void handlePatch(u.id, { is_active: true }))}
-                          >
-                            {deactivatingId === u.id && <RefreshCw className="size-3 mr-1.5 animate-spin" />}
-                            {u.is_active ? "Deactivate" : "Reactivate"}
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs text-muted-foreground">Role</Label>
+                                {canEditRole ? (
+                                  <Select value={u.role} onValueChange={(v) => handlePatch(u.id, { role: v as "manager" | "employee" })}>
+                                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="employee">Employee</SelectItem>
+                                      <SelectItem value="manager">Manager</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                ) : (
+                                  <span className="inline-flex h-8 w-full items-center rounded-md border border-border bg-secondary px-2.5 text-[13px] text-muted-foreground">
+                                    {roleLabel(u)}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <Label className="text-xs text-muted-foreground">Sends from</Label>
+                                <MailboxCell
+                                  value={u.sending_email}
+                                  accounts={mailboxes}
+                                  defaultMailbox={defaultMailbox}
+                                  disabled={!canEditMailbox}
+                                  onChange={(next) => handlePatch(u.id, { sending_email: next })}
+                                />
+                              </div>
+
+                              {u.role === "employee" && (
+                                <div className="space-y-1.5 sm:col-span-2">
+                                  <Label className="text-xs text-muted-foreground">Territory</Label>
+                                  <TerritoryCell
+                                    countries={u.territory_countries ?? []}
+                                    onSave={(next) => handlePatch(u.id, { territory_countries: next })}
+                                  />
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+                              {u.is_active && u.role === "employee" ? (
+                                <AvailabilityToggle
+                                  status={u.availability_status}
+                                  showLabel
+                                  onToggle={() =>
+                                    void handlePatch(u.id, {
+                                      availability_status: u.availability_status === "offline" ? "online" : "offline",
+                                    })
+                                  }
+                                />
+                              ) : (
+                                <span className="text-xs text-muted-foreground">
+                                  {u.is_active ? "Always available" : "Account inactive"}
+                                </span>
+                              )}
+
+                              {canToggleActive ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={deactivatingId === u.id}
+                                  className={cn(
+                                    u.is_active
+                                      ? "border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                      : "border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-400",
+                                  )}
+                                  onClick={() => (u.is_active ? void handleDeactivateClick(u) : void handlePatch(u.id, { is_active: true }))}
+                                >
+                                  {deactivatingId === u.id && <RefreshCw className="size-3 animate-spin" />}
+                                  {u.is_active ? "Deactivate" : "Reactivate"}
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </TableBody>
+          </Table>
         )}
       </div>
 
@@ -650,12 +647,12 @@ function HandoverBeforeDeactivateModal({
 
   return (
     <div className="fixed inset-0 z-200 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={saving ? undefined : onCancel} />
-      <div className="swatch-bar relative z-10 w-full max-w-md mx-4 rounded-2xl border border-border bg-card shadow-2xl p-6 pl-7 space-y-4 enter max-h-[90vh] overflow-y-auto">
+      <div className="absolute inset-0 bg-black/25 dark:bg-black/60" onClick={saving ? undefined : onCancel} />
+      <div className="relative z-10 w-full max-w-md mx-4 rounded-lg border border-border bg-popover shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
         <div>
-          <p className="eyebrow">Handover required</p>
-          <p className="font-display text-base font-semibold mt-0.5">Where does this work go?</p>
-          <p className="text-xs text-muted-foreground mt-1">
+          <p className="text-xs text-muted-foreground">Handover required</p>
+          <p className="text-[15px] font-semibold mt-0.5">Where does this work go?</p>
+          <p className="text-[13px] text-muted-foreground mt-1">
             {displayName} still holds{" "}
             {[
               leadCount > 0 ? `${leadCount.toLocaleString()} lead${leadCount !== 1 ? "s" : ""}` : null,
@@ -677,8 +674,8 @@ function HandoverBeforeDeactivateModal({
                   "flex items-start gap-3 rounded-lg border border-border p-3 bg-field",
                   disabled
                     ? "opacity-50 cursor-not-allowed"
-                    : "cursor-pointer hover:bg-field",
-                  checked && !disabled && "border-primary bg-primary/5",
+                    : "cursor-pointer",
+                  checked && !disabled && "border-primary/50 bg-primary/5",
                 )}
               >
                 <AppRadio checked={checked} disabled={disabled || saving} className="mt-1" />
@@ -713,7 +710,7 @@ function HandoverBeforeDeactivateModal({
               </p>
             )}
             {targetIsOffline && (
-              <p className="text-xs text-amber-400">
+              <p className="text-xs text-amber-700 dark:text-amber-400">
                 This employee is marked offline — they will still receive the whole book.
               </p>
             )}
@@ -733,9 +730,9 @@ function HandoverBeforeDeactivateModal({
         )}
 
         <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancel</Button>
+          <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>Cancel</Button>
           <Button type="button" onClick={onConfirm} disabled={saving || blocked}>
-            {saving && <RefreshCw className="size-3.5 mr-1.5 animate-spin" />} Hand over &amp; deactivate
+            {saving && <RefreshCw className="size-3.5 animate-spin" />} Hand over &amp; deactivate
           </Button>
         </div>
       </div>
@@ -778,7 +775,7 @@ function MailboxCell({
     >
       <SelectTrigger
         title={value ?? (defaultMailbox ? `Company default — ${defaultMailbox}` : "Company default")}
-        className={cn("h-9 w-full font-mono text-xs", !value && "text-muted-foreground")}
+        className={cn("w-full", !value && "text-muted-foreground")}
       >
         <SelectValue />
       </SelectTrigger>
@@ -850,8 +847,8 @@ function TerritoryCell({
           ? "No territory — excluded from routing"
           : `${countries.length} countries: ${countries.slice(0, 12).join(", ")}${countries.length > 12 ? "…" : ""}`}
         className={cn(
-          "h-9 w-full justify-between gap-1.5 bg-background px-2.5 font-mono text-xs",
-          empty && "border-amber-500/40 text-amber-400",
+          "w-full justify-between gap-1.5 px-2.5 font-normal",
+          empty && "border-amber-500/40 text-amber-700 dark:text-amber-400",
         )}
       >
         <span className="truncate">{empty ? "Set territory" : summary}</span>
@@ -886,15 +883,14 @@ function TerritoryModal({
 
   return createPortal(
     <div className="fixed inset-0 z-200 flex items-center justify-center pointer-events-auto">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={saving ? undefined : onCancel} />
-      <div className="swatch-bar-top enter relative z-10 mx-4 flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
+      <div className="absolute inset-0 bg-black/25 dark:bg-black/60" onClick={saving ? undefined : onCancel} />
+      <div className="relative z-10 mx-4 flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-border bg-popover shadow-xl">
+        <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-3.5">
           <div>
-            <p className="eyebrow">Territory</p>
-            <h2 className="font-display text-base font-semibold mt-0.5">
+            <h2 className="text-[15px] font-semibold">
               Which countries&apos; leads route here
             </h2>
-            <p className="text-xs text-muted-foreground mt-0.5">{TERRITORY_HELP}</p>
+            <p className="text-[13px] text-muted-foreground mt-0.5">{TERRITORY_HELP}</p>
           </div>
           <Button type="button" variant="ghost" size="icon" onClick={onCancel} disabled={saving} className="size-8 shrink-0 text-muted-foreground hover:text-foreground">
             <X className="size-4" />
@@ -905,7 +901,7 @@ function TerritoryModal({
           <LocationsGrid selected={draft} onChangeSelected={setDraft} maxHeightClassName="max-h-[55vh]" />
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-border px-6 py-4">
+        <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-3">
           <p className="text-xs text-muted-foreground">
             {draft.length === 0
               ? "No countries — this employee is skipped by territory routing."
@@ -914,7 +910,7 @@ function TerritoryModal({
           <div className="flex shrink-0 items-center gap-2">
             <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={saving}>Cancel</Button>
             <Button type="button" size="sm" onClick={onSave} disabled={saving || !dirty}>
-              {saving && <RefreshCw className="size-3.5 mr-1.5 animate-spin" />}
+              {saving && <RefreshCw className="size-3.5 animate-spin" />}
               Save territory
             </Button>
           </div>

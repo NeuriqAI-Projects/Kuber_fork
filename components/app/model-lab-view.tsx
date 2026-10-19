@@ -9,6 +9,7 @@ import {
 } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ServiceHealthBanner } from "@/components/app/service-health-banner";
@@ -200,7 +201,7 @@ export function ModelLabView() {
     <PageShell
       title="Model Lab"
       description="Read the emails, pick the model. Nothing here is ever sent."
-      icon={<FlaskConical className="size-5 text-primary" />}
+      icon={<FlaskConical />}
       banner={<ServiceHealthBanner />}
       width={mode === "prompts" ? "prose" : "wide"}
       actions={
@@ -226,8 +227,8 @@ export function ModelLabView() {
         {mode === "compare" && bench.length > 0 && (
           <>
             {/* Controls */}
-            <div className="rounded-lg border border-border bg-secondary p-4">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <div className="rounded-lg border border-border bg-card p-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto] lg:items-end">
                 <div className="min-w-0">
                   <Label className="text-xs">Lead</Label>
                   <Select value={leadId} onValueChange={setLeadId}>
@@ -269,7 +270,7 @@ export function ModelLabView() {
                     </Label>
                   </div>
                 </div>
-                <Button onClick={() => void generate()} disabled={running || picked.length === 0} className="gap-1.5">
+                <Button onClick={() => void generate()} disabled={running || picked.length === 0}>
                   {running ? <Loader2 className="size-4 animate-spin" /> : <FlaskConical className="size-4" />}
                   {running ? "Writing…" : `Generate ${picked.length} · ~${estimatedCents(picked.length)}`}
                 </Button>
@@ -284,7 +285,7 @@ export function ModelLabView() {
                     <button key={m} type="button" className="flex items-center gap-2 text-left"
                       onClick={() => setPicked((prev) => (on ? prev.filter((x) => x !== m) : [...prev, m]))}>
                       <AppCheckbox checked={on} size="sm" />
-                      <span className={`font-mono text-xs ${on ? "text-foreground" : "text-muted-foreground"}`}>{m}</span>
+                      <span className={`text-[13px] ${on ? "text-foreground" : "text-muted-foreground"}`}>{m}</span>
                     </button>
                   );
                 })}
@@ -313,7 +314,7 @@ export function ModelLabView() {
             {emails.length > 0 && (
               <>
                 <div className="mt-5 flex flex-wrap items-center gap-3">
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-[13px] text-muted-foreground">
                     Pick the best, and the worst if one is clearly wrong.
                   </p>
                   <div className="ml-auto flex items-center gap-2">
@@ -321,7 +322,7 @@ export function ModelLabView() {
                       {plain ? "Formatted" : "Plain text"}
                     </Button>
                     {!revealed && (
-                      <Button size="sm" onClick={() => void revealAndSave()} disabled={!best} className="gap-1.5">
+                      <Button size="sm" onClick={() => void revealAndSave()} disabled={!best}>
                         <Eye className="size-3.5" /> Reveal &amp; save
                       </Button>
                     )}
@@ -348,11 +349,10 @@ export function ModelLabView() {
           <div className="space-y-5">
             <div className="flex items-start gap-3">
               <div className="min-w-0">
-                <p className="eyebrow">Writing style</p>
-                <h2 className="font-display text-base font-semibold">
+                <h2 className="text-[15px] font-semibold leading-tight">
                   {editingId ? setName || "Prompt set" : "A prompt set to try"}
                 </h2>
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="mt-1 text-[13px] text-muted-foreground">
                   {editingId
                     ? "Editing a saved set. Changes here never touch Settings."
                     : "The same two boxes as Settings → AI & Outreach. Saving here never changes Settings — pick the set in Compare to write with it."}
@@ -366,7 +366,7 @@ export function ModelLabView() {
             </div>
 
             <div>
-              <Label htmlFor="lab-set-name" className="text-sm">Name</Label>
+              <Label htmlFor="lab-set-name" className="text-[13px] font-medium">Name</Label>
               <Input id="lab-set-name" value={setName} onChange={(e) => setSetName(e.target.value)}
                 placeholder="Shorter, no boilerplate" className="mt-1 max-w-sm" />
             </div>
@@ -379,9 +379,9 @@ export function ModelLabView() {
               placeholder="Leave empty to keep the saved prompt"
               helper="Company details, the product library and campaign context are appended automatically. Structure, length and tone come from this prompt." />
 
-            <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+            <div className="rounded-md border border-border bg-secondary p-3">
               <div className="flex items-center gap-1.5 text-xs font-medium">
-                <Lock className="size-3.5 text-primary" /> Always applied on top of the prompt above
+                <Lock className="size-3.5 text-muted-foreground" /> Always applied on top of the prompt above
               </div>
               <p className="mt-1.5 text-xs text-muted-foreground">
                 The bold-the-key-facts and bullet-list rules are appended in code after whichever
@@ -390,22 +390,22 @@ export function ModelLabView() {
               </p>
             </div>
 
-            <Button onClick={() => void savePromptSet()} disabled={savingSet} className="gap-1.5">
+            <Button onClick={() => void savePromptSet()} disabled={savingSet}>
               {savingSet && <Loader2 className="size-4 animate-spin" />}
               {editingId ? "Save changes" : "Save prompt set"}
             </Button>
 
             {promptSets.length > 0 && (
               <div>
-                <p className="mb-2 text-xs text-muted-foreground">
+                <p className="mb-2 text-[13px] text-muted-foreground">
                   Saved sets — click one to read or edit it.
                 </p>
-                <div className="rounded-lg border border-border bg-field dark:bg-card">
+                <div className="overflow-hidden rounded-lg border border-border bg-card">
                   {promptSets.map((p) => (
                     <button key={p.id} type="button" onClick={() => openPromptSet(p)}
-                      className={`flex w-full items-center gap-3 border-b border-border px-4 py-2.5 text-left last:border-0 hover:bg-secondary ${
-                        editingId === p.id ? "bg-primary/10" : ""}`}>
-                      <span className="text-sm font-medium">{p.name}</span>
+                      className={`flex h-10 w-full items-center gap-3 border-b border-border px-4 text-left transition-colors last:border-0 ${
+                        editingId === p.id ? "bg-primary/5" : "hover:bg-hover"}`}>
+                      <span className="text-[13px] font-medium">{p.name}</span>
                       <span className="text-xs text-muted-foreground">
                         {p.template ? `${p.template.length} char template` : "no template"}
                         {" · "}
@@ -433,12 +433,15 @@ export function ModelLabView() {
 /** Mirrors the shell's own spacing so the page does not jump as it loads. */
 function ModelLabSkeleton() {
   return (
-    <div className="mx-auto w-full max-w-6xl animate-pulse p-8">
-      <div className="h-28 rounded-lg border border-border bg-secondary" />
-      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="h-64 rounded-lg border border-border bg-field dark:bg-card" />
-        ))}
+    <div className="flex h-full flex-col animate-pulse">
+      <div className="h-12 shrink-0 border-b border-border" />
+      <div className="mx-auto w-full max-w-6xl px-6 py-6">
+        <div className="h-28 rounded-lg border border-border bg-card" />
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-64 rounded-lg border border-border bg-card" />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -453,13 +456,13 @@ function EmailCard({
 }) {
   const words = email.body ? htmlToPlainText(email.body).split(/\s+/).filter(Boolean).length : 0;
   return (
-    <div className={`flex flex-col overflow-hidden rounded-lg border bg-field shadow-sm dark:bg-card ${
-      isBest ? "border-primary ring-1 ring-primary" : isWorst ? "border-destructive" : "border-border"}`}>
-      <div className="flex items-center gap-2 border-b border-border bg-secondary px-3.5 py-2.5">
-        <span className="font-display text-xs font-semibold">
+    <div className={`flex flex-col overflow-hidden rounded-lg border bg-card ${
+      isBest ? "border-primary" : isWorst ? "border-destructive" : "border-border"}`}>
+      <div className={`flex h-10 items-center gap-2 border-b border-border px-3.5 ${isBest ? "bg-primary/5" : ""}`}>
+        <span className="truncate text-[13px] font-semibold">
           {blind ? `Email ${email.label}` : email.model}
         </span>
-        <span className="ml-auto font-mono text-[11px] text-muted-foreground">
+        <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
           {email.duration_ms != null && `${(email.duration_ms / 1000).toFixed(1)}s`}
           {words > 0 && ` · ${words}w`}
           {email.cost_usd != null && ` · ${formatUsd(Number(email.cost_usd))}`}
@@ -489,11 +492,11 @@ function EmailCard({
       </div>
 
       <div className="flex items-center gap-2 border-t border-border px-3.5 py-2.5">
-        <Button size="sm" variant={isBest ? "default" : "outline"} className="flex-1 gap-1.5"
+        <Button size="sm" variant={isBest ? "default" : "outline"} className="flex-1"
           onClick={onBest} disabled={!!email.error}>
           <ThumbsUp className="size-3.5" /> Best
         </Button>
-        <Button size="sm" variant={isWorst ? "destructive" : "outline"} className="flex-1 gap-1.5"
+        <Button size="sm" variant={isWorst ? "destructive" : "outline"} className="flex-1"
           onClick={onWorst} disabled={!!email.error}>
           <ThumbsDown className="size-3.5" /> Worst
         </Button>
@@ -517,10 +520,10 @@ function ExpandedEmail({ email, plain, onClose }: { email: LabEmail; plain: bool
   return (
     <div role="dialog" aria-modal="true" aria-label={`Email from ${email.model}`}
       className="fixed inset-0 z-200 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
-        <div className="flex items-center gap-3 border-b border-border px-5 py-3">
-          <span className="font-mono text-sm">{email.model}</span>
+      <div className="absolute inset-0 bg-black/25 dark:bg-black/60" onClick={onClose} />
+      <div className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-border bg-popover shadow-xl">
+        <div className="flex items-center gap-3 border-b border-border px-5 py-2.5">
+          <span className="text-[13px] font-semibold">{email.model}</span>
           <Button size="icon-sm" variant="ghost" className="ml-auto" onClick={onClose} aria-label="Close">
             <X className="size-4" />
           </Button>
@@ -541,7 +544,7 @@ function ExpandedEmail({ email, plain, onClose }: { email: LabEmail; plain: bool
 
 function Scoreboard({ rows }: { rows: LabScoreRow[] }) {
   if (rows.length === 0) {
-    return <p className="text-sm text-muted-foreground">No comparisons recorded yet.</p>;
+    return <EmptyState icon={FlaskConical} message="No comparisons recorded yet." />;
   }
   // Grouped by prompt set: a score earned under one wording is not a score
   // under another, so the two must never be summed together.
@@ -556,36 +559,36 @@ function Scoreboard({ rows }: { rows: LabScoreRow[] }) {
     <div className="space-y-6">
       {[...groups.entries()].map(([name, list]) => (
         <div key={name}>
-          <p className="eyebrow mb-2">{name}</p>
-          <div className="overflow-x-auto rounded-lg border border-border bg-field dark:bg-card">
-            <table className="w-full min-w-[560px] text-sm">
-              <thead>
-                <tr className="border-b border-border bg-secondary text-xs text-muted-foreground">
-                  <th className="px-4 py-2 text-left font-medium">Model</th>
-                  <th className="px-4 py-2 text-right font-medium">Best</th>
-                  <th className="px-4 py-2 text-right font-medium">Worst</th>
-                  <th className="px-4 py-2 text-right font-medium">Emails</th>
-                  <th className="px-4 py-2 text-right font-medium">Avg time</th>
-                  <th className="px-4 py-2 text-right font-medium">Avg cost</th>
-                </tr>
-              </thead>
-              <tbody className="tabular-nums">
+          <p className="mb-2 text-[13px] font-medium">{name}</p>
+          <div className="overflow-hidden rounded-lg border border-border bg-card">
+            <Table className="min-w-[560px]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Model</TableHead>
+                  <TableHead className="text-right">Best</TableHead>
+                  <TableHead className="text-right">Worst</TableHead>
+                  <TableHead className="text-right">Emails</TableHead>
+                  <TableHead className="text-right">Avg time</TableHead>
+                  <TableHead className="text-right">Avg cost</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="tabular-nums">
                 {list.map((r) => (
-                  <tr key={r.model} className="border-b border-border last:border-0">
-                    <td className="px-4 py-2 font-mono text-xs">{r.model}</td>
-                    <td className="px-4 py-2 text-right font-semibold">{r.best}</td>
-                    <td className={`px-4 py-2 text-right ${r.worst > 0 ? "text-destructive" : ""}`}>{r.worst}</td>
-                    <td className="px-4 py-2 text-right text-muted-foreground">{r.runs}</td>
-                    <td className="px-4 py-2 text-right text-muted-foreground">
+                  <TableRow key={r.model}>
+                    <TableCell>{r.model}</TableCell>
+                    <TableCell className="text-right font-semibold">{r.best}</TableCell>
+                    <TableCell className={`text-right ${r.worst > 0 ? "text-destructive" : ""}`}>{r.worst}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">{r.runs}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">
                       {r.avg_ms != null ? `${(r.avg_ms / 1000).toFixed(1)}s` : "—"}
-                    </td>
-                    <td className="px-4 py-2 text-right text-muted-foreground">
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground">
                       {r.avg_cost != null ? formatUsd(Number(r.avg_cost)) : "—"}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
       ))}
