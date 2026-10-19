@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import {
   LayoutDashboard, Users, Megaphone, Settings, Inbox, FlaskConical,
-  Menu, Bug,
+  ChevronsLeft, ChevronsRight, Bug, Coins,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useApp } from "@/lib/app-context";
@@ -45,6 +45,8 @@ const NAV_ITEMS = [
   // Managers only: the lab spends on model calls and decides what writes to
   // customers. It never sends anything — see lib/services/model-lab.ts.
   { href: "/model-lab", label: "Model Lab",  icon: FlaskConical,    exact: false, managerOnly: true  },
+  // Managers only: provider keys and what each one has spent.
+  { href: "/credits",   label: "Credits",    icon: Coins,           exact: false, managerOnly: true  },
   { href: "/settings",  label: "Settings",   icon: Settings,        exact: false, managerOnly: false },
 ] as const;
 
@@ -201,15 +203,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
               sidebarCollapsed ? "flex-col gap-2 px-2 py-4" : "gap-2.5 px-4 py-5",
             )}
           >
-            <button
-              type="button"
-              onClick={toggleSidebar}
-              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className="shrink-0 size-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-            >
-              <Menu className="size-4" />
-            </button>
             {!sidebarCollapsed && (
               <>
                 {logoUrl ? (
@@ -219,9 +212,18 @@ function AppShell({ children }: { children: React.ReactNode }) {
                     <span className="text-background text-sm font-black">{APP_LOGO_INITIAL}</span>
                   </div>
                 )}
-                <span className="font-display font-bold tracking-tight truncate">{APP_NAME}</span>
+                <span className="font-display font-bold tracking-tight truncate flex-1">{APP_NAME}</span>
               </>
             )}
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className="shrink-0 size-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+            >
+              {sidebarCollapsed ? <ChevronsRight className="size-4" /> : <ChevronsLeft className="size-4" />}
+            </button>
           </div>
           <nav className="flex-1 p-2 space-y-0.5">
             {visibleNavItems.map(({ href, label, icon: Icon, exact }) => {

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { requireManager } from "@/lib/auth/api-auth";
 import { ok } from "@/lib/api-response";
 import {
-  checkApolloCredits, checkFirecrawlCredits, checkOpenRouterCredits, checkInstantlyCredits,
+  checkApolloCredits, checkFirecrawlCredits, checkOpenRouterCredits, checkInstantlyCredits, checkJevCredits, checkTavilyCredits,
   type CreditCheck,
 } from "@/lib/services/provider-credits";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -27,6 +27,8 @@ const PROVIDERS: Array<{
   { id: "firecrawl", label: "Firecrawl", shared: false, check: checkFirecrawlCredits },
   { id: "openrouter", label: "OpenRouter", shared: false, check: checkOpenRouterCredits },
   { id: "instantly", label: "Instantly", shared: true, check: checkInstantlyCredits },
+  { id: "jev", label: "Jev", shared: false, check: checkJevCredits },
+  { id: "tavily", label: "Tavily", shared: false, check: checkTavilyCredits },
 ];
 
 // Every manager can see whether a provider is running low; only super admins

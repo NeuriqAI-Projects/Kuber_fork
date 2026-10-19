@@ -72,7 +72,7 @@ function labelFor(row: ApolloLedgerRow): string {
 // slow request can't scan the whole table's history.
 const LEDGER_LOOKBACK_DAYS = 90;
 const DAILY_CHART_DAYS = 14;
-const HISTORY_PAGE_SIZE = 50;
+const HISTORY_PAGE_SIZE = 200;
 
 export async function GET(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireManager>>;

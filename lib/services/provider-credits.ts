@@ -263,7 +263,7 @@ async function fetchApolloCredits(secret: string): Promise<CreditCheck> {
     const limit = extractApolloLimit(data);
 
     if (remaining == null) {
-      return { ok: true, remaining: null, limit, message: "Apollo key is valid (couldn't read a credit balance from this response shape — check Settings > Keys > Re-check after Apollo's first real use to confirm parsing)" };
+      return { ok: true, remaining: null, limit, message: "Apollo key is valid (couldn't read a credit balance from this response shape — check Credits > Re-check after Apollo's first real use to confirm parsing)" };
     }
     return {
       ok: remaining >= APOLLO_MIN_CREDITS,

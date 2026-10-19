@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     calls: { today: calls.today, week: calls.week, month: calls.month, allTime: calls.allTime },
     split: { linkedinReads: linkedin.allTime, webSearches: search.allTime },
     daily: calls.daily.map((d, i) => ({ date: d.date, linkedin: linkedin.daily[i].value, searches: search.daily[i].value })),
-    history: rows.slice(0, 50).map((r) => { const c = tavilyCallsOf(r); return { id: r.id, created_at: r.updated_at, name: r.name, linkedinRead: c.linkedin === 1, webSearch: c.search === 1, status: r.status }; }),
+    history: rows.slice(0, 200).map((r) => { const c = tavilyCallsOf(r); return { id: r.id, created_at: r.updated_at, name: r.name, linkedinRead: c.linkedin === 1, webSearch: c.search === 1, status: r.status }; }),
     ledgerWindowDays: LOOKBACK_DAYS,
   });
 }

@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { RefreshCw, Coins, CalendarDays, Flame, Sparkles, Search, Link2 } from "lucide-react";
+import { Coins, CalendarDays, Flame, Sparkles, Search, Link2 } from "lucide-react";
 import { useApp } from "@/lib/app-context";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Paged } from "@/components/ui/paged";
 import { Card } from "@/components/ui/card";
+import { UsageHeader } from "@/components/app/usage-header";
 import { StatTile } from "@/components/ui/stat-tile";
 import { UsageBarChart } from "@/components/app/usage-bar-chart";
 import { UsageHeaderSkeleton, StatTileGridSkeleton, ChartCardSkeleton, RowsCardSkeleton } from "@/components/app/usage-skeletons";
@@ -33,15 +34,7 @@ function useUsage<T>(fetcher: (token: string, refresh: boolean) => Promise<T>) {
 }
 
 function Intro({ text, refreshing, onRefresh }: { text: string; refreshing: boolean; onRefresh: () => void }) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <p className="text-xs text-muted-foreground max-w-2xl">{text}</p>
-      <Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={onRefresh} className="shrink-0 gap-1.5">
-        <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
-        {refreshing ? "Checking…" : "Refresh"}
-      </Button>
-    </div>
-  );
+  return <UsageHeader info={text} refreshing={refreshing} onRefresh={onRefresh} />;
 }
 
 const Loading = () => (
@@ -85,6 +78,7 @@ export function JevUsageView() {
       <Card className="p-5 space-y-3">
         <div><p className="eyebrow">Recent scoring</p><p className="text-xs text-muted-foreground">Most recent first.</p></div>
         {history.length === 0 ? <p className="text-xs text-muted-foreground py-6 text-center">Nothing scored yet.</p> : (
+          <Paged items={history}>{(rows) => (
           <div className="rounded-lg border border-border overflow-hidden">
             <table className="w-full text-xs">
               <thead className="bg-secondary text-muted-foreground"><tr>
@@ -93,7 +87,7 @@ export function JevUsageView() {
                 <th className="text-right font-medium px-3 py-2">Tokens</th><th className="text-right font-medium px-3 py-2">Extra sources</th>
               </tr></thead>
               <tbody className="divide-y divide-border">
-                {history.map((h) => (
+                {rows.map((h) => (
                   <tr key={h.id}>
                     <td className="px-3 py-2 whitespace-nowrap font-mono">{fmtTime(h.created_at)}</td>
                     <td className="px-3 py-2 truncate max-w-56">{h.name}</td>
@@ -106,6 +100,7 @@ export function JevUsageView() {
               </tbody>
             </table>
           </div>
+          )}</Paged>
         )}
       </Card>
     </div>
@@ -150,6 +145,7 @@ export function TavilyUsageView() {
       <Card className="p-5 space-y-3">
         <div><p className="eyebrow">Recent activity</p><p className="text-xs text-muted-foreground">Companies that used Tavily, most recent first.</p></div>
         {history.length === 0 ? <p className="text-xs text-muted-foreground py-6 text-center">No Tavily activity recorded yet.</p> : (
+          <Paged items={history}>{(rows) => (
           <div className="rounded-lg border border-border overflow-hidden">
             <table className="w-full text-xs">
               <thead className="bg-secondary text-muted-foreground"><tr>
@@ -157,7 +153,7 @@ export function TavilyUsageView() {
                 <th className="text-left font-medium px-3 py-2">Used for</th><th className="text-left font-medium px-3 py-2">Decision</th>
               </tr></thead>
               <tbody className="divide-y divide-border">
-                {history.map((h) => (
+                {rows.map((h) => (
                   <tr key={h.id}>
                     <td className="px-3 py-2 whitespace-nowrap font-mono">{fmtTime(h.created_at)}</td>
                     <td className="px-3 py-2 truncate max-w-56">{h.name}</td>
@@ -173,6 +169,7 @@ export function TavilyUsageView() {
               </tbody>
             </table>
           </div>
+          )}</Paged>
         )}
       </Card>
     </div>

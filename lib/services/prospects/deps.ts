@@ -72,7 +72,7 @@ async function readHomeFirecrawl(url: string, companyId: string, startBy: number
 
 async function need(provider: "jev" | "tavily", companyId: string): Promise<string> {
   const s = await getServiceSecret(provider, companyId);
-  if (!s) throw new Error(`${provider === "jev" ? "Jev" : "Tavily"} API key not configured — add one in Settings > Keys`);
+  if (!s) throw new Error(`${provider === "jev" ? "Jev" : "Tavily"} API key not configured — add one in Credits`);
   return s;
 }
 

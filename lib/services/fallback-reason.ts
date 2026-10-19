@@ -32,7 +32,7 @@ const NO_CREDITS: FallbackReason = {
 };
 const BAD_KEY: FallbackReason = {
   code: "bad_key",
-  message: "The AI provider is rejecting the API key. Check or replace it in Settings > Keys.",
+  message: "The AI provider is rejecting the API key. Check or replace it in Credits.",
   fixable: true,
 };
 const SERVICE_BUSY: FallbackReason = {

@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
   // DB-first key resolution (Settings > Keys), matching bulkMatch()'s own path
   // — an env-only check 503s the whole email-reveal pass in production.
   if (!(await getServiceSecret("apollo", "any" /* one shared Apollo account */))) {
-    return fail(503, "UPSTREAM_APOLLO", "Apollo API key not configured — add one in Settings > Keys");
+    return fail(503, "UPSTREAM_APOLLO", "Apollo API key not configured — add one in Credits");
   }
 
   const db = dbForUser(user);

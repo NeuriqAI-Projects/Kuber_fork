@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { RefreshCw, Send, MailOpen, Reply, MailX, Inbox } from "lucide-react";
+import { Send, MailOpen, Reply, MailX, Inbox } from "lucide-react";
 import { useApp } from "@/lib/app-context";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Paged } from "@/components/ui/paged";
 import { Card } from "@/components/ui/card";
 import { StatTile } from "@/components/ui/stat-tile";
+import { UsageHeader } from "@/components/app/usage-header";
 import { UsageBarChart } from "@/components/app/usage-bar-chart";
 import { UsageHeaderSkeleton, StatTileGridSkeleton, ChartCardSkeleton, RowsCardSkeleton } from "@/components/app/usage-skeletons";
 import { fetchInstantlyUsage, type InstantlyUsageData } from "@/lib/api-client";
@@ -58,15 +59,7 @@ export function InstantlyUsageView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <p className="text-xs text-muted-foreground max-w-2xl">
-          Live from Instantly&apos;s campaign analytics API — sending accounts, workspace-wide send/open/reply totals, and a daily breakdown.
-        </p>
-        <Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={() => void load(true)} className="shrink-0 gap-1.5">
-          <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
-          {refreshing ? "Checking…" : "Refresh"}
-        </Button>
-      </div>
+      <UsageHeader info="Live from Instantly's analytics: sending accounts, workspace-wide send, open and reply totals, and a daily breakdown." refreshing={refreshing} onRefresh={() => void load(true)} />
 
       {!key.ok && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
@@ -126,6 +119,7 @@ export function InstantlyUsageView() {
         ) : !accounts.data?.length ? (
           <p className="text-xs text-muted-foreground py-6 text-center">No sending accounts configured.</p>
         ) : (
+          <Paged items={accounts.data}>{(rows) => (
           <div className="rounded-lg border border-border overflow-hidden">
             <table className="w-full text-xs">
               <thead className="bg-secondary text-muted-foreground">
@@ -136,7 +130,7 @@ export function InstantlyUsageView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {accounts.data.map((a) => {
+                {rows.map((a) => {
                   const s = ACCOUNT_STATUS_LABEL[a.status] ?? { label: `Status ${a.status}`, tone: "text-muted-foreground" };
                   return (
                     <tr key={a.email}>
@@ -149,6 +143,7 @@ export function InstantlyUsageView() {
               </tbody>
             </table>
           </div>
+          )}</Paged>
         )}
       </Card>
     </div>

@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { RefreshCw, Sparkles, MessageSquareReply, ArrowRightLeft } from "lucide-react";
+import { Sparkles, MessageSquareReply, ArrowRightLeft } from "lucide-react";
 import { useApp } from "@/lib/app-context";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatTile } from "@/components/ui/stat-tile";
+import { UsageHeader } from "@/components/app/usage-header";
 import { UsageBarChart } from "@/components/app/usage-bar-chart";
 import { UsageHeaderSkeleton, StatTileGridSkeleton, ChartCardSkeleton } from "@/components/app/usage-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -88,20 +88,11 @@ export function AiUsageView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <p className="text-xs text-muted-foreground max-w-2xl">
-          Key validity/balance for every configured LLM, plus how many drafts and replies this app has actually generated —
-          there is no per-call token or cost log today, so volume is counted from real output, not tokens.
-        </p>
-        <Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={() => void load(true)} className="shrink-0 gap-1.5">
-          <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
-          {refreshing ? "Checking…" : "Refresh"}
-        </Button>
-      </div>
+      <UsageHeader info="Key health for every configured LLM, plus how many drafts and replies this app has generated. There is no per-call token or cost log, so volume is counted from real output, not tokens." refreshing={refreshing} onRefresh={() => void load(true)} />
 
       <div className="rounded-lg border border-border bg-secondary px-4 py-2.5 text-xs text-muted-foreground flex items-center gap-1.5">
         <ArrowRightLeft className="size-3.5 shrink-0" />
-        Try order: <span className="font-medium text-foreground">{primaryLabel}</span> primary, <span className="font-medium text-foreground">{fallbackLabel}</span> fallback — set in Settings › Keys › Credentials.
+        Try order: <span className="font-medium text-foreground">{primaryLabel}</span> primary, <span className="font-medium text-foreground">{fallbackLabel}</span> fallback.
       </div>
 
       <div className="space-y-2">

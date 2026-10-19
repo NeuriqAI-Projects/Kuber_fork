@@ -57,7 +57,7 @@ export async function requireServiceSecret(
 ): Promise<string> {
   const secret = await getServiceSecret(provider, scope);
   if (!secret) {
-    throw new Error(`${label} API key not configured — add one in Settings > Keys`);
+    throw new Error(`${label} API key not configured — add one in Credits`);
   }
   return secret;
 }
