@@ -80,11 +80,10 @@ export function ReplyAttachButton({
       />
       <Button
         type="button"
-        size="sm"
-        variant="outline"
+        variant="ghost"
         disabled={disabled || attaching || currentCount >= REPLY_ATTACH_MAX_FILES}
         onClick={() => inputRef.current?.click()}
-        className="gap-1.5"
+        className="px-2 text-muted-foreground hover:text-foreground"
         title="Attach a file or image. Instantly cannot send real attachments — images are shown in the email, other files as a download link."
       >
         {attaching ? <Loader2 className="size-3.5 animate-spin" /> : <Paperclip className="size-3.5" />}
@@ -108,17 +107,17 @@ export function ReplyAttachmentChips({
       {attachments.map((a, i) => (
         <li
           key={`${a.url}-${i}`}
-          className="flex items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5 min-w-0"
+          className="flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1 min-w-0"
         >
           {a.mime.startsWith("image/") ? (
             // Hosted download URL — not a Next image domain, and this is a compose chip not a page asset.
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={a.url} alt="" className="size-8 rounded object-cover shrink-0 bg-secondary" />
+            <img src={a.url} alt="" className="size-7 rounded object-cover shrink-0 bg-secondary" />
           ) : (
             <FileText className="size-4 text-muted-foreground shrink-0" />
           )}
-          <span className="text-xs truncate min-w-0">{a.name}</span>
-          <span className="font-mono text-[10px] text-muted-foreground shrink-0 tabular-nums">
+          <span className="text-[13px] truncate min-w-0">{a.name}</span>
+          <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
             {formatAttachmentBytes(a.size)}
           </span>
           <Button

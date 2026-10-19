@@ -1,8 +1,40 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { AlertTriangle, Lock, X } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+
+/**
+ * One line of the reply composer: a short muted label on the left ("To",
+ * "Subject", "Cc") and the field on the right, Gmail/Attio style.
+ */
+export function ComposerRow({
+  label,
+  htmlFor,
+  children,
+  className,
+}: {
+  label: ReactNode;
+  htmlFor?: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("grid grid-cols-[52px_minmax(0,1fr)] items-start gap-x-2", className)}>
+      <Label htmlFor={htmlFor} className="pt-2 text-[13px] font-normal text-muted-foreground">
+        {label}
+      </Label>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+/** Classes for the chip-style address fields (To / Cc / Bcc) — same box as `Input`. */
+export const chipFieldClass =
+  "flex min-h-8 flex-wrap items-center gap-1 rounded-md border border-input bg-field px-1.5 py-1 shadow-xs";
+export const chipClass =
+  "inline-flex max-w-full items-center gap-1 rounded-[5px] px-1.5 py-0.5 text-xs leading-4";
 
 /**
  * The To line of a reply — editable, except for one address.
@@ -36,16 +68,10 @@ export function ReplyToField({
   const missing = suggestions.filter((s) => !to.includes(s));
 
   return (
-    <div className="space-y-1">
-      <Label className="eyebrow text-muted-foreground">To</Label>
-      <div
-        className={cn(
-          "flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-input bg-field px-2 py-1.5",
-          disabled && "opacity-50 pointer-events-none",
-        )}
-      >
+    <ComposerRow label="To">
+      <div className={cn(chipFieldClass, disabled && "opacity-50 pointer-events-none")}>
         {to.length === 0 && (
-          <span className="font-mono text-[11px] text-muted-foreground">
+          <span className="px-1 text-[13px] text-muted-foreground">
             No recipient — nobody has replied to this thread yet
           </span>
         )}
@@ -54,17 +80,12 @@ export function ReplyToField({
           return (
             <span
               key={email}
-              className={cn(
-                "inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[11px]",
-                locked
-                  ? "border-primary/30 bg-primary/10 text-foreground"
-                  : "border-border bg-secondary text-foreground",
-              )}
+              className={cn(chipClass, locked ? "bg-primary/10 text-foreground" : "bg-secondary text-foreground")}
               title={locked ? "Instantly always addresses the message you are replying to. Reply to a different message to change this." : undefined}
             >
               <span className="truncate">{email}</span>
               {locked ? (
-                <Lock className="size-2.5 shrink-0 text-muted-foreground" />
+                <Lock className="size-3 shrink-0 text-muted-foreground" />
               ) : (
                 <button
                   type="button"
@@ -80,22 +101,22 @@ export function ReplyToField({
         })}
       </div>
       {missing.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-          <span className="text-[10px] text-muted-foreground">Also on this thread:</span>
+        <div className="flex flex-wrap items-center gap-1.5 pt-1.5">
+          <span className="text-xs text-muted-foreground">Also on this thread:</span>
           {missing.map((email) => (
             <button
               key={email}
               type="button"
               disabled={disabled}
               onClick={() => onChange([...to, email])}
-              className="rounded border border-dashed border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground hover:border-primary/40 hover:text-foreground disabled:opacity-50"
+              className="rounded-[5px] border border-dashed border-border px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-hover hover:text-foreground disabled:opacity-50"
             >
               + {email}
             </button>
           ))}
         </div>
       )}
-    </div>
+    </ComposerRow>
   );
 }
 
@@ -118,8 +139,8 @@ export function LeadExcludedWarning({
   if (!lead || reaches.has(lead)) return null;
 
   return (
-    <p className="flex items-start gap-1.5 text-[11px] text-amber-500">
-      <AlertTriangle className="mt-px size-3 shrink-0" />
+    <p className="ml-[60px] flex items-start gap-1.5 rounded-md bg-amber-100 px-2 py-1.5 text-xs text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+      <AlertTriangle className="mt-px size-3.5 shrink-0" />
       <span>
         {leadName} ({leadEmail}) will <strong className="font-semibold">not</strong> receive this reply.
       </span>

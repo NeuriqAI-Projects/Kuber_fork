@@ -1,27 +1,67 @@
 "use client";
 
-import { useState } from "react";
-import { format } from "date-fns";
-import { Menu } from "lucide-react";
+import { format, isThisYear, isToday } from "date-fns";
+import { Inbox, SearchX } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { UniboxThreadSummary } from "@/lib/api-client";
+import {
+  cacheKeys,
+  fetchUniboxThread,
+  getAccessToken,
+  prefetch,
+  type UniboxThreadSummary,
+} from "@/lib/api-client";
+import { temperatureBadge } from "@/lib/temperature-badge";
 import type { UniboxInterestFilter, UniboxReadStateFilter } from "@/components/app/unibox/unibox-status-filter";
-import { hasActiveUniboxFilters, UniboxFiltersPanel } from "@/components/app/unibox/unibox-filters";
+import {
+  hasActiveUniboxFilters,
+  UniboxFilterMenu,
+  UniboxReadStateSelect,
+} from "@/components/app/unibox/unibox-filters";
+import { temperatureLabel } from "@/components/app/unibox/unibox-temperature-badge";
+import { Avatar } from "@/components/leads/lead-ui";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SearchInput } from "@/components/ui/search-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 /** Mirrors the real row's layout so the loading state doesn't jump/reflow once data arrives. */
 function ThreadRowSkeleton() {
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
-      <Skeleton className="size-1.5 rounded-full shrink-0" />
-      <Skeleton className="h-3.5 w-32 shrink-0" />
-      <Skeleton className="h-3.5 flex-1 min-w-0" />
-      <Skeleton className="h-3 w-10 shrink-0" />
+    <div className="flex gap-3 border-b border-border px-4 py-3">
+      <Skeleton className="size-7 rounded-full shrink-0" />
+      <div className="flex-1 min-w-0 space-y-2 pt-0.5">
+        <div className="flex justify-between gap-3">
+          <Skeleton className="h-3.5 w-32" />
+          <Skeleton className="h-3 w-10" />
+        </div>
+        <Skeleton className="h-3 w-full" />
+      </div>
     </div>
   );
+}
+
+// Hover intent: sweeping the pointer down the list must not fetch every row
+// it crosses — only the one it rests on. Prefetch reads the thread without
+// ?hydrate (a plain DB read, no Instantly call, does not mark it read); the
+// click still runs the normal hydrating load and paints from this cache first.
+let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+function prefetchThread(threadId: string) {
+  if (hoverTimer) clearTimeout(hoverTimer);
+  hoverTimer = setTimeout(() => {
+    hoverTimer = null;
+    prefetch(cacheKeys.uniboxThread(threadId), async () => fetchUniboxThread(await getAccessToken(), threadId));
+  }, 120);
+}
+function cancelPrefetchThread() {
+  if (hoverTimer) clearTimeout(hoverTimer);
+  hoverTimer = null;
+}
+
+function rowTime(iso: string): string {
+  const d = new Date(iso);
+  if (isToday(d)) return format(d, "h:mm a");
+  return isThisYear(d) ? format(d, "MMM d") : format(d, "MMM d, yyyy");
 }
 
 type Props = {
@@ -53,19 +93,15 @@ export function UniboxThreadList({
   campaignIds, campaigns, eaccount, eaccounts, onCampaigns, onEaccount,
   onReadState, onInterest, onSearch, onSelect, onLoadMore, hasMore,
 }: Props) {
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const filtersActive = hasActiveUniboxFilters(campaignIds, eaccount, readState, interest);
+  const filtersActive = hasActiveUniboxFilters(campaignIds, eaccount, readState, interest) || !!search.trim();
 
   return (
-    <div className="w-full h-full flex">
-      <div
-        className={cn(
-          "shrink-0 border-r border-border bg-card overflow-hidden transition-[width] duration-200",
-          filtersOpen ? "w-72" : "w-0",
-        )}
-      >
-        <div className="w-72 h-full">
-          <UniboxFiltersPanel
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0 space-y-2 border-b border-border px-3 py-2.5">
+        <SearchInput value={search} onChange={onSearch} placeholder="Search by lead name…" />
+        <div className="flex items-center gap-2">
+          <UniboxReadStateSelect readState={readState} onReadState={onReadState} unreadTotal={unreadTotal} />
+          <UniboxFilterMenu
             campaigns={campaigns}
             campaignIds={campaignIds}
             onCampaigns={onCampaigns}
@@ -76,122 +112,113 @@ export function UniboxThreadList({
             onReadState={onReadState}
             interest={interest}
             onInterest={onInterest}
-            unreadTotal={unreadTotal}
-            onClose={() => setFiltersOpen(false)}
           />
+          <p className="ml-auto truncate text-xs tabular-nums text-muted-foreground">
+            {threadsTotal !== null
+              ? `${threadsTotal} thread${threadsTotal === 1 ? "" : "s"}`
+              : loading
+                ? "…"
+                : ""}
+          </p>
         </div>
       </div>
 
-      <div className="flex-1 min-w-0 h-full flex flex-col bg-secondary">
-        <div className="px-6 py-3 border-b border-border shrink-0">
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <p className="eyebrow">
-              {threadsTotal !== null
-                ? `${threadsTotal} thread${threadsTotal === 1 ? "" : "s"}`
-                : loading
-                  ? "…"
-                  : "Conversations"}
-            </p>
-            {unreadTotal > 0 && (
-              <p className="font-mono text-[11px] tabular-nums text-primary">{unreadTotal} unread</p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => setFiltersOpen((v) => !v)}
-              aria-label={filtersOpen ? "Close filters" : "Open filters"}
-              className={cn(
-                "relative shrink-0 size-9 bg-card text-muted-foreground",
-                filtersActive && "text-primary",
-              )}
-            >
-              <Menu className="size-4" />
-              {filtersActive && <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary ring-2 ring-card" />}
-            </Button>
-            <SearchInput
-              value={search}
-              onChange={onSearch}
-              placeholder="Search by lead name…"
-              wrapperClassName="flex-1 max-w-xl"
-              className="bg-field"
-            />
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          {loading && threads.length === 0 ? (
-            <div className="rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden divide-y divide-border">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <ThreadRowSkeleton key={i} />
-              ))}
-            </div>
-          ) : threads.length === 0 ? (
-            <EmptyState message="No conversations match your filters." />
-          ) : (
-            <div className="enter rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden divide-y divide-border">
-              {threads.map((t) => {
-                const name = [t.lead?.first_name, t.lead?.last_name].filter(Boolean).join(" ") || t.lead_email || "Unknown";
-                const needsReply = t.latest_direction === "received";
-                const isUnread = t.unread_count > 0;
-                return (
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {loading && threads.length === 0 ? (
+          Array.from({ length: 10 }).map((_, i) => <ThreadRowSkeleton key={i} />)
+        ) : threads.length === 0 ? (
+          <EmptyState
+            boxed={false}
+            icon={filtersActive ? SearchX : Inbox}
+            title={filtersActive ? "No matching conversations" : "No conversations yet"}
+            message={filtersActive ? "Try another search or clear the filters." : "Replies from your campaigns show up here."}
+            className="px-6"
+          />
+        ) : (
+          <ul>
+            {threads.map((t) => {
+              const name = [t.lead?.first_name, t.lead?.last_name].filter(Boolean).join(" ") || t.lead_email || "Unknown";
+              const needsReply = t.latest_direction === "received";
+              const isUnread = t.unread_count > 0;
+              const selected = selectedId === t.thread_id;
+              const temp = t.lead_temperature && t.lead_temperature !== "neutral" ? t.lead_temperature : null;
+              return (
+                <li key={t.thread_id}>
                   <button
-                    key={t.thread_id}
                     type="button"
                     onClick={() => onSelect(t.thread_id)}
+                    onMouseEnter={() => prefetchThread(t.thread_id)}
+                    onMouseLeave={cancelPrefetchThread}
+                    aria-current={selected ? "true" : undefined}
                     className={cn(
-                      "w-full flex items-center gap-3 px-4 py-3 text-left transition-colors border-l-2",
-                      selectedId === t.thread_id
-                        ? "swatch-bar bg-primary/5 border-transparent"
-                        : "border-transparent hover:bg-secondary",
+                      "flex w-full gap-3 border-b border-border px-4 py-3 text-left transition-colors",
+                      selected ? "bg-accent" : "hover:bg-hover",
                     )}
                   >
-                    <span
-                      aria-hidden
-                      className={cn("size-1.5 rounded-full shrink-0", needsReply ? "bg-amber-500" : "bg-transparent")}
-                    />
-                    <span className={cn("w-44 shrink-0 truncate text-sm", isUnread ? "font-semibold text-foreground" : "text-foreground/80")}>
-                      {name}
-                    </span>
-                    <span className="flex-1 min-w-0 truncate text-sm">
-                      <span className={isUnread ? "font-semibold text-foreground" : "text-foreground/80"}>
-                        {t.subject ?? "(no subject)"}
+                    <Avatar name={name} size="sm" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span className={cn("min-w-0 flex-1 truncate text-[13px]", isUnread ? "font-semibold text-foreground" : "font-medium text-foreground")}>
+                          {name}
+                        </span>
+                        <span className={cn("shrink-0 text-xs tabular-nums", isUnread ? "font-medium text-foreground" : "text-muted-foreground")}>
+                          {rowTime(t.latest_at)}
+                        </span>
                       </span>
-                      <span className="text-muted-foreground"> — {t.preview}</span>
-                    </span>
-                    <span className="flex items-center gap-2 shrink-0">
-                      {isUnread && t.unread_count > 1 && (
-                        <span className="font-mono text-[9px] font-semibold tabular-nums min-w-4 text-center px-1 py-0.5 rounded-md bg-primary/15 text-primary">
-                          {t.unread_count}
+                      <span className="mt-0.5 flex items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate text-[13px]">
+                          <span className={isUnread ? "font-medium text-foreground" : "text-foreground/90"}>
+                            {t.subject ?? "(no subject)"}
+                          </span>
+                          {t.preview && <span className="text-muted-foreground"> — {t.preview}</span>}
+                        </span>
+                        {isUnread ? (
+                          t.unread_count > 1 ? (
+                            <span className="shrink-0 min-w-[18px] rounded-full bg-primary px-1.5 py-px text-center text-[11px] font-medium tabular-nums text-primary-foreground">
+                              {t.unread_count}
+                            </span>
+                          ) : (
+                            <span aria-label="Unread" className="size-2 shrink-0 rounded-full bg-primary" />
+                          )
+                        ) : null}
+                      </span>
+                      {(t.campaign || temp || needsReply) && (
+                        <span className="mt-1.5 flex min-w-0 items-center gap-1.5">
+                          {needsReply && (
+                            <Badge
+                              variant="outline"
+                              className="shrink-0 border-amber-200/70 bg-amber-100 text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/15 dark:text-amber-300"
+                              title="The latest message is theirs"
+                            >
+                              Needs reply
+                            </Badge>
+                          )}
+                          {temp && (
+                            <Badge variant="outline" className={cn("shrink-0", temperatureBadge(temp).cls)}>
+                              {temperatureLabel(temp)}
+                            </Badge>
+                          )}
+                          {t.campaign && (
+                            <Badge variant="secondary" className="min-w-0 justify-start text-muted-foreground">
+                              <span className="truncate">{t.campaign.name}</span>
+                            </Badge>
+                          )}
                         </span>
                       )}
-                      <span className="font-mono text-[10px] text-muted-foreground w-14 text-right tabular-nums">
-                        {format(new Date(t.latest_at), "MMM d")}
-                      </span>
                     </span>
                   </button>
-                );
-              })}
-            </div>
-          )}
-          {hasMore && threadsTotal !== null && (
-            <div className="flex justify-center pt-3">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={onLoadMore}
-                disabled={loadingMore}
-                className="h-8 text-xs"
-              >
-                {loadingMore
-                  ? "Loading…"
-                  : `Show more (${threads.length} of ${threadsTotal})`}
-              </Button>
-            </div>
-          )}
-        </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {hasMore && threadsTotal !== null && (
+          <div className="flex justify-center px-4 py-3">
+            <Button type="button" variant="outline" size="sm" onClick={onLoadMore} disabled={loadingMore}>
+              {loadingMore ? "Loading…" : `Show more (${threads.length} of ${threadsTotal})`}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
