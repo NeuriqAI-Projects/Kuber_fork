@@ -134,6 +134,13 @@ export async function runProspectSearch(db: SupabaseClient, companyId: string, u
   const key = target ? filterKey(input as never) : null;
   const maxCredits = target ? (input.max_credits ?? suggestedMaxCredits(target)) : null;
   if (target && maxCredits !== null) input = { ...input, max_auto_reveals: revealCap(target, maxCredits, 1) };
+  if (key) {
+    // Every page was read before: don't pay 1 credit for Apollo to say so.
+    const { data: mem } = await db.from("prospect_page_memory").select("last_page, total_pages").eq("filter_key", key).maybeSingle();
+    if (mem?.total_pages != null && (mem.last_page as number) >= (mem.total_pages as number)) {
+      return { ok: false, status: 409, code: "NO_MORE_PAGES", message: "You already have every company these keywords can give. Add other keywords or countries in step 1." };
+    }
+  }
 
   const { data: search, error: sErr } = await db.from("prospect_searches")
     .insert({
