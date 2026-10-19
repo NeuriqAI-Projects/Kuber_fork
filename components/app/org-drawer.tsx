@@ -426,7 +426,7 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
                             key={lead.id}
                             onClick={() => onLeadClick?.(lead.id)}
                             className={cn(
-                              "rounded-lg border border-border bg-card px-3 py-2",
+                              "min-w-0 overflow-hidden rounded-lg border border-border bg-card px-3 py-2",
                               onLeadClick && "cursor-pointer hover:bg-secondary hover:border-primary/30 transition-colors",
                             )}
                           >
@@ -434,7 +434,7 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
                               {[lead.first_name, lead.last_name].filter(Boolean).join(" ") || "Unnamed"}
                             </p>
                             {lead.title && <p className="text-xs text-muted-foreground">{lead.title}</p>}
-                            {lead.email && <p className="font-mono text-xs text-blue-400">{lead.email}</p>}
+                            {lead.email && <p className="truncate font-mono text-xs text-blue-400" title={lead.email}>{lead.email}</p>}
                           </div>
                         ))}
                       </div>
