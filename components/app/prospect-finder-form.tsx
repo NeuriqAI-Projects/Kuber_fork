@@ -33,6 +33,24 @@ const COMPANIES_PER_MINUTE = 20;
 
 interface MarketEstimate { companies: { low: number; mid: number; high: number }; leads: { low: number; high: number } }
 
+/** Expected Apollo use for one batch, from the 17 Oct 2026 live tests: about
+ *  25–40 leads per 100 companies with good keywords (1 credit each), plus 1 for
+ *  the search, and never more than the limit. */
+function ExpectedUse({ maxCredits }: { maxCredits: number }) {
+  const contacts = Math.max(0, maxCredits - 1);
+  const low = 1 + Math.min(contacts, 25), high = 1 + Math.min(contacts, 40);
+  return (
+    <div className="space-y-1 rounded-lg border border-border px-3 py-2.5 text-sm">
+      <p><b>Expected use: about {low === high ? low : `${low}–${high}`} credits</b> · never more than {maxCredits}.</p>
+      <p className="text-xs text-muted-foreground">
+        1 credit for the search (up to 100 companies) + 1 per lead. One batch usually gives about 25–40 leads with good keywords.
+        {contacts < 40 && ` With this limit you get at most ${contacts} lead${contacts === 1 ? "" : "s"}; extra good companies wait for your review (1 credit each if you approve).`}
+        {" "}Companies that aren&apos;t plastic makers, or have nobody with an email, cost nothing.
+      </p>
+    </div>
+  );
+}
+
 /** Free size check (Apollo People Search, 0 credits) shown under the filters. */
 function MarketSize({ keywords, countries, sizes }: { keywords: string[]; countries: string[]; sizes: string[] }) {
   const [est, setEst] = useState<MarketEstimate | null>(null);
@@ -280,7 +298,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
             </div>
             <Input id="max-credits" type="number" min={1} max={101} value={maxCredits}
               onChange={(e) => setMaxCredits(Math.max(1, Math.min(101, Number(e.target.value) || 1)))} className="w-32" />
-            <p className="text-xs text-muted-foreground">One batch reads up to 100 companies and usually gives <b>about 30–40 leads</b> with good keywords. A limit of {maxCredits} allows up to {Math.max(0, maxCredits - 1)} contacts.</p>
+            <ExpectedUse maxCredits={maxCredits} />
           </div>
           <div className="space-y-1 text-sm text-muted-foreground">
             <p><b className="text-foreground">Good fit</b> — makes plastic products: one contact is revealed automatically. Score 9 if it makes the products you searched for, 7 if other plastic products.</p>
