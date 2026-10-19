@@ -1,7 +1,12 @@
 # components/app/unibox/ — inbox UI
 
-Three-pane Attio mail layout, assembled in `app/(app)/unibox/unibox-client.tsx`: list (360px) | open thread | Details rail (xl+).
-Below lg the panes stack (list, or thread with a back button).
+Gmail-style, assembled in `app/(app)/unibox/unibox-client.tsx`: a full-width inbox list
+(`UniboxThreadList layout="full"`, one line per email), and opening an email switches to a
+full-page thread (back arrow, ‹ › newer/older, Details rail at xl+). The open thread is the
+`?thread=` URL param, so browser Back and shared links work; ‹ › use `router.replace` so Back
+still lands on the list. The list stays mounted (hidden) while an email is open, keeping its
+filters and scroll. Keys inside an email: j older, k newer, u back (ignored while typing).
+`layout="rail"` (the old narrow two-line list) is kept for reuse.
 
 `unibox-thread-list` (search + read-state Select + Filter popover, rows with hover prefetch of the thread),
 `unibox-thread-view` (message cards + reply composer docked at the bottom),

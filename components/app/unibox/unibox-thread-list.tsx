@@ -86,20 +86,113 @@ type Props = {
   onSelect: (threadId: string) => void;
   onLoadMore?: () => void;
   hasMore: boolean;
+  /** "full" = Gmail-style inbox page (one line per email, full width).
+   *  "rail" = the narrow two-line list beside an open thread. */
+  layout?: "full" | "rail";
 };
+
+/** Needs reply / temperature / campaign tags shared by both layouts. */
+function ThreadTags({ t, compact }: { t: UniboxThreadSummary; compact?: boolean }) {
+  const needsReply = t.latest_direction === "received";
+  const temp = t.lead_temperature && t.lead_temperature !== "neutral" ? t.lead_temperature : null;
+  if (!t.campaign && !temp && !needsReply) return null;
+  return (
+    <span className={cn("flex min-w-0 items-center gap-1.5", !compact && "mt-1.5")}>
+      {needsReply && (
+        <Badge
+          variant="outline"
+          className="shrink-0 border-amber-200/70 bg-amber-100 text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/15 dark:text-amber-300"
+          title="The latest message is theirs"
+        >
+          Needs reply
+        </Badge>
+      )}
+      {temp && (
+        <Badge variant="outline" className={cn("shrink-0", temperatureBadge(temp).cls)}>
+          {temperatureLabel(temp)}
+        </Badge>
+      )}
+      {t.campaign && (
+        <Badge variant="secondary" className={cn("min-w-0 justify-start text-muted-foreground", compact && "max-w-[160px]")}>
+          <span className="truncate">{t.campaign.name}</span>
+        </Badge>
+      )}
+    </span>
+  );
+}
+
+function threadName(t: UniboxThreadSummary) {
+  return [t.lead?.first_name, t.lead?.last_name].filter(Boolean).join(" ") || t.lead_email || "Unknown";
+}
+
+/** Gmail-style row: sender · tags · subject — snippet · time, on one line. */
+function InboxRow({ t, onSelect }: { t: UniboxThreadSummary; onSelect: (id: string) => void }) {
+  const name = threadName(t);
+  const isUnread = t.unread_count > 0;
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => onSelect(t.thread_id)}
+        onMouseEnter={() => prefetchThread(t.thread_id)}
+        onMouseLeave={cancelPrefetchThread}
+        className={cn(
+          "flex h-11 w-full items-center gap-3 border-b border-border px-4 text-left text-[13px] transition-colors hover:bg-hover",
+        )}
+      >
+        <span className="flex w-3 shrink-0 justify-center">
+          {isUnread && <span aria-label="Unread" className="size-2 rounded-full bg-primary" />}
+        </span>
+        <Avatar name={name} size="xs" />
+        <span className={cn("w-44 shrink-0 truncate", isUnread ? "font-semibold text-foreground" : "text-foreground/90")}>
+          {name}
+          {t.message_count > 1 && <span className="ml-1 text-xs font-normal text-muted-foreground tabular-nums">{t.message_count}</span>}
+        </span>
+        <ThreadTags t={t} compact />
+        <span className="min-w-0 flex-1 truncate">
+          <span className={isUnread ? "font-semibold text-foreground" : "text-foreground/90"}>
+            {t.subject ?? "(no subject)"}
+          </span>
+          {t.preview && <span className="text-muted-foreground"> — {t.preview}</span>}
+        </span>
+        <span className={cn("w-16 shrink-0 text-right text-xs tabular-nums", isUnread ? "font-semibold text-foreground" : "text-muted-foreground")}>
+          {rowTime(t.latest_at)}
+        </span>
+      </button>
+    </li>
+  );
+}
+
+function InboxRowSkeleton() {
+  return (
+    <div className="flex h-11 items-center gap-3 border-b border-border px-4">
+      <span className="w-3 shrink-0" />
+      <Skeleton className="size-5 shrink-0 rounded-full" />
+      <Skeleton className="h-3 w-36 shrink-0" />
+      <Skeleton className="h-3 flex-1" />
+      <Skeleton className="h-3 w-12 shrink-0" />
+    </div>
+  );
+}
 
 export function UniboxThreadList({
   threads, threadsTotal, selectedId, search, loading, loadingMore, readState, interest, unreadTotal,
   campaignIds, campaigns, eaccount, eaccounts, onCampaigns, onEaccount,
-  onReadState, onInterest, onSearch, onSelect, onLoadMore, hasMore,
+  onReadState, onInterest, onSearch, onSelect, onLoadMore, hasMore, layout = "rail",
 }: Props) {
   const filtersActive = hasActiveUniboxFilters(campaignIds, eaccount, readState, interest) || !!search.trim();
+  const full = layout === "full";
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0 space-y-2 border-b border-border px-3 py-2.5">
-        <SearchInput value={search} onChange={onSearch} placeholder="Search by lead name…" />
-        <div className="flex items-center gap-2">
+      <div className={cn("shrink-0 border-b border-border", full ? "flex items-center gap-2 px-4 py-2" : "space-y-2 px-3 py-2.5")}>
+        <SearchInput
+          value={search}
+          onChange={onSearch}
+          placeholder="Search by lead name…"
+          wrapperClassName={full ? "w-full max-w-sm" : undefined}
+        />
+        <div className={cn("flex items-center gap-2", full && "flex-1")}>
           <UniboxReadStateSelect readState={readState} onReadState={onReadState} unreadTotal={unreadTotal} />
           <UniboxFilterMenu
             campaigns={campaigns}
@@ -123,9 +216,9 @@ export function UniboxThreadList({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div data-thread-scroll className="min-h-0 flex-1 overflow-y-auto">
         {loading && threads.length === 0 ? (
-          Array.from({ length: 10 }).map((_, i) => <ThreadRowSkeleton key={i} />)
+          Array.from({ length: full ? 16 : 10 }).map((_, i) => (full ? <InboxRowSkeleton key={i} /> : <ThreadRowSkeleton key={i} />))
         ) : threads.length === 0 ? (
           <EmptyState
             boxed={false}
@@ -134,14 +227,16 @@ export function UniboxThreadList({
             message={filtersActive ? "Try another search or clear the filters." : "Replies from your campaigns show up here."}
             className="px-6"
           />
+        ) : full ? (
+          <ul>
+            {threads.map((t) => <InboxRow key={t.thread_id} t={t} onSelect={onSelect} />)}
+          </ul>
         ) : (
           <ul>
             {threads.map((t) => {
-              const name = [t.lead?.first_name, t.lead?.last_name].filter(Boolean).join(" ") || t.lead_email || "Unknown";
-              const needsReply = t.latest_direction === "received";
+              const name = threadName(t);
               const isUnread = t.unread_count > 0;
               const selected = selectedId === t.thread_id;
-              const temp = t.lead_temperature && t.lead_temperature !== "neutral" ? t.lead_temperature : null;
               return (
                 <li key={t.thread_id}>
                   <button
@@ -182,29 +277,7 @@ export function UniboxThreadList({
                           )
                         ) : null}
                       </span>
-                      {(t.campaign || temp || needsReply) && (
-                        <span className="mt-1.5 flex min-w-0 items-center gap-1.5">
-                          {needsReply && (
-                            <Badge
-                              variant="outline"
-                              className="shrink-0 border-amber-200/70 bg-amber-100 text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/15 dark:text-amber-300"
-                              title="The latest message is theirs"
-                            >
-                              Needs reply
-                            </Badge>
-                          )}
-                          {temp && (
-                            <Badge variant="outline" className={cn("shrink-0", temperatureBadge(temp).cls)}>
-                              {temperatureLabel(temp)}
-                            </Badge>
-                          )}
-                          {t.campaign && (
-                            <Badge variant="secondary" className="min-w-0 justify-start text-muted-foreground">
-                              <span className="truncate">{t.campaign.name}</span>
-                            </Badge>
-                          )}
-                        </span>
-                      )}
+                      <ThreadTags t={t} />
                     </span>
                   </button>
                 </li>

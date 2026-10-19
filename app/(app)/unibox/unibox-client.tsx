@@ -7,13 +7,14 @@ import { format } from "date-fns";
 import {
   ArrowLeft,
   AtSign,
+  ChevronLeft,
+  ChevronRight,
   Briefcase,
   Building2,
   Clock,
   ExternalLink,
   Inbox,
   Loader2,
-  Mail,
   Megaphone,
   MessagesSquare,
   RefreshCw,
@@ -48,11 +49,44 @@ import type { UniboxInterestFilter, UniboxReadStateFilter } from "@/components/a
 import { Avatar } from "@/components/leads/lead-ui";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { DetailRow, DetailSection } from "@/components/ui/record-layout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+
+type ThreadDetail = Awaited<ReturnType<typeof fetchUniboxThread>>;
+
+/** A deep link (/unibox?thread=…) can open a thread that isn't in the loaded
+ *  list page. Build the header's summary from the thread itself so it still
+ *  renders fully instead of waiting for a list row that may never come. */
+function summaryFromDetail(d: ThreadDetail): UniboxThreadSummary {
+  const lead = d.lead as { first_name?: string | null; last_name?: string | null; title?: string | null; email?: string | null } | null;
+  const last = d.messages[d.messages.length - 1];
+  return {
+    thread_id: d.thread_id,
+    lead_email: lead?.email ?? null,
+    lead: lead ? { first_name: lead.first_name ?? null, last_name: lead.last_name ?? null, title: lead.title ?? null, email: lead.email ?? null } : null,
+    campaign: d.campaign,
+    eaccount: d.eaccount,
+    subject: d.messages.find((m) => m.subject)?.subject ?? null,
+    preview: null,
+    latest_at: last?.timestamp_email ?? new Date().toISOString(),
+    latest_direction: last?.direction ?? "sent",
+    has_reply: false,
+    needs_reply: false,
+    awaiting_reply_from: [],
+    unread_count: 0,
+    message_count: d.messages.length,
+    interest_status: d.interest_status,
+    lead_temperature: d.lead_temperature,
+    campaign_lead_id: d.campaign_lead_id,
+  };
+}
+
+function isTypingTarget(el: EventTarget | null): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName);
+}
 
 const READ_STATE_VALUES: UniboxReadStateFilter[] = ["all", "unread", "read", "replied", "needs_reply", "no_reply"];
 
@@ -140,9 +174,15 @@ export function UniboxClient() {
   const [threads, setThreads] = useState<UniboxThreadSummary[]>(initialPage?.threads ?? []);
   const [threadsTotal, setThreadsTotal] = useState<number | null>(initialPage?.counts.total ?? null);
   const [cursor, setCursor] = useState<string | null>(initialPage?.next_cursor ?? null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Gmail-style: the open thread lives in the URL (?thread=…), so the browser
+  // Back button returns to the list and a link opens straight to an email.
+  const selectedId = searchParams.get("thread");
   const [pinnedSummary, setPinnedSummary] = useState<UniboxThreadSummary | null>(null);
-  const [view, setView] = useState<"list" | "detail">("list");
+  // True once this page pushed a ?thread entry itself — closing then goes
+  // Back (so history stays list → email → list) instead of stacking entries.
+  const pushedThread = useRef(false);
+  const listWrapRef = useRef<HTMLDivElement>(null);
+  const listScrollTop = useRef(0);
   const [loading, setLoading] = useState(!initialPage);
   const [loadingMore, setLoadingMore] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -172,18 +212,23 @@ export function UniboxClient() {
     return () => clearTimeout(t);
   }, [search]);
 
-  // Keep filters in the URL so a refresh (or sharing the link) restores them
-  // instead of silently resetting to "All".
-  useEffect(() => {
+  // Keep filters (and the open thread) in the URL so a refresh or a shared
+  // link restores them instead of silently resetting to "All".
+  const buildUrl = useCallback((threadId: string | null) => {
     const qs = new URLSearchParams();
     if (campaignIds.length > 0) qs.set("campaign_ids", campaignIds.join(","));
     if (eaccount) qs.set("eaccount", eaccount);
     if (readState !== "all") qs.set("status", readState);
     if (interest !== "all") qs.set("interest", String(interest));
     if (debouncedSearch) qs.set("q", debouncedSearch);
+    if (threadId) qs.set("thread", threadId);
     const qsStr = qs.toString();
-    router.replace(qsStr ? `${pathname}?${qsStr}` : pathname, { scroll: false });
-  }, [campaignIds, eaccount, readState, interest, debouncedSearch, pathname, router]);
+    return qsStr ? `${pathname}?${qsStr}` : pathname;
+  }, [campaignIds, eaccount, readState, interest, debouncedSearch, pathname]);
+
+  useEffect(() => {
+    router.replace(buildUrl(selectedId), { scroll: false });
+  }, [buildUrl, selectedId, router]);
 
   const eaccounts = useMemo(
     () => [...new Set(threads.map((t) => t.eaccount).filter(Boolean))] as string[],
@@ -267,6 +312,60 @@ export function UniboxClient() {
     if (selectedId) void loadDetail(selectedId);
   }, [selectedId, loadDetail]);
 
+  /** Open a thread full-page. `replace` is for ‹ › stepping, so Back still
+   *  lands on the list rather than walking through every email viewed. */
+  const openThread = useCallback((id: string, mode: "push" | "replace" = "push") => {
+    setPinnedSummary(threads.find((t) => t.thread_id === id) ?? null);
+    if (mode === "push") {
+      listScrollTop.current = listWrapRef.current?.querySelector<HTMLElement>("[data-thread-scroll]")?.scrollTop ?? 0;
+      pushedThread.current = true;
+      router.push(buildUrl(id), { scroll: false });
+    } else {
+      router.replace(buildUrl(id), { scroll: false });
+    }
+  }, [threads, router, buildUrl]);
+
+  const closeThread = useCallback(() => {
+    if (pushedThread.current) {
+      pushedThread.current = false;
+      router.back();
+    } else {
+      router.push(buildUrl(null), { scroll: false });
+    }
+  }, [router, buildUrl]);
+
+  // Back on the list: put it where it was (it stayed mounted, only hidden).
+  useEffect(() => {
+    if (selectedId) return;
+    const el = listWrapRef.current?.querySelector<HTMLElement>("[data-thread-scroll]");
+    if (el) el.scrollTop = listScrollTop.current;
+  }, [selectedId]);
+
+  const selectedIndex = selectedId ? threads.findIndex((t) => t.thread_id === selectedId) : -1;
+  const prevId = selectedIndex > 0 ? threads[selectedIndex - 1].thread_id : null;
+  const nextId = selectedIndex >= 0 && selectedIndex < threads.length - 1 ? threads[selectedIndex + 1].thread_id : null;
+  const canLoadNext = !nextId && selectedIndex >= 0 && !!cursor && !loadingMore;
+
+  const goPrev = useCallback(() => { if (prevId) openThread(prevId, "replace"); }, [prevId, openThread]);
+  const goNext = useCallback(() => {
+    if (nextId) openThread(nextId, "replace");
+    else if (canLoadNext) void loadThreads(true);
+  }, [nextId, canLoadNext, openThread, loadThreads]);
+
+  // Gmail keys inside an open email: j = older (next), k = newer (previous),
+  // u = back to the list. Ignored while typing a reply.
+  useEffect(() => {
+    if (!selectedId) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return;
+      if (e.key === "j") goNext();
+      else if (e.key === "k") goPrev();
+      else if (e.key === "u") closeThread();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedId, goNext, goPrev, closeThread]);
+
   async function handleSync() {
     if (!token) return;
     setSyncing(true);
@@ -295,7 +394,8 @@ export function UniboxClient() {
   // The open thread stays open even when a filter change or refresh drops it
   // from the list — the list is the newest copy when it has one.
   const selectedSummary = threads.find((t) => t.thread_id === selectedId)
-    ?? (pinnedSummary?.thread_id === selectedId ? pinnedSummary : undefined);
+    ?? (pinnedSummary?.thread_id === selectedId ? pinnedSummary : undefined)
+    ?? (detail ? summaryFromDetail(detail) : undefined);
   const leadName = selectedSummary
     ? [selectedSummary.lead?.first_name, selectedSummary.lead?.last_name].filter(Boolean).join(" ") || selectedSummary.lead_email || "Unknown"
     : "";
@@ -306,8 +406,6 @@ export function UniboxClient() {
   );
 
   const leadTemperature = detail?.lead_temperature ?? selectedSummary?.lead_temperature ?? null;
-  // Below lg the panes stack: the list, or the open thread with a back button.
-  const showDetail = view === "detail" && !!selectedSummary;
   // A deleted lead's thread stays fully functional by design (planning.md
   // §3.6/§5.6) — history and reply rights are unaffected — but the viewer
   // should know the underlying lead record no longer exists.
@@ -325,29 +423,27 @@ export function UniboxClient() {
 
   const interestStatus = detail?.interest_status ?? selectedSummary?.interest_status ?? null;
 
+  const position = selectedIndex >= 0 && threadsTotal !== null ? `${selectedIndex + 1} of ${threadsTotal}` : null;
+
   return (
     <div className="flex h-full flex-col">
-      <PageHeader
-        title="Unibox"
-        icon={<Inbox />}
-        description={unreadTotal > 0 ? `${unreadTotal} unread` : undefined}
-        actions={
-          <Button type="button" variant="outline" onClick={() => void handleSync()} disabled={syncing}>
-            {syncing ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-            Sync now
-          </Button>
-        }
-      />
-
-      <div className="flex min-h-0 flex-1">
-        {/* Left: thread list */}
-        <aside
-          className={cn(
-            "min-h-0 w-full shrink-0 flex-col border-border bg-card lg:flex lg:w-[360px] lg:border-r",
-            showDetail ? "hidden" : "flex",
-          )}
-        >
+      {/* Inbox list page — stays mounted while an email is open, so going back
+          shows it instantly with the same filters and scroll position. */}
+      <div ref={listWrapRef} className={cn("min-h-0 flex-1 flex-col", selectedId ? "hidden" : "flex")}>
+        <PageHeader
+          title="Unibox"
+          icon={<Inbox />}
+          description={unreadTotal > 0 ? `${unreadTotal} unread` : undefined}
+          actions={
+            <Button type="button" variant="outline" onClick={() => void handleSync()} disabled={syncing}>
+              {syncing ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+              Sync now
+            </Button>
+          }
+        />
+        <div className="min-h-0 flex-1 bg-card">
           <UniboxThreadList
+            layout="full"
             threads={threads}
             threadsTotal={threadsTotal}
             selectedId={selectedId}
@@ -366,18 +462,53 @@ export function UniboxClient() {
             onReadState={setReadState}
             onInterest={setInterest}
             onSearch={setSearch}
-            onSelect={(id) => {
-              setPinnedSummary(threads.find((t) => t.thread_id === id) ?? null);
-              setSelectedId(id);
-              setView("detail");
-            }}
+            onSelect={(id) => openThread(id)}
             hasMore={!!cursor}
             onLoadMore={() => void loadThreads(true)}
           />
-        </aside>
+        </div>
+      </div>
 
-        {/* Middle: open thread */}
-        <main className={cn("min-h-0 min-w-0 flex-1 flex-col lg:flex", showDetail ? "flex" : "hidden")}>
+      {/* Open email — full page, Gmail-style. */}
+      {selectedId && (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <PageHeader
+          crumbs={[
+            { label: "Unibox", icon: <Inbox />, onClick: closeThread },
+            { label: threadSubject },
+          ]}
+          actions={
+            <>
+              {position && <span className="text-xs tabular-nums text-muted-foreground">{position}</span>}
+              <div className="flex items-center">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={goPrev}
+                  disabled={!prevId}
+                  aria-label="Newer email (k)"
+                  title="Newer (k)"
+                >
+                  <ChevronLeft className="size-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={goNext}
+                  disabled={!nextId && !canLoadNext}
+                  aria-label="Older email (j)"
+                  title="Older (j)"
+                >
+                  {loadingMore ? <Loader2 className="size-3.5 animate-spin" /> : <ChevronRight className="size-4" />}
+                </Button>
+              </div>
+            </>
+          }
+        />
+        <div className="flex min-h-0 flex-1">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           {selectedSummary ? (
             <>
               <div className="flex shrink-0 items-start gap-3 border-b border-border px-6 py-3">
@@ -385,9 +516,10 @@ export function UniboxClient() {
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  onClick={() => setView("list")}
-                  aria-label="Back to conversations"
-                  className="-ml-2 mt-0.5 shrink-0 text-muted-foreground lg:hidden"
+                  onClick={closeThread}
+                  aria-label="Back to inbox (u)"
+                  title="Back to inbox (u)"
+                  className="-ml-2 mt-0.5 shrink-0 text-muted-foreground"
                 >
                   <ArrowLeft className="size-4" />
                 </Button>
@@ -473,13 +605,15 @@ export function UniboxClient() {
               )}
             </>
           ) : (
-            <div className="flex min-h-0 flex-1 items-center justify-center px-6">
-              <EmptyState
-                boxed={false}
-                icon={Mail}
-                title="No conversation selected"
-                message="Pick a thread on the left to read it and reply."
-              />
+            <div className="min-h-0 flex-1 space-y-3 px-6 py-5">
+              <Skeleton className="h-5 w-72" />
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
+                  <Skeleton className="size-7 rounded-full shrink-0" />
+                  <Skeleton className="h-3.5 w-28 shrink-0" />
+                  <Skeleton className="h-3 flex-1" />
+                </div>
+              ))}
             </div>
           )}
         </main>
@@ -554,7 +688,9 @@ export function UniboxClient() {
             </DetailSection>
           </aside>
         )}
+        </div>
       </div>
+      )}
     </div>
   );
 }
