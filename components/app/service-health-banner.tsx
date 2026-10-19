@@ -34,10 +34,10 @@ export function ServiceHealthBanner() {
         <div
           key={issue.service}
           className={cn(
-            "flex items-start gap-2.5 rounded-lg border px-4 py-2.5 text-sm",
+            "flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[13px]",
             issue.severity === "warning"
-              ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
-              : "border-red-500/30 bg-red-500/10 text-red-400",
+              ? "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300"
+              : "border-red-200 bg-red-50 text-red-900 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-300",
           )}
         >
           <AlertTriangle className="size-4 shrink-0 mt-0.5" />

@@ -147,8 +147,8 @@ function ToolbarButton({
       className={cn(
         "transition-colors",
         active
-          ? "bg-primary/15 text-primary hover:bg-primary/15 hover:text-primary"
-          : "text-muted-foreground hover:text-foreground hover:bg-secondary",
+          ? "bg-accent text-foreground hover:bg-accent"
+          : "text-muted-foreground hover:text-foreground hover:bg-hover",
       )}
     >
       {children}
@@ -248,12 +248,12 @@ export function RichTextEditor({
   if (!editor) return null;
 
   return (
-    <div className={cn("rounded-md border border-border bg-field", className)}>
+    <div className={cn("rounded-md border border-input bg-field shadow-xs", className)}>
       {/* Toolbar. No overflow-hidden on the outer wrapper (above) any more —
           it was clipping the {{token}} chip tooltips below, which sit right at
           the toolbar's edge. Rounding is done per-piece instead. */}
       <div className={cn(
-        "flex items-center gap-0.5 rounded-t-md border-b border-border bg-secondary px-2 py-1 flex-wrap",
+        "flex items-center gap-0.5 rounded-t-md border-b border-border bg-field px-1.5 py-1 flex-wrap",
         disabled && "opacity-50 pointer-events-none",
       )}>
         <span className="eyebrow inline-flex h-7 items-center gap-1.5 px-1 mr-0.5">
@@ -375,7 +375,7 @@ export function RichTextEditor({
                     e.preventDefault();
                     editor.chain().focus().insertContent(`{{${v.token}}}`).run();
                   }}
-                  className="h-6 gap-1 rounded px-1.5 py-0.5 bg-primary/15 text-primary text-[11px] font-mono font-semibold border border-primary/25 hover:bg-primary/25 hover:text-primary"
+                  className="h-6 gap-1 rounded-[5px] px-1.5 py-0.5 bg-primary/10 text-primary text-xs font-medium hover:bg-primary/15 hover:text-primary"
                 >
                   {v.label}
                   <Copy className="size-2.5 opacity-60" />

@@ -5,13 +5,13 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 const SIZE_CLASSES = {
-  sm: "h-8 pl-8 text-xs",
-  default: "h-9 pl-9 text-sm",
+  sm: "h-7 pl-7 text-[13px]",
+  default: "h-8 pl-8 text-sm",
 } as const;
 
 const ICON_POSITION_CLASSES = {
-  sm: "left-2.5",
-  default: "left-3",
+  sm: "left-2",
+  default: "left-2.5",
 } as const;
 
 export function SearchInput({

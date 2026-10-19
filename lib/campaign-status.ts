@@ -233,11 +233,11 @@ export const CAMPAIGN_KANBAN_COLS: {
   dot: string;
   header: string;
 }[] = [
-  { id: "pending",  label: "Pending",    dot: "bg-zinc-400",   header: "border-zinc-500/30"  },
-  { id: "draft",    label: "Draft Ready",dot: "bg-blue-400",   header: "border-blue-500/30"  },
-  { id: "approved", label: "Certified",  dot: "bg-cyan-400",   header: "border-cyan-500/30"  },
-  { id: "sent",     label: "Sent",       dot: "bg-teal-400",   header: "border-teal-500/30"  },
-  { id: "replied",  label: "Replied",    dot: "bg-violet-400", header: "border-violet-500/30" },
+  { id: "pending",  label: "Pending",    dot: "bg-zinc-500",   header: "border-zinc-500/30"  },
+  { id: "draft",    label: "Draft Ready",dot: "bg-blue-500",   header: "border-blue-500/30"  },
+  { id: "approved", label: "Certified",  dot: "bg-cyan-500",   header: "border-cyan-500/30"  },
+  { id: "sent",     label: "Sent",       dot: "bg-teal-500",   header: "border-teal-500/30"  },
+  { id: "replied",  label: "Replied",    dot: "bg-violet-500", header: "border-violet-500/30" },
 ];
 
 export const CAMPAIGN_BUCKET_LABELS: Record<CampaignKanbanBucket, string> = {

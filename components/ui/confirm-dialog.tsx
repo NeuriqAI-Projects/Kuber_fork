@@ -74,21 +74,21 @@ export function ConfirmDialog({
   return createPortal(
     <div data-confirm-dialog-root className="fixed inset-0 z-[200] flex items-center justify-center pointer-events-auto">
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/25 dark:bg-black/60"
         onClick={() => { if (!loading) onClose(); }}
       />
-      <div className="enter relative z-10 w-full max-w-md mx-4 swatch-bar-top overflow-hidden rounded-2xl border border-border bg-card shadow-2xl p-6 flex flex-col gap-5">
-        <div className="flex items-start gap-4">
-          <div className={`shrink-0 size-10 rounded-full flex items-center justify-center ${isWarning ? "bg-amber-500/15 border border-amber-500/25" : "bg-destructive/15 border border-destructive/25"}`}>
-            <AlertTriangle className={`size-5 ${isWarning ? "text-amber-500" : "text-destructive"}`} />
+      <div className="relative z-10 w-full max-w-md mx-4 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-xl p-5 flex flex-col gap-5">
+        <div className="flex items-start gap-3">
+          <div className={`shrink-0 size-8 rounded-md flex items-center justify-center ${isWarning ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" : "bg-destructive/10 text-destructive"}`}>
+            <AlertTriangle className="size-4" />
           </div>
-          <div>
-            <p className="font-display font-semibold text-sm">{title}</p>
-            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{description}</p>
+          <div className="pt-0.5">
+            <p className="font-semibold text-[15px] leading-tight">{title}</p>
+            <p className="text-[13px] text-muted-foreground mt-1.5 leading-relaxed">{description}</p>
           </div>
         </div>
         <div className="flex items-center justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
+          <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
           {secondaryLabel && onSecondary && (

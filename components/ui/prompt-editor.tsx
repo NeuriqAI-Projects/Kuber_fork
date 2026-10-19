@@ -108,8 +108,8 @@ export function PromptEditor({
           into it — and in light mode card is the same grey as the page, so the
           editor dissolved into the panel behind it. Its sibling
           rich-text-editor.tsx already had this right. */}
-      <div className="overflow-hidden rounded-md border border-border bg-field">
-        <div className="flex flex-wrap items-center gap-1 border-b border-border bg-secondary px-2 py-1">
+      <div className="overflow-hidden rounded-md border border-input bg-field shadow-xs">
+        <div className="flex flex-wrap items-center gap-1 border-b border-border bg-field px-1.5 py-1">
           <span className="eyebrow inline-flex h-7 items-center gap-1.5 px-1">
             <Type className="size-3" /> Compose
           </span>

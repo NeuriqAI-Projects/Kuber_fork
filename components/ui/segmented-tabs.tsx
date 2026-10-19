@@ -4,19 +4,33 @@ import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tip } from "@/components/ui/tip";
 
-/** Shared chrome for every segmented tab bar in the app. */
+/** Shared chrome for every segmented tab bar in the app (Attio toggle: a
+ *  light-gray track with the active option as a white chip). */
 export const segmentedListClassName =
-  "inline-flex items-center justify-center rounded-lg border border-border bg-field p-0.5 text-muted-foreground";
+  "inline-flex items-center justify-center rounded-md bg-secondary p-0.5 text-muted-foreground";
 
 export function segmentedTriggerClassName(active: boolean, size: "sm" | "md" | "lg" = "md") {
   return cn(
-    "inline-flex items-center justify-center gap-1.5 font-medium leading-none transition-colors whitespace-nowrap",
-    size === "sm" && "h-7 px-2.5 rounded-md text-[10px]",
-    size === "md" && "h-8 px-3 rounded-md text-xs",
-    size === "lg" && "h-10 px-5 rounded-md text-sm gap-2",
+    "inline-flex items-center justify-center gap-1.5 rounded-[5px] font-medium leading-none transition-colors whitespace-nowrap",
+    size === "sm" && "h-6 px-2 text-xs",
+    size === "md" && "h-7 px-2.5 text-[13px]",
+    size === "lg" && "h-8 px-3 text-sm gap-2",
     active
-      ? "bg-primary/15 text-primary"
+      ? "bg-field text-foreground shadow-xs"
       : "text-muted-foreground hover:text-foreground",
+  );
+}
+
+/** Attio record/page tabs: text tabs on a bottom border, the active one
+ *  underlined in the foreground colour. */
+export const underlineListClassName = "flex items-center gap-5 border-b border-border";
+
+export function underlineTriggerClassName(active: boolean) {
+  return cn(
+    "relative -mb-px inline-flex h-10 items-center gap-1.5 border-b-2 text-[13px] font-medium leading-none transition-colors whitespace-nowrap",
+    active
+      ? "border-foreground text-foreground"
+      : "border-transparent text-muted-foreground hover:text-foreground",
   );
 }
 
@@ -37,6 +51,7 @@ export function SegmentedTabs<T extends string>({
   className,
   size = "md",
   fullWidth = false,
+  variant = "segmented",
 }: {
   value: T;
   onValueChange: (value: T) => void;
@@ -44,11 +59,15 @@ export function SegmentedTabs<T extends string>({
   className?: string;
   size?: "sm" | "md" | "lg";
   fullWidth?: boolean;
+  /** "segmented" (default) — toggle chips on a gray track. "underline" — Attio
+   *  page/record tabs on a bottom border. */
+  variant?: "segmented" | "underline";
 }) {
+  const underline = variant === "underline";
   return (
     <div
       role="tablist"
-      className={cn(segmentedListClassName, fullWidth && "w-full", className)}
+      className={cn(underline ? underlineListClassName : segmentedListClassName, fullWidth && "w-full", className)}
     >
       {options.map((opt) => {
         const active = value === opt.value;
@@ -62,7 +81,7 @@ export function SegmentedTabs<T extends string>({
             disabled={opt.disabled}
             onClick={() => onValueChange(opt.value)}
             className={cn(
-              segmentedTriggerClassName(active, size),
+              underline ? underlineTriggerClassName(active) : segmentedTriggerClassName(active, size),
               fullWidth && "flex-1",
               opt.disabled && "opacity-50 pointer-events-none",
             )}
@@ -72,9 +91,8 @@ export function SegmentedTabs<T extends string>({
             {typeof opt.count === "number" && opt.count > 0 ? (
               <span
                 className={cn(
-                  "rounded-full font-mono font-semibold tabular-nums text-center",
-                  size === "lg" ? "min-w-[20px] px-1.5 text-[11px]" : "min-w-[18px] px-1 text-[10px]",
-                  active ? "bg-primary/20 text-primary" : "bg-primary/15 text-primary",
+                  "min-w-[18px] rounded-[4px] px-1 py-0.5 text-[11px] font-medium tabular-nums text-center",
+                  active ? "bg-secondary text-foreground" : "bg-hover text-muted-foreground",
                 )}
               >
                 {opt.count}

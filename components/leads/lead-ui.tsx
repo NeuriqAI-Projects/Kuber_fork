@@ -14,12 +14,12 @@ import {
 } from "@/lib/leads";
 
 const STATUS_STYLES: Record<LeadStatus, string> = {
-  "Input Required": "bg-yellow-500/10 text-yellow-400 border-yellow-500/25",
-  New:      "bg-zinc-500/10 text-zinc-400 border-zinc-500/25",
-  Enriching:"bg-amber-500/10 text-amber-400 border-amber-500/25",
-  Enriched: "bg-blue-500/10 text-blue-400 border-blue-500/25",
-  Open:     "bg-green-500/10 text-green-400 border-green-500/25",
-  Closed:   "bg-zinc-500/10 text-zinc-300 border-zinc-500/25",
+  "Input Required": "bg-yellow-100 text-yellow-800 border-yellow-200/70 dark:bg-yellow-500/15 dark:text-yellow-300 dark:border-yellow-500/25",
+  New:      "bg-secondary text-muted-foreground border-border",
+  Enriching:"bg-amber-100 text-amber-800 border-amber-200/70 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25",
+  Enriched: "bg-blue-100 text-blue-800 border-blue-200/70 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/25",
+  Open:     "bg-green-100 text-green-800 border-green-200/70 dark:bg-green-500/15 dark:text-green-300 dark:border-green-500/25",
+  Closed:   "bg-secondary text-muted-foreground border-border",
 };
 
 export function StatusBadge({ status, lead }: { status: LeadStatus; lead?: Lead }) {
@@ -28,12 +28,12 @@ export function StatusBadge({ status, lead }: { status: LeadStatus; lead?: Lead 
   if (status === "Input Required" && lead) {
     const reason = inputRequiredReason(lead);
     const cls = reason === "missing_data"
-      ? "bg-red-500/10 text-red-400 border-red-500/30"
-      : "bg-yellow-500/10 text-yellow-400 border-yellow-500/30";
+      ? "bg-red-100 text-red-800 border-red-200/70 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/25"
+      : "bg-yellow-100 text-yellow-800 border-yellow-200/70 dark:bg-yellow-500/15 dark:text-yellow-300 dark:border-yellow-500/25";
     return (
       <Pill
         shape="sm"
-        className={cn("gap-1 font-mono font-semibold uppercase tracking-wider", cls)}
+        className={cn("gap-1", cls)}
         title={reason === "missing_data"
           ? "Enrichment finished but no email was found — add one before this lead can be contacted"
           : "No usable website/profile — campaigns will use the generic name-swap template"}
@@ -43,20 +43,20 @@ export function StatusBadge({ status, lead }: { status: LeadStatus; lead?: Lead 
     );
   }
   return (
-    <Pill shape="sm" className={cn("font-mono font-semibold uppercase tracking-wider", STATUS_STYLES[status])}>
+    <Pill shape="sm" className={STATUS_STYLES[status]}>
       {STATUS_LABELS[status]}
     </Pill>
   );
 }
 
 export function ScoreBadge({ score }: { score: LeadScore }) {
-  if (score === "—") return <span className="font-mono text-xs text-muted-foreground/60">—</span>;
+  if (score === "—") return <span className="text-xs text-muted-foreground/60">—</span>;
   return (
     <Pill
       shape="sm"
       className={cn(
-        "font-mono font-bold uppercase tracking-wider",
-        score === "Hot" ? "bg-orange-500/10 text-orange-400 border-orange-500/25" : "bg-blue-500/10 text-blue-400 border-blue-500/25",
+        "font-semibold",
+        score === "Hot" ? "bg-orange-100 text-orange-800 border-orange-200/70 dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-500/25" : "bg-blue-100 text-blue-800 border-blue-200/70 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/25",
       )}
     >
       {score}
@@ -64,12 +64,32 @@ export function ScoreBadge({ score }: { score: LeadScore }) {
   );
 }
 
+// Attio gives every person a tinted initials avatar; the tint is picked from
+// the name so the same lead always gets the same colour.
+const AVATAR_TINTS = [
+  "bg-violet-100 text-violet-800 dark:bg-violet-500/20 dark:text-violet-200",
+  "bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-200",
+  "bg-cyan-100 text-cyan-800 dark:bg-cyan-500/20 dark:text-cyan-200",
+  "bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-200",
+  "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200",
+  "bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-200",
+  "bg-pink-100 text-pink-800 dark:bg-pink-500/20 dark:text-pink-200",
+  "bg-teal-100 text-teal-800 dark:bg-teal-500/20 dark:text-teal-200",
+] as const;
+
+function avatarTint(name: string) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return AVATAR_TINTS[Math.abs(h) % AVATAR_TINTS.length];
+}
+
 export function Avatar({ name, size = "sm" }: { name: string; size?: "sm" | "md" | "lg" }) {
   const initials = name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   return (
     <div className={cn(
-      "rounded-full bg-secondary border border-border flex items-center justify-center font-semibold text-foreground shrink-0",
-      size === "sm" && "size-8 text-xs",
+      "rounded-full flex items-center justify-center font-semibold shrink-0",
+      initials ? avatarTint(name) : "bg-secondary text-muted-foreground",
+      size === "sm" && "size-7 text-[11px]",
       size === "md" && "size-10 text-sm",
       size === "lg" && "size-14 text-base",
     )}>

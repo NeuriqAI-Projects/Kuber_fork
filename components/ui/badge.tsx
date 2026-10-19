@@ -7,22 +7,22 @@ import { cn } from "@/lib/utils"
 // removable filter tokens (countries, keywords, titles). Shape + centering
 // live here so every selected-filter pill matches.
 const badgeVariants = cva(
-  "inline-flex items-center justify-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] leading-none font-medium whitespace-nowrap transition-colors",
+  "inline-flex items-center justify-center gap-1 rounded-[5px] border px-1.5 py-[3px] text-[11px] leading-none font-medium whitespace-nowrap transition-colors",
   {
     variants: {
       variant: {
         default:
-          "border-transparent bg-primary text-primary-foreground hover:bg-primary/80 font-semibold tracking-wide",
+          "border-transparent bg-primary text-primary-foreground",
         secondary:
-          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary font-semibold tracking-wide",
+          "border-transparent bg-secondary text-secondary-foreground",
         destructive:
-          "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80 font-semibold tracking-wide",
-        outline: "border-border text-foreground font-semibold tracking-wide",
+          "border-transparent bg-destructive/10 text-destructive",
+        outline: "border-border bg-field text-foreground",
         /** A chosen value — selected filter chips, removable tokens, active toggles. */
-        selected: "border-primary/30 bg-primary/15 text-primary",
+        selected: "border-transparent bg-primary/10 text-primary",
         /** The unselected half of a toggle pair; pairs with `selected`. */
         unselected:
-          "border-border text-muted-foreground hover:border-foreground hover:text-foreground",
+          "border-border text-muted-foreground hover:bg-hover hover:text-foreground",
       },
     },
     defaultVariants: {

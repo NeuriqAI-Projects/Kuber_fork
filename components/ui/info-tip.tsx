@@ -72,7 +72,7 @@ export function InfoTip({
             transform: coords.below ? transformMap.bottom : transformMap[side],
             zIndex: 9999,
           }}
-          className="w-64 rounded-lg border border-border bg-card px-2.5 py-2 text-[11px] leading-relaxed text-foreground shadow-lg pointer-events-none"
+          className="pointer-events-none w-max max-w-64 whitespace-pre-line rounded-md bg-foreground px-2 py-1.5 text-xs font-normal normal-case leading-snug tracking-normal text-background shadow-md"
         >
           {text}
         </span>,

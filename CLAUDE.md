@@ -42,61 +42,68 @@ Lead-gen pipeline: **Apollo** (find people/companies, reveal emails) → **Firec
 | Multi-select country/region | `LocationsPicker` (`components/ui/locations-picker.tsx`) |
 | Toggle | `Switch` (`components/ui/switch.tsx`) |
 | Rich text / HTML body | `RichTextEditor` (`components/ui/rich-text-editor.tsx`) |
-| Choice card (a radio/checkbox rendered as a clickable bordered box with a label+description, e.g. "Assign imported leads" strategy cards, handover-strategy cards, Sequences' Step 1/Step 2 cards) | No dedicated component yet, but the fill rule is the same as every other field: `bg-field` when unselected, `border-primary bg-primary/10`-style tint when selected. Never `bg-card`/no-fill — a choice card is a field, not a panel. |
+| Choice card (a radio/checkbox rendered as a clickable bordered box with a label+description, e.g. "Assign imported leads" strategy cards, handover-strategy cards, Sequences' Step 1/Step 2 cards) | No dedicated component yet: `border-border bg-field` when unselected, `border-primary/50 bg-primary/5` when selected. |
 | Multi-step wizard progress | `Stepper` (`components/ui/stepper.tsx`) — the not-yet-reached step pill is `bg-field` for the same choice-card reason; don't hand-roll step chips. |
 | Apollo credit-cost messaging ("N leads/contacts selected → N credits will be spent") | `ApolloCostNote` (`components/app/apollo-cost-note.tsx`) — shown twice per Apollo-backed import flow: once where the count that drives cost is chosen, once as final confirmation right before the button that spends it. Same UI in test-mode workspaces too (real credit count + a "(test)" tag), never a different box/copy for mock vs real. See `docs/apollo-credit-usage-rca.md` for the cost model — search is free, reveal is 1 credit/contact, org search is 1 credit/page; **no individual filter field has its own cost**, confirmed against Apollo's own docs, so never add a per-field "uses credits" pill. |
 
-A miss worth remembering: `RichTextEditor` looked like a plain panel bug (its wrapper was `bg-card`) but the real cause was that it's a fully custom component, not built on the shared `Textarea` — so the global `Textarea` → `bg-field` fix never reached it. When a field-like control renders wrong, check whether it actually goes through one of the components in this table before assuming the token/ladder is at fault; a bespoke reimplementation is the more common cause.
+A miss worth remembering: `RichTextEditor` looked like a plain panel bug (its wrapper was `bg-card`) but the real cause was that it's a fully custom component, not built on the shared `Textarea` — so the global `Textarea` fix never reached it. When a field-like control renders wrong, check whether it actually goes through one of the components in this table before assuming the token/ladder is at fault; a bespoke reimplementation is the more common cause.
 
 Before writing a new field-like control (a hand-rolled `<input>`, a `Popover`-based trigger button standing in for a select, a `<input type="radio"/checkbox">`, a bespoke date field, etc.), **check this table first.** If nothing fits, extend the existing shared component's props (as `DatePicker` was extended with `size`/`showQuickActions`) rather than building a local one-off in the calling file. A local `DateField`/`FIELD_FILL`-style helper duplicated per-file is exactly the bug this rule exists to prevent — it already happened twice (`create-campaign-modal.tsx` and `edit-campaign-modal.tsx` each had their own copy of a `FIELD_FILL` constant, and `company-lookup-form.tsx` had its own `Popover`+`Calendar` date field) before being consolidated.
 
 Exception: raw `<input type="file" hidden>` and raw `<input type="checkbox"/radio">` used purely as a native a11y target under a custom-styled wrapper (not visible itself) don't need a shared wrapper — but the *visible* control next to them (the checkmark, the radio dot) still must be `AppCheckbox`/`AppRadio`.
 
-## UI surface contrast (hard rule)
+## Attio look — surfaces and colour (hard rule)
 
-**A field's fill (`bg-field`) must never match its surrounding container's fill, and a field's wrapper must never be given its own card/white background "for emphasis."**
-
-If a field sits on a container using the same fill, it disappears — thin borders alone are not enough. This has bitten us repeatedly in light mode (Add user, Batch Name, and other forms): a plain padding wrapper around one field was styled with `bg-card` + `border`, which visually competed with the white field inside it and read as a second nested card. The fix in that case was to strip the wrapper down to bare spacing (no bg, no border) and let the field itself carry the only white in that region.
+The UI follows Attio (reference: the "Attio Full Dashboard UI Screens" Figma file). This
+replaced the old "gray panels, white fields only, 4-colour light mode" rule on 19 Oct 2026
+at the client's request.
 
 ### Surface ladder
 
-| Role | Token | Notes |
-|------|--------|--------|
-| Page | `bg-background` | Page chrome |
-| Panel / card / modal | `bg-card` | Top-level cards, modals — a bordered region, not a separate white block |
-| Nested section | `bg-secondary` | Inside a panel/drawer |
-| Field | `bg-field` | Input, Select, Textarea, Checkbox, Radio, DatePicker trigger, and every other field-like control — the ONLY white surface in light mode |
+| Role | Token | Light | Dark |
+|------|-------|-------|------|
+| Page | `bg-background` | white | near-black |
+| Sidebar (nav rail only) | `bg-sidebar` | faint off-white | one step up |
+| Panel / card / table / list | `bg-card` | white | one step up from page |
+| Menu / popover / modal | `bg-popover` + `shadow-lg`/`shadow-xl` | white | one more step |
+| Nested area, chips, skeleton blocks | `bg-secondary` | light gray | |
+| Row / menu / nav hover | `bg-hover` | lighter gray | |
+| Selected row / nav item | `bg-accent` (nav) or `bg-primary/5` (rows) | | |
+| Field | `bg-field` via the shared `components/ui` control | white | one step above panels |
+
+Palettes are generated in `lib/branding.ts` (`buildLightPalette` / `buildDarkPalette`); the
+pre-paint script in `app/layout.tsx` embeds them as JSON from the same functions, so there is
+one source of truth. A new token goes in `CSS_VARS`, both palette builders, `@theme` and the
+`:root` defaults in `app/globals.css`.
 
 ### Do / don't
 
-- **Do** keep shared `Input` / `SelectTrigger` / `Textarea` / `AppCheckbox` / `AppRadio` / `DatePicker` on their default `bg-field` — never override it.
-- **Don't** override fields with `bg-card`, `bg-secondary/NN`, `bg-white`, or any other ad-hoc fill. If a field looks invisible against its container, that means the *container* is wrong (should have no fill, or should be the next ladder step down), not the field.
-- **Don't** wrap a single field (or a couple of fields) in its own `bg-card`/bordered box purely for visual grouping — that reintroduces a competing white/card surface. Plain spacing (`p-4`, `space-y-*`) is enough; save `bg-card` + `border` for an actual multi-row panel (a data table, a list of results, a modal).
-- **Don't** duplicate a field-fill constant per file (see the component-reuse rule above) — if the shared default isn't enough, extend the shared component.
+- **Separate with 1px borders, not fills.** In light mode page, panels, tables and fields are
+  all white; hierarchy comes from `border-border` lines and soft shadows on floating things.
+- **Primary (theme colour) is for** primary buttons, links, checked checkbox/radio/switch and
+  small selected tints (`bg-primary/10`). Never a big fill, never a rail on cards.
+- **Tags / status pills** use the light/dark pair: `bg-x-100 text-x-800` in light,
+  `dark:bg-x-500/15 dark:text-x-300` in dark (see `BATCH_COLORS` in `lib/constants.ts`,
+  `lib/temperature-badge.ts`, `components/leads/lead-ui.tsx`). Never `text-x-400` alone — it
+  is unreadable on white.
+- **Density:** controls are 32px (`h-8`), small 28px; UI text 13px, body 14px; titles 15–18px
+  semibold. No uppercase tracked "eyebrow" labels, no mono numbers — use `tabular-nums`.
+- **Instant, no motion:** no fade/slide/zoom entrance animations on panels, menus or dialogs,
+  no press-scale. Hover colour transitions only.
+- **Don't** override fields with `bg-card`/`bg-white`/ad-hoc fills, and don't wrap one or two
+  fields in their own bordered box for grouping — plain spacing is enough.
+- **Don't** duplicate a field-fill constant per file — extend the shared component.
 
-### Row-list surfaces are white, not shade (exception, by design)
+### Screen building blocks (`components/ui`)
 
-**A bordered container whose whole job is to hold a list of selectable/clickable rows — a search-results table, a people/contacts picker, a conversation list — uses `bg-field dark:bg-card`, not `bg-card`.** This is the one deliberate exception to "panels are shade gray": the list itself reads as a white surface sitting on the normal gray page/panel behind it, the same way a single field would. Loading skeletons for that list get the same treatment so they don't flash gray then flip white once data arrives.
-
-This is different from wrapping a couple of fields in `bg-card` for grouping (still banned, see above) — the trigger is "this container's content is a `.map()` of rows a user picks from," not "this container has more than one child."
-
-Examples: `company-lookup-form.tsx` (company results table, people picker, and their loading skeletons), `unibox-thread-list.tsx` (conversation list), `campaign-drawer.tsx` (the Leads-tab table + its skeleton, the Outbox mail-thread container), `discussion-comment.tsx` (chat message bubbles and the reply composer — a chat log is a row-list of messages). Not a match: a panel that mixes a header/inline form with a table inside one wrapper (e.g. `team-view.tsx`'s Users card) — that's a panel that happens to contain a table, not a bare row-list, so it stays `bg-card`.
-
-**Corollary — a bare-row list (no card chrome per row, just `divide-y` separators) follows the exception above and the whole container goes white. But a list whose rows already read as individual cards (rounded, bordered, gapped) does NOT also make the container white — that would be two white layers stacked with nothing between them.** There, the container stays the normal page/panel shade and each row-card is `bg-field` on its own, exactly like a kanban card sitting on its column. `campaign-drawer.tsx`'s Outbox lead-tiles rail is this case: the rail itself has no bg (transparent, showing the ambient page shade), and each lead row is its own `rounded-lg border bg-field` card with a gap between them — it looked like a "make the container white" case at first (bare list, no visible per-row card border) but the fix that actually matched the design intent was restyling the rows into cards, not whitening the container.
-
-### Light-mode color budget (client requirement, strict)
-
-Light mode uses exactly **4 colors**: primary, one primary-tinted "shade" gray, full white, and black text. No other near-white or near-gray value may exist. Concretely (see `buildLightPalette()` in `lib/branding.ts`):
-
-- **Shade** (one gray, reused flat) → `background`, `card`, `popover`, `secondary`, `muted`, `accent`.
-- **White** (the only white) → `field` only, via `bg-field`.
-- **Black** (with opacity for the muted variant, never a separate gray) → `foreground`, `card-foreground`, `popover-foreground`, `secondary-foreground`, `accent-foreground`; `muted-foreground` is black at 60% opacity.
-- **Primary** → `primary`, `ring`, and nothing else.
-- `border`/`input` are a slightly darker step of the same shade hue (needed so a border line stays visible against both the shade and white) — this is not a 5th color, it's an opacity/lightness step of the shade, same as `muted-foreground` is a step of black.
-
-If a design need seems to require a new near-white or near-gray tone, it doesn't — use opacity on one of the four instead, or reconsider whether the surface should be a field (white) or a panel (shade). Dark mode is unaffected by this rule and keeps its existing tinted ladder.
-
-See also the ladder comment in `app/globals.css`.
+- `PageHeader` (48px breadcrumb + actions bar) and `Toolbar` (view/Sort/Filter row) — every
+  screen starts with these.
+- `Table` = Attio grid (32px header, 36px rows, 1px grid lines, `hover:bg-hover`).
+- `RecordLayout` + `RecordHeader` + `DetailSection` + `DetailRow` — lead, org and campaign
+  record views (main column with underline tabs + right "Details" rail).
+- `SegmentedTabs` — `variant="segmented"` for view toggles, `variant="underline"` for page tabs.
+- `CommandMenu` — the ⌘K "Quick actions" palette in the app shell.
+- `EmptyState` — icon tile, optional `title`, message, one primary action.
 
 ## No focus ring at all (hard rule)
 

@@ -25,17 +25,17 @@ const surfaceChecks = [
     {
       selector: "Literal[value=/bg-(secondary|muted|accent|card|popover)\\/[0-9]/]",
       message:
-        "Ad-hoc surface fill. Light mode renders page, card, secondary, muted and accent as ONE grey, so a partial-opacity version of any of them is invisible. Use a ladder token at full strength: bg-background (page), bg-card (panel), bg-secondary (nested section), bg-field (anything a user types into). See CLAUDE.md > Surface ladder.",
+        "Ad-hoc surface fill. Use a ladder token at full strength: bg-background (page), bg-card (panel), bg-popover (menus/dialogs), bg-secondary (nested area, chips), bg-hover (hover), bg-accent (selected), bg-field (anything a user types into). See CLAUDE.md > Attio look > Surface ladder.",
     },
     {
       selector: "TemplateElement[value.raw=/bg-(secondary|muted|accent|card|popover)\\/[0-9]/]",
       message:
-        "Ad-hoc surface fill inside a template string. Use a ladder token at full strength — see CLAUDE.md > Surface ladder.",
+        "Ad-hoc surface fill inside a template string. Use a ladder token at full strength — see CLAUDE.md > Attio look > Surface ladder.",
     },
     {
       selector: "Literal[value=/\\bbg-white\\b/], TemplateElement[value.raw=/\\bbg-white\\b/]",
       message:
-        "bg-white is not in the palette. White belongs to fields only, via bg-field — see CLAUDE.md > Light-mode color budget.",
+        "bg-white skips the theme (it stays white in dark mode). Use the ladder token for the role — bg-background / bg-card / bg-popover / bg-field — see CLAUDE.md > Attio look > Surface ladder.",
     },
     {
       selector:

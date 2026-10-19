@@ -8,5 +8,5 @@
 | `auth/` | `login-form.tsx` |
 | `leads/` | `lead-ui.tsx` small lead badges/helpers |
 
-The UI hard rules (shared components only, surface ladder, 4-colour light mode, no focus
-rings, row-lists are `bg-field dark:bg-card`) are in the root `CLAUDE.md` — follow them.
+The UI hard rules (shared components only, the Attio surface ladder and tag colours, no focus
+rings, no entrance animations) are in the root `CLAUDE.md` — follow them.

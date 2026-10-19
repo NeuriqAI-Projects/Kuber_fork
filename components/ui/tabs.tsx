@@ -29,7 +29,7 @@ const TabsTrigger = React.forwardRef<
     className={cn(
       segmentedTriggerClassName(false),
       "flex-1 ring-offset-background disabled:pointer-events-none disabled:opacity-50",
-      "data-[state=active]:bg-primary/15 data-[state=active]:text-primary",
+      "data-[state=active]:bg-field data-[state=active]:text-foreground data-[state=active]:shadow-xs",
       className
     )}
     {...props}

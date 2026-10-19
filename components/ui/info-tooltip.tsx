@@ -86,7 +86,7 @@ export function InfoTooltip({ text, className }: { text: string; className?: str
       <Info className="size-3.5 text-muted-foreground hover:text-foreground cursor-help" tabIndex={0} />
       {mounted && open && pos && createPortal(
         <span
-          className="pointer-events-none fixed z-100 w-56 rounded-md border border-border bg-popover px-3 py-2 text-[11px] leading-relaxed text-muted-foreground shadow-lg"
+          className="pointer-events-none fixed z-100 w-max max-w-56 rounded-md bg-foreground px-2 py-1.5 text-xs leading-snug text-background shadow-md"
           style={{
             top: pos.placement === "top" ? pos.top : pos.top,
             left: pos.left,

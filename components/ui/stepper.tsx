@@ -21,13 +21,13 @@ export function Stepper({ steps, current, className }: StepperProps) {
           <React.Fragment key={label}>
             <div
               className={cn(
-                "flex items-center gap-2 rounded-full border px-2.5 py-1.5 shrink-0",
-                active ? "border-primary bg-primary/10" : done ? "border-primary/30 bg-primary/5" : "border-border bg-field",
+                "flex items-center gap-2 rounded-md border px-2 py-1 shrink-0",
+                active ? "border-primary/40 bg-primary/5" : done ? "border-border bg-field" : "border-border bg-field",
               )}
             >
               <span
                 className={cn(
-                  "flex items-center justify-center size-5 rounded-full text-[10px] leading-none font-bold tabular-nums shrink-0",
+                  "flex items-center justify-center size-[18px] rounded-full text-[11px] leading-none font-semibold tabular-nums shrink-0",
                   active || done ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground",
                 )}
               >
@@ -41,7 +41,7 @@ export function Stepper({ steps, current, className }: StepperProps) {
               </span>
               <span
                 className={cn(
-                  "text-xs font-medium whitespace-nowrap",
+                  "text-[13px] font-medium whitespace-nowrap",
                   active ? "text-foreground" : done ? "text-foreground/80" : "text-muted-foreground",
                 )}
               >

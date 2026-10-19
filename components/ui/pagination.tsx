@@ -35,10 +35,10 @@ function PaginationLink({ className, isActive, disabled, ...props }: PaginationL
       aria-current={isActive ? "page" : undefined}
       disabled={disabled}
       className={cn(
-        "inline-flex items-center justify-center size-8 rounded-md border border-input bg-field font-mono text-sm font-medium tabular-nums transition-colors",
-        "hover:bg-field hover:border-muted-foreground/40",
+        "inline-flex items-center justify-center size-7 rounded-md border border-transparent text-[13px] font-medium tabular-nums text-muted-foreground transition-colors",
+        "hover:bg-hover hover:text-foreground",
         "disabled:pointer-events-none disabled:opacity-40",
-        isActive && "border-primary/40 bg-primary/10 text-foreground",
+        isActive && "border-border bg-field text-foreground shadow-xs",
         className,
       )}
       {...props}

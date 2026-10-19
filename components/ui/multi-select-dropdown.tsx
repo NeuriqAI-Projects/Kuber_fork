@@ -61,7 +61,7 @@ export function MultiSelectDropdown<T extends string>({
         type="button"
         variant="outline"
         onClick={() => setOpen((o) => !o)}
-        className="w-full h-auto min-h-9 flex-wrap justify-start gap-1.5 rounded-md px-3 py-1.5 text-left text-sm font-normal bg-field"
+        className="w-full h-auto min-h-8 flex-wrap justify-start gap-1 rounded-md px-2.5 py-1 text-left text-sm font-normal bg-field hover:border-muted-foreground/30"
       >
         {selected.size === 0 ? (
           <span className="text-muted-foreground text-xs">Select {label.toLowerCase()}…</span>
@@ -71,7 +71,7 @@ export function MultiSelectDropdown<T extends string>({
             .map((o) => (
               <span
                 key={o.value}
-                className="inline-flex items-center gap-1 bg-secondary border border-border rounded px-1.5 py-0.5 text-xs font-medium"
+                className="inline-flex items-center gap-1 bg-secondary rounded-[4px] px-1.5 py-0.5 text-xs font-medium"
               >
                 {o.dot && <span className={cn("size-1.5 rounded-full shrink-0", o.dot)} />}
                 {o.chip ?? o.label}
@@ -95,7 +95,7 @@ export function MultiSelectDropdown<T extends string>({
       </Button>
 
       {open && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-md border border-border bg-card shadow-xl overflow-hidden">
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-lg border border-border bg-popover shadow-lg overflow-hidden">
           <div className="px-2 py-1.5 border-b border-border">
             <div className="flex items-center gap-2 px-1">
               <Search className="size-3.5 text-muted-foreground shrink-0" />
@@ -121,8 +121,8 @@ export function MultiSelectDropdown<T extends string>({
                     variant="ghost"
                     onClick={() => toggle(o.value)}
                     className={cn(
-                      "w-full h-auto justify-start gap-2.5 rounded-none px-3 py-2 text-sm font-normal",
-                      active && "bg-secondary"
+                      "w-full h-8 justify-start gap-2.5 rounded-none px-3 text-[13px] font-normal",
+                      active && "bg-hover"
                     )}
                   >
                     {o.dot && <span className={cn("size-2 rounded-full shrink-0", o.dot)} />}

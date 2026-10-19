@@ -22,8 +22,8 @@ export function Pill({
   color?: BatchColorName;
   dot?: boolean;
   icon?: React.ReactNode;
-  /** "full" — a soft coloured tag (batches, leads table). "sm" — a tighter
-   *  uppercase status/score chip. */
+  /** "full" — an Attio-style tag (batches, leads table). "sm" — a tighter
+   *  status/score chip. */
   shape?: "full" | "sm";
   className?: string;
   children: React.ReactNode;
@@ -34,7 +34,7 @@ export function Pill({
       {...rest}
       className={cn(
         "inline-flex items-center justify-center gap-1 border leading-none font-medium whitespace-nowrap",
-        shape === "full" ? "rounded-full px-2 py-0.5 text-[11px]" : "rounded-sm px-1.5 py-0.5 text-[10px]",
+        shape === "full" ? "rounded-[5px] px-1.5 py-[3px] text-xs" : "rounded px-1.5 py-[3px] text-[11px]",
         c.pill,
         className,
       )}

@@ -84,7 +84,7 @@ export function TemplateVarTextarea({
                 size="sm"
                 disabled={disabled}
                 onClick={() => insert(v.token)}
-                className="h-6 gap-1 rounded px-1.5 py-0.5 bg-primary/15 text-primary text-[11px] font-mono font-semibold border border-primary/25 hover:bg-primary/25 hover:text-primary"
+                className="h-6 gap-1 rounded-[5px] px-1.5 py-0.5 bg-primary/10 text-primary text-xs font-medium hover:bg-primary/15 hover:text-primary"
               >
                 {v.label}
                 <Copy className="size-2.5 opacity-60" />

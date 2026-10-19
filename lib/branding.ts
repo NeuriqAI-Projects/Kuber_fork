@@ -18,7 +18,7 @@ export const APP_TAGLINE = "Access the lead command center.";
 export type ThemeId = "monochrome" | "blue" | "green" | "purple" | "orange" | "rose";
 export type ThemeMode = "dark" | "light";
 
-const CSS_VARS = [
+export const CSS_VARS = [
   "--background", "--foreground",
   "--card", "--card-foreground",
   "--popover", "--popover-foreground",
@@ -27,6 +27,7 @@ const CSS_VARS = [
   "--muted", "--muted-foreground",
   "--accent", "--accent-foreground",
   "--border", "--input", "--ring", "--field",
+  "--sidebar", "--hover",
 ] as const;
 
 type CssVar = (typeof CSS_VARS)[number];
@@ -52,95 +53,76 @@ export const COLORS: ColorDefinition[] = [
   { id: "rose",       label: "Rose",           swatch: "#f43f5e", hue: 350,  accentSat: 89, accentLight: 60 },
 ];
 
-/** Builds a full dark-mode palette: near-black tinted background, progressively
- *  lighter tinted panels, and a saturated accent color (primary/ring). */
+// Attio-style ladders. Neutrals use a cool gray (hue 220) in every theme so
+// surfaces read the same whichever accent is picked; only --primary/--ring
+// carry the theme's hue. Light mode: white page, panels, popovers and fields,
+// separated by 1px borders; a faint off-white sidebar; hover/selected states
+// are a light gray step (--hover). Dark mode mirrors it one step up from
+// near-black. See the "Surface ladder" section in CLAUDE.md.
+const NEUTRAL_HUE = 220;
+
+/** Dark mode: near-black page, one step lighter panels/popovers, fields one
+ *  step above the panel so they never vanish into it. */
 function buildDarkPalette(c: ColorDefinition): Palette {
   const mono = c.hue === null;
-  const h = c.hue ?? 0;
-  const s = mono ? 0 : 22;
-  const fgS = mono ? 0 : 15;
+  const n = NEUTRAL_HUE;
+  const accent = mono ? "hsl(0 0% 96%)" : `hsl(${c.hue} ${c.accentSat}% ${c.accentLight}%)`;
+  const fg = `hsl(${n} 10% 95%)`;
   return {
-    "--background":           `hsl(${h} ${mono ? 0 : 30}% 3.9%)`,
-    "--foreground":           `hsl(${h} ${fgS}% 98%)`,
-    "--card":                 `hsl(${h} ${mono ? 0 : 26}% 7%)`,
-    "--card-foreground":      `hsl(${h} ${fgS}% 98%)`,
-    "--popover":              `hsl(${h} ${mono ? 0 : 26}% 7%)`,
-    "--popover-foreground":   `hsl(${h} ${fgS}% 98%)`,
-    "--primary":              `hsl(${h} ${c.accentSat}% ${c.accentLight}%)`,
+    "--background":           `hsl(${n} 7% 7%)`,
+    "--sidebar":              `hsl(${n} 7% 8.5%)`,
+    "--card":                 `hsl(${n} 7% 9%)`,
+    "--popover":              `hsl(${n} 7% 11%)`,
+    "--field":                `hsl(${n} 7% 11.5%)`,
+    "--secondary":            `hsl(${n} 6% 13.5%)`,
+    "--muted":                `hsl(${n} 6% 13.5%)`,
+    "--accent":               `hsl(${n} 6% 15%)`,
+    "--hover":                `hsl(${n} 6% 12.5%)`,
+    "--foreground":           fg,
+    "--card-foreground":      fg,
+    "--popover-foreground":   fg,
+    "--secondary-foreground": fg,
+    "--accent-foreground":    fg,
+    "--muted-foreground":     `hsl(${n} 6% 62%)`,
+    "--border":               `hsl(${n} 6% 16.5%)`,
+    "--input":                `hsl(${n} 6% 20%)`,
+    "--primary":              accent,
     "--primary-foreground":   mono ? "hsl(0 0% 9%)" : "hsl(0 0% 100%)",
-    "--secondary":            `hsl(${h} ${s}% 14.9%)`,
-    "--secondary-foreground": `hsl(${h} ${fgS}% 98%)`,
-    "--muted":                `hsl(${h} ${s}% 14.9%)`,
-    // 70% (was 63.9%) — AA contrast for small text on 7% cards (issues_ui §9).
-    "--muted-foreground":     `hsl(${h} ${fgS}% 70%)`,
-    "--accent":               `hsl(${h} ${s}% 16.9%)`,
-    "--accent-foreground":    `hsl(${h} ${fgS}% 98%)`,
-    "--border":                `hsl(${h} ${s}% 14.9%)`,
-    "--input":                `hsl(${h} ${s}% 14.9%)`,
-    "--ring":                 `hsl(${h} ${c.accentSat}% ${c.accentLight}%)`,
-    // Field surface (Input/Select/Textarea/Checkbox/Radio/DatePicker fill) —
-    // matches the page background in dark mode, same as the rest of the ladder.
-    "--field":                `hsl(${h} ${mono ? 0 : 30}% 3.9%)`,
+    "--ring":                 accent,
   };
 }
 
-/** Builds the light-mode palette under the client's strict 4-color rule:
- *  every value is one of primary, a single primary-tinted "shade" (used at
- *  full or reduced opacity — never a fifth arbitrary gray), full white, or
- *  black text (also opacity-only for the muted variant). No more per-token
- *  near-white lightness values (97%, 95.1%, 93.1%, 89.1%, ...).
- *
- *  White is reserved exclusively for actual field surfaces (--field, wired
- *  through bg-field on Input/Select/Textarea/Checkbox/Radio/DatePicker).
- *  Cards, popovers, and every panel/section fill are the same gray shade as
- *  the page — a card is a bordered gray region, not a white block, so a
- *  field placed inside it still contrasts. Never give a wrapper around a
- *  field its own white/card background "for emphasis" — that's what breaks
- *  the field's visibility (see CLAUDE.md). */
+/** Light mode (Attio): white everywhere content lives, an off-white sidebar,
+ *  1px cool-gray borders, and near-black text. --secondary/--muted are the
+ *  light gray used for chips, nested sections and skeletons; --hover is the
+ *  row/menu hover. */
 function buildLightPalette(c: ColorDefinition): Palette {
   const mono = c.hue === null;
-  const h = c.hue ?? 0;
-  const s = mono ? 0 : 20;
-  const shade = `hsl(${h} ${s}% 95%)`;
+  const n = NEUTRAL_HUE;
   const white = "hsl(0 0% 100%)";
-  const black = "hsl(0 0% 9%)";
+  const fg = `hsl(${n} 9% 12%)`;
+  const accent = mono ? fg : `hsl(${c.hue} ${c.accentSat}% ${Math.min(c.accentLight, 55)}%)`;
   return {
-    // Page / panel / card / nested-section fill — one flat "primary shade"
-    // gray everywhere. Depth comes from border + shadow, not a second tone.
-    "--background":           shade,
-    "--secondary":            shade,
-    "--muted":                shade,
-    "--accent":               shade,
-    "--card":                 shade,
-    "--popover":              shade,
-    // Field fill — the only white in the palette.
+    "--background":           white,
+    "--card":                 white,
+    "--popover":              white,
     "--field":                white,
-    // Text — black, with the muted variant as an opacity of the same black
-    // rather than a separate gray.
-    "--foreground":           black,
-    "--card-foreground":      black,
-    "--popover-foreground":   black,
-    "--secondary-foreground": black,
-    "--accent-foreground":    black,
-    "--muted-foreground":     "hsl(0 0% 9% / 0.6)",
-    // Primary accent, unchanged.
-    "--primary":              mono ? black : `hsl(${h} ${c.accentSat}% ${c.accentLight}%)`,
-    "--primary-foreground":   mono ? "hsl(0 0% 98%)" : white,
-    "--ring":                 mono ? black : `hsl(${h} ${c.accentSat}% ${c.accentLight}%)`,
-    // BORDER — the only thing separating anything in light mode, so it carries
-    // the whole visual hierarchy.
-    //
-    // Was raised from 88% to 54% on 23 Sep 2026 after the client's team said
-    // "the background and the normal colour are the same, the separation is
-    // not visible" (see git history / commits 2bfa440, cb0b581 for the WCAG
-    // contrast math behind that number if this needs revisiting). Reverted
-    // back to 88% same day at the client's explicit direction — 54% read as a
-    // visible border around every single card/tile on every screen, which
-    // was a worse problem than the one it fixed. If the original complaint
-    // comes back, the fix is a SMALLER step than 54% (e.g. 75-80%), not
-    // re-applying the old value outright.
-    "--border":               `hsl(${h} ${s}% 88%)`,
-    "--input":                `hsl(${h} ${s}% 88%)`,
+    "--sidebar":              `hsl(${n} 14% 98.5%)`,
+    "--secondary":            `hsl(${n} 14% 96.5%)`,
+    "--muted":                `hsl(${n} 14% 96.5%)`,
+    "--accent":               `hsl(${n} 14% 95.5%)`,
+    "--hover":                `hsl(${n} 14% 97.5%)`,
+    "--foreground":           fg,
+    "--card-foreground":      fg,
+    "--popover-foreground":   fg,
+    "--secondary-foreground": fg,
+    "--accent-foreground":    fg,
+    "--muted-foreground":     `hsl(${n} 5% 45%)`,
+    "--border":               `hsl(${n} 13% 92%)`,
+    "--input":                `hsl(${n} 11% 88%)`,
+    "--primary":              accent,
+    "--primary-foreground":   white,
+    "--ring":                 accent,
   };
 }
 
@@ -157,6 +139,17 @@ export function isThemeMode(value: string | null | undefined): value is ThemeMod
 
 function getColor(id: string | null | undefined): ColorDefinition {
   return COLORS.find((c) => c.id === id) ?? COLORS[0];
+}
+
+/** Every theme × mode palette, keyed "themeId:mode". app/layout.tsx embeds
+ *  this as JSON in its pre-paint script so there's one source of truth. */
+export function allPalettes(): Record<string, Palette> {
+  const out: Record<string, Palette> = {};
+  for (const c of COLORS) {
+    out[`${c.id}:dark`] = buildDarkPalette(c);
+    out[`${c.id}:light`] = buildLightPalette(c);
+  }
+  return out;
 }
 
 export function getPalette(id: string | null | undefined, mode: ThemeMode): Palette {

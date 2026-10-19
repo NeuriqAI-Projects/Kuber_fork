@@ -12,7 +12,7 @@
 | `api-response.ts` | `ok()` / `fail()` response helpers |
 | `app-context.tsx`, `theme-context.tsx` | React contexts (session, leads cache, theme) |
 | `mappers.ts` | DB row → frontend shape + status maps |
-| `branding.ts` | colour palettes (the 4-colour light mode) |
+| `branding.ts` | colour palettes (Attio light + dark ladders; `allPalettes()` feeds the pre-paint script) |
 | `http.ts` | retry schedule per provider (Apollo: no retries, on purpose) |
 | `constants.ts` | service-role synthetic caller id etc. |
 | others | small pure helpers: campaign-status, territory, unibox-filters, thread-participants, email-display, reply-* |

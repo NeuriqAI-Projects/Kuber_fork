@@ -3,18 +3,18 @@
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   LayoutDashboard, Users, Megaphone, Settings, Inbox, FlaskConical,
-  ChevronsLeft, ChevronsRight, Bug, Coins,
+  PanelLeft, Bug, Coins, Search, User,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { CommandMenu, type CommandGroup } from "@/components/ui/command-menu";
 import { useApp } from "@/lib/app-context";
 import { ThemeProvider } from "@/lib/theme-context";
 import { APP_LOGO_INITIAL, APP_NAME, BRAND_LOGO_CHANGED } from "@/lib/branding";
 import { isCampaignEligible, type Lead } from "@/lib/leads";
 import { deleteLead, fetchLogo, fetchUniboxUnread, fetchApolloCredits } from "@/lib/api-client";
-import { RouteSkeleton } from "@/components/app/page-skeletons";
 import { cn } from "@/lib/utils";
 
 const CreateCampaignModal = dynamic(
@@ -37,18 +37,35 @@ const AddLeadsDrawer = dynamic(
 const SIDEBAR_COLLAPSED_KEY = "kuber_sidebar_collapsed";
 const BUG_REPORT_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdzYy8kUC3a9JSyhrWZJjvrmde9V3qBVycKMRSpLLUpQqkWug/viewform";
 
+// Sidebar groups, Attio-style: a top group, "Records", then "Workspace".
 const NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard",  icon: LayoutDashboard, exact: true,  managerOnly: false },
-  { href: "/leads",     label: "Leads",      icon: Users,           exact: false, managerOnly: false },
-  { href: "/campaigns", label: "Campaigns",  icon: Megaphone,       exact: false, managerOnly: false },
-  { href: "/unibox",    label: "Unibox",     icon: Inbox,           exact: false, managerOnly: false },
+  { href: "/dashboard", label: "Dashboard",  icon: LayoutDashboard, exact: true,  managerOnly: false, group: "main"      },
+  { href: "/unibox",    label: "Unibox",     icon: Inbox,           exact: false, managerOnly: false, group: "main"      },
+  { href: "/leads",     label: "Leads",      icon: Users,           exact: false, managerOnly: false, group: "records"   },
+  { href: "/campaigns", label: "Campaigns",  icon: Megaphone,       exact: false, managerOnly: false, group: "records"   },
   // Managers only: the lab spends on model calls and decides what writes to
   // customers. It never sends anything — see lib/services/model-lab.ts.
-  { href: "/model-lab", label: "Model Lab",  icon: FlaskConical,    exact: false, managerOnly: true  },
+  { href: "/model-lab", label: "Model Lab",  icon: FlaskConical,    exact: false, managerOnly: true,  group: "workspace" },
   // Managers only: provider keys and what each one has spent.
-  { href: "/credits",   label: "Credits",    icon: Coins,           exact: false, managerOnly: true  },
-  { href: "/settings",  label: "Settings",   icon: Settings,        exact: false, managerOnly: false },
+  { href: "/credits",   label: "Credits",    icon: Coins,           exact: false, managerOnly: true,  group: "workspace" },
+  { href: "/settings",  label: "Settings",   icon: Settings,        exact: false, managerOnly: false, group: "workspace" },
 ] as const;
+
+const NAV_GROUPS = [
+  { id: "main",      label: null },
+  { id: "records",   label: "Records" },
+  { id: "workspace", label: "Workspace" },
+] as const;
+
+// Code for the drawers/modals the shell can open. Fetched once the browser is
+// idle so the first click on a lead, org or "Add leads" opens on the spot
+// instead of waiting for its chunk.
+function preloadDrawers() {
+  void import("@/components/app/lead-drawer");
+  void import("@/components/app/org-drawer");
+  void import("@/components/app/add-leads-drawer");
+  void import("@/components/app/create-campaign-modal");
+}
 
 function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -66,8 +83,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [uniboxUnread, setUniboxUnread] = useState<number | null>(null);
   const [apolloCredits, setApolloCredits] = useState<{ remaining: number | null; limit: number | null } | null>(null);
+  // Set on a sidebar click, cleared when the route changes: drives the
+  // optimistic highlight and the thin progress bar. The current screen stays
+  // on screen until the next one is ready (or its loading.tsx shows) —
+  // no blank skeleton swap.
   const [pendingHref, setPendingHref] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
+  const [commandOpen, setCommandOpen] = useState(false);
   // Starts false on both server and client's first render to avoid a
   // hydration mismatch, then syncs from the persisted value after mount.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -85,6 +106,55 @@ function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => { setPendingHref(null); }, [pathname]);
+
+  useEffect(() => {
+    const w = window as Window & { requestIdleCallback?: (cb: () => void) => number };
+    if (w.requestIdleCallback) w.requestIdleCallback(preloadDrawers);
+    else setTimeout(preloadDrawers, 1500);
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCommandOpen((v) => !v);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Quick actions searches the leads already in memory. Opening it from a
+  // screen that never loaded them (Settings, a hard reload) pulls the first
+  // page quietly so a typed name still finds the lead.
+  useEffect(() => {
+    if (commandOpen && session && leads.length === 0) void loadLeads(session.access_token, { background: true });
+  }, [commandOpen, session, leads.length, loadLeads]);
+
+  const commandGroups = useMemo<CommandGroup[]>(() => [
+    {
+      label: "Go to",
+      items: visibleNavItems.map(({ href, label, icon: Icon }) => ({
+        id: href,
+        label,
+        icon: <Icon />,
+        onSelect: () => router.push(href),
+      })),
+    },
+    {
+      label: "Leads",
+      searchOnly: true,
+      items: leads.map((l) => ({
+        id: l.id,
+        label: `${l.firstName} ${l.lastName}`.trim() || l.email || "Lead",
+        icon: <User />,
+        hint: l.company || undefined,
+        keywords: `${l.email} ${l.company} ${l.domain}`,
+        onSelect: () => setSelectedLead(l),
+      })),
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [leads, role, router, setSelectedLead]);
 
   useEffect(() => {
     if (!loadingSession && !session) router.replace("/");
@@ -145,20 +215,19 @@ function AppShell({ children }: { children: React.ReactNode }) {
   if (loadingSession) {
     return (
       <div className="h-screen flex bg-background overflow-hidden">
-        <aside className="w-60 shrink-0 border-r border-border flex flex-col bg-card animate-pulse">
-          <div className="px-4 py-5 border-b border-border flex items-center gap-2.5">
-            <div className="size-8 bg-secondary rounded-lg" />
-            <div className="h-4 w-16 bg-secondary rounded" />
+        <aside className="w-60 shrink-0 border-r border-border flex flex-col bg-sidebar animate-pulse">
+          <div className="h-12 px-3 flex items-center gap-2">
+            <div className="size-6 bg-secondary rounded-md" />
+            <div className="h-3.5 w-20 bg-secondary rounded" />
           </div>
-          <nav className="flex-1 p-2 space-y-1">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-9 bg-secondary rounded-lg" />
+          <div className="mx-2 h-8 bg-secondary rounded-md" />
+          <nav className="flex-1 p-2 space-y-1 mt-2">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="h-8 bg-hover rounded-md" />
             ))}
           </nav>
         </aside>
-        <main className="flex-1 flex items-center justify-center">
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        </main>
+        <main className="flex-1" />
       </div>
     );
   }
@@ -177,42 +246,38 @@ function AppShell({ children }: { children: React.ReactNode }) {
     return href === bestMatchHref;
   }
 
-  function handleNavClick(href: string, exact: boolean) {
-    // Skip only when this nav item is already the active highlight — otherwise
-    // a nested route could block navigating to its own parent (startsWith trap).
-    if (isActive(href, exact)) return;
-    setPendingHref(href);
-    startTransition(() => { router.push(href); });
+  const navigating = pendingHref !== null && pendingHref !== pathname;
+
+  // While a click is in flight the clicked item highlights at once, so the
+  // sidebar answers instantly even before the route has rendered.
+  function isHighlighted(href: string, exact: boolean) {
+    return navigating ? href === pendingHref : isActive(href, exact);
   }
 
-  const showRouteSkeleton = pendingHref !== null && pendingHref !== pathname;
-  const skeletonHref = pendingHref ?? pathname;
+  const navBadge = (label: string) =>
+    label === "Leads" ? leadsTotal : label === "Campaigns" ? campaigns.length : label === "Unibox" ? uniboxUnread : null;
 
   return (
     <>
       <div className="h-screen flex bg-background overflow-hidden">
         <aside
           className={cn(
-            "shrink-0 border-r border-border flex flex-col bg-card transition-[width] duration-200",
-            sidebarCollapsed ? "w-16" : "w-60",
+            "shrink-0 border-r border-border flex flex-col bg-sidebar transition-[width] duration-150",
+            sidebarCollapsed ? "w-14" : "w-60",
           )}
         >
-          <div
-            className={cn(
-              "border-b border-border flex items-center",
-              sidebarCollapsed ? "flex-col gap-2 px-2 py-4" : "gap-2.5 px-4 py-5",
-            )}
-          >
+          {/* Workspace row */}
+          <div className={cn("h-12 shrink-0 flex items-center", sidebarCollapsed ? "justify-center px-2" : "gap-2 px-3")}>
             {!sidebarCollapsed && (
               <>
                 {logoUrl ? (
-                  <img src={logoUrl} alt="Brand logo" className="size-8 rounded-lg border border-border bg-card object-contain shrink-0" />
+                  <img src={logoUrl} alt="Brand logo" className="size-6 rounded-md border border-border bg-field object-contain shrink-0" />
                 ) : (
-                  <div className="size-8 bg-foreground rounded-lg flex items-center justify-center shrink-0">
-                    <span className="text-background text-sm font-black">{APP_LOGO_INITIAL}</span>
+                  <div className="size-6 bg-foreground rounded-md flex items-center justify-center shrink-0">
+                    <span className="text-background text-xs font-bold">{APP_LOGO_INITIAL}</span>
                   </div>
                 )}
-                <span className="font-display font-bold tracking-tight truncate flex-1">{APP_NAME}</span>
+                <span className="text-[13px] font-semibold truncate flex-1">{APP_NAME}</span>
               </>
             )}
             <button
@@ -220,57 +285,91 @@ function AppShell({ children }: { children: React.ReactNode }) {
               onClick={toggleSidebar}
               aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className="shrink-0 size-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+              className="shrink-0 size-7 flex items-center justify-center rounded-md text-muted-foreground hover:bg-hover hover:text-foreground transition-colors"
             >
-              {sidebarCollapsed ? <ChevronsRight className="size-4" /> : <ChevronsLeft className="size-4" />}
+              <PanelLeft className="size-4" />
             </button>
           </div>
-          <nav className="flex-1 p-2 space-y-0.5">
-            {visibleNavItems.map(({ href, label, icon: Icon, exact }) => {
-              const active = isActive(href, exact);
-              const badge = label === "Leads" ? leadsTotal : label === "Campaigns" ? campaigns.length : label === "Unibox" ? uniboxUnread : null;
+
+          {/* Quick actions (⌘K) */}
+          <div className={cn("shrink-0", sidebarCollapsed ? "px-2" : "px-2.5")}>
+            <button
+              type="button"
+              onClick={() => setCommandOpen(true)}
+              title={sidebarCollapsed ? "Quick actions (⌘K)" : undefined}
+              className={cn(
+                "w-full h-8 flex items-center rounded-md border border-border bg-field text-[13px] text-muted-foreground shadow-xs hover:text-foreground transition-colors",
+                sidebarCollapsed ? "justify-center" : "gap-2 px-2",
+              )}
+            >
+              <Search className="size-3.5 shrink-0" />
+              {!sidebarCollapsed && (
+                <>
+                  <span className="flex-1 text-left">Quick actions</span>
+                  <kbd className="text-[11px] font-medium text-muted-foreground/80">⌘K</kbd>
+                </>
+              )}
+            </button>
+          </div>
+
+          <nav className="flex-1 overflow-y-auto px-2 pb-2">
+            {NAV_GROUPS.map((group) => {
+              const items = visibleNavItems.filter((i) => i.group === group.id);
+              if (items.length === 0) return null;
               return (
-                <Link
-                  key={href}
-                  href={href}
-                  prefetch
-                  title={sidebarCollapsed ? label : undefined}
-                  onClick={(e) => {
-                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-                    e.preventDefault();
-                    handleNavClick(href, exact);
-                  }}
-                  className={cn(
-                    "w-full flex items-center rounded-lg text-sm font-medium transition-colors relative",
-                    sidebarCollapsed ? "justify-center px-0 py-2.5" : "gap-2 px-3 py-2",
-                    active
-                      ? "swatch-bar bg-primary/10 text-primary font-semibold"
-                      : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                <div key={group.id} className={group.label ? "pt-4" : "pt-3"}>
+                  {group.label && !sidebarCollapsed && (
+                    <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">{group.label}</p>
                   )}
-                >
-                  <Icon className="size-4 shrink-0" />
-                  {!sidebarCollapsed && <span className="flex-1 text-left">{label}</span>}
-                  {label === "Leads" && scoredToReview > 0 && !sidebarCollapsed && (
-                    // One line: nowrap + the sans font (mono made "240 to review" ~30% wider)
-                    // + a slightly wider sidebar (w-60) so it fits beside the lead count.
-                    <span title={`${scoredToReview} scored companies need your review`} className="inline-flex shrink-0 items-center whitespace-nowrap text-[10px] font-semibold rounded-full px-1.5 py-0.5 tabular-nums bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                      {scoredToReview} to review
-                    </span>
-                  )}
-                  {badge !== null && badge > 0 && (
-                    sidebarCollapsed ? (
-                      <span className="absolute top-1 right-1.5 size-1.5 rounded-full bg-primary" />
-                    ) : (
-                      <span className="shrink-0 whitespace-nowrap font-mono text-[10px] font-semibold bg-secondary rounded-full px-1.5 py-0.5 tabular-nums">
-                        {badge}
-                      </span>
-                    )
-                  )}
-                </Link>
+                  {group.label && sidebarCollapsed && <div className="mx-2 mb-2 h-px bg-border" />}
+                  <div className="space-y-px">
+                    {items.map(({ href, label, icon: Icon, exact }) => {
+                      const active = isHighlighted(href, exact);
+                      const badge = navBadge(label);
+                      return (
+                        <Link
+                          key={href}
+                          href={href}
+                          prefetch
+                          title={sidebarCollapsed ? label : undefined}
+                          onClick={(e) => {
+                            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                            if (!isActive(href, exact)) setPendingHref(href);
+                          }}
+                          className={cn(
+                            "w-full h-8 flex items-center rounded-md text-[13px] font-medium transition-colors relative",
+                            sidebarCollapsed ? "justify-center" : "gap-2 px-2",
+                            active
+                              ? "bg-accent text-foreground"
+                              : "text-foreground/75 hover:bg-hover hover:text-foreground",
+                          )}
+                        >
+                          <Icon className={cn("size-4 shrink-0", active ? "text-foreground" : "text-muted-foreground")} />
+                          {!sidebarCollapsed && <span className="flex-1 truncate text-left">{label}</span>}
+                          {label === "Leads" && scoredToReview > 0 && !sidebarCollapsed && (
+                            <span title={`${scoredToReview} scored companies need your review`} className="inline-flex shrink-0 items-center whitespace-nowrap text-[11px] font-medium rounded-[4px] px-1.5 py-px tabular-nums bg-amber-500/15 text-amber-700 dark:text-amber-400">
+                              {scoredToReview} to review
+                            </span>
+                          )}
+                          {badge !== null && badge > 0 && (
+                            sidebarCollapsed ? (
+                              <span className="absolute top-1.5 right-2 size-1.5 rounded-full bg-primary" />
+                            ) : (
+                              <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground tabular-nums">
+                                {badge}
+                              </span>
+                            )
+                          )}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
               );
             })}
           </nav>
-          <div className={cn("border-t border-border", sidebarCollapsed ? "p-2 flex flex-col items-center gap-2" : "p-3 space-y-2")}>
+
+          <div className={cn("shrink-0 border-t border-border", sidebarCollapsed ? "p-2 flex flex-col items-center gap-2" : "p-2.5 space-y-1.5")}>
             {apolloCredits?.remaining != null && (() => {
               const { remaining, limit } = apolloCredits;
               // Same "consumed" progress-bar treatment as the Apollo credit
@@ -284,17 +383,17 @@ function AppShell({ children }: { children: React.ReactNode }) {
                 : `Apollo key credits: ${remaining.toLocaleString()} left`;
 
               return (
-                <div title={titleText} className={cn(sidebarCollapsed ? "w-full space-y-1" : "space-y-1 px-1")}>
+                <div title={titleText} className={cn(sidebarCollapsed ? "w-full space-y-1" : "space-y-1.5 px-2 pb-1")}>
                   <div
                     className={cn(
                       "text-muted-foreground",
                       sidebarCollapsed
-                        ? "font-mono text-[9px] tabular-nums text-center leading-tight"
-                        : "flex items-baseline justify-between gap-2 text-[11px]",
+                        ? "text-[9px] tabular-nums text-center leading-tight"
+                        : "flex items-baseline justify-between gap-2 text-xs",
                     )}
                   >
-                    {!sidebarCollapsed && <span className="font-medium shrink-0">Apollo key credits</span>}
-                    <span className="font-mono tabular-nums">
+                    {!sidebarCollapsed && <span className="shrink-0">Apollo credits</span>}
+                    <span className="tabular-nums">
                       {limit != null ? `${remaining.toLocaleString()}/${limit.toLocaleString()}` : remaining.toLocaleString()}
                     </span>
                   </div>
@@ -315,31 +414,33 @@ function AppShell({ children }: { children: React.ReactNode }) {
               rel="noopener noreferrer"
               title={sidebarCollapsed ? "Report an issue" : undefined}
               className={cn(
-                "flex items-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors",
-                sidebarCollapsed ? "size-7 justify-center" : "gap-2 px-1 py-1 text-xs font-medium",
+                "flex items-center rounded-md text-foreground/75 hover:bg-hover hover:text-foreground transition-colors",
+                sidebarCollapsed ? "size-8 justify-center" : "h-8 gap-2 px-2 text-[13px] font-medium",
               )}
             >
-              <Bug className="size-3.5 shrink-0" />
+              <Bug className="size-4 shrink-0 text-muted-foreground" />
               {!sidebarCollapsed && <span>Report an issue</span>}
             </a>
 
-            {sidebarCollapsed ? (
-              <div
-                className="size-7 rounded-full bg-secondary flex items-center justify-center text-[10px] leading-none font-semibold text-muted-foreground shrink-0"
-                title={session.user.email}
-              >
-                <span className="translate-y-px">{session.user.email?.[0]?.toUpperCase() ?? "?"}</span>
+            <div
+              className={cn("flex items-center", sidebarCollapsed ? "justify-center" : "h-8 gap-2 px-2")}
+              title={session.user.email}
+            >
+              <div className="size-5 rounded-full bg-secondary border border-border flex items-center justify-center text-[10px] leading-none font-semibold text-muted-foreground shrink-0">
+                {session.user.email?.[0]?.toUpperCase() ?? "?"}
               </div>
-            ) : (
-              <p className="text-[11px] text-muted-foreground truncate px-1">{session.user.email}</p>
-            )}
+              {!sidebarCollapsed && <span className="text-[13px] text-foreground/75 truncate">{session.user.email}</span>}
+            </div>
           </div>
         </aside>
 
-        <main className="flex-1 overflow-y-auto">
-          {showRouteSkeleton ? <RouteSkeleton href={skeletonHref} /> : children}
+        <main className="relative flex-1 overflow-y-auto">
+          {navigating && <div className="route-progress" aria-hidden />}
+          {children}
         </main>
       </div>
+
+      <CommandMenu open={commandOpen} onOpenChange={setCommandOpen} groups={commandGroups} />
 
       <ConfirmDialog
         open={!!deletingLead}

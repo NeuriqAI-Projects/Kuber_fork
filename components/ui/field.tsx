@@ -21,7 +21,7 @@ function Field({ className, orientation = "vertical", ...props }: FieldProps) {
 function FieldLabel({ className, ...props }: React.ComponentProps<"label">) {
   return (
     <label
-      className={cn("text-xs font-medium text-muted-foreground whitespace-nowrap", className)}
+      className={cn("text-[13px] font-medium text-muted-foreground whitespace-nowrap", className)}
       {...props}
     />
   );

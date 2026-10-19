@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/ui/page-header";
 
 /**
  * The frame every full-page screen sits in.
@@ -27,7 +28,7 @@ export function PageShell({
 }: {
   title: string;
   description?: string;
-  /** Usually a lucide icon at size-5. */
+  /** Usually a lucide icon; shown in the breadcrumb tile. */
   icon?: ReactNode;
   /** Buttons or tabs for the top-right of the header. */
   actions?: ReactNode;
@@ -41,25 +42,12 @@ export function PageShell({
     <div className="flex h-full flex-col">
       {banner}
 
-      {/* px-8 py-5 is the app's header block — Settings, Leads and Campaigns
-          all use it, so a new screen must not invent its own. */}
-      <header className="shrink-0 border-b border-border px-8 py-5">
-        <div className="flex flex-wrap items-center gap-3">
-          {icon}
-          <div className="min-w-0">
-            <h1 className="font-display text-lg font-semibold">{title}</h1>
-            {description && (
-              <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
-            )}
-          </div>
-          {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
-        </div>
-      </header>
+      <PageHeader title={title} icon={icon} description={description} actions={actions} />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div
           className={cn(
-            "enter mx-auto w-full p-8",
+            "mx-auto w-full px-6 py-6",
             width === "wide" && "max-w-6xl",
             width === "prose" && "max-w-3xl",
           )}

@@ -16,19 +16,19 @@ export function FilterModal({ children, onClose, onClear, onApply }: {
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="swatch-bar-top relative z-10 w-full max-w-md rounded-xl border border-border bg-background shadow-xl flex flex-col min-h-[min(34rem,85vh)] max-h-[85vh]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+      <div className="absolute inset-0 bg-black/25 dark:bg-black/60" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md rounded-xl border border-border bg-popover shadow-xl flex flex-col min-h-[min(34rem,85vh)] max-h-[85vh]">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0">
           <div>
             <p className="eyebrow">Refine</p>
-            <p className="font-display text-base font-semibold mt-0.5">Filters</p>
+            <p className="text-[15px] font-semibold mt-0.5">Filters</p>
           </div>
           <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" onClick={onClose}>
             <X className="size-4" />
           </Button>
         </div>
         <div className="overflow-y-auto px-5 py-5 space-y-5 flex-1">{children}</div>
-        <div className="flex items-center justify-between px-5 py-4 border-t border-border shrink-0">
+        <div className="flex items-center justify-between px-5 py-3 border-t border-border shrink-0">
           <Button
             variant="ghost" size="sm" onClick={onClear}
             className="h-auto p-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"

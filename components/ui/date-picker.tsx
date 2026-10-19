@@ -45,8 +45,8 @@ export function DatePicker({
           variant="outline"
           disabled={disabled}
           className={cn(
-            "w-full justify-start gap-2 bg-field font-normal text-left hover:bg-field",
-            size === "sm" ? "h-8 px-3 text-xs" : "px-3 py-2 text-sm",
+            "w-full justify-start gap-2 bg-field font-normal text-left hover:bg-field hover:border-muted-foreground/30 data-[state=open]:border-primary/60",
+            size === "sm" ? "h-7 px-2.5 text-[13px]" : "h-8 px-2.5 text-sm",
             !date && "text-muted-foreground",
             className,
           )}
@@ -65,7 +65,7 @@ export function DatePicker({
           }}
         />
         {showQuickActions && (
-          <div className="flex items-center justify-between border-t border-border bg-secondary px-2 py-1.5">
+          <div className="flex items-center justify-between border-t border-border px-2 py-1.5">
             <Button
               type="button"
               variant="ghost"

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { Check, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type AppCheckboxState = boolean | "indeterminate";
@@ -35,24 +35,18 @@ export function AppCheckbox({
       title={title}
       onClick={disabled ? undefined : onClick}
       className={cn(
-        "inline-flex items-center justify-center shrink-0 rounded border-2 transition-colors",
+        "inline-flex items-center justify-center shrink-0 rounded-[4px] border-[1.5px] transition-colors",
         size === "sm" ? "size-3.5" : "size-4",
         disabled && "opacity-40 cursor-not-allowed",
         !disabled && onClick && "cursor-pointer",
-        isOn
+        isOn || isPartial
           ? "bg-primary border-primary"
-          : isPartial
-            ? "bg-primary/40 border-primary/60"
-            : "bg-transparent border-border",
+          : "bg-field border-input hover:border-muted-foreground/50",
         className,
       )}
     >
-      {(isOn || isPartial) && (
-        <Check
-          className={cn(size === "sm" ? "size-2.5" : "size-2.5", "text-primary-foreground")}
-          strokeWidth={3}
-        />
-      )}
+      {isOn && <Check className="size-2.5 text-primary-foreground" strokeWidth={3.5} />}
+      {isPartial && <Minus className="size-2.5 text-primary-foreground" strokeWidth={3.5} />}
     </span>
   );
 }

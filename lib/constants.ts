@@ -624,15 +624,17 @@ export function rebuildStepsWithFollowupWaits<T extends CampaignStepInput>(
   });
 }
 
+// Attio-style tag tints: a pale fill with dark text in light mode, a low-alpha
+// fill with light text in dark mode — readable on white and near-black alike.
 export const BATCH_COLORS = [
-  { name: "violet", bg: "bg-violet-400",  ring: "ring-violet-400",  text: "text-violet-400",  pill: "bg-violet-500/15 border-violet-500/30 text-violet-400"  },
-  { name: "blue",   bg: "bg-blue-400",    ring: "ring-blue-400",    text: "text-blue-400",    pill: "bg-blue-500/15 border-blue-500/30 text-blue-400"         },
-  { name: "cyan",   bg: "bg-cyan-400",    ring: "ring-cyan-400",    text: "text-cyan-400",    pill: "bg-cyan-500/15 border-cyan-500/30 text-cyan-400"         },
-  { name: "green",  bg: "bg-green-400",   ring: "ring-green-400",   text: "text-green-400",   pill: "bg-green-500/15 border-green-500/30 text-green-400"      },
-  { name: "amber",  bg: "bg-amber-400",   ring: "ring-amber-400",   text: "text-amber-400",   pill: "bg-amber-500/15 border-amber-500/30 text-amber-400"      },
-  { name: "orange", bg: "bg-orange-400",  ring: "ring-orange-400",  text: "text-orange-400",  pill: "bg-orange-500/15 border-orange-500/30 text-orange-400"   },
-  { name: "pink",   bg: "bg-pink-400",    ring: "ring-pink-400",    text: "text-pink-400",    pill: "bg-pink-500/15 border-pink-500/30 text-pink-400"         },
-  { name: "teal",   bg: "bg-teal-400",    ring: "ring-teal-400",    text: "text-teal-400",    pill: "bg-teal-500/15 border-teal-500/30 text-teal-400"         },
+  { name: "violet", bg: "bg-violet-500", ring: "ring-violet-500", text: "text-violet-600 dark:text-violet-400", pill: "bg-violet-100 border-violet-200/70 text-violet-800 dark:bg-violet-500/15 dark:border-violet-500/25 dark:text-violet-300" },
+  { name: "blue",   bg: "bg-blue-500", ring: "ring-blue-500", text: "text-blue-600 dark:text-blue-400", pill: "bg-blue-100 border-blue-200/70 text-blue-800 dark:bg-blue-500/15 dark:border-blue-500/25 dark:text-blue-300" },
+  { name: "cyan",   bg: "bg-cyan-500", ring: "ring-cyan-500", text: "text-cyan-600 dark:text-cyan-400", pill: "bg-cyan-100 border-cyan-200/70 text-cyan-800 dark:bg-cyan-500/15 dark:border-cyan-500/25 dark:text-cyan-300" },
+  { name: "green",  bg: "bg-green-500", ring: "ring-green-500", text: "text-green-600 dark:text-green-400", pill: "bg-green-100 border-green-200/70 text-green-800 dark:bg-green-500/15 dark:border-green-500/25 dark:text-green-300" },
+  { name: "amber",  bg: "bg-amber-500", ring: "ring-amber-500", text: "text-amber-600 dark:text-amber-400", pill: "bg-amber-100 border-amber-200/70 text-amber-800 dark:bg-amber-500/15 dark:border-amber-500/25 dark:text-amber-300" },
+  { name: "orange", bg: "bg-orange-500", ring: "ring-orange-500", text: "text-orange-600 dark:text-orange-400", pill: "bg-orange-100 border-orange-200/70 text-orange-800 dark:bg-orange-500/15 dark:border-orange-500/25 dark:text-orange-300" },
+  { name: "pink",   bg: "bg-pink-500", ring: "ring-pink-500", text: "text-pink-600 dark:text-pink-400", pill: "bg-pink-100 border-pink-200/70 text-pink-800 dark:bg-pink-500/15 dark:border-pink-500/25 dark:text-pink-300" },
+  { name: "teal",   bg: "bg-teal-500", ring: "ring-teal-500", text: "text-teal-600 dark:text-teal-400", pill: "bg-teal-100 border-teal-200/70 text-teal-800 dark:bg-teal-500/15 dark:border-teal-500/25 dark:text-teal-300" },
 ] as const;
 
 export type BatchColorName = typeof BATCH_COLORS[number]["name"];

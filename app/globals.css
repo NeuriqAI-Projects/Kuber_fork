@@ -25,6 +25,8 @@
   --color-input:               var(--input);
   --color-ring:                var(--ring);
   --color-field:               var(--field);
+  --color-sidebar:             var(--sidebar);
+  --color-hover:               var(--hover);
   --radius-sm:  calc(var(--radius) - 4px);
   --radius-md:  calc(var(--radius) - 2px);
   --radius-lg:  var(--radius);
@@ -34,43 +36,48 @@
   --font-display: var(--font-display);
   --font-mono:    var(--font-mono);
 
-  /* Elevation ladder (issues_ui §3) — overrides Tailwind's default shadow
-     scale so every existing shadow-sm/md/lg utility gets the upgrade. The
-     inset 1px top highlight is the classic premium-dark-card edge. */
-  --shadow-sm: inset 0 1px 0 hsl(0 0% 100% / .04), 0 1px 2px hsl(0 0% 0% / .30);
-  --shadow-md: inset 0 1px 0 hsl(0 0% 100% / .04), 0 4px 12px hsl(0 0% 0% / .35);
-  --shadow-lg: inset 0 1px 0 hsl(0 0% 100% / .05), 0 12px 32px hsl(0 0% 0% / .45);
-  --shadow-xl: inset 0 1px 0 hsl(0 0% 100% / .05), 0 20px 48px hsl(0 0% 0% / .50);
+  /* Elevation ladder — Attio-soft in light, deeper in dark. Values come
+     from --elev-* (set per mode below) so the same shadow-sm/md/lg/xl
+     utilities work in both themes. */
+  --shadow-xs: var(--elev-xs);
+  --shadow-sm: var(--elev-sm);
+  --shadow-md: var(--elev-md);
+  --shadow-lg: var(--elev-lg);
+  --shadow-xl: var(--elev-xl);
 
   /* Motion tokens (issues_ui §4) */
   --ease-out-quart: cubic-bezier(.2, .8, .2, 1);
 }
 
-/* ── Dark theme — matching ACE_2.0 neutral dark palette ──────────────────── */
+/* ── Defaults (dark) — overwritten at runtime by lib/branding.ts applyTheme()
+   and the pre-paint script in app/layout.tsx; kept so the page has sane
+   values before either runs. Mirror buildDarkPalette(monochrome). ───────── */
 :root {
-  --background:           hsl(0 0% 3.9%);
-  --foreground:           hsl(0 0% 98%);
-  --card:                 hsl(0 0% 7%);
-  --card-foreground:      hsl(0 0% 98%);
-  --popover:              hsl(0 0% 7%);
-  --popover-foreground:   hsl(0 0% 98%);
-  --primary:              hsl(0 0% 98%);
+  --background:           hsl(220 7% 7%);
+  --sidebar:              hsl(220 7% 8.5%);
+  --foreground:           hsl(220 10% 95%);
+  --card:                 hsl(220 7% 9%);
+  --card-foreground:      hsl(220 10% 95%);
+  --popover:              hsl(220 7% 11%);
+  --popover-foreground:   hsl(220 10% 95%);
+  --primary:              hsl(0 0% 96%);
   --primary-foreground:   hsl(0 0% 9%);
-  --secondary:            hsl(0 0% 14.9%);
-  --secondary-foreground: hsl(0 0% 98%);
-  --muted:                hsl(0 0% 14.9%);
-  /* 70% (was 63.9%) — AA contrast for small text on 7% cards (issues_ui §9). */
-  --muted-foreground:     hsl(0 0% 70%);
-  --accent:               hsl(0 0% 14.9%);
-  --accent-foreground:    hsl(0 0% 98%);
+  --secondary:            hsl(220 6% 13.5%);
+  --secondary-foreground: hsl(220 10% 95%);
+  --muted:                hsl(220 6% 13.5%);
+  --muted-foreground:     hsl(220 6% 62%);
+  --accent:               hsl(220 6% 15%);
+  --accent-foreground:    hsl(220 10% 95%);
+  --hover:                hsl(220 6% 12.5%);
   --destructive:          hsl(0 72% 51%);
   --destructive-foreground: hsl(0 0% 98%);
-  --border:               hsl(0 0% 14.9%);
-  --input:                hsl(0 0% 14.9%);
-  --ring:                 hsl(0 0% 83.1%);
-  --field:                hsl(0 0% 3.9%);
-  /* Tightened from 0.5rem — engineered/precision feel over "bubbly SaaS". */
-  --radius:               0.375rem;
+  --border:               hsl(220 6% 16.5%);
+  --input:                hsl(220 6% 20%);
+  --ring:                 hsl(0 0% 96%);
+  --field:                hsl(220 7% 11.5%);
+  /* 8px base: lg 8 (cards/menus), md 6 (buttons/inputs), sm 4 (tags),
+     xl 12 (modals). */
+  --radius:               0.5rem;
   /* One font, everywhere: Inter (self-hosted via next/font) with the system
      stack as fallback. --font-display/--font-mono are kept as aliases (not a
      second typeface) purely so existing font-display/font-mono classNames in
@@ -79,33 +86,40 @@
   --font-sans:            var(--font-inter), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-display:         var(--font-sans);
   --font-mono:            var(--font-sans);
+
+  --elev-xs: 0 1px 1px hsl(0 0% 0% / .25);
+  --elev-sm: 0 1px 2px hsl(0 0% 0% / .35);
+  --elev-md: 0 4px 12px hsl(0 0% 0% / .40), 0 0 0 1px hsl(0 0% 100% / .04);
+  --elev-lg: 0 12px 32px hsl(0 0% 0% / .50), 0 0 0 1px hsl(0 0% 100% / .05);
+  --elev-xl: 0 24px 56px hsl(0 0% 0% / .55), 0 0 0 1px hsl(0 0% 100% / .05);
 }
 
-/* ── Surface ladder ───────────────────────────────────────────────────────────
-   Each level must be visibly different from the one it sits on. Never reuse a
-   level's fill on top of itself (e.g. bg-field inputs inside a bg-field panel)
-   — pick the next level instead.
+[data-mode="light"] {
+  --elev-xs: 0 1px 1px hsl(220 30% 15% / .04);
+  --elev-sm: 0 1px 2px hsl(220 30% 15% / .06);
+  --elev-md: 0 4px 12px -2px hsl(220 30% 15% / .08), 0 1px 3px hsl(220 30% 15% / .05);
+  --elev-lg: 0 12px 28px -6px hsl(220 30% 15% / .14), 0 2px 6px hsl(220 30% 15% / .05);
+  --elev-xl: 0 24px 48px -12px hsl(220 30% 15% / .20), 0 4px 10px hsl(220 30% 15% / .06);
+}
 
-     page      bg-background                 — page chrome (the "shade")
-     panel     bg-card + rounded-xl          — top-level card on the page (also the "shade" —
-                                             separated from the page by border + shadow only)
-     section   bg-secondary                  — nested inside a panel, drawer, or modal (the "shade")
-     modal     bg-card + rounded-2xl         — Dialog default; sections inside still bg-secondary
-     field     bg-field                      — Input / Select / Textarea / Checkbox / Radio /
-                                             DatePicker trigger and every other field-like control.
-                                             The ONLY white surface in light mode. MUST be the
-                                             shared component from components/ui — never a one-off
-                                             bg-* override, and never wrapped in its own bg-card
-                                             "for emphasis" (that just makes the field disappear).
-                                             See CLAUDE.md.
+/* ── Surface ladder (Attio) ─────────────────────────────────────────────────
+     page      bg-background   white (light) / near-black (dark)
+     sidebar   bg-sidebar      faint off-white / one step up — the nav rail only
+     panel     bg-card         white; separated from the page by a 1px border,
+                               not by a different fill
+     popover   bg-popover      menus, dialogs, popovers + shadow-lg
+     section   bg-secondary    light-gray nested area, chips, skeletons
+     hover     bg-hover        row / menu / nav hover; selected rows/nav use
+                               bg-accent
+     field     bg-field        Input / Select / Textarea / Checkbox / Radio /
+                               DatePicker — always the shared components/ui control
 
-   Light-mode color budget (client requirement, strict): every light-mode
-   token above resolves to exactly one of primary / a single primary-tinted
-   "shade" gray / full white (fields only) / black text — see
-   buildLightPalette() in lib/branding.ts. Do not reintroduce a second
-   near-white or near-gray value, and do not give a field's wrapper its own
-   white background; if something needs to stand out, use opacity on one of
-   the four, not a new hsl lightness step.
+   Light mode: page, panels, popovers and fields are all white — hierarchy
+   comes from 1px --border lines and soft shadows, like Attio. A field on a
+   white panel stays visible through its --input border, so never give a
+   field's wrapper its own fill "for emphasis". Primary (theme colour) is for
+   primary buttons, links, checked controls and the selected tab underline —
+   never large fills. See CLAUDE.md.
    ──────────────────────────────────────────────────────────────────────────── */
 
 * { border-color: var(--border); }
@@ -127,6 +141,8 @@ body {
   background-color: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  font-feature-settings: "cv11", "ss01";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -147,24 +163,21 @@ input:-webkit-autofill:active {
   transition: background-color 5000s ease-in-out 0s;
 }
 
-::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: hsl(0 0% 20%); border-radius: 4px; }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--foreground) 14%, transparent);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--foreground) 24%, transparent); }
 
 button, [role="button"], a, label[for], select { cursor: pointer; }
 button:disabled, [role="button"][aria-disabled="true"] { cursor: not-allowed; }
 
-/* Press feedback on every interactive control (issues_ui §4). Gated behind
-   prefers-reduced-motion so it never fights accessibility settings. */
-@media (prefers-reduced-motion: no-preference) {
-  button, [role="button"] {
-    transition: transform 120ms var(--ease-out-quart, ease-out);
-  }
-  button:not(:disabled):active,
-  [role="button"]:not([aria-disabled="true"]):active {
-    transform: scale(0.98);
-  }
-}
+/* No press-scale or entrance animations: the app should feel like opening
+   folders — things appear on the spot. Colour transitions stay (fast). */
 
 .rich-editor:empty::before {
   content: attr(data-placeholder);
@@ -200,68 +213,44 @@ button:disabled, [role="button"][aria-disabled="true"] { cursor: not-allowed; }
   text-underline-offset: 3px;
 }
 
-/* ── Signature system (ui-revamp) ──────────────────────────────────────────
-   eyebrow: small tracked-out mono label above section/panel headers.
-   swatch-bar: a slim bg-primary rail on the leading edge of a surface —
-     evokes a masterbatch color-reference chip. One per component, not nested.
-   enter: fade + slide-up on mount for panels/cards/drawers.
+/* ── Legacy signature classes, quieted for the Attio look ──────────────────
+   These class names are still on many screens; restyling them here changes
+   every screen at once. Screens drop the class names as they're rebuilt.
+   eyebrow:   Attio section label — small, medium weight, muted, sentence case.
+   swatch-bar / swatch-bar-top: the old primary rail — no longer drawn.
+   enter:     the old fade-up on mount — removed so panels appear instantly.
    ──────────────────────────────────────────────────────────────────────── */
 .eyebrow {
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.6875rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  line-height: 1rem;
   font-weight: 500;
+  color: var(--muted-foreground);
 }
 
-.swatch-bar {
-  position: relative;
+.swatch-bar,
+.swatch-bar-top { position: relative; }
+
+/* Thin indeterminate bar along the top of the main pane while a route
+   change is in flight (app-shell.tsx). */
+.route-progress {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  overflow: hidden;
+  z-index: 50;
+  pointer-events: none;
 }
-.swatch-bar::before {
+.route-progress::before {
   content: "";
   position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
+  inset: 0;
+  width: 40%;
   background: var(--primary);
-  border-radius: 2px 0 0 2px;
+  animation: route-progress 900ms ease-in-out infinite;
 }
-
-.swatch-bar-top {
-  position: relative;
-}
-.swatch-bar-top::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 3px;
-  background: var(--primary);
-  border-radius: 2px 2px 0 0;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .enter {
-    /* No `both`/`forwards`: that fill-mode freezes the "to" keyframe's
-       transform: translateY(0) on the element forever, and a non-`none`
-       transform — even the identity one translateY(0) computes to — creates a
-       permanent CSS stacking context. Any absolutely-positioned dropdown
-       inside a `.enter` container (e.g. the Team page's territory picker)
-       then has its z-index scoped to that trapped context instead of the
-       page, so it paints *underneath* whatever normal-flow content comes
-       after it in the DOM instead of floating above it. Dropping the fill
-       mode is a no-op visually — the animation's resting state (opacity 1,
-       no transform) is exactly the browser's default once the animation
-       ends — and removes the stacking context the moment the 180ms is up. */
-    animation: enter-fade-up 180ms var(--ease-out-quart, ease-out);
-  }
-}
-@keyframes enter-fade-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+@keyframes route-progress {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(250%); }
 }
 
 /* HTML emails (Settings > AI & Outreach > HTML emails): Tailwind's preflight

@@ -50,7 +50,7 @@ export function Tip({ text, children, side = "top", block = false, className }: 
         <span
           role="tooltip"
           style={{ position: "fixed", top: pos.top, left: pos.left, transform: pos.below ? "translate(-50%, 0)" : "translate(-50%, -100%)", zIndex: 9999 }}
-          className="pointer-events-none w-64 whitespace-pre-line rounded-lg border border-border bg-card px-2.5 py-2 text-[11px] font-normal normal-case leading-relaxed tracking-normal text-foreground shadow-lg"
+          className="pointer-events-none w-max max-w-64 whitespace-pre-line rounded-md bg-foreground px-2 py-1.5 text-xs font-normal normal-case leading-snug tracking-normal text-background shadow-md"
         >
           {text}
         </span>,
