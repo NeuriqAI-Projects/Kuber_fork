@@ -11,8 +11,9 @@ import { sequenceStepLabel } from "@/lib/campaign-status";
 import { convertResidualMarkdownInHtml } from "@/lib/utils/email-html";
 import type { ReplyDraft, UniboxMessage } from "@/lib/api-client";
 import { addThreadParticipantAsLead, generateReplyDraftForThread } from "@/lib/api-client";
-import { ReplyDraftBox, replyDraftHasContent } from "@/components/app/reply-draft-box";
-import { ManualReplyBox, type ReplyRecipientContext } from "@/components/app/manual-reply-box";
+import dynamic from "next/dynamic";
+import { replyDraftHasContent } from "@/lib/reply-draft-content";
+import type { ReplyRecipientContext } from "@/components/app/manual-reply-box";
 import { AddParticipantLeadDialog } from "@/components/app/add-participant-lead-dialog";
 import {
   isInbound,
@@ -27,6 +28,17 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/leads/lead-ui";
 import { EmptyState } from "@/components/ui/empty-state";
+
+// The reply composers carry tiptap; load them when a thread opens instead of
+// with the Unibox route. Placeholders keep the composer's height.
+const ReplyDraftBox = dynamic(
+  () => import("@/components/app/reply-draft-box").then((m) => m.ReplyDraftBox),
+  { ssr: false, loading: () => <div className="min-h-[220px]" aria-busy="true" /> },
+);
+const ManualReplyBox = dynamic(
+  () => import("@/components/app/manual-reply-box").then((m) => m.ManualReplyBox),
+  { ssr: false, loading: () => <div className="min-h-[220px]" aria-busy="true" /> },
+);
 
 type Props = {
   messages: UniboxMessage[];

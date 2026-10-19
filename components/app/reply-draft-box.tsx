@@ -22,6 +22,7 @@ import {
   type ReplyDraft,
 } from "@/lib/api-client";
 import { normalizeReplyBodyHtml } from "@/lib/reply-body-html";
+import { replyDraftHasContent } from "@/lib/reply-draft-content";
 import { appendReplyAttachments, type ReplyAttachment } from "@/lib/reply-attachments";
 
 const DRAFT_STATUS_STYLE: Record<string, string> = {
@@ -33,13 +34,9 @@ const DRAFT_STATUS_STYLE: Record<string, string> = {
   rejected: "bg-red-500/10 text-red-400/70",
 };
 
-/** True when the draft has real subject/body text (ignores empty HTML shells). */
-export function replyDraftHasContent(draft: Pick<ReplyDraft, "subject" | "body"> | null | undefined): boolean {
-  if (!draft) return false;
-  if (draft.subject?.trim()) return true;
-  const text = (draft.body ?? "").replace(/<[^>]+>/g, "").replace(/&nbsp;/gi, " ").trim();
-  return text.length > 0;
-}
+// Moved to lib/reply-draft-content.ts (importable without tiptap); re-exported
+// so existing imports keep working.
+export { replyDraftHasContent } from "@/lib/reply-draft-content";
 
 interface ReplyDraftBoxProps {
   draft: ReplyDraft;

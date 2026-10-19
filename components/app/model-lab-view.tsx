@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import {
-  fetchModelLab, runModelLab, voteModelLab, clearModelLabVote, saveLabPromptSet,
+  fetchModelLab, runModelLab, voteModelLab, clearModelLabVote, saveLabPromptSet, queryCache,
   type LabBenchLead, type LabEmail, type LabPromptSet, type LabScoreRow,
 } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -40,18 +40,24 @@ const estimatedCents = (models: number) => `${Math.max(1, Math.round(models * 0.
 const org = (l: LabBenchLead) => (Array.isArray(l.organizations) ? l.organizations[0] : l.organizations);
 const leadName = (l: LabBenchLead) => [l.first_name, l.last_name].filter(Boolean).join(" ") || "—";
 
+const MODEL_LAB_KEY = "/api/v1/model-lab";
+type ModelLabData = Awaited<ReturnType<typeof fetchModelLab>>;
+
 export function ModelLabView() {
+  // A revisit renders the last loaded bench/models/scoreboard at once and
+  // refreshes them in the background (lib/api-client cache).
+  const [cached] = useState(() => queryCache.getData<ModelLabData>(MODEL_LAB_KEY));
   const [mode, setMode] = useState<Mode>("compare");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cached);
 
-  const [bench, setBench] = useState<LabBenchLead[]>([]);
-  const [models, setModels] = useState<string[]>([]);
-  const [promptSets, setPromptSets] = useState<LabPromptSet[]>([]);
-  const [scoreboard, setScoreboard] = useState<LabScoreRow[]>([]);
+  const [bench, setBench] = useState<LabBenchLead[]>(cached?.bench ?? []);
+  const [models, setModels] = useState<string[]>(cached?.models ?? []);
+  const [promptSets, setPromptSets] = useState<LabPromptSet[]>(cached?.prompt_sets ?? []);
+  const [scoreboard, setScoreboard] = useState<LabScoreRow[]>(cached?.scoreboard ?? []);
 
-  const [leadId, setLeadId] = useState("");
+  const [leadId, setLeadId] = useState(cached?.bench[0]?.id ?? "");
   const [step, setStep] = useState("1");
-  const [picked, setPicked] = useState<string[]>([]);
+  const [picked, setPicked] = useState<string[]>(cached?.models.slice(0, 4) ?? []);
   const [promptSetId, setPromptSetId] = useState<string>("live");
   const [blind, setBlind] = useState(true);
   const [plain, setPlain] = useState(false);
@@ -77,7 +83,8 @@ export function ModelLabView() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     try {
-      const data = await fetchModelLab(session.access_token);
+      const token = session.access_token;
+      const data = await queryCache.fetch(MODEL_LAB_KEY, () => fetchModelLab(token));
       setBench(data.bench);
       setModels(data.models);
       setPromptSets(data.prompt_sets);

@@ -6,8 +6,10 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import {
-  deleteCampaign, fetchUsers, pauseCampaign, resumeCampaign, type Profile,
+  deleteCampaign, pauseCampaign, resumeCampaign, prefetchCampaign,
+  useCached, cacheKeys, cachedFetchers, type Profile,
 } from "@/lib/api-client";
+import { CampaignsSkeleton } from "@/components/app/page-skeletons";
 import type { Campaign } from "@/components/app/create-campaign-modal";
 import { Pause, Play, Trash2, User, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -29,34 +31,34 @@ const CAMPAIGN_STATUS_STYLES: Record<string, { badge: string; dot: string }> = {
   Paused: { badge: "bg-amber-500/15 text-amber-400 border-amber-500/25", dot: "bg-amber-400" },
 };
 
-export function CampaignsClient({ initialCampaigns }: { initialCampaigns: Campaign[] }) {
+export function CampaignsClient() {
   const router = useRouter();
-  const { campaigns, setCampaigns, session, role } = useApp();
+  // The list is the shared campaigns cache: instant on revisit, refreshed in
+  // the background, and updated in place after pause/resume/delete (no
+  // router.refresh(), which threw the whole router cache away).
+  const { campaigns, setCampaigns, campaignsLoaded, loadCampaigns, session, role } = useApp();
+  const list = campaigns;
 
-  // After first sync, always trust client state — even when empty after deleting
-  // the last campaign. Falling back to initialCampaigns made deleted rows reappear.
-  const [seeded, setSeeded] = useState(false);
+  // The cached list paints at once; refresh it quietly on every visit, as the
+  // old server-rendered page effectively did.
   useEffect(() => {
-    setCampaigns(initialCampaigns);
-    setSeeded(true);
-  }, [initialCampaigns, setCampaigns]);
-
-  const list = seeded ? campaigns : (campaigns.length > 0 ? campaigns : initialCampaigns);
+    if (session) void loadCampaigns(session.access_token);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per visit
+  }, []);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<CampaignStatus | "All">("All");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
-  const [users, setUsers] = useState<Profile[]>([]);
+  const usersQuery = useCached<Profile[]>(
+    role === "manager" && session ? cacheKeys.users : null,
+    cachedFetchers.users,
+  );
+  const users = usersQuery.data ?? [];
   const [deletingCampaign, setDeletingCampaign] = useState<Campaign | null>(null);
   const [deleteCampaignLoading, setDeleteCampaignLoading] = useState(false);
   const [pausingCampaign, setPausingCampaign] = useState<Campaign | null>(null);
   const [pauseLoading, setPauseLoading] = useState(false);
   const [resumingId, setResumingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (role !== "manager" || !session) return;
-    fetchUsers(session.access_token).then(setUsers).catch(() => {});
-  }, [role, session]);
 
   const userMap = new Map(users.map((u) => [u.id, u]));
 
@@ -91,13 +93,16 @@ export function CampaignsClient({ initialCampaigns }: { initialCampaigns: Campai
         toast.success("Campaign resumed — Instantly is sending again");
       }
       setCampaigns((prev) => prev.map((x) => (x.id === c.id ? { ...x, status: "Live" } : x)));
-      router.refresh();
+      void loadCampaigns(session.access_token);
     } catch (e) {
       toast.error((e as Error).message || "Failed to resume campaign");
     } finally {
       setResumingId(null);
     }
   }
+
+  // First visit only — afterwards the cached list renders immediately.
+  if (!campaignsLoaded) return <CampaignsSkeleton />;
 
   return (
     <div className="max-w-6xl mx-auto p-8 space-y-6">
@@ -201,6 +206,7 @@ export function CampaignsClient({ initialCampaigns }: { initialCampaigns: Campai
                   type="button"
                   variant="ghost"
                   onClick={() => router.push(`/campaigns/${c.id}`)}
+                  onMouseEnter={() => { prefetchCampaign(c.id); router.prefetch(`/campaigns/${c.id}`); }}
                   className="h-auto flex-1 flex flex-col items-stretch justify-start p-0 text-left font-normal hover:bg-transparent"
                 >
                   <div className="flex items-start gap-2 mb-1.5 pr-20">
@@ -275,7 +281,7 @@ export function CampaignsClient({ initialCampaigns }: { initialCampaigns: Campai
             setCampaigns((prev) => prev.filter((c) => c.id !== id));
             setDeletingCampaign(null);
             toast.success("Campaign deleted");
-            router.refresh();
+            void loadCampaigns(session.access_token);
           } catch (e) {
             toast.error((e as Error).message || "Failed to delete campaign");
           } finally {
@@ -305,7 +311,7 @@ export function CampaignsClient({ initialCampaigns }: { initialCampaigns: Campai
             }
             setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, status: "Paused" } : c)));
             setPausingCampaign(null);
-            router.refresh();
+            void loadCampaigns(session.access_token);
           } catch (e) {
             toast.error((e as Error).message || "Failed to pause campaign");
           } finally {

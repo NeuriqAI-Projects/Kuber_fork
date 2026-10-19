@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Building2, Globe2, X, Loader2, Pencil, Save,
   AlertCircle, MapPin, Factory, Users, Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchOrg, patchOrg, fetchLeadsByOrg } from "@/lib/api-client";
+import { patchOrg, queryCache, cacheKeys, cachedFetchers } from "@/lib/api-client";
+import { useApp } from "@/lib/app-context";
+import type { Lead } from "@/lib/leads";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -117,38 +119,62 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
     return session?.access_token ?? "";
   }
 
+  // Until the org record arrives, title the drawer with the company name of
+  // any lead already loaded for it instead of "Loading…".
+  const { leads: knownLeads } = useApp();
+  const fallbackName = orgId ? knownLeads.find((l) => l.orgId === orgId)?.company || null : null;
+
+  const activeOrgIdRef = useRef<string | null>(null);
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
+  const applyOrg = useCallback((data: OrgData, linkedLeads: Lead[]) => {
+    setOrg({
+      ...data,
+      leads: linkedLeads.map((l) => ({
+        id: l.id,
+        first_name: l.firstName,
+        last_name: l.lastName,
+        title: l.jobTitle,
+        email: l.email,
+      })),
+    });
+    // Never overwrite a form the user has started editing (a background
+    // refresh can land after the cached copy was shown).
+    if (editingRef.current) return;
+    setForm({
+      name:        data.name        ?? "",
+      domain:      data.domain      ?? "",
+      website:     data.website     ?? "",
+      description: data.description ?? data.company_description ?? "",
+      industry:    data.industry    ?? "",
+      city:        data.city        ?? "",
+      country:     data.country     ?? "",
+    });
+  }, []);
+
   const loadOrg = useCallback(async (id: string) => {
-    setLoading(true);
+    activeOrgIdRef.current = id;
+    // Cached (opened before, or hover-prefetched): show it now, refresh below.
+    const cachedOrg = queryCache.getData<OrgData>(cacheKeys.org(id));
+    const cachedLeads = queryCache.getData<Lead[]>(cacheKeys.orgLeads(id));
+    if (cachedOrg) applyOrg(cachedOrg, cachedLeads ?? []);
+    else setOrg(null);
+    setLoading(!cachedOrg);
     setError("");
     try {
-      const tok = await getToken();
-      const data = await fetchOrg(tok, id) as unknown as OrgData;
-      const linkedLeads = await fetchLeadsByOrg(tok, id);
-      setOrg({
-        ...data,
-        leads: linkedLeads.map((l) => ({
-          id: l.id,
-          first_name: l.firstName,
-          last_name: l.lastName,
-          title: l.jobTitle,
-          email: l.email,
-        })),
-      });
-      setForm({
-        name:        data.name        ?? "",
-        domain:      data.domain      ?? "",
-        website:     data.website     ?? "",
-        description: data.description ?? data.company_description ?? "",
-        industry:    data.industry    ?? "",
-        city:        data.city        ?? "",
-        country:     data.country     ?? "",
-      });
+      // The org and its leads are independent — fetch them in parallel.
+      const [data, linkedLeads] = await Promise.all([
+        queryCache.fetch(cacheKeys.org(id), cachedFetchers.org(id)) as Promise<unknown> as Promise<OrgData>,
+        queryCache.fetch(cacheKeys.orgLeads(id), cachedFetchers.orgLeads(id)),
+      ]);
+      if (activeOrgIdRef.current !== id) return;
+      applyOrg(data, linkedLeads);
     } catch (e) {
-      setError((e as Error).message);
+      if (activeOrgIdRef.current === id) setError((e as Error).message);
     } finally {
-      setLoading(false);
+      if (activeOrgIdRef.current === id) setLoading(false);
     }
-  }, []);
+  }, [applyOrg]);
 
   async function handleSave() {
     if (!orgId) return;
@@ -165,6 +191,7 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
         city:        form.city        || undefined,
         country:     form.country     || undefined,
       }) as unknown as OrgData;
+      queryCache.set(cacheKeys.org(orgId), updated);
       setOrg(updated);
       setEditing(false);
     } catch (e) {
@@ -175,7 +202,7 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
   }
 
   useEffect(() => {
-    if (!orgId) { setOrg(null); setEditing(false); setError(""); return; }
+    if (!orgId) { activeOrgIdRef.current = null; setOrg(null); setEditing(false); setError(""); return; }
     setEditing(false);
     setError("");
     void loadOrg(orgId);
@@ -214,7 +241,7 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
           <div className="flex-1 min-w-0">
             <p className="eyebrow">Organization</p>
             <h2 className="font-display text-lg font-semibold truncate mt-0.5">
-              {org?.name ?? (loading ? "Loading…" : "Organization")}
+              {org?.name ?? fallbackName ?? (loading ? "Loading…" : "Organization")}
             </h2>
             {org?.scored_batch && (
               <span className={cn("mt-1 inline-flex max-w-full truncate rounded-full border px-2 py-0.5 text-[11px] font-semibold", getBatchColor(org.scored_batch.color).pill)} title="Scored-search batch">
@@ -426,7 +453,7 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
                             key={lead.id}
                             onClick={() => onLeadClick?.(lead.id)}
                             className={cn(
-                              "rounded-lg border border-border bg-card px-3 py-2",
+                              "min-w-0 overflow-hidden rounded-lg border border-border bg-card px-3 py-2",
                               onLeadClick && "cursor-pointer hover:bg-secondary hover:border-primary/30 transition-colors",
                             )}
                           >
@@ -434,7 +461,7 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
                               {[lead.first_name, lead.last_name].filter(Boolean).join(" ") || "Unnamed"}
                             </p>
                             {lead.title && <p className="text-xs text-muted-foreground">{lead.title}</p>}
-                            {lead.email && <p className="font-mono text-xs text-blue-400">{lead.email}</p>}
+                            {lead.email && <p className="truncate font-mono text-xs text-blue-400" title={lead.email}>{lead.email}</p>}
                           </div>
                         ))}
                       </div>

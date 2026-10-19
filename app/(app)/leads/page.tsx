@@ -1,6 +1,6 @@
 "use client";
 
-import { bulkDeleteLeads, bulkAssignLeads, fetchUsers, fetchImports, retryAllFailedEnrichment, fetchLeadStatusCounts, DB_LEAD_STATUS, DB_LEAD_SOURCE, type ImportBatch, type Profile, type BulkAssignStrategy, type AssignmentSummary, type LeadListFilters } from "@/lib/api-client";
+import { bulkDeleteLeads, bulkAssignLeads, retryAllFailedEnrichment, useCached, cacheKeys, cachedFetchers, prefetchLead, prefetchOrg, DB_LEAD_STATUS, DB_LEAD_SOURCE, type ImportBatch, type Profile, type BulkAssignStrategy, type AssignmentSummary, type LeadListFilters } from "@/lib/api-client";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -470,6 +470,7 @@ export default function LeadsPage() {
     role,
     loadLeads,
     loadingLeads,
+    leadsLoaded,
     leadsTotal,
     loadMoreLeads,
     loadingMoreLeads,
@@ -531,7 +532,10 @@ export default function LeadsPage() {
   const [showScoredFilters, setShowScoredFilters] = useState(false);
   const [page,             setPage            ] = useState(1);
   const [pageSize,         setPageSize        ] = useState(50);
-  const [importBatches,    setImportBatches   ] = useState<ImportBatch[]>([]);
+  // Import batches, status counts and users come from the shared cache: a
+  // revisit shows them at once and refreshes them in the background.
+  const importsQuery = useCached<ImportBatch[]>(session ? cacheKeys.imports : null, cachedFetchers.imports);
+  const importBatches = useMemo(() => importsQuery.data ?? [], [importsQuery.data]);
   const [showBulkDelete,   setShowBulkDelete  ] = useState(false);
   const [bulkDeleting,     setBulkDeleting    ] = useState(false);
   const [showBulkAssign,   setShowBulkAssign  ] = useState(false);
@@ -540,8 +544,16 @@ export default function LeadsPage() {
   const [assignTarget,     setAssignTarget    ] = useState<string>("unassigned");
   const [assignOverwriteConfirmed, setAssignOverwriteConfirmed] = useState(false);
   const [assignSkipAssigned, setAssignSkipAssigned] = useState(false);
-  const [employees,        setEmployees       ] = useState<Profile[]>([]);
-  const [employeesLoading, setEmployeesLoading] = useState(true);
+  const usersQuery = useCached<Profile[]>(
+    role === "manager" && session ? cacheKeys.users : null,
+    cachedFetchers.users,
+  );
+  const employees = useMemo(
+    () => (usersQuery.data ?? []).filter((u) => u.role === "employee" && u.is_active),
+    [usersQuery.data],
+  );
+  // Non-managers never load users; the flag stays "loading" for them as before.
+  const employeesLoading = role !== "manager" || usersQuery.isLoading;
   const [retryingAll,      setRetryingAll     ] = useState(false);
 
   async function handleRetryAllFailed() {
@@ -557,14 +569,6 @@ export default function LeadsPage() {
       setRetryingAll(false);
     }
   }
-
-  useEffect(() => {
-    if (role !== "manager" || !session) return;
-    setEmployeesLoading(true);
-    fetchUsers(session.access_token).then((users) => {
-      setEmployees(users.filter((u) => u.role === "employee" && u.is_active));
-    }).catch(() => {}).finally(() => setEmployeesLoading(false));
-  }, [role, session]);
 
   // Sync filter/view state into URL so refresh preserves it
   useEffect(() => {
@@ -641,11 +645,17 @@ export default function LeadsPage() {
   // Keyed on the user id so a genuine account switch still forces a fresh load,
   // while the repeated same-user session objects supabase-js emits on tab focus
   // do not.
+  //
+  // The leads themselves live in AppProvider, which outlives this page. When it
+  // already holds this user's rows (any revisit), render them and refresh in
+  // the background instead of putting the full skeleton back up.
   const loadedForUser = useRef<string | null>(null);
+  const leadsLoadedRef = useRef(leadsLoaded);
+  leadsLoadedRef.current = leadsLoaded;
   useEffect(() => {
     if (!session || loadedForUser.current === session.user.id) return;
     loadedForUser.current = session.user.id;
-    void loadLeads(session.access_token);
+    void loadLeads(session.access_token, leadsLoadedRef.current ? { background: true } : undefined);
   }, [session, loadLeads]);
 
   // Background enrichment (email reveal, website scraping) keeps changing lead
@@ -676,12 +686,13 @@ export default function LeadsPage() {
   // one every tick, so depending on the array itself refetched this on every
   // poll forever. Length still changes when a new page or import lands, which
   // is the only time a new batch can actually appear.
+  const revalidateImports = importsQuery.revalidate;
+  const lastImportsLen = useRef(leads.length);
   useEffect(() => {
-    if (!session) return;
-    fetchImports(session.access_token)
-      .then((r) => setImportBatches(r.imports))
-      .catch(() => {});
-  }, [session, leads.length]);
+    if (!session || lastImportsLen.current === leads.length) return;
+    lastImportsLen.current = leads.length;
+    void revalidateImports().catch(() => {});
+  }, [session, leads.length, revalidateImports]);
 
   // Search runs against the whole DB, not just whatever's currently paged
   // into `leads` — a lead further back than the loaded window would
@@ -716,20 +727,25 @@ export default function LeadsPage() {
   // True per-stage totals for the Kanban headers. The board renders whatever
   // cards are loaded (with its own "Show more" below), but the numbers on the
   // columns have to be the real ones or they contradict the Dashboard.
-  const [kanbanTotals, setKanbanTotals] = useState<Partial<Record<LeadStatus, number>>>({});
+  const statusCountsQuery = useCached<Record<string, number>>(
+    session ? cacheKeys.leadCounts : null,
+    cachedFetchers.leadStatusCounts,
+  );
+  const kanbanTotals = useMemo(() => {
+    const totals: Partial<Record<LeadStatus, number>> = {};
+    for (const [dbStatus, n] of Object.entries(statusCountsQuery.data ?? {})) {
+      const label = LEAD_STATUS_LABEL[dbStatus];
+      if (label) totals[label] = (totals[label] ?? 0) + n;
+    }
+    return totals;
+  }, [statusCountsQuery.data]);
+  const revalidateStatusCounts = statusCountsQuery.revalidate;
+  const lastCountsLen = useRef(leads.length);
   useEffect(() => {
-    if (!session) return;
-    fetchLeadStatusCounts(session.access_token)
-      .then((byStatus) => {
-        const totals: Partial<Record<LeadStatus, number>> = {};
-        for (const [dbStatus, n] of Object.entries(byStatus)) {
-          const label = LEAD_STATUS_LABEL[dbStatus];
-          if (label) totals[label] = (totals[label] ?? 0) + n;
-        }
-        setKanbanTotals(totals);
-      })
-      .catch(() => {});
-  }, [session, leads.length]);
+    if (!session || lastCountsLen.current === leads.length) return;
+    lastCountsLen.current = leads.length;
+    void revalidateStatusCounts().catch(() => {});
+  }, [session, leads.length, revalidateStatusCounts]);
 
   useEffect(() => {
     // Org tab filters client-side; don't burn lead-search requests while there.
@@ -1139,6 +1155,7 @@ export default function LeadsPage() {
                         <TableRow
                           key={org.id}
                           onClick={() => setSelectedOrgId(org.id)}
+                          onMouseEnter={() => prefetchOrg(org.id)}
                           className="cursor-pointer border-border border-l-2 border-l-transparent transition-colors hover:border-l-primary hover:bg-secondary"
                         >
                           <TableCell>
@@ -1258,6 +1275,7 @@ export default function LeadsPage() {
                       <TableRow
                         key={lead.id}
                         onClick={() => setSelectedLead(lead)}
+                        onMouseEnter={() => prefetchLead(lead.id)}
                         className={cn(
                           "cursor-pointer border-border border-l-2 border-l-transparent transition-colors hover:border-l-primary hover:bg-secondary",
                           isChecked && "bg-secondary border-l-primary",
