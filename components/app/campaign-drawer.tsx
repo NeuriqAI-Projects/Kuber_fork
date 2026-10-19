@@ -24,7 +24,7 @@ import { StatTile } from "@/components/ui/stat-tile";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchInput } from "@/components/ui/search-input";
-import { Pill } from "@/components/ui/pill";
+import { Pill, pillClass, pillTone, type PillColor } from "@/components/ui/pill";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { PageHeader } from "@/components/ui/page-header";
 import { RecordHeader } from "@/components/ui/record-layout";
@@ -188,26 +188,6 @@ function stripQuotedLines(text: string | null | undefined): string | null {
   return kept.join("\n").trim() || null;
 }
 
-/**
- * Attio tag tones — a pale fill with dark text in light mode, a low-alpha fill
- * with light text in dark mode (root CLAUDE.md "Tags / status pills"). Every
- * status chip on this screen picks one of these so light mode stays readable.
- */
-const TAG = {
-  gray:    "bg-secondary text-muted-foreground border-border",
-  blue:    "bg-blue-100 text-blue-800 border-blue-200/70 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/25",
-  green:   "bg-green-100 text-green-800 border-green-200/70 dark:bg-green-500/15 dark:text-green-300 dark:border-green-500/25",
-  amber:   "bg-amber-100 text-amber-800 border-amber-200/70 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25",
-  red:     "bg-red-100 text-red-800 border-red-200/70 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/25",
-  teal:    "bg-teal-100 text-teal-800 border-teal-200/70 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/25",
-  violet:  "bg-violet-100 text-violet-800 border-violet-200/70 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/25",
-  primary: "bg-primary/10 text-primary border-primary/20",
-} as const;
-
-/** Shared chip shape for the hand-built status chips (they need an icon or a
- *  click handler, so they can't all be a <Pill>). */
-const CHIP = "inline-flex items-center gap-1 rounded-[5px] border px-1.5 py-[3px] text-[11px] font-medium leading-none whitespace-nowrap";
-
 const DRAFT_STATUS_LABEL: Record<string, string> = {
   generating: "Generating",
   draft:      "Draft",
@@ -222,13 +202,13 @@ const DRAFT_STATUS_LABEL: Record<string, string> = {
  * in-flight, so nobody mistakes a lead still waiting in Instantly's drip for
  * one that has actually been mailed (green).
  */
-const DELIVERY_PILL_CLS: Record<DeliveryBucket, string> = {
-  not_queued:  TAG.gray,
-  sending:     TAG.amber,
-  sent:        TAG.green,
-  replied:     TAG.primary,
-  bounced:     TAG.red,
-  send_failed: TAG.red,
+const DELIVERY_PILL_COLOR: Record<DeliveryBucket, PillColor> = {
+  not_queued:  "neutral",
+  sending:     "amber",
+  sent:        "green",
+  replied:     "primary",
+  bounced:     "red",
+  send_failed: "red",
 };
 
 /** In-flight wording, kept apart from status labels — this is an activity, not a stored status. */
@@ -237,13 +217,13 @@ const DRAFT_ACTIVITY_LABEL: Record<"generating" | "regenerating", string> = {
   regenerating: "Regenerating",
 };
 
-const DRAFT_STATUS_STYLE: Record<string, string> = {
-  generating: TAG.amber,
-  draft:      TAG.blue,
-  approved:   TAG.green,
-  sent:       TAG.teal,
-  failed:     TAG.red,
-  rejected:   TAG.gray,
+const DRAFT_STATUS_COLOR: Record<string, PillColor> = {
+  generating: "amber",
+  draft:      "blue",
+  approved:   "green",
+  sent:       "teal",
+  failed:     "red",
+  rejected:   "neutral",
 };
 
 type AttachmentInfo = {
@@ -591,20 +571,16 @@ type CampaignViewTab = "analytics" | "leads" | "outbox" | "sequences" | "credits
 
 function DraftStatusBadge({
   label,
-  styleClass,
+  color,
   helpText,
 }: {
   label: string;
-  styleClass: string;
+  color: PillColor;
   helpText?: string;
 }) {
   return (
     <span
-      className={cn(
-        CHIP,
-        "shrink-0 justify-center",
-        styleClass,
-      )}
+      className={pillClass({ color, shape: "sm", className: "leading-none shrink-0 justify-center" })}
     >
       {label}
       {helpText && <InfoTip text={helpText} />}
@@ -722,7 +698,7 @@ function OutboxMessageRow({
         )}
         {/* Same reason as the Unibox: the collapsed row is the glanceable one. */}
         {isUnanswered && (
-          <Badge variant="outline" className={cn("shrink-0", TAG.amber)}>
+          <Badge variant="outline" className={cn("shrink-0", pillTone("amber"))}>
             Not answered
           </Badge>
         )}
@@ -768,7 +744,7 @@ function OutboxMessageRow({
               </Badge>
             )}
             {isUnanswered && (
-              <Badge variant="outline" className={TAG.amber}>
+              <Badge variant="outline" className={pillTone("amber")}>
                 Not answered
               </Badge>
             )}
@@ -1694,13 +1670,13 @@ export function CampaignDetail({
     return cl.crm_status;
   }
 
-  function getStatusStyle(cl: CampaignLead): string {
-    if (getDraftActivity(cl)) return DRAFT_STATUS_STYLE.generating;
+  function getStatusColor(cl: CampaignLead): PillColor {
+    if (getDraftActivity(cl)) return DRAFT_STATUS_COLOR.generating;
     const delivery = deliveryBucket(cl);
-    if (delivery !== "not_queued") return DELIVERY_PILL_CLS[delivery];
+    if (delivery !== "not_queued") return DELIVERY_PILL_COLOR[delivery];
     const ds = cl.email_drafts?.status;
-    if (ds && DRAFT_STATUS_STYLE[ds]) return DRAFT_STATUS_STYLE[ds];
-    return TAG.gray;
+    if (ds && DRAFT_STATUS_COLOR[ds]) return DRAFT_STATUS_COLOR[ds];
+    return "neutral";
   }
 
   const [attaching, setAttaching] = useState(false);
@@ -3303,12 +3279,12 @@ export function CampaignDetail({
 
 
   // Status tag for the record header — Attio light/dark tag pairs.
-  const statusBadge = (() => {
+  const statusBadge = ((): { label: string; color: PillColor } => {
     switch (campaign.status) {
-      case "Live":      return { label: "Active",    cls: TAG.green };
-      case "Paused":    return { label: "Paused",    cls: TAG.amber };
-      case "Scheduled": return { label: "Scheduled", cls: TAG.blue };
-      default:          return { label: "Draft",     cls: TAG.gray };
+      case "Live":      return { label: "Active",    color: "green" };
+      case "Paused":    return { label: "Paused",    color: "amber" };
+      case "Scheduled": return { label: "Scheduled", color: "blue" };
+      default:          return { label: "Draft",     color: "neutral" };
     }
   })();
 
@@ -3485,9 +3461,9 @@ export function CampaignDetail({
         )}
         badges={
           <>
-            <Pill shape="sm" className={statusBadge.cls}>{statusBadge.label}</Pill>
-            {sendingHeld && <Pill shape="sm" className={TAG.amber}>Sending held</Pill>}
-            <Pill shape="sm" className={TAG.gray}>{campaign.humanInLoop ? "Human review" : "Auto-send"}</Pill>
+            <Pill shape="sm" color={statusBadge.color}>{statusBadge.label}</Pill>
+            {sendingHeld && <Pill shape="sm" color="amber">Sending held</Pill>}
+            <Pill shape="sm" color="neutral">{campaign.humanInLoop ? "Human review" : "Auto-send"}</Pill>
             <span className="text-xs text-muted-foreground tabular-nums">
               {analyticsTotalLeads} lead{analyticsTotalLeads === 1 ? "" : "s"}
               {campaign.createdAt ? ` · created ${format(new Date(`${campaign.createdAt}T00:00:00`), "d MMM yyyy")}` : ""}
@@ -4054,26 +4030,26 @@ export function CampaignDetail({
                               {(() => {
                                 const activity = getDraftActivity(cl);
                                 const ds = cl.email_drafts?.status;
-                                const pills: { label: string; cls: string }[] = [];
+                                const pills: { label: string; color: PillColor }[] = [];
 
                                 // Draft pill — an in-flight generation/regeneration
                                 // outranks the stored status, which is still the
                                 // superseded version until the new one lands.
                                 if (activity) {
-                                  pills.push({ label: `${DRAFT_ACTIVITY_LABEL[activity]}…`, cls: TAG.blue });
+                                  pills.push({ label: `${DRAFT_ACTIVITY_LABEL[activity]}…`, color: "blue" });
                                 } else if (ds === "draft") {
-                                  pills.push({ label: "Draft", cls: TAG.amber });
+                                  pills.push({ label: "Draft", color: "amber" });
                                 } else if (ds === "generating") {
-                                  pills.push({ label: "Generating…", cls: TAG.blue });
+                                  pills.push({ label: "Generating…", color: "blue" });
                                 } else if (ds === "failed") {
-                                  pills.push({ label: "Failed", cls: TAG.red });
+                                  pills.push({ label: "Failed", color: "red" });
                                 } else if (ds === "approved") {
-                                  pills.push({ label: "Certified", cls: TAG.primary });
+                                  pills.push({ label: "Certified", color: "primary" });
                                 }
                                 if (!activity && isAiFailedDefault(cl)) {
-                                  pills.push({ label: "AI failed", cls: TAG.red });
+                                  pills.push({ label: "AI failed", color: "red" });
                                 } else if (!activity && isDefaultEmail(cl) && ds !== "sent") {
-                                  pills.push({ label: "Default email", cls: TAG.gray });
+                                  pills.push({ label: "Default email", color: "neutral" });
                                 }
 
                                 // Delivery pill — exactly one, straight off the shared
@@ -4082,16 +4058,16 @@ export function CampaignDetail({
                                 // above already says where such a lead stands.
                                 const delivery = deliveryBucket(cl);
                                 if (delivery !== "not_queued") {
-                                  pills.push({ label: deliveryLabel(cl), cls: DELIVERY_PILL_CLS[delivery] });
+                                  pills.push({ label: deliveryLabel(cl), color: DELIVERY_PILL_COLOR[delivery] });
                                 }
 
                                 // Fallback if nothing matched
                                 if (pills.length === 0) {
-                                  pills.push({ label: waitingLabel, cls: TAG.gray });
+                                  pills.push({ label: waitingLabel, color: "neutral" });
                                 }
 
-                                return pills.map(({ label, cls }) => (
-                                  <span key={label} className={cn(CHIP, cls)}>
+                                return pills.map(({ label, color }) => (
+                                  <span key={label} className={pillClass({ color, shape: "sm", className: "leading-none" })}>
                                     {label}
                                   </span>
                                 ));
@@ -4104,7 +4080,7 @@ export function CampaignDetail({
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); openOriginalOf(cl); }}
                                   title={`${replacesTooltip(cl)} — open them`}
-                                  className={cn(CHIP, TAG.gray, "transition-colors hover:text-foreground")}
+                                  className={pillClass({ color: "neutral", shape: "sm", className: "leading-none transition-colors hover:text-foreground" })}
                                 >
                                   <CornerDownRight className="size-3" />
                                   Replacement
@@ -4120,7 +4096,7 @@ export function CampaignDetail({
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); openReplacementOf(cl); }}
                                     title={`${replacedTooltip(cl)} — open them`}
-                                    className={cn(CHIP, TAG.green, "transition-colors hover:opacity-80")}
+                                    className={pillClass({ color: "green", shape: "sm", className: "leading-none transition-colors hover:opacity-80" })}
                                   >
                                     <Check className="size-3" />
                                     Replaced
@@ -4129,7 +4105,7 @@ export function CampaignDetail({
                                   <button
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); openReplace(cl); }}
-                                    className={cn(CHIP, "border-border bg-field text-muted-foreground transition-colors hover:bg-hover hover:text-foreground")}
+                                    className={pillClass({ color: "neutral", shape: "sm", className: "leading-none bg-field transition-colors hover:bg-hover hover:text-foreground" })}
                                     title="Add another contact at this company"
                                   >
                                     <UserPlus className="size-3" />
@@ -4348,12 +4324,12 @@ export function CampaignDetail({
                 if (thread) {
                   const latestMsg = thread.messages[thread.messages.length - 1];
                   const replyDraftStatus = latestMsg?.reply_drafts[latestMsg.reply_drafts.length - 1]?.status;
-                  const statusConfig: Record<string, { label: string; cls: string }> = {
-                    generating: { label: "Generating", cls: TAG.amber },
-                    draft:      { label: "Draft",       cls: TAG.primary },
-                    approved:   { label: "Certified",   cls: TAG.green },
-                    sent:       { label: "Sent",        cls: TAG.gray },
-                    failed:     { label: "Failed",      cls: TAG.red },
+                  const statusConfig: Record<string, { label: string; color: PillColor }> = {
+                    generating: { label: "Generating", color: "amber" },
+                    draft:      { label: "Draft",       color: "primary" },
+                    approved:   { label: "Certified",   color: "green" },
+                    sent:       { label: "Sent",        color: "neutral" },
+                    failed:     { label: "Failed",      color: "red" },
                   };
                   const sc = replyDraftStatus ? statusConfig[replyDraftStatus] : null;
                   return (
@@ -4371,8 +4347,8 @@ export function CampaignDetail({
                       <div className="flex-1 min-w-0">
                         <p className="text-[13px] font-medium truncate text-foreground">{name}</p>
                         <div className="mt-1 flex items-center gap-1 flex-wrap">
-                          <span className={cn(CHIP, TAG.blue)}>Reply received</span>
-                          {sc && <span className={cn(CHIP, sc.cls)}>{sc.label}</span>}
+                          <span className={pillClass({ color: "blue", shape: "sm", className: "leading-none" })}>Reply received</span>
+                          {sc && <span className={pillClass({ color: sc.color, shape: "sm", className: "leading-none" })}>{sc.label}</span>}
                         </div>
                       </div>
                       {thread.messages.length > 1 && (
@@ -4385,16 +4361,16 @@ export function CampaignDetail({
                 const activity = getDraftActivity(cl);
                 const status = cl.email_drafts?.status ?? "none";
                 const delivery = deliveryBucket(cl);
-                const inFlightCls = TAG.amber;
-                const statusConfig: Record<string, { label: string; cls: string }> = {
-                  generating: { label: "Generating", cls: inFlightCls },
-                  draft:      { label: "Draft",       cls: TAG.primary },
-                  approved:   { label: "Certified",   cls: TAG.green },
-                  sent:       { label: "Sent",        cls: TAG.gray },
-                  failed:     { label: "Failed",      cls: TAG.red },
+                const inFlightColor: PillColor = "amber";
+                const statusConfig: Record<string, { label: string; color: PillColor }> = {
+                  generating: { label: "Generating", color: inFlightColor },
+                  draft:      { label: "Draft",       color: "primary" },
+                  approved:   { label: "Certified",   color: "green" },
+                  sent:       { label: "Sent",        color: "neutral" },
+                  failed:     { label: "Failed",      color: "red" },
                   none:       {
                     label: waitingLabel,
-                    cls: TAG.gray,
+                    color: "neutral",
                   },
                 };
                 // An in-flight row wins over whatever draft_id still resolves to:
@@ -4405,9 +4381,9 @@ export function CampaignDetail({
                 // Sending / Sent / Replied) over draft status — drafts stay
                 // "sent" after a bounce, which hid the red Bounced pill here.
                 const sc = activity
-                  ? { label: DRAFT_ACTIVITY_LABEL[activity], cls: inFlightCls }
+                  ? { label: DRAFT_ACTIVITY_LABEL[activity], color: inFlightColor }
                   : delivery !== "not_queued"
-                    ? { label: deliveryLabel(cl), cls: DELIVERY_PILL_CLS[delivery] }
+                    ? { label: deliveryLabel(cl), color: DELIVERY_PILL_COLOR[delivery] }
                     : statusConfig[status] ?? statusConfig.none;
                 const showCheckbox = status !== "sent" && delivery === "not_queued";
                 const canCheck = showCheckbox;
@@ -4445,12 +4421,12 @@ export function CampaignDetail({
                       <div className="flex-1 min-w-0">
                         <p className="text-[13px] font-medium truncate text-foreground">{name}</p>
                         <span className="mt-1 flex flex-wrap items-center gap-1">
-                          <span className={cn(CHIP, sc.cls)}>
+                          <span className={pillClass({ color: sc.color, shape: "sm", className: "leading-none" })}>
                             {activity && <Loader2 className="size-2.5 animate-spin" />}
                             {sc.label}
                           </span>
                           {!activity && isAiFailedDefault(cl) && (
-                            <span className={cn(CHIP, TAG.red)}>
+                            <span className={pillClass({ color: "red", shape: "sm", className: "leading-none" })}>
                               AI failed
                             </span>
                           )}
@@ -4536,14 +4512,14 @@ export function CampaignDetail({
                       {(selected.email_drafts || getDraftActivity(selected)) && (
                         <DraftStatusBadge
                           label={getDisplayStatus(selected)}
-                          styleClass={getStatusStyle(selected)}
+                          color={getStatusColor(selected)}
                         />
                       )}
                       {selectedThread && (() => {
                         const temp = selectedThread.latest_temperature ?? "neutral";
                         const badge = TEMP_BADGE[temp] ?? TEMP_BADGE.neutral;
                         return (
-                          <span className={cn(CHIP, badge.cls)}>
+                          <span className={pillClass({ color: "neutral", shape: "sm", className: cn("leading-none", badge.cls) })}>
                             {badge.icon}{badge.label}
                           </span>
                         );
@@ -4552,7 +4528,7 @@ export function CampaignDetail({
                     {selected.leads?.replaces_lead_id && (
                       <span
                         title={replacesTooltip(selected)}
-                        className={cn(CHIP, TAG.gray, "shrink-0")}
+                        className={pillClass({ color: "neutral", shape: "sm", className: "leading-none shrink-0" })}
                       >
                         <UserPlus className="size-3" />
                         Replacement
@@ -4569,7 +4545,7 @@ export function CampaignDetail({
                             if (r) handleOpenInOutbox(r.id);
                           }}
                           title={`${replacedTooltip(selected)} — open them`}
-                          className={cn(CHIP, TAG.green, "shrink-0 transition-colors hover:opacity-80")}
+                          className={pillClass({ color: "green", shape: "sm", className: "leading-none shrink-0 transition-colors hover:opacity-80" })}
                         >
                           <Check className="size-3" />
                           Replaced
@@ -4718,7 +4694,7 @@ export function CampaignDetail({
                     thread. What happened, who covers it now, who decided that. */}
                 {isReplacedBounce && !bouncedThreadOpen && (
                   <div className="max-w-2xl mx-auto w-full rounded-lg border border-border bg-card p-6 flex flex-col items-center gap-4 text-center">
-                    <span className={cn(CHIP, TAG.red)}>
+                    <span className={pillClass({ color: "red", shape: "sm", className: "leading-none" })}>
                       Bounced{selected.bounced_at ? ` ${format(new Date(selected.bounced_at), "d MMM yyyy")}` : ""}
                     </span>
                     <div className="space-y-1.5">
@@ -5316,7 +5292,7 @@ export function CampaignDetail({
                         <p className="text-xs text-muted-foreground truncate">{lead?.company_name ?? ""}</p>
                         <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
                           {finished ? (
-                            <span className={cn(CHIP, TAG.gray, "capitalize")}>
+                            <span className={pillClass({ color: "neutral", shape: "sm", className: "leading-none capitalize" })}>
                               {finished}
                             </span>
                           ) : (
@@ -5424,7 +5400,7 @@ export function CampaignDetail({
                       >
                         <DraftStatusBadge
                           label={getDisplayStatus(seqActiveLeadRow.cl)}
-                          styleClass={getStatusStyle(seqActiveLeadRow.cl)}
+                          color={getStatusColor(seqActiveLeadRow.cl)}
                         />
                       </button>
                     )}
@@ -5533,14 +5509,14 @@ export function CampaignDetail({
                             </span>
                           )}
                           {row.sent && (
-                            <Pill shape="sm" className={TAG.green}>Sent</Pill>
+                            <Pill shape="sm" color="green">Sent</Pill>
                           )}
                           {row.written && (
                             row.draft?.source === "manual"
-                              ? <Pill shape="sm" className={TAG.primary}>Customized for this lead</Pill>
+                              ? <Pill shape="sm" color="primary">Customized for this lead</Pill>
                               : row.isTemplate
-                              ? <Pill shape="sm" className={TAG.amber}>Template</Pill>
-                              : <Pill shape="sm" className={TAG.violet}>AI written</Pill>
+                              ? <Pill shape="sm" color="amber">Template</Pill>
+                              : <Pill shape="sm" color="violet">AI written</Pill>
                           )}
                         </div>
 

@@ -38,11 +38,16 @@ Lead-gen pipeline: **Apollo** (find people/companies, reveal emails) → **Firec
 | Dropdown / picker | `Select` + `SelectTrigger` (`components/ui/select.tsx`) |
 | Checkbox / tri-state selection | `AppCheckbox` (`components/ui/app-checkbox.tsx`) |
 | Radio | `AppRadio` (`components/ui/app-radio.tsx`) |
-| Single date | `DatePicker` (`components/ui/date-picker.tsx`) — wraps `Calendar` + `Popover`; never hand-roll a `Popover`+`Calendar`+`Button` date trigger again |
+| Single date / date range | `DatePicker` (`components/ui/date-picker.tsx`) — wraps `Calendar` + `Popover`; never hand-roll a `Popover`+`Calendar`+`Button` date trigger again. A From/To pair is two DatePickers linked with `maxDate` / `minDate` |
+| Email addresses (To / Cc / Bcc chips) | `EmailChipInput` (`components/ui/email-chip-input.tsx`) |
 | Multi-select country/region | `LocationsPicker` (`components/ui/locations-picker.tsx`) |
 | Toggle | `Switch` (`components/ui/switch.tsx`) |
 | Rich text / HTML body | `RichTextEditor` (`components/ui/rich-text-editor.tsx`) |
-| Choice card (a radio/checkbox rendered as a clickable bordered box with a label+description, e.g. "Assign imported leads" strategy cards, handover-strategy cards, Sequences' Step 1/Step 2 cards) | No dedicated component yet: `border-border bg-field` when unselected, `border-primary/50 bg-primary/5` when selected. |
+| Choice card (a radio/checkbox rendered as a clickable bordered box with a label+description, e.g. "Assign imported leads" strategy cards, handover-strategy cards, theme tiles) | `ChoiceCard` (`components/ui/choice-card.tsx`) — `border-border bg-field` unselected, `border-primary/50 bg-primary/5` selected; `indicator="radio" \| "checkbox"` |
+| Status tag / chip | `Pill` (`components/ui/pill.tsx`) with a `color` (batch tones, `neutral`, `red`, `primary`); `pillClass()` for a chip that must be a `<button>`, `pillTone()` to tint a `Badge`. No local tone maps |
+| Card with a header (title, description, right-side actions) | `Panel` (`components/ui/panel.tsx`) |
+| Custom modal that opens above a drawer | `ModalShell` (`components/ui/modal-shell.tsx`) — portal, z-200, `data-confirm-dialog-root`. Otherwise `DialogContent` |
+| Settings-style page (side menu, section header, label-left/control-right rows) | `PageShell` with `nav` + `SettingsNav` / `SettingsPageTitle` / `SettingsSection` / `SettingsRow` (`components/ui/settings.tsx`) |
 | Multi-step wizard progress | `Stepper` (`components/ui/stepper.tsx`) — the not-yet-reached step pill is `bg-field` for the same choice-card reason; don't hand-roll step chips. |
 | Apollo credit-cost messaging ("N leads/contacts selected → N credits will be spent") | `ApolloCostNote` (`components/app/apollo-cost-note.tsx`) — shown twice per Apollo-backed import flow: once where the count that drives cost is chosen, once as final confirmation right before the button that spends it. Same UI in test-mode workspaces too (real credit count + a "(test)" tag), never a different box/copy for mock vs real. See `docs/apollo-credit-usage-rca.md` for the cost model — search is free, reveal is 1 credit/contact, org search is 1 credit/page; **no individual filter field has its own cost**, confirmed against Apollo's own docs, so never add a per-field "uses credits" pill. |
 
@@ -97,7 +102,9 @@ one source of truth. A new token goes in `CSS_VARS`, both palette builders, `@th
 ### Screen building blocks (`components/ui`)
 
 - `PageHeader` (48px breadcrumb + actions bar) and `Toolbar` (view/Sort/Filter row) — every
-  screen starts with these.
+  screen starts with these. `PageShell` wraps PageHeader + the scroll column (and an optional
+  side `nav` or fixed `subheader`) for full pages.
+- `Panel` — report card with a header strip (dashboard, Credits usage).
 - `Table` = Attio grid (32px header, 36px rows, 1px grid lines, `hover:bg-hover`).
 - `RecordLayout` + `RecordHeader` + `DetailSection` + `DetailRow` — lead, org and campaign
   record views (main column with underline tabs + right "Details" rail).

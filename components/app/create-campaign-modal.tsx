@@ -10,12 +10,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AppRadio } from "@/components/ui/app-radio";
+import { ChoiceCard } from "@/components/ui/choice-card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
 import { Stepper } from "@/components/ui/stepper";
-import { cn } from "@/lib/utils";
 import type { Lead } from "@/lib/leads";
 import { isCampaignEligible, CAMPAIGN_ACTION_HELP, getMostCommonCountry } from "@/lib/leads";
 import { COUNTRY_TO_TIMEZONE } from "@/lib/constants";
@@ -676,29 +675,15 @@ export function CreateCampaignModal({
                   { id: "wait", title: "Wait for credits", help: "Emails are written automatically once credits are topped up." },
                   { id: "default", title: "Use the default email for everyone", help: "Ready to certify and send now. No AI used." },
                 ] as const).map((o) => (
-                  <button
+                  <ChoiceCard
                     key={o.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={aiChoice === o.id}
-                    onClick={() => setAiChoice(o.id)}
-                    className={cn(
-                      // Choice card (root CLAUDE.md): bg-field unselected,
-                      // primary tint selected, with the shared radio dot.
-                      "flex items-start gap-3 text-left rounded-md border px-3 py-2 transition-colors",
-                      aiChoice === o.id
-                        ? "border-primary/50 bg-primary/5"
-                        : "border-border bg-field hover:bg-hover",
-                    )}
-                  >
-                    <span aria-hidden className="mt-0.5">
-                      <AppRadio checked={aiChoice === o.id} />
-                    </span>
-                    <span>
-                      <span className="block text-[13px] font-medium">{o.title}</span>
-                      <span className="block text-xs text-muted-foreground">{o.help}</span>
-                    </span>
-                  </button>
+                    indicator="radio"
+                    selected={aiChoice === o.id}
+                    onSelect={() => setAiChoice(o.id)}
+                    title={o.title}
+                    description={o.help}
+                    className="rounded-md px-3 py-2"
+                  />
                 ))}
               </div>
             </div>

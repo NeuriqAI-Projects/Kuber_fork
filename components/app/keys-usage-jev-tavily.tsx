@@ -4,8 +4,9 @@ import { Coins, CalendarDays, Flame, Sparkles, Search, Link2 } from "lucide-reac
 import { Paged } from "@/components/ui/paged";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  UsageHeader, UsagePanel, UsageEmpty, UsageNotice, UsageProgress, UsageStatus, useCachedUsage,
+  UsageHeader, UsageEmpty, UsageNotice, UsageProgress, UsageStatus, useCachedUsage,
 } from "@/components/app/usage-header";
+import { Panel } from "@/components/ui/panel";
 import { StatTile } from "@/components/ui/stat-tile";
 import { UsageBarChart, CHART_COLORS } from "@/components/app/usage-bar-chart";
 import { UsageHeaderSkeleton, StatTileGridSkeleton, ChartCardSkeleton, RowsCardSkeleton } from "@/components/app/usage-skeletons";
@@ -47,12 +48,12 @@ export function JevUsageView() {
         <StatTile label="Avg tokens per company" value={avgTokens.toLocaleString()} icon={Coins} sub="about $0.042 per million" />
         {["good", "hidden", "review"].map((s) => <StatTile key={s} label={`Decided: ${s}`} value={decisions[s] ?? 0} icon={Sparkles} sub={`last ${ledgerWindowDays}d`} />)}
       </div>
-      <UsagePanel title="Companies scored" description="Last 14 days.">
+      <Panel title="Companies scored" description="Last 14 days.">
         {daily.every((d) => d.companies === 0)
           ? <UsageEmpty>No companies scored recently.</UsageEmpty>
           : <UsageBarChart data={daily} bars={[{ dataKey: "companies", name: "Companies", color: CHART_COLORS.primary }]} />}
-      </UsagePanel>
-      <UsagePanel title="Recent scoring" description="Most recent first.">
+      </Panel>
+      <Panel title="Recent scoring" description="Most recent first.">
         {history.length === 0 ? <UsageEmpty>Nothing scored yet.</UsageEmpty> : (
           <Paged items={history}>{(rows) => (
           <div className="rounded-md border border-border overflow-hidden">
@@ -78,7 +79,7 @@ export function JevUsageView() {
           </div>
           )}</Paged>
         )}
-      </UsagePanel>
+      </Panel>
     </div>
   );
 }
@@ -108,12 +109,12 @@ export function TavilyUsageView() {
           value={`${credits.used.toLocaleString()} / ${credits.planCredits.toLocaleString()}`}
         />
       )}
-      <UsagePanel title="Tavily calls" description="Last 14 days, LinkedIn reads and web searches.">
+      <Panel title="Tavily calls" description="Last 14 days, LinkedIn reads and web searches.">
         {daily.every((d) => d.linkedin + d.searches === 0)
           ? <UsageEmpty>No Tavily calls recorded recently.</UsageEmpty>
           : <UsageBarChart data={daily} bars={[{ dataKey: "linkedin", name: "LinkedIn reads", color: CHART_COLORS.primary }, { dataKey: "searches", name: "Web searches", color: CHART_COLORS.amber }]} />}
-      </UsagePanel>
-      <UsagePanel title="Recent activity" description="Companies that used Tavily, most recent first.">
+      </Panel>
+      <Panel title="Recent activity" description="Companies that used Tavily, most recent first.">
         {history.length === 0 ? <UsageEmpty>No Tavily activity recorded yet.</UsageEmpty> : (
           <Paged items={history}>{(rows) => (
           <div className="rounded-md border border-border overflow-hidden">
@@ -141,7 +142,7 @@ export function TavilyUsageView() {
           </div>
           )}</Paged>
         )}
-      </UsagePanel>
+      </Panel>
     </div>
   );
 }

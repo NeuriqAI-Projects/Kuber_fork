@@ -5,6 +5,7 @@ import { CheckCircle2, Mail, RefreshCw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { useApp } from "@/lib/app-context";
 import { Button } from "@/components/ui/button";
+import { SettingsPageTitle, SettingsRow, SettingsSection } from "@/components/ui/settings";
 import {
   Select,
   SelectContent,
@@ -87,21 +88,16 @@ export function EmailSendingView() {
 
   return (
     <div className="max-w-3xl space-y-8">
-      <header>
-        <h1 className="text-lg font-semibold leading-tight">Email &amp; sending</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">
-          Choose one connected Instantly mailbox for new campaign sends.
-        </p>
-      </header>
+      <SettingsPageTitle
+        title="Email & sending"
+        description="Choose one connected Instantly mailbox for new campaign sends."
+      />
 
-      <section>
-        <div className="flex items-start justify-between gap-4 border-b border-border pb-3">
-          <div>
-            <h3 className="text-[15px] font-semibold leading-tight">Default sending account</h3>
-            <p className="mt-1 text-[13px] tabular-nums text-muted-foreground">
-              {accounts.length} connected · {activeCount} able to send
-            </p>
-          </div>
+      <SettingsSection
+        title="Default sending account"
+        description={<span className="tabular-nums">{accounts.length} connected · {activeCount} able to send</span>}
+        headerClassName="gap-4"
+        aside={
           <Button
             type="button"
             size="sm"
@@ -112,54 +108,54 @@ export function EmailSendingView() {
             <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
             Refresh
           </Button>
-        </div>
-
-        <div className="grid grid-cols-1 gap-2 border-b border-border py-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] sm:gap-8">
-          <div>
-            <label className="text-[13px] font-medium" htmlFor="sending-account">
-              Mailbox
-            </label>
-            <p className="mt-0.5 text-[13px] text-muted-foreground">
+        }
+      >
+        <SettingsRow
+          label="Mailbox"
+          htmlFor="sending-account"
+          labelClassName="leading-[inherit]"
+          contentClassName="space-y-3"
+          description={
+            <>
               The list and send status come directly from the Instantly Accounts API.
               Paused or errored mailboxes cannot be selected.
-            </p>
-          </div>
-          <div className="min-w-0 space-y-3">
-            <Select value={draftEmail} onValueChange={setDraftEmail}>
-              <SelectTrigger id="sending-account">
-                <SelectValue placeholder="Select an active Instantly mailbox" />
-              </SelectTrigger>
-              <SelectContent>
-                {accounts.map((account) => (
-                  <SelectItem
-                    key={account.email}
-                    value={account.email}
-                    disabled={!account.can_send}
-                  >
-                    <span className="flex items-center gap-2">
-                      <span>{account.email}</span>
-                      <span className={cn(
-                        "text-[11px]",
-                        account.can_send ? "text-emerald-700 dark:text-emerald-400" : "text-destructive",
-                      )}>
-                        {account.status_label}
-                      </span>
+            </>
+          }
+        >
+          <Select value={draftEmail} onValueChange={setDraftEmail}>
+            <SelectTrigger id="sending-account">
+              <SelectValue placeholder="Select an active Instantly mailbox" />
+            </SelectTrigger>
+            <SelectContent>
+              {accounts.map((account) => (
+                <SelectItem
+                  key={account.email}
+                  value={account.email}
+                  disabled={!account.can_send}
+                >
+                  <span className="flex items-center gap-2">
+                    <span>{account.email}</span>
+                    <span className={cn(
+                      "text-[11px]",
+                      account.can_send ? "text-emerald-700 dark:text-emerald-400" : "text-destructive",
+                    )}>
+                      {account.status_label}
                     </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="flex justify-end">
-              <Button
-                onClick={() => void handleSave()}
-                disabled={!draftEmail || draftEmail === selectedEmail || saving}
-              >
-                {saving && <RefreshCw className="size-3.5 animate-spin" />}
-                Use account
-              </Button>
-            </div>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex justify-end">
+            <Button
+              onClick={() => void handleSave()}
+              disabled={!draftEmail || draftEmail === selectedEmail || saving}
+            >
+              {saving && <RefreshCw className="size-3.5 animate-spin" />}
+              Use account
+            </Button>
           </div>
-        </div>
+        </SettingsRow>
 
         <div className={cn(
           "mt-4 flex items-start gap-3 rounded-lg border px-3.5 py-2.5",
@@ -193,7 +189,7 @@ export function EmailSendingView() {
             </p>
           </div>
         </div>
-      </section>
+      </SettingsSection>
     </div>
   );
 }

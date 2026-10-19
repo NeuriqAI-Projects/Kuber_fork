@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { AlertCircle, Check, CheckCircle2, FileText, Plus, Search, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ChoiceCard } from "@/components/ui/choice-card";
 import { badgeVariants } from "@/components/ui/badge";
 import { StatTile } from "@/components/ui/stat-tile";
 import { AppCheckbox } from "@/components/ui/app-checkbox";
@@ -241,21 +242,15 @@ export function AssignStrategyPicker({
       <Label>Assign imported leads</Label>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {ASSIGN_MODE_OPTIONS.map((opt) => (
-          <Button
+          <ChoiceCard
             key={opt.value}
-            type="button"
-            variant="outline"
-            onClick={() => onModeChange(opt.value)}
-            className={cn(
-              "h-auto flex-col items-start justify-start gap-0 rounded-lg p-3 text-left font-normal shadow-none",
-              mode === opt.value
-                ? "border-primary/50 bg-primary/5 hover:bg-primary/5 hover:text-foreground"
-                : "border-border bg-field hover:bg-hover",
-            )}
+            selected={mode === opt.value}
+            onSelect={() => onModeChange(opt.value)}
+            className="flex-col gap-0 text-[13px] leading-none whitespace-nowrap"
           >
-            <p className="text-[13px] font-medium">{opt.label}</p>
-            <p className="text-xs text-muted-foreground mt-1 whitespace-normal leading-snug">{opt.hint}</p>
-          </Button>
+            <span className="block text-[13px] font-medium">{opt.label}</span>
+            <span className="block text-xs text-muted-foreground mt-1 whitespace-normal leading-snug">{opt.hint}</span>
+          </ChoiceCard>
         ))}
       </div>
       {mode === "manual" && (

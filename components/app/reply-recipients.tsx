@@ -1,8 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { AlertTriangle, Lock, X } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { EmailChipInput } from "@/components/ui/email-chip-input";
 import { cn } from "@/lib/utils";
 
 /**
@@ -29,12 +30,6 @@ export function ComposerRow({
     </div>
   );
 }
-
-/** Classes for the chip-style address fields (To / Cc / Bcc) — same box as `Input`. */
-export const chipFieldClass =
-  "flex min-h-8 flex-wrap items-center gap-1 rounded-md border border-input bg-field px-1.5 py-1 shadow-xs";
-export const chipClass =
-  "inline-flex max-w-full items-center gap-1 rounded-[5px] px-1.5 py-0.5 text-xs leading-4";
 
 /**
  * The To line of a reply — editable, except for one address.
@@ -69,37 +64,15 @@ export function ReplyToField({
 
   return (
     <ComposerRow label="To">
-      <div className={cn(chipFieldClass, disabled && "opacity-50 pointer-events-none")}>
-        {to.length === 0 && (
-          <span className="px-1 text-[13px] text-muted-foreground">
-            No recipient — nobody has replied to this thread yet
-          </span>
-        )}
-        {to.map((email) => {
-          const locked = email === lockedTo;
-          return (
-            <span
-              key={email}
-              className={cn(chipClass, locked ? "bg-primary/10 text-foreground" : "bg-secondary text-foreground")}
-              title={locked ? "Instantly always addresses the message you are replying to. Reply to a different message to change this." : undefined}
-            >
-              <span className="truncate">{email}</span>
-              {locked ? (
-                <Lock className="size-3 shrink-0 text-muted-foreground" />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onChange(to.filter((x) => x !== email))}
-                  className="shrink-0 rounded text-muted-foreground hover:text-foreground"
-                  aria-label={`Remove ${email}`}
-                >
-                  <X className="size-3" />
-                </button>
-              )}
-            </span>
-          );
-        })}
-      </div>
+      <EmailChipInput
+        emails={to}
+        onChange={onChange}
+        disabled={disabled}
+        allowAdd={false}
+        lockedEmail={lockedTo}
+        lockedTitle="Instantly always addresses the message you are replying to. Reply to a different message to change this."
+        emptyText="No recipient — nobody has replied to this thread yet"
+      />
       {missing.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 pt-1.5">
           <span className="text-xs text-muted-foreground">Also on this thread:</span>

@@ -1,13 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { fetchReplyMailingList } from "@/lib/api-client";
-import { chipClass, chipFieldClass, ComposerRow } from "@/components/app/reply-recipients";
+import { EMAIL_RE, EmailChipInput } from "@/components/ui/email-chip-input";
+import { ComposerRow } from "@/components/app/reply-recipients";
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_PER_LIST = 10;
 
 export function normalizeReplyEmails(emails: string[]): string[] {
@@ -52,158 +51,17 @@ function EmailChipList({
   helper: string;
   suggestions: string[];
 }) {
-  const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
-  const [activeIdx, setActiveIdx] = useState(0);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  const filtered = (() => {
-    const q = draft.trim().toLowerCase();
-    const taken = new Set(emails);
-    return suggestions
-      .filter((e) => !taken.has(e) && (!q || e.includes(q)))
-      .slice(0, 8);
-  })();
-
-  function commit(raw: string) {
-    const parts = raw.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
-    if (parts.length === 0) return;
-    const next = [...emails];
-    for (const part of parts) {
-      const e = part.toLowerCase();
-      if (!EMAIL_RE.test(e)) {
-        setError(`Invalid email: ${part}`);
-        return;
-      }
-      if (next.includes(e)) continue;
-      if (next.length >= MAX_PER_LIST) {
-        setError(`At most ${MAX_PER_LIST} addresses`);
-        return;
-      }
-      next.push(e);
-    }
-    setError(null);
-    setDraft("");
-    setOpen(false);
-    onChange(next);
-  }
-
-  function pickSuggestion(email: string) {
-    if (emails.includes(email) || emails.length >= MAX_PER_LIST) return;
-    onChange([...emails, email]);
-    setDraft("");
-    setOpen(false);
-    setError(null);
-  }
-
-  function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (open && filtered.length > 0 && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-      e.preventDefault();
-      setActiveIdx((i) => {
-        if (e.key === "ArrowDown") return (i + 1) % filtered.length;
-        return (i - 1 + filtered.length) % filtered.length;
-      });
-      return;
-    }
-    if (e.key === "Enter" && open && filtered[activeIdx]) {
-      e.preventDefault();
-      pickSuggestion(filtered[activeIdx]);
-      return;
-    }
-    if (e.key === "Enter" || e.key === "," || e.key === "Tab") {
-      if (!draft.trim()) return;
-      e.preventDefault();
-      commit(draft);
-    } else if (e.key === "Escape") {
-      setOpen(false);
-    } else if (e.key === "Backspace" && !draft && emails.length > 0) {
-      onChange(emails.slice(0, -1));
-    }
-  }
-
-  useEffect(() => {
-    setActiveIdx(0);
-  }, [draft, suggestions.join("|"), emails.join("|")]);
-
-  useEffect(() => {
-    function onDoc(ev: MouseEvent) {
-      if (!wrapRef.current?.contains(ev.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
-
   return (
     <ComposerRow label={label}>
-      <div className="relative" ref={wrapRef}>
-        <div className={cn(chipFieldClass, disabled && "opacity-50 pointer-events-none")}>
-          {emails.map((email) => (
-            <span key={email} className={cn(chipClass, "bg-secondary text-foreground")}>
-              <span className="truncate">{email}</span>
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => onChange(emails.filter((x) => x !== email))}
-                className="shrink-0 rounded text-muted-foreground hover:text-foreground"
-                aria-label={`Remove ${email}`}
-              >
-                <X className="size-3" />
-              </button>
-            </span>
-          ))}
-          {/* eslint-disable-next-line no-restricted-syntax -- bare typing target inside the recipient-chips field; the chips row is the visible control */}
-          <input
-            type="email"
-            value={draft}
-            disabled={disabled}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              setError(null);
-              setOpen(true);
-            }}
-            onFocus={() => setOpen(true)}
-            onKeyDown={onKeyDown}
-            onBlur={() => {
-              // Delay so suggestion click can fire first.
-              window.setTimeout(() => {
-                if (draft.trim() && !wrapRef.current?.contains(document.activeElement)) {
-                  commit(draft);
-                }
-              }, 120);
-            }}
-            placeholder={emails.length === 0 ? "Add email, press Enter" : ""}
-            className="h-6 min-w-40 flex-1 bg-transparent px-1 text-[13px] outline-none placeholder:text-muted-foreground/80"
-            autoComplete="off"
-          />
-        </div>
-        {open && filtered.length > 0 && (
-          <ul
-            className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-lg"
-            role="listbox"
-          >
-            {filtered.map((email, i) => (
-              <li key={email}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={i === activeIdx}
-                  className={cn(
-                    "flex h-8 w-full items-center rounded-md px-2 text-left text-[13px] text-foreground",
-                    i === activeIdx ? "bg-hover" : "hover:bg-hover",
-                  )}
-                  onMouseDown={(ev) => {
-                    ev.preventDefault();
-                    pickSuggestion(email);
-                  }}
-                >
-                  {email}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <EmailChipInput
+        emails={emails}
+        onChange={onChange}
+        disabled={disabled}
+        suggestions={suggestions}
+        max={MAX_PER_LIST}
+        onError={setError}
+      />
       <p className="pt-1 text-xs text-muted-foreground">{helper}</p>
       {error && <p className="text-xs text-destructive">{error}</p>}
     </ComposerRow>

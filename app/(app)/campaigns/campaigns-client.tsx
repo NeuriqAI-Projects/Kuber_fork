@@ -20,7 +20,7 @@ import { SearchInput } from "@/components/ui/search-input";
 import { ServiceHealthBanner } from "@/components/app/service-health-banner";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { PageHeader, Toolbar } from "@/components/ui/page-header";
-import { Pill } from "@/components/ui/pill";
+import { Pill, type PillColor } from "@/components/ui/pill";
 import { Avatar } from "@/components/leads/lead-ui";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -29,13 +29,12 @@ import {
 
 type CampaignStatus = "Draft" | "Live" | "Paused";
 
-// Attio tag pairs: pale fill + dark text in light mode, low-alpha fill + light
-// text in dark mode (see root CLAUDE.md "Tags / status pills").
-const CAMPAIGN_STATUS_STYLES: Record<string, { badge: string; dot: string }> = {
-  Draft:     { badge: "bg-secondary text-muted-foreground border-border", dot: "bg-zinc-400" },
-  Scheduled: { badge: "bg-blue-100 text-blue-800 border-blue-200/70 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/25", dot: "bg-blue-500" },
-  Live:      { badge: "bg-green-100 text-green-800 border-green-200/70 dark:bg-green-500/15 dark:text-green-300 dark:border-green-500/25", dot: "bg-green-500" },
-  Paused:    { badge: "bg-amber-100 text-amber-800 border-amber-200/70 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25", dot: "bg-amber-500" },
+// Status tag colour + the dot before the campaign name.
+const CAMPAIGN_STATUS_STYLES: Record<string, { color: PillColor; dot: string }> = {
+  Draft:     { color: "neutral", dot: "bg-zinc-400" },
+  Scheduled: { color: "blue",    dot: "bg-blue-500" },
+  Live:      { color: "green",   dot: "bg-green-500" },
+  Paused:    { color: "amber",   dot: "bg-amber-500" },
 };
 
 /** createdAt is a yyyy-mm-dd day; show it the way the rest of the app does. */
@@ -237,7 +236,7 @@ export function CampaignsClient() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Pill shape="sm" className={style.badge}>{c.status}</Pill>
+                      <Pill shape="sm" color={style.color}>{c.status}</Pill>
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">
                       {c.humanInLoop ? "Human review" : "Auto-send"}

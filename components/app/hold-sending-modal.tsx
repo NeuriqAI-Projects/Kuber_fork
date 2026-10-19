@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { ModalShell } from "@/components/ui/modal-shell";
 import { Button } from "@/components/ui/button";
 import { X, PauseCircle, Loader2 } from "lucide-react";
 
@@ -20,96 +19,83 @@ interface HoldSendingModalProps {
   onCancel: () => void;
 }
 
-export function HoldSendingModal(props: HoldSendingModalProps) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
-  if (!mounted) return null;
-  return createPortal(<HoldSendingModalInner {...props} />, document.body);
-}
-
-function HoldSendingModalInner({
+export function HoldSendingModal({
   sent, waiting, unwritten, thenRegenerate, submitting, onConfirm, onCancel,
 }: HoldSendingModalProps) {
   const stoppable = waiting + unwritten;
 
   return (
-    // `data-confirm-dialog-root` + forced `pointer-events-auto`: this portals to
-    // document.body while the campaign drawer (a Radix Dialog) is open behind it,
-    // and Radix sets `pointer-events: none` on <body> while open — without this
-    // every button here is unclickable. Same treatment as regenerate-drafts-modal.
-    <div data-confirm-dialog-root className="fixed inset-0 z-200 flex items-center justify-center pointer-events-auto">
-      <div className="absolute inset-0 bg-black/25 dark:bg-black/60" onClick={submitting ? undefined : onCancel} />
+    // Opens over the campaign drawer, so it uses ModalShell (portal + z-200 +
+    // data-confirm-dialog-root) rather than DialogContent.
+    <ModalShell onClose={onCancel} closeDisabled={submitting} className="max-w-md">
+      <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <PauseCircle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <h2 className="text-[15px] font-semibold leading-tight">Hold sending?</h2>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          disabled={submitting}
+          onClick={onCancel}
+          aria-label="Close"
+          className="-mr-1 shrink-0 text-muted-foreground hover:text-foreground"
+        >
+          <X />
+        </Button>
+      </div>
 
-      <div className="relative w-full max-w-md mx-4 rounded-xl border border-border bg-popover text-popover-foreground shadow-xl">
-        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <PauseCircle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-            <h2 className="text-[15px] font-semibold leading-tight">Hold sending?</h2>
+      <div className="space-y-4 px-5 py-4">
+        <div className="space-y-2">
+          <div className="flex items-baseline gap-2">
+            <span className="text-lg font-semibold tabular-nums">{stoppable}</span>
+            <span className="text-sm text-muted-foreground">
+              follow-up{stoppable === 1 ? "" : "s"} will be held and stay editable
+            </span>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            disabled={submitting}
-            onClick={onCancel}
-            aria-label="Close"
-            className="-mr-1 shrink-0 text-muted-foreground hover:text-foreground"
-          >
-            <X />
-          </Button>
+          {waiting > 0 && unwritten > 0 && (
+            <p className="pl-1 text-xs text-muted-foreground">
+              <span className="tabular-nums">{waiting}</span> already written
+              {" · "}
+              <span className="tabular-nums">{unwritten}</span> not written yet
+            </p>
+          )}
         </div>
 
-        <div className="space-y-4 px-5 py-4">
-          <div className="space-y-2">
+        {sent > 0 && (
+          <div className="rounded-lg border border-border bg-secondary px-3 py-2.5">
             <div className="flex items-baseline gap-2">
-              <span className="text-lg font-semibold tabular-nums">{stoppable}</span>
-              <span className="text-sm text-muted-foreground">
-                follow-up{stoppable === 1 ? "" : "s"} will be held and stay editable
+              <span className="text-sm font-semibold tabular-nums">{sent}</span>
+              <span className="text-xs text-muted-foreground">
+                already went out — these cannot be changed
               </span>
             </div>
-            {waiting > 0 && unwritten > 0 && (
-              <p className="pl-1 text-xs text-muted-foreground">
-                <span className="tabular-nums">{waiting}</span> already written
-                {" · "}
-                <span className="tabular-nums">{unwritten}</span> not written yet
-              </p>
-            )}
+            {/* Our "sent" count comes from Instantly's webhook, and measured
+                across 820 real sends 13% of those arrived up to 15 minutes
+                late. Saying so beats showing a number that silently grows. */}
+            <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+              This number may rise for a few minutes as Instantly reports in.
+            </p>
           </div>
+        )}
 
-          {sent > 0 && (
-            <div className="rounded-lg border border-border bg-secondary px-3 py-2.5">
-              <div className="flex items-baseline gap-2">
-                <span className="text-sm font-semibold tabular-nums">{sent}</span>
-                <span className="text-xs text-muted-foreground">
-                  already went out — these cannot be changed
-                </span>
-              </div>
-              {/* Our "sent" count comes from Instantly's webhook, and measured
-                  across 820 real sends 13% of those arrived up to 15 minutes
-                  late. Saying so beats showing a number that silently grows. */}
-              <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
-                This number may rise for a few minutes as Instantly reports in.
-              </p>
-            </div>
-          )}
-
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            Holding stops the whole campaign, not one step — Instantly has no
-            per-step pause. Other steps are days apart, so they are only delayed.
-            Nothing is lost: everything held goes out when you resume.
-          </p>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-          <Button type="button" variant="outline" size="sm" disabled={submitting} onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button type="button" size="sm" disabled={submitting} onClick={onConfirm}>
-            {submitting ? <Loader2 className="animate-spin" /> : <PauseCircle />}
-            {thenRegenerate ? "Hold sending, then regenerate" : "Hold sending"}
-          </Button>
-        </div>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Holding stops the whole campaign, not one step — Instantly has no
+          per-step pause. Other steps are days apart, so they are only delayed.
+          Nothing is lost: everything held goes out when you resume.
+        </p>
       </div>
-    </div>
+
+      <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+        <Button type="button" variant="outline" size="sm" disabled={submitting} onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="button" size="sm" disabled={submitting} onClick={onConfirm}>
+          {submitting ? <Loader2 className="animate-spin" /> : <PauseCircle />}
+          {thenRegenerate ? "Hold sending, then regenerate" : "Hold sending"}
+        </Button>
+      </div>
+    </ModalShell>
   );
 }

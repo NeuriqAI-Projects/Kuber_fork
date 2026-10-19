@@ -12,8 +12,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { StatTile } from "@/components/ui/stat-tile";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  UsageHeader, UsagePanel, UsageEmpty, UsageNotice, UsageProgress, UsageStatus, useCachedUsage,
+  UsageHeader, UsageEmpty, UsageNotice, UsageProgress, UsageStatus, useCachedUsage,
 } from "@/components/app/usage-header";
+import { Panel } from "@/components/ui/panel";
 import { UsageBarChart, CHART_COLORS } from "@/components/app/usage-bar-chart";
 import {
   UsageHeaderSkeleton, StatTileGridSkeleton, ChartCardSkeleton, RowsCardSkeleton, ProgressRowSkeleton,
@@ -273,13 +274,13 @@ export function ApolloUsageView() {
             />
           </div>
 
-          <UsagePanel title="All credit pools" description="Live from Apollo.">
+          <Panel title="All credit pools" description="Live from Apollo.">
             <div className="grid sm:grid-cols-2 gap-x-8 gap-y-3.5">
               {(Object.keys(CREDIT_POOL_LABELS) as (keyof ApolloCreditUsageStats)[]).map((k) => (
                 <CreditPoolRow key={k} label={CREDIT_POOL_LABELS[k]} w={creditUsage[k]} />
               ))}
             </div>
-          </UsagePanel>
+          </Panel>
         </div>
       ) : (
         <p className="text-[13px] text-muted-foreground">Loading live team credits…</p>
@@ -310,15 +311,15 @@ export function ApolloUsageView() {
         </div>
       </div>
 
-      <UsagePanel
+      <Panel
         title="Credits consumed"
         description="Last 14 days, from every email reveal and company search this app has run."
         aside={<span className="text-[13px] font-semibold text-foreground">{consumed.allTime.toLocaleString()} total (90d)</span>}
       >
         <UsageBarChart data={chartData} bars={[{ dataKey: "credits", name: "Credits", color: CHART_COLORS.primary }]} />
-      </UsagePanel>
+      </Panel>
 
-      <UsagePanel
+      <Panel
         title="API rate limits"
         description={<>Live from Apollo&apos;s usage_stats endpoint — the closest thing to &quot;usage&quot; their API actually exposes.</>}
       >
@@ -335,9 +336,9 @@ export function ApolloUsageView() {
             ))}
           </div>
         )}
-      </UsagePanel>
+      </Panel>
 
-      <UsagePanel title="Recent activity" description="Every email reveal, company search and skipped/failed attempt, most recent first.">
+      <Panel title="Recent activity" description="Every email reveal, company search and skipped/failed attempt, most recent first.">
         {history.length === 0 ? (
           <UsageEmpty>No Apollo activity recorded yet.</UsageEmpty>
         ) : (
@@ -376,7 +377,7 @@ export function ApolloUsageView() {
           </div>
           )}</Paged>
         )}
-      </UsagePanel>
+      </Panel>
     </div>
   );
 }

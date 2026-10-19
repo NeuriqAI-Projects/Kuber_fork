@@ -1,6 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
 import {
   AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -19,6 +18,7 @@ import { StatTile } from "@/components/ui/stat-tile";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
 import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
 
 // ─── Chart helpers ────────────────────────────────────────────────────────────
 
@@ -54,31 +54,6 @@ function ChartTooltip({ active, payload, label }: {
         </div>
       ))}
     </div>
-  );
-}
-
-/** Attio report panel: flat card with a small title + muted description header. */
-function Panel({
-  title, description, action, className, bodyClassName, children,
-}: {
-  title: string;
-  description?: string;
-  action?: ReactNode;
-  className?: string;
-  bodyClassName?: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className={cn("flex flex-col rounded-lg border border-border bg-card", className)}>
-      <header className="flex min-h-12 items-center justify-between gap-3 border-b border-border px-4 py-2.5">
-        <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold leading-tight">{title}</h3>
-          {description && <p className="mt-0.5 truncate text-xs text-muted-foreground">{description}</p>}
-        </div>
-        {action}
-      </header>
-      <div className={cn("flex-1 p-4", bodyClassName)}>{children}</div>
-    </section>
   );
 }
 
@@ -213,10 +188,11 @@ export function DashboardView({
           {/* ── Pipeline trend + stage split ── */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <Panel
+              truncate
               className="lg:col-span-2"
               title="Pipeline growth"
               description="Total leads, cumulative over the last 6 months"
-              action={<TrendingUp className="size-4 shrink-0 text-muted-foreground" />}
+              actions={<TrendingUp className="size-4 shrink-0 text-muted-foreground" />}
             >
               <ResponsiveContainer width="100%" height={240}>
                 <AreaChart data={pipelineGrowth} margin={{ left: -16, right: 4, top: 8, bottom: 0 }}>
@@ -241,7 +217,7 @@ export function DashboardView({
               </ResponsiveContainer>
             </Panel>
 
-            <Panel title="Stage distribution" description="Leads across pipeline stages">
+            <Panel truncate title="Stage distribution" description="Leads across pipeline stages">
               {stageDonutData.length === 0 ? (
                 <EmptyState
                   boxed={false}
@@ -277,7 +253,7 @@ export function DashboardView({
 
           {/* ── Replies ── */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <Panel title="Reply temperature" description="How prospects who replied were classified">
+            <Panel truncate title="Reply temperature" description="How prospects who replied were classified">
               {temperatureData.length === 0 ? (
                 <EmptyState boxed={false} message="No replies classified yet" className="h-[180px] py-0" />
               ) : (
@@ -305,11 +281,12 @@ export function DashboardView({
             </Panel>
 
             <Panel
+              truncate
               className="lg:col-span-2"
               bodyClassName="p-0"
               title="Needs your review"
               description="Reply drafts waiting for approval, across all campaigns"
-              action={
+              actions={
                 pendingReplies.length > 0 ? (
                   <span className="rounded-[4px] bg-secondary px-1.5 py-0.5 text-xs font-medium tabular-nums">
                     {pendingReplies.length}
@@ -345,11 +322,12 @@ export function DashboardView({
           {/* ── Batches + goals ── */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <Panel
+              truncate
               className="lg:col-span-2"
               bodyClassName="p-0"
               title="Batches"
               description="Click a batch to view its leads"
-              action={<Tags className="size-4 shrink-0 text-muted-foreground" />}
+              actions={<Tags className="size-4 shrink-0 text-muted-foreground" />}
             >
               {imports.length === 0 ? (
                 <EmptyState
@@ -383,7 +361,7 @@ export function DashboardView({
             </Panel>
 
             <div className="space-y-4">
-              <Panel title="Monthly goals" bodyClassName="space-y-4">
+              <Panel truncate title="Monthly goals" bodyClassName="space-y-4">
                 {/* Leads is true month-to-date. Emails/Replies are lifetime campaign
                     counters — Instantly gives no per-month history and nothing local
                     records a send date, so there is no MTD figure to show.
@@ -415,7 +393,7 @@ export function DashboardView({
                 ))}
               </Panel>
 
-              <Panel title="Suggested actions" bodyClassName="p-1.5">
+              <Panel truncate title="Suggested actions" bodyClassName="p-1.5">
                 <ul>
                   {[
                     { text: "Review leads awaiting approval", action: () => onNavigate("leads")           },

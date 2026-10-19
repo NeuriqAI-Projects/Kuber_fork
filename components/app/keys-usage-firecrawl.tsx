@@ -6,8 +6,9 @@ import { Paged } from "@/components/ui/paged";
 import { StatTile } from "@/components/ui/stat-tile";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  UsageHeader, UsagePanel, UsageEmpty, UsageNotice, UsageProgress, UsageStatus, useCachedUsage,
+  UsageHeader, UsageEmpty, UsageNotice, UsageProgress, UsageStatus, useCachedUsage,
 } from "@/components/app/usage-header";
+import { Panel } from "@/components/ui/panel";
 import { UsageBarChart, CHART_COLORS } from "@/components/app/usage-bar-chart";
 import {
   UsageHeaderSkeleton, StatTileGridSkeleton, ChartCardSkeleton, RowsCardSkeleton,
@@ -137,7 +138,7 @@ export function FirecrawlUsageView() {
         />
       </div>
 
-      <UsagePanel
+      <Panel
         title="Scrape activity"
         description="Live Firecrawl calls this app made for org enrichment, last 14 days."
         aside={<span className="text-[13px] font-semibold text-foreground">{activity.allTime.toLocaleString()} total (90d)</span>}
@@ -153,9 +154,9 @@ export function FirecrawlUsageView() {
             ]}
           />
         )}
-      </UsagePanel>
+      </Panel>
 
-      <UsagePanel title="Recent activity" description="Every org scrape attempt, most recent first.">
+      <Panel title="Recent activity" description="Every org scrape attempt, most recent first.">
         {history.length === 0 ? (
           <UsageEmpty>No Firecrawl activity recorded yet.</UsageEmpty>
         ) : (
@@ -198,7 +199,7 @@ export function FirecrawlUsageView() {
           </div>
           )}</Paged>
         )}
-      </UsagePanel>
+      </Panel>
     </div>
   );
 }
