@@ -5,9 +5,11 @@ import { toast } from "sonner";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   User, Bot, LogOut, Plus,
-  ChevronRight, PenLine, Type, Palette, Check, Sun, Moon,
+  PenLine, Type, Palette, Check, Sun, Moon,
   Building2, Package, FileText, X, Lock, Tags, Pencil, Loader2,
+  KeyRound, Users, Mail, Code2, Reply, Settings as SettingsIcon,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +19,8 @@ import { AvailabilityToggle } from "@/components/ui/availability-toggle";
 import { LEAD_TEMPLATE_VARS } from "@/components/ui/template-var-textarea";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
 // Aliased: this file also declares its own local RichTextEditor further down
 // (a plain-text-output contentEditable wrapper, correct for prompt fields fed
 // to an LLM). followup_fallback_body is genuinely HTML — campaign-fanout.ts's
@@ -37,7 +41,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 
 const TeamView = dynamic(
   () => import("@/components/app/team-view").then((m) => m.TeamView),
-  { ssr: false, loading: () => <div className="p-8 animate-pulse"><div className="h-40 rounded-xl bg-secondary" /></div> },
+  { ssr: false, loading: () => <div className="animate-pulse"><div className="h-40 rounded-lg bg-secondary" /></div> },
 );
 
 // tiptap: only the follow-up fallback / HTML sections use it — load on demand.
@@ -48,7 +52,7 @@ const HtmlRichTextEditor = dynamic(
 
 const EmailSendingView = dynamic(
   () => import("@/components/app/email-sending-view").then((m) => m.EmailSendingView),
-  { ssr: false, loading: () => <div className="p-8 animate-pulse"><div className="h-40 rounded-xl bg-secondary" /></div> },
+  { ssr: false, loading: () => <div className="animate-pulse"><div className="h-40 rounded-lg bg-secondary" /></div> },
 );
 
 type Section = "profile" | "ai" | "knowledge" | "appearance" | "account" | "team" | "email";
@@ -68,17 +72,17 @@ const FOLLOWUP_FALLBACK_TEMPLATE_VARS: TemplateVar[] = [
 // context and product library more than managers do. Prompt-shaped company
 // defaults (Email Template, Reply AI, Footer) remain manager-only.
 const NAV_ITEMS: { id: Section; label: string }[] = [
-  { id: "profile",    label: "My Profile" },
-  { id: "ai",         label: "AI & Outreach" },
-  { id: "knowledge",  label: "Knowledge Sources" },
+  { id: "profile",    label: "My profile" },
+  { id: "ai",         label: "AI & outreach" },
+  { id: "knowledge",  label: "Knowledge sources" },
   { id: "appearance", label: "Appearance" },
   { id: "account",    label: "Account" },
 ];
 
 const MANAGER_NAV_ITEMS: { id: Section; label: string }[] = [
-  { id: "profile",    label: "My Profile" },
-  { id: "ai",         label: "AI & Outreach" },
-  { id: "knowledge",  label: "Knowledge Sources" },
+  { id: "profile",    label: "My profile" },
+  { id: "ai",         label: "AI & outreach" },
+  { id: "knowledge",  label: "Knowledge sources" },
   { id: "appearance", label: "Appearance" },
   { id: "account",    label: "Account" },
   { id: "team",       label: "Team" },
@@ -87,23 +91,23 @@ const MANAGER_NAV_ITEMS: { id: Section; label: string }[] = [
 // Personal tabs (everyone — stored per user, campaigns you create use these) vs
 // company-default tabs (managers only — the fallback every user inherits).
 const PERSONAL_AI_NAV_ITEMS: { id: AiSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: "my-writing",   label: "My Writing",   icon: PenLine },
-  { id: "my-signature", label: "My Signature", icon: Type },
+  { id: "my-writing",   label: "My writing",   icon: PenLine },
+  { id: "my-signature", label: "My signature", icon: Type },
 ];
 
 const COMPANY_AI_NAV_ITEMS: { id: AiSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: "template", label: "Email Template",  icon: PenLine },
+  { id: "template", label: "Email template",  icon: PenLine },
   { id: "default",  label: "Default draft",   icon: FileText },
-  { id: "followup", label: "Follow-up fallback", icon: FileText },
-  { id: "html",     label: "HTML emails",     icon: FileText },
+  { id: "followup", label: "Follow-up fallback", icon: Reply },
+  { id: "html",     label: "HTML emails",     icon: Code2 },
   { id: "replies",  label: "Reply AI",        icon: Bot },
-  { id: "footer",   label: "Email Footer",    icon: Type },
+  { id: "footer",   label: "Email footer",    icon: Type },
 ];
 
 const KNOWLEDGE_NAV_ITEMS: { id: KnowledgeSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: "company",   label: "Company Details",   icon: Building2 },
-  { id: "products",  label: "Product Offerings", icon: Package },
-  { id: "industry-segments", label: "Industry Segments", icon: Tags },
+  { id: "company",   label: "Company details",   icon: Building2 },
+  { id: "products",  label: "Product offerings", icon: Package },
+  { id: "industry-segments", label: "Industry segments", icon: Tags },
 ];
 
 // The prompt editor moved to components/ui/prompt-editor.tsx when Model Lab
@@ -123,13 +127,55 @@ function SettingsRow({
   label: string; description?: React.ReactNode; children: React.ReactNode; htmlFor?: string;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-2 py-5 border-b border-border last:border-0 sm:grid-cols-3 sm:gap-6">
-      <div className="sm:col-span-1">
-        <Label htmlFor={htmlFor} className="text-sm font-medium text-foreground">{label}</Label>
-        {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
+    <div className="grid grid-cols-1 gap-2 py-4 border-b border-border last:border-0 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] sm:gap-8">
+      <div>
+        <Label htmlFor={htmlFor} className="text-[13px] font-medium text-foreground">{label}</Label>
+        {description && <p className="text-[13px] text-muted-foreground mt-0.5">{description}</p>}
       </div>
-      <div className="sm:col-span-2 min-w-0">{children}</div>
+      <div className="min-w-0">{children}</div>
     </div>
+  );
+}
+
+// Attio settings section header: title + muted description, a 1px rule under
+// it, optional tag/action on the right.
+function SectionHeader({
+  title, description, aside, info,
+}: {
+  title: string; description?: React.ReactNode; aside?: React.ReactNode; info?: string;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-border pb-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5">
+          <h3 className="text-[15px] font-semibold leading-tight">{title}</h3>
+          {info && <InfoTooltip text={info} />}
+        </div>
+        {description && <p className="mt-1 text-[13px] text-muted-foreground">{description}</p>}
+      </div>
+      {aside && <div className="shrink-0">{aside}</div>}
+    </div>
+  );
+}
+
+// "Personal" vs "Using company default" tag next to a personal prompt.
+function OverrideTag({ personal }: { personal: boolean }) {
+  return (
+    <span className={cn(
+      "inline-flex items-center rounded-[5px] px-1.5 py-[3px] text-xs font-medium leading-none whitespace-nowrap",
+      personal ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground",
+    )}>
+      {personal ? "Personal" : "Using company default"}
+    </span>
+  );
+}
+
+function InheritedDefault({ text, maxH = "max-h-64" }: { text: string; maxH?: string }) {
+  return (
+    <details className="rounded-md border border-border bg-secondary p-3 text-xs text-muted-foreground">
+      <summary className="cursor-pointer select-none font-medium text-foreground">View the company default you&apos;re inheriting</summary>
+      <pre className={cn("mt-2 overflow-y-auto whitespace-pre-wrap font-sans", maxH)}>{text}</pre>
+    </details>
   );
 }
 
@@ -145,15 +191,15 @@ function MandatoryFormattingNotice() {
     .filter((line) => line.trim().startsWith("- "))
     .map((line) => line.trim().slice(2));
   return (
-    <div className="rounded-md border border-primary/20 bg-primary/5 p-3 space-y-2">
+    <div className="rounded-md border border-border bg-secondary p-3 space-y-2">
       <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-        <Lock className="size-3.5 text-primary" />
+        <Lock className="size-3.5 text-muted-foreground" />
         Always applied on top of the prompt above
       </div>
       <ul className="space-y-1 pl-1 text-xs text-muted-foreground">
         {bullets.map((bullet, i) => (
           <li key={i} className="flex gap-1.5">
-            <span className="text-primary/70">•</span>
+            <span className="text-muted-foreground">•</span>
             <span>{bullet}</span>
           </li>
         ))}
@@ -198,10 +244,9 @@ function AvailabilityCard() {
   }
 
   return (
-    <div className="border-t border-border pt-6 flex items-center justify-between gap-4">
+    <div className="py-4 flex items-center justify-between gap-4">
       <div className="min-w-0">
-        <p className="eyebrow">Assignment</p>
-        <p className="text-sm font-medium flex items-center gap-2 mt-1">
+        <p className="text-[13px] font-medium flex items-center gap-2">
           Availability
           {status && (
             <span
@@ -213,7 +258,7 @@ function AvailabilityCard() {
             />
           )}
         </p>
-        <p className="text-xs text-muted-foreground mt-0.5">
+        <p className="text-[13px] text-muted-foreground mt-0.5">
           {status === "offline"
             ? "You're marked away — you won't receive new automatic lead assignments (you can still be assigned manually)."
             : "You're available for new automatic lead assignments."}
@@ -238,7 +283,7 @@ export function SettingsView() {
   // runs unconditionally on every render.
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const navItems = isManager
-    ? [...MANAGER_NAV_ITEMS, { id: "email" as const, label: "Email & Sending" }]
+    ? [...MANAGER_NAV_ITEMS, { id: "email" as const, label: "Email & sending" }]
     : NAV_ITEMS;
   const aiNavItems = isManager ? [...PERSONAL_AI_NAV_ITEMS, ...COMPANY_AI_NAV_ITEMS] : PERSONAL_AI_NAV_ITEMS;
   // Company Details is company identity (sender name, context, logo) — manager /
@@ -327,12 +372,44 @@ export function SettingsView() {
   const activeKnowledgeSection: KnowledgeSection = (!isManager && knowledgeSection === "company") ? "products" : knowledgeSection;
   const activeKnowledgeNavItem = KNOWLEDGE_NAV_ITEMS.find((i) => i.id === activeKnowledgeSection);
 
+  // One Attio-style settings nav: every leaf (including the AI and Knowledge
+  // sub-tabs, which used to be a second sidebar) sits in a labelled group.
+  type NavEntry = { key: string; label: string; icon: LucideIcon | React.ComponentType<{ className?: string }>; section: Section; ai?: AiSection; knowledge?: KnowledgeSection };
+  const SECTION_ICONS: Record<Section, LucideIcon> = {
+    profile: User, ai: PenLine, knowledge: Building2, appearance: Palette, account: KeyRound, team: Users, email: Mail,
+  };
+  const sectionEntry = (id: Section): NavEntry | null => {
+    const item = navItems.find((n) => n.id === id);
+    return item ? { key: id, label: item.label, icon: SECTION_ICONS[id], section: id } : null;
+  };
+  const navGroups: { label: string; items: NavEntry[] }[] = [
+    { label: "Personal", items: [sectionEntry("profile"), sectionEntry("appearance"), sectionEntry("account")].filter((e): e is NavEntry => !!e) },
+    { label: "AI & outreach", items: PERSONAL_AI_NAV_ITEMS.map((i) => ({ key: `ai-${i.id}`, label: i.label, icon: i.icon, section: "ai" as const, ai: i.id })) },
+    ...(isManager
+      ? [{ label: "Company defaults", items: COMPANY_AI_NAV_ITEMS.map((i) => ({ key: `ai-${i.id}`, label: i.label, icon: i.icon, section: "ai" as const, ai: i.id })) }]
+      : []),
+    { label: "Knowledge sources", items: knowledgeNavItems.map((i) => ({ key: `kn-${i.id}`, label: i.label, icon: i.icon, section: "knowledge" as const, knowledge: i.id })) },
+    ...(isManager
+      ? [{ label: "Workspace", items: [sectionEntry("team"), sectionEntry("email")].filter((e): e is NavEntry => !!e) }]
+      : []),
+  ];
+  const isActiveEntry = (e: NavEntry) =>
+    e.section === section &&
+    (!e.ai || e.ai === aiSection) &&
+    (!e.knowledge || e.knowledge === activeKnowledgeSection);
+  const openEntry = (e: NavEntry) => {
+    setSection(e.section);
+    if (e.ai) setAiSection(e.ai);
+    if (e.knowledge) setKnowledgeSection(e.knowledge);
+  };
+
   // The breadcrumb shows the ancestor trail; the deepest active item becomes the page title.
   const sectionLabel = navItems.find((n) => n.id === section)?.label ?? "Settings";
   const pageTitle =
     (section === "ai" && activeAiNavItem?.label) ||
     (section === "knowledge" && activeKnowledgeNavItem?.label) ||
     sectionLabel;
+  const activeGroupLabel = navGroups.find((g) => g.items.some(isActiveEntry))?.label;
 
   // Layout effect: the cached copy is applied before the first paint, so a
   // revisit never flashes the skeleton for a frame.
@@ -696,35 +773,22 @@ export function SettingsView() {
   }
 
   const contentSkeleton = loading ? (
-    <div className="mx-auto w-full max-w-5xl p-8 space-y-8 animate-pulse">
-      {/* Header row */}
-      <div className="flex items-center justify-between border-b border-border pb-4">
-        <div className="space-y-2">
-          <div className="h-3 w-16 bg-border/60 rounded" />
-          <div className="h-6 w-32 bg-border/60 rounded" />
-        </div>
-        <div className="h-6 w-20 bg-border/60 rounded-full" />
+    <div className="mx-auto w-full max-w-3xl px-8 py-6 space-y-6 animate-pulse">
+      <div className="space-y-2">
+        <div className="h-5 w-32 bg-secondary rounded" />
+        <div className="h-3 w-64 bg-secondary rounded" />
       </div>
-
-      {/* Avatar + name row */}
-      <div className="flex items-center gap-4 py-4 border-b border-border">
-        <div className="size-12 rounded-md bg-border/60" />
-        <div className="space-y-2">
-          <div className="h-4 w-28 bg-border/60 rounded" />
-          <div className="h-3 w-40 bg-border/40 rounded" />
-        </div>
-      </div>
-
-      {/* Settings rows */}
-      {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="flex items-start justify-between gap-8 py-5 border-b border-border last:border-0">
-          <div className="space-y-1.5 w-48">
-            <div className="h-4 w-28 bg-border/60 rounded" />
-            <div className="h-3 w-full bg-border/40 rounded" />
+      <div>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="flex items-center justify-between gap-8 py-4 border-b border-border last:border-0">
+            <div className="space-y-1.5 w-48">
+              <div className="h-3.5 w-28 bg-secondary rounded" />
+              <div className="h-3 w-full bg-secondary rounded" />
+            </div>
+            <div className="h-8 flex-1 max-w-sm bg-secondary rounded-md" />
           </div>
-          <div className="h-9 flex-1 max-w-sm bg-border/40 rounded-lg" />
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   ) : null;
 
@@ -734,98 +798,69 @@ export function SettingsView() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Breadcrumb + page title */}
-      <div className="px-8 py-5 border-b border-border shrink-0">
-        <div className="eyebrow flex items-center gap-1.5">
-          <span>Settings</span>
-          {sectionLabel !== pageTitle && (
-            <><ChevronRight className="size-3" /><span>{sectionLabel}</span></>
-          )}
-        </div>
-        <h1 className="font-display text-2xl font-semibold mt-1">{pageTitle}</h1>
-      </div>
+      <PageHeader
+        crumbs={[
+          { label: "Settings", icon: <SettingsIcon /> },
+          ...(activeGroupLabel ? [{ label: activeGroupLabel }] : []),
+          { label: pageTitle },
+        ]}
+      />
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Primary sidebar */}
-        <aside className="w-56 shrink-0 border-r border-border p-4 flex flex-col gap-1 overflow-y-auto">
-          <p className="eyebrow px-2 mb-1">General</p>
-          {navItems.map(({ id, label }) => (
-            <Button key={id} type="button" variant="ghost" onClick={() => setSection(id)}
-              className={cn("h-auto w-full justify-start px-3 py-2.5 rounded-md text-sm font-medium",
-                section === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary")}>
-              {label}
-            </Button>
+        {/* Settings nav */}
+        <aside className="w-56 shrink-0 border-r border-border overflow-y-auto px-2 py-3">
+          {navGroups.filter((g) => g.items.length > 0).map((group, gi) => (
+            <div key={group.label} className={cn(gi > 0 && "mt-4")}>
+              <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">{group.label}</p>
+              <div className="space-y-px">
+                {group.items.map((entry) => {
+                  const active = isActiveEntry(entry);
+                  const Icon = entry.icon;
+                  return (
+                    <button
+                      key={entry.key}
+                      type="button"
+                      onClick={() => openEntry(entry)}
+                      aria-current={active ? "page" : undefined}
+                      className={cn(
+                        "flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium transition-colors",
+                        active ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-hover hover:text-foreground",
+                      )}
+                    >
+                      <Icon className="size-4 shrink-0" />
+                      <span className="truncate">{entry.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           ))}
         </aside>
-
-        {/* AI secondary sidebar */}
-        {section === "ai" && (
-          <aside className="w-56 shrink-0 border-r border-border p-4 flex flex-col gap-1 overflow-y-auto">
-            <p className="eyebrow px-2 mb-1">Personal</p>
-            {PERSONAL_AI_NAV_ITEMS.map(({ id, label, icon: Icon }) => (
-              <Button key={id} type="button" variant="ghost" onClick={() => setAiSection(id)}
-                className={cn("h-auto w-full justify-start gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium",
-                  aiSection === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary")}>
-                <Icon className="size-4 shrink-0" /><span className="truncate">{label}</span>
-              </Button>
-            ))}
-            {isManager && (
-              <>
-                <p className="eyebrow px-2 mb-1 mt-4">Company defaults</p>
-                {COMPANY_AI_NAV_ITEMS.map(({ id, label, icon: Icon }) => (
-                  <Button key={id} type="button" variant="ghost" onClick={() => setAiSection(id)}
-                    className={cn("h-auto w-full justify-start gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium",
-                      aiSection === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary")}>
-                    <Icon className="size-4 shrink-0" /><span className="truncate">{label}</span>
-                  </Button>
-                ))}
-              </>
-            )}
-          </aside>
-        )}
-
-        {/* Knowledge secondary sidebar */}
-        {section === "knowledge" && (
-          <aside className="w-56 shrink-0 border-r border-border p-4 flex flex-col gap-1 overflow-y-auto">
-            <p className="eyebrow px-2 mb-1">Knowledge Sources</p>
-            {knowledgeNavItems.map(({ id, label, icon: Icon }) => (
-              <Button key={id} type="button" variant="ghost" onClick={() => setKnowledgeSection(id)}
-                className={cn("h-auto w-full justify-start gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium",
-                  activeKnowledgeSection === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary")}>
-                <Icon className="size-4 shrink-0" /><span className="truncate">{label}</span>
-              </Button>
-            ))}
-          </aside>
-        )}
 
         {/* Content */}
         <div className="relative flex-1 overflow-y-auto">
           {contentSkeleton}
 
           {!loading && (
-            <div className="mx-auto w-full max-w-5xl p-8 space-y-8">
+            <div className={cn("mx-auto w-full px-8 py-6", section === "team" || section === "email" ? "max-w-5xl" : "max-w-3xl space-y-8")}>
+              {section !== "team" && section !== "email" && (
+                <h1 className="mb-6 text-lg font-semibold leading-tight">{pageTitle}</h1>
+              )}
 
               {/* ── Profile ── */}
               {section === "profile" && (
-                <div className="enter">
-                  <div className="flex items-center justify-between border-b border-border pb-4">
-                    <div>
-                      <p className="eyebrow">Account</p>
-                      <h2 className="font-display text-lg font-semibold mt-0.5">My Profile</h2>
+                <div>
+                  <div className="flex items-center gap-3 py-4 border-b border-border">
+                    <div className="size-10 rounded-md bg-secondary border border-border flex items-center justify-center shrink-0">
+                      <User className="size-4 text-muted-foreground" />
                     </div>
-                    <span className="text-[11px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-sm">{userName || "Admin"}</p>
+                      <p className="text-[13px] text-muted-foreground truncate">{userEmail}</p>
+                    </div>
+                    <span className="shrink-0 rounded-[5px] bg-primary/10 px-1.5 py-[3px] text-xs font-medium leading-none text-primary">
                       {isSuperAdmin ? "Super Admin" : role === "manager" ? "Manager" : role === "employee" ? "Employee" : "—"}
                     </span>
-                  </div>
-
-                  <div className="flex items-center gap-4 py-6 border-b border-border swatch-bar pl-4">
-                    <div className="size-12 rounded-md bg-secondary border border-border flex items-center justify-center shrink-0">
-                      <User className="size-5 text-muted-foreground" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-semibold text-sm">{userName || "Admin"}</p>
-                      <p className="text-xs font-mono text-muted-foreground truncate">{userEmail}</p>
-                    </div>
                   </div>
 
                   <div>
@@ -833,41 +868,31 @@ export function SettingsView() {
                       <Input value={userName} onChange={(e) => setUserName(e.target.value)} placeholder="Admin" disabled className="max-w-sm" />
                     </SettingsRow>
                     <SettingsRow label="Email address" description="Managed through your Supabase auth account.">
-                      <Input value={userEmail} disabled className="max-w-sm font-mono text-xs" />
+                      <Input value={userEmail} disabled className="max-w-sm" />
                     </SettingsRow>
                   </div>
 
                   {/* Employees can mark themselves away (spec §2B). */}
-                  {role === "employee" && <AvailabilityCard />}
+                  {role === "employee" && (
+                    <div className="mt-6">
+                      <SectionHeader title="Assignment" />
+                      <AvailabilityCard />
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* ── AI & Outreach ── */}
               {section === "ai" && (
-                <div className="space-y-8 enter">
+                <div className="space-y-10">
                   {aiSection === "my-writing" && (
                     <>
-                      <section className="space-y-4 border-b border-border pb-8">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <PenLine className="size-4 text-muted-foreground" />
-                            <div>
-                              <p className="eyebrow">Writing style</p>
-                              <h3 className="font-display text-base font-semibold mt-0.5">My cold-email writing style</h3>
-                            </div>
-                          </div>
-                          <span className={cn(
-                            "rounded-full border px-2.5 py-1 text-[11px] leading-none font-medium shrink-0",
-                            myDraftPrompt.trim()
-                              ? "border-primary/20 bg-primary/10 text-primary"
-                              : "border-border bg-secondary text-muted-foreground",
-                          )}>
-                            <span className="translate-y-px inline-block">{myDraftPrompt.trim() ? "Personal" : "Using company default"}</span>
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground -mt-2">
-                          Campaigns <strong>you create</strong> generate their emails with this prompt. Leave it empty to write with the company default — other people&apos;s campaigns are never affected by what you put here.
-                        </p>
+                      <section className="space-y-4">
+                        <SectionHeader
+                          title="My cold-email writing style"
+                          description={<>Campaigns <strong>you create</strong> generate their emails with this prompt. Leave it empty to write with the company default — other people&apos;s campaigns are never affected by what you put here.</>}
+                          aside={<OverrideTag personal={!!myDraftPrompt.trim()} />}
+                        />
                         <RichTextEditor
                           label="My email template"
                           value={myDraftTemplate}
@@ -886,35 +911,15 @@ export function SettingsView() {
                           helper="Company details, the product library and campaign context are appended automatically. Structure, length and tone come from this prompt, so anything you want changed you change here."
                         />
                         <MandatoryFormattingNotice />
-                        {!myDraftPrompt.trim() && myDefaults.draft_prompt && (
-                          <details className="rounded-md border border-border bg-secondary p-3 text-xs text-muted-foreground">
-                            <summary className="cursor-pointer select-none font-medium text-foreground">View the company default you&apos;re inheriting</summary>
-                            <pre className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap font-sans">{myDefaults.draft_prompt}</pre>
-                          </details>
-                        )}
+                        {!myDraftPrompt.trim() && myDefaults.draft_prompt && <InheritedDefault text={myDefaults.draft_prompt} />}
                       </section>
 
                       <section className="space-y-4">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <Bot className="size-4 text-muted-foreground" />
-                            <div>
-                              <p className="eyebrow">Writing style</p>
-                              <h3 className="font-display text-base font-semibold mt-0.5">My reply writing style</h3>
-                            </div>
-                          </div>
-                          <span className={cn(
-                            "rounded-full border px-2.5 py-1 text-[11px] leading-none font-medium shrink-0",
-                            myReplyPrompt.trim()
-                              ? "border-primary/20 bg-primary/10 text-primary"
-                              : "border-border bg-secondary text-muted-foreground",
-                          )}>
-                            <span className="translate-y-px inline-block">{myReplyPrompt.trim() ? "Personal" : "Using company default"}</span>
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground -mt-2">
-                          AI reply suggestions for <strong>your campaigns&apos;</strong> conversations follow this prompt. Empty = company default.
-                        </p>
+                        <SectionHeader
+                          title="My reply writing style"
+                          description={<>AI reply suggestions for <strong>your campaigns&apos;</strong> conversations follow this prompt. Empty = company default.</>}
+                          aside={<OverrideTag personal={!!myReplyPrompt.trim()} />}
+                        />
                         <RichTextEditor
                           label="My reply prompt"
                           value={myReplyPrompt}
@@ -924,39 +929,19 @@ export function SettingsView() {
                           helper="Must return JSON with subject and body. Safety rules are appended automatically."
                         />
                         <MandatoryFormattingNotice />
-                        {!myReplyPrompt.trim() && myDefaults.reply_prompt && (
-                          <details className="rounded-md border border-border bg-secondary p-3 text-xs text-muted-foreground">
-                            <summary className="cursor-pointer select-none font-medium text-foreground">View the company default you&apos;re inheriting</summary>
-                            <pre className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap font-sans">{myDefaults.reply_prompt}</pre>
-                          </details>
-                        )}
+                        {!myReplyPrompt.trim() && myDefaults.reply_prompt && <InheritedDefault text={myDefaults.reply_prompt} />}
                       </section>
                     </>
                   )}
 
                   {aiSection === "my-signature" && (
                     <>
-                      <section className="space-y-4 border-b border-border pb-8">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <Type className="size-4 text-muted-foreground" />
-                            <div>
-                              <p className="eyebrow">Signature</p>
-                              <h3 className="font-display text-base font-semibold mt-0.5">My signature</h3>
-                            </div>
-                          </div>
-                          <span className={cn(
-                            "rounded-full border px-2.5 py-1 text-[11px] leading-none font-medium shrink-0",
-                            mySignature.trim()
-                              ? "border-primary/20 bg-primary/10 text-primary"
-                              : "border-border bg-secondary text-muted-foreground",
-                          )}>
-                            <span className="translate-y-px inline-block">{mySignature.trim() ? "Personal" : "Using company default"}</span>
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground -mt-2">
-                          Appended to every email of campaigns <strong>you create</strong> (cold emails and replies). A campaign&apos;s own signature override still wins. Empty = company footer.
-                        </p>
+                      <section className="space-y-4">
+                        <SectionHeader
+                          title="My signature"
+                          description={<>Appended to every email of campaigns <strong>you create</strong> (cold emails and replies). A campaign&apos;s own signature override still wins. Empty = company footer.</>}
+                          aside={<OverrideTag personal={!!mySignature.trim()} />}
+                        />
                         <RichTextEditor
                           label="Sign-off block"
                           value={mySignature}
@@ -965,22 +950,11 @@ export function SettingsView() {
                           singleLineBreaks
                           placeholder={"Your Name\nYour Title\nKuber Polyplast\n+91-XXXXXXXXXX"}
                         />
-                        {!mySignature.trim() && myDefaults.signature && (
-                          <details className="rounded-md border border-border bg-secondary p-3 text-xs text-muted-foreground">
-                            <summary className="cursor-pointer select-none font-medium text-foreground">View the company default you&apos;re inheriting</summary>
-                            <pre className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap font-sans">{myDefaults.signature}</pre>
-                          </details>
-                        )}
+                        {!mySignature.trim() && myDefaults.signature && <InheritedDefault text={myDefaults.signature} maxH="max-h-40" />}
                       </section>
 
                       <section>
-                        <div className="flex items-center gap-2 pb-1">
-                          <User className="size-4 text-muted-foreground" />
-                          <div>
-                            <p className="eyebrow">Sender</p>
-                            <h3 className="font-display text-base font-semibold mt-0.5">My sender name</h3>
-                          </div>
-                        </div>
+                        <SectionHeader title="My sender name" />
                         <SettingsRow
                           label="Sender name"
                           description={<>Pre-filled as the &quot;From&quot; name when you create a campaign. Empty = company default{myDefaults.sender_name ? ` (“${myDefaults.sender_name}”)` : ""}.</>}
@@ -993,16 +967,10 @@ export function SettingsView() {
 
                   {isManager && aiSection === "template" && (
                     <section className="space-y-4">
-                      <div className="flex items-center gap-2 border-b border-border pb-4">
-                        <Bot className="size-4 text-muted-foreground" />
-                        <div>
-                          <p className="eyebrow">Company default</p>
-                          <h3 className="font-display text-base font-semibold mt-0.5">AI Writing Instructions</h3>
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        The <strong>company default</strong> prompt for outreach emails — used by every campaign whose owner hasn&apos;t set a personal writing style. Put subject-line patterns, opening/closing options, offerings, key strengths, and tone here.
-                      </p>
+                      <SectionHeader
+                        title="AI writing instructions"
+                        description={<>The <strong>company default</strong> prompt for outreach emails — used by every campaign whose owner hasn&apos;t set a personal writing style. Put subject-line patterns, opening/closing options, offerings, key strengths, and tone here.</>}
+                      />
                       <RichTextEditor
                         label="Base prompt"
                         value={systemPrompt}
@@ -1017,16 +985,11 @@ export function SettingsView() {
 
                   {isManager && aiSection === "default" && (
                     <section className="space-y-4">
-                      <div className="flex items-center gap-2 border-b border-border pb-4">
-                        <FileText className="size-4 text-muted-foreground" />
-                        <div className="flex items-center gap-1.5">
-                          <div>
-                            <p className="eyebrow">Fallback</p>
-                            <h3 className="font-display text-base font-semibold mt-0.5">Default draft</h3>
-                          </div>
-                          <InfoTooltip text="Exact subject and body sent to unenriched / Input Required leads (no company profile to personalise). Enriched leads still use AI Writing Instructions. A greeting and signature are added automatically." />
-                        </div>
-                      </div>
+                      <SectionHeader
+                        title="Fallback email"
+                        description="Sent as-is to leads with no company profile to personalise from."
+                        info="Exact subject and body sent to unenriched / Input Required leads (no company profile to personalise). Enriched leads still use AI Writing Instructions. A greeting and signature are added automatically."
+                      />
                       <SettingsRow label="Subject">
                         <Input
                           value={genericSubject}
@@ -1051,14 +1014,8 @@ export function SettingsView() {
 
                   {isManager && aiSection === "followup" && (
                     <section className="space-y-4">
-                      <div className="flex items-center gap-2 border-b border-border pb-4">
-                        <FileText className="size-4 text-muted-foreground" />
-                        <div>
-                          <p className="eyebrow">Fallback</p>
-                          <h3 className="font-display text-base font-semibold mt-0.5">Follow-up fallback</h3>
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
+                      <SectionHeader title="Fallback follow-up" />
+                      <p className="text-[13px] text-muted-foreground">
                         Sent for any follow-up step (2, 3, …) whose lead has no AI-personalized
                         follow-up drafted yet — e.g. an AI provider outage, or a follow-up simply
                         not written before it&apos;s due. Without this, that follow-up would send
@@ -1066,7 +1023,7 @@ export function SettingsView() {
                         it&apos;s automatically replaced once a personalized follow-up is drafted
                         and approved for that lead. No subject — a follow-up always threads as a
                         reply to the opening email. Placeholder:{" "}
-                        <code className="rounded bg-secondary px-1 py-0.5 text-[11px] font-mono">{"{{first_name}}"}</code>.
+                        <code className="rounded bg-secondary px-1 py-0.5 text-xs">{"{{first_name}}"}</code>.
                       </p>
                       <div className="space-y-2">
                         <Label>Body</Label>
@@ -1084,20 +1041,14 @@ export function SettingsView() {
 
                   {isManager && aiSection === "html" && (
                     <section className="space-y-4">
-                      <div className="flex items-center gap-2 border-b border-border pb-4">
-                        <FileText className="size-4 text-muted-foreground" />
-                        <div>
-                          <p className="eyebrow">Outreach</p>
-                          <h3 className="font-display text-base font-semibold mt-0.5">HTML emails</h3>
-                        </div>
-                      </div>
+                      <SectionHeader title="Tables in emails" />
                       <SettingsRow
                         label="Allow HTML in emails"
                         description="Lets the AI include an HTML table in an email when it is explicitly asked for."
                       >
                         <Switch checked={allowHtmlEmails} onCheckedChange={setAllowHtmlEmails} />
                       </SettingsRow>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-[13px] text-muted-foreground">
                         <strong>Off (default):</strong> every email is plain text with bold/italic/links, exactly as today.{" "}
                         <strong>On:</strong> nothing changes for ordinary emails. The AI only adds a table when a
                         campaign instruction or a regenerate request clearly asks for one (e.g. &ldquo;add a
@@ -1109,16 +1060,10 @@ export function SettingsView() {
 
                   {isManager && aiSection === "replies" && (
                     <section className="space-y-5">
-                      <div className="flex items-center gap-2 border-b border-border pb-4">
-                        <Bot className="size-4 text-muted-foreground" />
-                        <div>
-                          <p className="eyebrow">Company default</p>
-                          <h3 className="font-display text-base font-semibold mt-0.5">Reply AI</h3>
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Controls how follow-up replies are drafted after a prospect responds.
-                      </p>
+                      <SectionHeader
+                        title="Reply drafting"
+                        description="Controls how follow-up replies are drafted after a prospect responds."
+                      />
 
                       <RichTextEditor label="Reply drafter prompt" value={replyDrafterPrompt} onChange={setReplyDrafterPrompt} minHeight={220}
                         helper="Must return JSON with subject and body. Still in active use — this is what writes our human-reviewed reply drafts." />
@@ -1128,14 +1073,7 @@ export function SettingsView() {
 
                   {isManager && aiSection === "footer" && (
                     <section className="space-y-4">
-                      <div className="flex items-center gap-2 border-b border-border pb-4">
-                        <PenLine className="size-4 text-muted-foreground" />
-                        <div>
-                          <p className="eyebrow">Company default</p>
-                          <h3 className="font-display text-base font-semibold mt-0.5">Email Footer</h3>
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground">Contact lines appended at the end of every generated email.</p>
+                      <SectionHeader title="Contact footer" description="Contact lines appended at the end of every generated email." />
                       <RichTextEditor label="Contact footer" value={sigContact} onChange={setSigContact} minHeight={160} singleLineBreaks
                         placeholder={"Kuber Polyplast\n+91-XXXXXXXXXX\nsales@kuberpolyplast.com"} />
                     </section>
@@ -1147,21 +1085,12 @@ export function SettingsView() {
 
               {/* ── Knowledge Sources (everyone) ── */}
               {section === "knowledge" && (
-                <div className="space-y-8 enter">
+                <div className="space-y-8">
 
                   {/* Company Details */}
                   {activeKnowledgeSection === "company" && (
                     <section className="space-y-5">
-                      <div className="flex items-center justify-between border-b border-border pb-4">
-                        <div className="flex items-center gap-2">
-                          <Building2 className="size-4 text-muted-foreground" />
-                          <div>
-                            <p className="eyebrow">Knowledge source</p>
-                            <h3 className="font-display text-base font-semibold mt-0.5">Company Details</h3>
-                          </div>
-                        </div>
-                        <span className="rounded-md bg-secondary px-2 py-1 text-[11px] font-medium text-muted-foreground">Context</span>
-                      </div>
+                      <SectionHeader title="Identity" description="Who the emails come from and what the AI knows about your company." />
 
                       <div>
                         <SettingsRow label="Default sender name" description={'Used as the "From" name in outreach emails.'}>
@@ -1174,7 +1103,7 @@ export function SettingsView() {
                           <div className="flex items-center gap-3 flex-wrap">
                             {logoUrl
                               ? <img src={logoUrl} alt="Brand logo" className="size-10 rounded-md border border-border bg-card object-contain shrink-0" />
-                              : <div className="size-10 rounded-md border border-border bg-card flex items-center justify-center shrink-0"><span className="text-xs font-bold font-mono text-muted-foreground">K</span></div>
+                              : <div className="size-10 rounded-md border border-border bg-card flex items-center justify-center shrink-0"><span className="text-xs font-semibold text-muted-foreground">K</span></div>
                             }
                             <Input
                               ref={logoInputRef}
@@ -1183,7 +1112,7 @@ export function SettingsView() {
                               className="hidden"
                               onChange={(e) => void handleLogoPick(e.target.files?.[0] ?? null)}
                             />
-                            <Button type="button" disabled={logoUploading} onClick={() => logoInputRef.current?.click()}>
+                            <Button type="button" variant="outline" disabled={logoUploading} onClick={() => logoInputRef.current?.click()}>
                               {logoUploading ? "Uploading..." : (logoUrl ? "Replace logo" : "Upload logo")}
                             </Button>
                             {logoPath && (
@@ -1194,14 +1123,14 @@ export function SettingsView() {
                       </div>
 
                       <div className="space-y-1.5">
-                        <Label>Company context</Label>
+                        <Label className="text-[13px] font-medium">Company context</Label>
                         <Textarea
                           value={companyContext}
                           onChange={(e) => setCompanyContext(e.target.value)}
                           placeholder="Who Kuber Polyplast is, what makes it credible, key accolades — background the AI can draw on in every email and reply."
                           className="min-h-32 text-sm resize-y"
                         />
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-[13px] text-muted-foreground">
                           Given to the AI as background for every draft and reply. Products belong in the Product Offerings tab — the AI reads that library directly.
                         </p>
                       </div>
@@ -1211,38 +1140,30 @@ export function SettingsView() {
                   {/* Product Offerings */}
                   {activeKnowledgeSection === "products" && (
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between border-b border-border pb-4">
-                        <div className="flex items-center gap-2">
-                          <Package className="size-4 text-muted-foreground" />
-                          <div>
-                            <p className="eyebrow">Knowledge source</p>
-                            <h3 className="font-display text-base font-semibold mt-0.5">Product Offerings</h3>
-                          </div>
-                        </div>
-                        <Button type="button" size="sm" onClick={addProduct} className="gap-1.5 shrink-0">
-                          <Plus className="size-3.5" /> Add product
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground -mt-2">
-                        The AI picks the best-matching product for each lead and uses its description as context.
-                      </p>
+                      <SectionHeader
+                        title="Products"
+                        description="The AI picks the best-matching product for each lead and uses its description as context."
+                        aside={
+                          <Button type="button" size="sm" variant="outline" onClick={addProduct}>
+                            <Plus className="size-3.5" /> Add product
+                          </Button>
+                        }
+                      />
 
                       {productOfferings.length === 0 && (
-                        <div className="rounded-md border border-dashed border-border bg-secondary p-10 text-center text-sm text-muted-foreground">
-                          No products yet — click &quot;Add product&quot; to get started.
-                        </div>
+                        <EmptyState icon={Package} message={<>No products yet — click &quot;Add product&quot; to get started.</>} />
                       )}
 
                       <div className="grid gap-3 lg:grid-cols-2">
                         {productOfferings.map((product, idx) => (
-                          <div key={idx} className="swatch-bar rounded-md border border-border bg-card p-4 pl-5 space-y-3">
+                          <div key={idx} className="rounded-lg border border-border bg-card p-3 space-y-2">
                             <div className="flex items-center gap-2">
-                              <span className="eyebrow shrink-0">{String(idx + 1).padStart(2, "0")}</span>
+                              <span className="w-5 shrink-0 text-center text-xs tabular-nums text-muted-foreground">{idx + 1}</span>
                               <Input
                                 value={product.name}
                                 onChange={(e) => updateProduct(idx, "name", e.target.value)}
                                 placeholder="Product name"
-                                className="h-9 text-sm font-medium flex-1"
+                                className="font-medium flex-1"
                               />
                               <Button type="button" variant="ghost" size="icon-sm" onClick={() => removeProduct(idx)}
                                 className="shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
@@ -1253,7 +1174,7 @@ export function SettingsView() {
                               value={product.description}
                               onChange={(e) => updateProduct(idx, "description", e.target.value)}
                               placeholder="Describe this product — what it is, who it fits, key benefits..."
-                              className="min-h-32 text-sm resize-y"
+                              className="min-h-32 resize-y"
                             />
                           </div>
                         ))}
@@ -1264,47 +1185,41 @@ export function SettingsView() {
                   {/* Industry Segments — the taxonomy behind the Apollo import dropdown */}
                   {activeKnowledgeSection === "industry-segments" && (
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between border-b border-border pb-4">
-                        <div className="flex items-center gap-2">
-                          <Tags className="size-4 text-muted-foreground" />
-                          <div>
-                            <p className="eyebrow">Knowledge source</p>
-                            <h3 className="font-display text-base font-semibold mt-0.5">Industry Segments</h3>
-                          </div>
-                        </div>
-                        <Button type="button" size="sm" onClick={addGroup} disabled={savingGroupIds.size > 0} className="gap-1.5 shrink-0">
-                          {savingGroupIds.size > 0 ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />} Add group
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground -mt-2">
-                        Groups and keywords shown in the Apollo import dropdown. Each keyword&apos;s &quot;Apollo search term&quot; is the actual text sent to Apollo — keep it short and plain, since Apollo matches it near-literally.
-                      </p>
+                      <SectionHeader
+                        title="Groups and keywords"
+                        description={<>Shown in the Apollo import dropdown. Each keyword&apos;s &quot;Apollo search term&quot; is the actual text sent to Apollo — keep it short and plain, since Apollo matches it near-literally.</>}
+                        aside={
+                          <Button type="button" size="sm" variant="outline" onClick={addGroup} disabled={savingGroupIds.size > 0}>
+                            {savingGroupIds.size > 0 ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />} Add group
+                          </Button>
+                        }
+                      />
 
                       {industryKeywordGroups.length === 0 && (
-                        <div className="rounded-md border border-dashed border-border bg-secondary p-10 text-center text-sm text-muted-foreground">
-                          No groups yet — click &quot;Add group&quot; to get started.
-                        </div>
+                        <EmptyState icon={Tags} message={<>No groups yet — click &quot;Add group&quot; to get started.</>} />
                       )}
 
-                      <div className="space-y-4">
+
+
+                      <div className="space-y-3">
                         {industryKeywordGroups.map((group, groupIdx) => {
                           const groupEditing = editingGroupIds.has(group.id);
                           const groupSaving = savingGroupIds.has(group.id);
                           return (
-                            <div key={group.id} className="swatch-bar rounded-lg border border-border bg-card shadow-sm overflow-hidden">
+                            <div key={group.id} className="rounded-lg border border-border bg-card overflow-hidden">
                               {/* Header bar — the card's one pencil toggles the whole card between view and edit, and doubles as "save" on the way out */}
-                              <div className="flex items-center gap-2 border-b border-border bg-primary/10 px-4 py-3 pl-5">
+                              <div className="flex min-h-11 items-center gap-2 border-b border-border px-3 py-1.5">
                                 {groupEditing ? (
                                   <Input
                                     value={group.label}
                                     onChange={(e) => updateGroup(groupIdx, e.target.value)}
                                     placeholder="Group name"
-                                    className="h-9 text-sm font-semibold flex-1"
+                                    className="font-medium flex-1"
                                     disabled={groupSaving}
                                     autoFocus
                                   />
                                 ) : (
-                                  <span className="text-sm font-semibold flex-1">{group.label || "Untitled group"}</span>
+                                  <span className="text-sm font-semibold flex-1 px-1">{group.label || "Untitled group"}</span>
                                 )}
                                 <Button type="button" variant="ghost" size="icon-sm" onClick={() => toggleGroupEdit(group.id)}
                                   disabled={groupSaving} className="shrink-0 text-muted-foreground hover:text-foreground">
@@ -1316,7 +1231,7 @@ export function SettingsView() {
                                 </Button>
                               </div>
 
-                              <div className="p-4 pl-5 space-y-3">
+                              <div className="p-3 space-y-2">
                                 <div className="space-y-2">
                                   {group.keywords.map((kw, kwIdx) => (
                                     <div key={kw.id} className="flex items-center gap-2">
@@ -1327,14 +1242,12 @@ export function SettingsView() {
                                               value={kw.label}
                                               onChange={(e) => updateKeyword(groupIdx, kwIdx, "label", e.target.value)}
                                               placeholder="Label shown in the dropdown"
-                                              className="h-9 text-sm"
                                               disabled={groupSaving}
                                             />
                                             <Input
                                               value={kw.query}
                                               onChange={(e) => updateKeyword(groupIdx, kwIdx, "query", e.target.value)}
                                               placeholder="Apollo search term"
-                                              className="h-9 text-sm"
                                               disabled={groupSaving}
                                             />
                                           </div>
@@ -1344,7 +1257,7 @@ export function SettingsView() {
                                           </Button>
                                         </>
                                       ) : (
-                                        <span className="text-sm flex-1">
+                                        <span className="text-[13px] flex-1 px-1">
                                           {kw.label || "Untitled keyword"}
                                           <span className="text-muted-foreground text-xs"> — searches &quot;{kw.query || kw.label}&quot;</span>
                                         </span>
@@ -1354,7 +1267,7 @@ export function SettingsView() {
                                 </div>
 
                                 {groupEditing && (
-                                  <Button type="button" variant="outline" size="sm" onClick={() => addKeyword(groupIdx)} disabled={groupSaving} className="gap-1.5">
+                                  <Button type="button" variant="outline" size="sm" onClick={() => addKeyword(groupIdx)} disabled={groupSaving}>
                                     <Plus className="size-3.5" /> Add keyword
                                   </Button>
                                 )}
@@ -1382,15 +1295,9 @@ export function SettingsView() {
 
               {/* ── Appearance ── */}
               {section === "appearance" && (
-                <div className="enter">
+                <div>
                   <section>
-                    <div className="flex items-center gap-2 border-b border-border pb-4">
-                      {mode === "light" ? <Sun className="size-4 text-muted-foreground" /> : <Moon className="size-4 text-muted-foreground" />}
-                      <div>
-                        <p className="eyebrow">Display</p>
-                        <h3 className="font-display text-base font-semibold mt-0.5">Appearance mode</h3>
-                      </div>
-                    </div>
+                    <SectionHeader title="Mode" />
                     <SettingsRow label="Workspace mode" description="Switch between a dark or light workspace ">
                       <div className="grid grid-cols-2 gap-3 max-w-sm">
                         {(["dark", "light"] as const).map((m) => {
@@ -1398,10 +1305,10 @@ export function SettingsView() {
                           const Icon = m === "dark" ? Moon : Sun;
                           return (
                             <Button key={m} type="button" variant="outline" onClick={() => void setMode(m)} disabled={savingTheme}
-                              className={cn("h-auto justify-start gap-2.5 p-3 font-medium",
-                                active ? "border-primary bg-primary/10 hover:bg-primary/10" : "hover:border-muted-foreground")}>
+                              className={cn("h-auto justify-start gap-2.5 p-3 font-medium shadow-none",
+                                active ? "border-primary/50 bg-primary/5 hover:bg-primary/5" : "border-border bg-field")}>
                               <Icon className="size-4 shrink-0 text-muted-foreground" />
-                              <span className="flex-1 text-sm font-medium capitalize">{m}</span>
+                              <span className="flex-1 text-[13px] font-medium capitalize">{m}</span>
                               {active && <Check className="size-4 text-primary shrink-0" />}
                             </Button>
                           );
@@ -1415,13 +1322,7 @@ export function SettingsView() {
                       expressive swatch presentation is warranted. Logic/COLORS list
                       untouched — visual chrome only. */}
                   <section className="mt-8">
-                    <div className="flex items-center gap-2 border-b border-border pb-4">
-                      <Palette className="size-4 text-muted-foreground" />
-                      <div>
-                        <p className="eyebrow">Masterbatch reference</p>
-                        <h3 className="font-display text-base font-semibold mt-0.5">Color theme</h3>
-                      </div>
-                    </div>
+                    <SectionHeader title="Color theme" />
                     <SettingsRow label="Accent color" description="Choose an accent color for the workspace — like picking a pellet reference chip.">
                       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                         {COLORS.map((t) => {
@@ -1429,16 +1330,16 @@ export function SettingsView() {
                           return (
                             <Button key={t.id} type="button" variant="outline" onClick={() => void setTheme(t.id)} disabled={savingTheme}
                               className={cn(
-                                "h-auto flex-col items-stretch gap-3 p-3 text-left overflow-hidden",
-                                active ? "border-primary swatch-bar-top hover:border-primary" : "hover:border-muted-foreground",
+                                "h-auto flex-col items-stretch gap-2.5 p-2.5 text-left overflow-hidden shadow-none",
+                                active ? "border-primary/50 bg-primary/5 hover:bg-primary/5" : "border-border bg-field",
                               )}>
                               <span
-                                className="block h-12 w-full rounded shrink-0 border border-black/10"
+                                className="block h-10 w-full rounded shrink-0 border border-black/10 dark:border-white/10"
                                 style={{ backgroundColor: t.swatch }}
                                 aria-hidden
                               />
                               <span className="flex items-center justify-between gap-2">
-                                <span className="text-sm font-medium">{t.label}</span>
+                                <span className="text-[13px] font-medium">{t.label}</span>
                                 {active && <Check className="size-4 text-primary shrink-0" />}
                               </span>
                             </Button>
@@ -1452,12 +1353,9 @@ export function SettingsView() {
 
               {/* ── Account ── */}
               {section === "account" && (
-                <div className="enter">
+                <div>
                   <section>
-                    <div className="border-b border-border pb-4">
-                      <p className="eyebrow">Security</p>
-                      <h3 className="font-display text-base font-semibold mt-0.5">Change password</h3>
-                    </div>
+                    <SectionHeader title="Change password" />
                     <form onSubmit={handleChangePassword}>
                       <SettingsRow label="Current password">
                         <Input
@@ -1491,7 +1389,7 @@ export function SettingsView() {
                           className="max-w-sm"
                         />
                       </SettingsRow>
-                      <div className="flex justify-end pt-5">
+                      <div className="flex justify-end pt-4">
                         <Button type="submit" disabled={savingPassword}>
                           {savingPassword ? "Updating…" : "Update password"}
                         </Button>
@@ -1500,16 +1398,13 @@ export function SettingsView() {
                   </section>
 
                   <section className="mt-8">
-                    <div className="border-b border-border pb-4">
-                      <p className="eyebrow">Account</p>
-                      <h3 className="font-display text-base font-semibold mt-0.5">Session</h3>
-                    </div>
-                    <SettingsRow label="Signed in as" description={<span className="font-mono">{userEmail}</span>}>
-                      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">Active</span>
+                    <SectionHeader title="Session" />
+                    <SettingsRow label="Signed in as" description={userEmail}>
+                      <span className="rounded-[5px] px-1.5 py-[3px] text-xs font-medium leading-none bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300">Active</span>
                     </SettingsRow>
                     <SettingsRow label="Sign out" description="End your current session on this device.">
                       <Button type="button" variant="outline" onClick={() => supabase.auth.signOut()}
-                        className="gap-2 text-muted-foreground hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/5">
+                        className="text-muted-foreground hover:text-red-600 hover:border-red-500/30 hover:bg-red-500/5 dark:hover:text-red-400">
                         <LogOut className="size-3.5" /> Sign out
                       </Button>
                     </SettingsRow>
@@ -1517,26 +1412,20 @@ export function SettingsView() {
                 </div>
               )}
 
-              {section === "team" && role === "manager" && (
-                <div className="-m-8">
-                  <TeamView />
-                </div>
-              )}
+              {section === "team" && role === "manager" && <TeamView />}
 
-              {section === "email" && isManager && (
-                <div className="-m-8">
-                  <EmailSendingView />
-                </div>
-              )}
+              {section === "email" && isManager && <EmailSendingView />}
 
             </div>
           )}
 
           {showSaveBar && (
-            <div className="sticky bottom-0 flex justify-end border-t border-border bg-background/95 px-8 py-4 backdrop-blur">
-              <Button onClick={handleSave} disabled={saving} className="min-w-24">
-                {saving ? "Saving..." : "Save"}
-              </Button>
+            <div className="sticky bottom-0 border-t border-border bg-background">
+              <div className="mx-auto flex w-full max-w-3xl justify-end px-8 py-3">
+                <Button onClick={handleSave} disabled={saving} className="min-w-20">
+                  {saving ? "Saving..." : "Save"}
+                </Button>
+              </div>
             </div>
           )}
         </div>

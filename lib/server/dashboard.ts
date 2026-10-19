@@ -4,7 +4,16 @@ import { getLeadStatusCounts, getLeadMonthlyCounts } from "@/lib/server/leads-co
 const ENRICHED_STATUSES = new Set(["enriching", "enriched", "open", "closed"]);
 
 const STAGE_NAMES = ["New", "Input Required", "Enriched", "Won", "Closed"] as const;
-const STAGE_DONUT_COLORS = ["#71717a", "#ca8a04", "#2563eb", "#22c55e", "#6b7280"];
+// Theme-aware: a primary ramp (tints mixed into the card colour, so they stay
+// readable on white and on near-black), amber for "needs input", muted text
+// colour for closed. Rendered as SVG fills / legend swatches on the client.
+const STAGE_DONUT_COLORS = [
+  "color-mix(in oklab, var(--primary) 35%, var(--card))", // New
+  "#f59e0b",                                              // Input Required
+  "color-mix(in oklab, var(--primary) 65%, var(--card))", // Enriched
+  "var(--primary)",                                       // Won
+  "var(--muted-foreground)",                              // Closed
+];
 
 function dbStatusToStage(status: string): (typeof STAGE_NAMES)[number] {
   if (status === "input_required") return "Input Required";

@@ -1,15 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
 import { Coins, CalendarDays, TrendingDown, Flame, CheckCircle2 } from "lucide-react";
-import { useApp } from "@/lib/app-context";
 import { cn } from "@/lib/utils";
 import { Paged } from "@/components/ui/paged";
-import { Card } from "@/components/ui/card";
 import { StatTile } from "@/components/ui/stat-tile";
-import { UsageHeader } from "@/components/app/usage-header";
-import { UsageBarChart } from "@/components/app/usage-bar-chart";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  UsageHeader, UsagePanel, UsageEmpty, UsageNotice, UsageProgress, UsageStatus, useCachedUsage,
+} from "@/components/app/usage-header";
+import { UsageBarChart, CHART_COLORS } from "@/components/app/usage-bar-chart";
 import {
   UsageHeaderSkeleton, StatTileGridSkeleton, ChartCardSkeleton, RowsCardSkeleton,
 } from "@/components/app/usage-skeletons";
@@ -32,26 +31,7 @@ function formatDateTimeTz(iso: string): string {
 }
 
 export function FirecrawlUsageView() {
-  const { session } = useApp();
-  const [data, setData] = useState<FirecrawlUsageData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const load = useCallback(async (refresh = false) => {
-    if (!session) return;
-    if (refresh) setRefreshing(true); else setLoading(true);
-    try {
-      const result = await fetchFirecrawlUsage(session.access_token, refresh);
-      setData(result);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [session]);
-
-  useEffect(() => { void load(false); }, [load]);
+  const { data, loading, refreshing, load } = useCachedUsage<FirecrawlUsageData>("/api/v1/settings/keys/usage/firecrawl", fetchFirecrawlUsage);
 
   if (loading || !data) {
     return (
@@ -79,29 +59,23 @@ export function FirecrawlUsageView() {
     <div className="space-y-6">
       <UsageHeader info="The balance comes live from Firecrawl (the same figures as their dashboard). The scrape activity below is this app's own record of company scrapes, which is useful if the key is shared with other tools." refreshing={refreshing} onRefresh={() => void load(true)} />
 
-      {!key.ok && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {key.message}
-        </div>
-      )}
+      {!key.ok && <UsageNotice tone="error">{key.message}</UsageNotice>}
 
       <div className="space-y-4">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <p className="eyebrow">Billing cycle</p>
-            {credits.billingPeriodStart && credits.billingPeriodEnd ? (
-              <>
-                <p className="text-sm font-medium">
-                  {formatDate(credits.billingPeriodStart)} – {formatDate(credits.billingPeriodEnd)}
-                </p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Usage renews {formatDateTimeTz(credits.billingPeriodEnd)}
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">No billing period reported (free plan or unknown)</p>
-            )}
-          </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Billing cycle</p>
+          {credits.billingPeriodStart && credits.billingPeriodEnd ? (
+            <>
+              <p className="text-sm font-medium tabular-nums">
+                {formatDate(credits.billingPeriodStart)} – {formatDate(credits.billingPeriodEnd)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Usage renews {formatDateTimeTz(credits.billingPeriodEnd)}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">No billing period reported (free plan or unknown)</p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -140,24 +114,14 @@ export function FirecrawlUsageView() {
         </div>
 
         {credits.planCredits != null && credits.remaining != null && (
-          <div className="space-y-1.5 pt-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Plan credit usage</span>
-              <span className="font-mono tabular-nums">
-                {(credits.usedThisCycle ?? 0).toLocaleString()} / {credits.planCredits.toLocaleString()}
-                <span className="text-muted-foreground/70"> · {credits.remaining.toLocaleString()} left</span>
-              </span>
-            </div>
-            <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-              <div
-                className={cn(
-                  "h-full rounded-full",
-                  (usedPct ?? 0) >= 90 ? "bg-destructive" : (usedPct ?? 0) >= 60 ? "bg-amber-400" : "bg-primary",
-                )}
-                style={{ width: `${usedPct ?? 0}%` }}
-              />
-            </div>
-          </div>
+          <UsageProgress
+            label="Plan credit usage"
+            pct={usedPct ?? 0}
+            value={<>
+              {(credits.usedThisCycle ?? 0).toLocaleString()} / {credits.planCredits.toLocaleString()}
+              <span className="text-muted-foreground"> · {credits.remaining.toLocaleString()} left</span>
+            </>}
+          />
         )}
       </div>
 
@@ -173,50 +137,41 @@ export function FirecrawlUsageView() {
         />
       </div>
 
-      <Card className="p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="eyebrow">Scrape activity</p>
-            <p className="text-xs text-muted-foreground">
-              Live Firecrawl calls this app made for org enrichment, last 14 days.
-            </p>
-          </div>
-          <p className="font-mono text-sm font-semibold tabular-nums">{activity.allTime.toLocaleString()} total (90d)</p>
-        </div>
+      <UsagePanel
+        title="Scrape activity"
+        description="Live Firecrawl calls this app made for org enrichment, last 14 days."
+        aside={<span className="text-[13px] font-semibold text-foreground">{activity.allTime.toLocaleString()} total (90d)</span>}
+      >
         {daily.every((d) => d.scrapes === 0) ? (
-          <p className="text-xs text-muted-foreground py-6 text-center">No Firecrawl scrapes recorded recently.</p>
+          <UsageEmpty>No Firecrawl scrapes recorded recently.</UsageEmpty>
         ) : (
           <UsageBarChart
             data={daily}
             bars={[
-              { dataKey: "successes", name: "Succeeded", color: "var(--primary)" },
-              { dataKey: "failures", name: "Failed", color: "#f87171" },
+              { dataKey: "successes", name: "Succeeded", color: CHART_COLORS.primary },
+              { dataKey: "failures", name: "Failed", color: CHART_COLORS.red },
             ]}
           />
         )}
-      </Card>
+      </UsagePanel>
 
-      <Card className="p-5 space-y-3">
-        <div>
-          <p className="eyebrow">Recent activity</p>
-          <p className="text-xs text-muted-foreground">Every org scrape attempt, most recent first.</p>
-        </div>
+      <UsagePanel title="Recent activity" description="Every org scrape attempt, most recent first.">
         {history.length === 0 ? (
-          <p className="text-xs text-muted-foreground py-6 text-center">No Firecrawl activity recorded yet.</p>
+          <UsageEmpty>No Firecrawl activity recorded yet.</UsageEmpty>
         ) : (
           <Paged items={history}>{(rows) => (
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full text-xs">
-              <thead className="bg-secondary text-muted-foreground">
-                <tr>
-                  <th className="text-left font-medium px-3 py-2">When</th>
-                  <th className="text-left font-medium px-3 py-2">Event</th>
-                  <th className="text-left font-medium px-3 py-2">Domain</th>
-                  <th className="text-right font-medium px-3 py-2">Chars</th>
-                  <th className="text-left font-medium px-3 py-2">Detail</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+          <div className="rounded-md border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>Event</TableHead>
+                  <TableHead>Domain</TableHead>
+                  <TableHead className="text-right">Chars</TableHead>
+                  <TableHead>Detail</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {rows.map((h) => {
                   const tone =
                     h.event === "SCRAPE_SUCCESS" || h.event === "SCRAPE_CACHE_HIT"
@@ -225,36 +180,25 @@ export function FirecrawlUsageView() {
                         ? "bad"
                         : "warn";
                   return (
-                    <tr key={h.id} className={cn(tone !== "ok" && "text-muted-foreground")}>
-                      <td className="px-3 py-2 whitespace-nowrap font-mono">{formatDateTime(h.created_at)}</td>
-                      <td className="px-3 py-2">
-                        <span className={cn(
-                          "inline-flex items-center gap-1.5",
-                          tone === "ok" ? "text-emerald-500" : tone === "bad" ? "text-destructive" : "text-amber-400",
-                        )}>
-                          <span className={cn(
-                            "size-1.5 rounded-full",
-                            tone === "ok" ? "bg-emerald-400" : tone === "bad" ? "bg-destructive" : "bg-amber-400",
-                          )} />
-                          {h.label}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 font-mono truncate max-w-40">{h.domain ?? "—"}</td>
-                      <td className="px-3 py-2 text-right font-mono tabular-nums">
+                    <TableRow key={h.id} className={cn(tone !== "ok" && "text-muted-foreground")}>
+                      <TableCell className="whitespace-nowrap tabular-nums">{formatDateTime(h.created_at)}</TableCell>
+                      <TableCell><UsageStatus tone={tone}>{h.label}</UsageStatus></TableCell>
+                      <TableCell className="truncate max-w-40">{h.domain ?? "—"}</TableCell>
+                      <TableCell className="text-right tabular-nums">
                         {h.chars != null ? h.chars.toLocaleString() : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-muted-foreground truncate max-w-70">
+                      </TableCell>
+                      <TableCell className="text-muted-foreground truncate max-w-70">
                         {h.message ?? "—"}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
           )}</Paged>
         )}
-      </Card>
+      </UsagePanel>
     </div>
   );
 }

@@ -20,24 +20,20 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
 
   return (
-    <div className="h-screen flex items-center justify-center bg-background p-4">
-      <div className="enter swatch-bar-top overflow-hidden w-full max-w-sm rounded-xl border border-border bg-card shadow-lg">
-        <div className="px-6 py-6 border-b border-border">
-          <div className="flex items-center gap-2.5 mb-6">
-            <div className="size-8 bg-foreground rounded-lg flex items-center justify-center">
-              <span className="text-background text-sm font-black">{APP_LOGO_INITIAL}</span>
-            </div>
-            <span className="font-display font-bold text-lg tracking-tight">{APP_NAME}</span>
+    <div className="flex min-h-screen items-center justify-center bg-sidebar p-4">
+      <div className="w-full max-w-[360px] rounded-lg border border-border bg-card shadow-sm">
+        <div className="flex flex-col items-center px-6 pt-8 pb-2 text-center">
+          <div className="mb-5 flex size-10 items-center justify-center rounded-lg bg-foreground shadow-sm">
+            <span className="text-base font-bold text-background">{APP_LOGO_INITIAL}</span>
           </div>
-          <p className="eyebrow mb-1.5">Console access</p>
-          <h1 className="font-display text-2xl font-bold tracking-tight">Sign in</h1>
-          <p className="text-sm text-muted-foreground mt-1">{APP_TAGLINE}</p>
+          <h1 className="text-lg font-semibold leading-tight">Sign in to {APP_NAME}</h1>
+          <p className="mt-1 text-[13px] text-muted-foreground">{APP_TAGLINE}</p>
         </div>
-        <form action={formAction} className="px-6 py-5 space-y-4">
+        <form action={formAction} className="space-y-3.5 px-6 pt-4 pb-6">
           <div className="space-y-1.5">
             <Label
               htmlFor="email"
-              className="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
+              className="text-[13px] font-medium"
             >
               Email
             </Label>
@@ -47,7 +43,7 @@ export function LoginForm() {
               type="email"
               required
               autoComplete="email"
-              placeholder="admin@company.com"
+              placeholder="you@company.com"
               disabled={isPending}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -56,7 +52,7 @@ export function LoginForm() {
           <div className="space-y-1.5">
             <Label
               htmlFor="password"
-              className="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
+              className="text-[13px] font-medium"
             >
               Password
             </Label>
@@ -76,19 +72,19 @@ export function LoginForm() {
               <button
                 type="button"
                 onClick={() => setShowPwd((v) => !v)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
                 aria-label={showPwd ? "Hide password" : "Show password"}
                 disabled={isPending}
                 suppressHydrationWarning
               >
-                {showPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                {showPwd ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
               </button>
             </div>
           </div>
           {state.error && (
-            <p className="text-xs text-destructive font-mono">{state.error}</p>
+            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-300">{state.error}</p>
           )}
-          <Button type="submit" disabled={isPending} className="w-full" suppressHydrationWarning>
+          <Button type="submit" disabled={isPending} className="mt-1 w-full" suppressHydrationWarning>
             {isPending ? "Signing in..." : "Sign in"}
           </Button>
         </form>
