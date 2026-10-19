@@ -201,6 +201,10 @@ export const ProspectSearchSchema = z.object({
   assignment_strategy: ImportAssignmentStrategy,
   // Cap on automatic reveals for THIS search (1 Apollo credit each). Default: the company setting.
   max_auto_reveals: z.number().int().min(0).max(100).optional(),
+  // How many leads the client wants: the search keeps reading pages until it gets there.
+  target_leads: z.number().int().min(1).max(2000).optional(),
+  // Most Apollo credits this search may use (pages + contacts).
+  max_credits: z.number().int().min(2).max(5000).optional(),
 });
 
 export const ProspectDecisionSchema = z.object({
