@@ -28,6 +28,7 @@ const STEPS = ["Criteria", "Settings", "Batch", "Assign"];
 const SIZE_SUGGESTIONS = ["1,10", "11,50", "51,200", "201,500", "501,1000", "1001,5000", "5001,10000"];
 /** Leads asked for by default. */
 const DEFAULT_TARGET = 100;
+const TARGET_CHIPS = [50, 100, 200, 500];
 /** Measured live on 17 Oct 2026 with only the every-minute background job. */
 const COMPANIES_PER_MINUTE = 20;
 
@@ -38,21 +39,26 @@ interface MarketEstimate {
   leads_left?: { low: number; high: number };
 }
 
-/** What a lead target is expected to cost, from the 17 Oct 2026 live tests:
- *  about 33 leads per 100 companies (1 Apollo credit per lead) + 1 credit per
- *  page of 100 companies, and never more than the limit. */
-function ExpectedUse({ target, maxCredits }: { target: number; maxCredits: number }) {
+/** The "bill" beside step 2: what a lead target is expected to cost, from the
+ *  17 Oct 2026 live tests: about 33 leads per 100 companies, 1 Apollo credit
+ *  per lead + 1 per page of 100 companies, never more than the limit. */
+function Bill({ target, maxCredits }: { target: number; maxCredits: number }) {
   const pages = Math.ceil(target / LEADS_PER_PAGE);
   const expected = Math.min(maxCredits, target + pages);
   const minutes = Math.max(1, Math.round((pages * 100) / COMPANIES_PER_MINUTE));
+  const line = "flex justify-between gap-3 tabular-nums";
   return (
-    <div className="space-y-1 rounded-lg border border-border px-3 py-2.5 text-sm">
-      <p><b>Expected use: about {expected} credits</b> for {target} leads · never more than {maxCredits}.</p>
-      <p className="text-xs text-muted-foreground">
-        About {pages} search{pages === 1 ? "" : "es"} of 100 companies (1 credit each) + 1 credit per lead. Companies that aren&apos;t plastic makers, or have nobody with an email, cost nothing.
-        {" "}Website reading: about {pages * 100} Firecrawl credits. Time: about {minutes} min in the background.
-        {maxCredits < target + pages && ` With this limit Kuber may stop before ${target} leads.`}
-      </p>
+    <div className="space-y-1.5 rounded-xl border border-border bg-field p-4 text-sm dark:bg-card">
+      <p className="text-base font-semibold">Your search</p>
+      <div className={line}><span>{target} leads × 1 credit</span><span>{target}</span></div>
+      <div className={line}><span>~{pages} search{pages === 1 ? "" : "es"} of 100 companies</span><span>{pages}</span></div>
+      <div className={cn(line, "border-t border-dashed border-border pt-2 text-base font-bold")}><span>Expected</span><span>~{expected} credits</span></div>
+      <div className={cn(line, "text-muted-foreground")}><span>Never more than</span><span>{maxCredits} credits</span></div>
+      <div className="space-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
+        <div className={line}><span>Website reading</span><span>~{pages * 100} Firecrawl</span></div>
+        <div className={line}><span>Time (in the background)</span><span>~{minutes} min</span></div>
+      </div>
+      <p className="text-xs text-muted-foreground">Companies that aren&apos;t plastic makers, or have nobody to email, cost nothing.</p>
     </div>
   );
 }
@@ -104,7 +110,7 @@ function MarketSize({ filters, target }: { filters: Record<string, unknown> & { 
         <p className={cn("flex items-start gap-1.5 rounded-lg border px-3 py-2 text-sm", tooFew ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400" : "border-border text-muted-foreground")}>
           <CircleAlert className="mt-0.5 size-4 shrink-0" />
           {tooFew
-            ? `These keywords can give only about ${n(left!.low)}–${n(left!.high)} leads, not ${n(target)}. Add more keywords or countries, or ask for fewer leads.`
+            ? `These keywords can give only about ${n(left!.low)}–${n(left!.high)} leads, not ${n(target)}. Add more keywords or countries in step 1, or ask for fewer leads.`
             : `${n(target)} leads is near the limit of these keywords (about ${n(left!.low)}–${n(left!.high)}). Kuber may stop a little short.`}
         </p>
       )}
@@ -321,42 +327,56 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
           <TagInput label="Lookalike companies (Apollo IDs)" pills={lookalikes} suggestions={[]} onChange={setLookalikes} max={5} placeholder="Optional — up to 5 best customers" tip="Apollo ranks results by similarity to these companies." />
           <TagInput label="Leave out websites" pills={exclude} suggestions={[]} onChange={setExclude} placeholder="Optional — e.g. competitor.com" />
           <CompanyAdvancedSearch value={advanced} onChange={setAdvanced} omit={["employeeRanges", "keywordTags"]} />
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-1">
-              <Label htmlFor="target-leads">How many leads do you want?</Label>
-              <InfoTip side="right" text="Kuber checks companies 100 at a time until it has this many leads (plastic makers with a person to email), your credit limit is reached, or the keywords run out. Next time you search the same filters, it continues where it stopped." />
-            </div>
-            <Input id="target-leads" type="number" min={1} max={2000} value={target}
-              onChange={(e) => setTarget(Math.max(1, Math.min(2000, Number(e.target.value) || 1)))} className="w-32" />
-          </div>
-          <MarketSize target={target} filters={{
-            keywords, locations: countries.length ? countries : undefined, employee_ranges: sizes.length ? sizes : undefined,
-            lookalike_org_ids: lookalikes.length ? lookalikes : undefined, exclude_websites: exclude.length ? exclude : undefined,
-            advanced: buildAdvanced(advanced),
-          }} />
         </div>
       )}
 
       {step === 1 && (
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-1">
-              <Label htmlFor="max-credits">Most Apollo credits to spend</Label>
-              <InfoTip side="right" text="1 credit per search of 100 companies, then 1 credit per lead. Kuber never goes over this number; if it is reached first, it stops and tells you how many leads it found. Each approval in review is 1 more credit." />
+        <div className="@container">
+          <div className="grid items-start gap-4 @2xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="target-leads">How many leads do you want?</Label>
+                  <InfoTip side="right" text="A lead = a plastic maker with a buyer we can email. Kuber checks companies 100 at a time until it has this many leads, your credit limit is reached, or the keywords run out. Next time you search the same filters, it continues where it stopped." />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input id="target-leads" type="number" min={1} max={2000} value={target}
+                    onChange={(e) => setTarget(Math.max(1, Math.min(2000, Number(e.target.value) || 1)))} className="w-28" />
+                  {TARGET_CHIPS.map((n) => (
+                    <Button key={n} type="button" size="sm" variant={target === n ? "default" : "outline"} className="rounded-full" onClick={() => setTarget(n)}>{n}</Button>
+                  ))}
+                </div>
+              </div>
+              <MarketSize target={target} filters={{
+                keywords, locations: countries.length ? countries : undefined, employee_ranges: sizes.length ? sizes : undefined,
+                lookalike_org_ids: lookalikes.length ? lookalikes : undefined, exclude_websites: exclude.length ? exclude : undefined,
+                advanced: buildAdvanced(advanced),
+              }} />
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="max-credits">Most Apollo credits to spend</Label>
+                  <InfoTip side="right" text="1 credit per search of 100 companies, then 1 credit per lead. Kuber never goes over this number; if it is reached first, it stops and tells you how many leads it found. Each approval in review is 1 more credit." />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input id="max-credits" type="number" min={2} max={5000} value={maxCredits}
+                    onChange={(e) => setMaxCreditsTyped(Math.max(2, Math.min(5000, Number(e.target.value) || 2)))} className="w-28" />
+                  {maxCreditsTyped !== null && (
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setMaxCreditsTyped(null)}>Use suggested ({suggestedMaxCredits(target)})</Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {maxCreditsTyped === null
+                    ? `Suggested for ${target} leads (leads + searches + 10% room). You can change it.`
+                    : maxCredits < target + pages ? `With ${maxCredits} credits Kuber may stop before ${target} leads.` : "Your own limit."}
+                </p>
+              </div>
+              <div className="space-y-1 text-sm text-muted-foreground">
+                <p><b className="text-foreground">Good fit</b> — makes plastic products: one buyer is revealed automatically (1 credit).</p>
+                <p><b className="text-foreground">Needs review</b> — the AI can&apos;t tell, no website, unclear LinkedIn, or website down. Waits for you; no cost until you approve.</p>
+                <p><b className="text-foreground">Hidden</b> — not a plastic maker (traders, distributors, machine makers, brands that only use packaging). Nothing spent.</p>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Input id="max-credits" type="number" min={2} max={5000} value={maxCredits}
-                onChange={(e) => setMaxCreditsTyped(Math.max(2, Math.min(5000, Number(e.target.value) || 2)))} className="w-32" />
-              {maxCreditsTyped !== null && (
-                <Button type="button" variant="ghost" size="sm" onClick={() => setMaxCreditsTyped(null)}>Use suggested ({suggestedMaxCredits(target)})</Button>
-              )}
-            </div>
-            <ExpectedUse target={target} maxCredits={maxCredits} />
-          </div>
-          <div className="space-y-1 text-sm text-muted-foreground">
-            <p><b className="text-foreground">Good fit</b> — makes plastic products: one contact is revealed automatically. Score 9 if it makes the products you searched for, 7 if other plastic products.</p>
-            <p><b className="text-foreground">Needs review</b> — the AI can&apos;t tell, no website, unclear LinkedIn, or website down. You decide in Organizations.</p>
-            <p><b className="text-foreground">Hidden</b> — not a plastic maker (traders, distributors, machine makers, brands that only use packaging). Still saved.</p>
+            <Bill target={target} maxCredits={maxCredits} />
           </div>
         </div>
       )}
@@ -370,7 +390,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
           <AssignStrategyPicker employees={employees} mode={assignMode} onModeChange={setAssignMode} assignTo={assignTo} onAssignToChange={setAssignTo} />
           <ApolloCostNote
             credits={maxCredits}
-            spendingOn={`${target} leads: about ${pages} search${pages === 1 ? "" : "es"} of 100 companies + 1 credit per lead`}
+            spendingOn={`at most (about ${Math.min(maxCredits, target + pages)} expected) for ${target} leads: ~${pages} search${pages === 1 ? "" : "es"} of 100 companies + 1 credit per lead`}
             rate="At most this many Apollo credits: 1 per search of 100 companies, then 1 per lead. Companies that aren't plastic makers, or have nobody with an email, cost nothing. Reading websites uses about 1 Firecrawl credit per company."
           />
         </div>
@@ -384,7 +404,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
           <Button type="button" onClick={next}>Next</Button>
         ) : (
           <Button type="button" onClick={startSearch} disabled={busy}>
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />} Search &amp; score companies
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />} Find {target} leads
           </Button>
         )}
       </div>
