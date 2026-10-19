@@ -15,6 +15,7 @@ import { MultiSelectDropdown, type DropdownOption } from "@/components/ui/multi-
 import { EmptyState } from "@/components/ui/empty-state";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Tip } from "@/components/ui/tip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DomainLink } from "@/components/app/domain-link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getBatchColor } from "@/lib/constants";
@@ -189,61 +190,85 @@ function Stage({ label, done, total, tone = "bg-primary" }: { label: string; don
   );
 }
 
-/** One line while searches run (or need you); opens into per-search stages. Hidden when nothing is going on. */
+/** One search's progress and links (found / read / checked / revealed). Used by the running-search
+ *  popover and by the details of the needs-attention bar, so they always match. */
+function SearchRow({ s, onOpen }: { s: ScoredSearch; onOpen: (searchId: string, group?: Group) => void }) {
+  return (
+    <div className="grid items-center gap-4 py-3 md:grid-cols-[1.3fr_repeat(4,minmax(0,1fr))_auto]">
+      <div className="min-w-0">
+        <BatchPill name={s.batch_name} color={s.color} />
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {new Date(s.created_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {s.credits_used} Apollo credit{s.credits_used === 1 ? "" : "s"} used{s.max_credits != null ? ` (limit ${s.max_credits})` : ""}
+        </p>
+        {s.target_leads != null && (
+          <p className="text-[11px] text-muted-foreground">
+            <b className="text-foreground">{s.leads} of {s.target_leads} leads</b> · {s.pages.length} page{s.pages.length === 1 ? "" : "s"} read{s.pages.length ? ` (${s.pages.join(", ")})` : ""}{s.run_note ? ` · ${s.run_note}` : ""}
+          </p>
+        )}
+        {s.status === "failed" && <p className="text-[11px] font-medium text-red-600 dark:text-red-400">Search failed: {s.error}</p>}
+        {s.status === "paying" && <p className="text-[11px] font-medium text-red-600 dark:text-red-400">{s.error ?? "Apollo didn't answer — charge unknown"}</p>}
+      </div>
+      <Stage label="Found" done={s.stages.found} total={s.stages.found} />
+      <Stage label="Websites read" done={s.stages.read} total={s.stages.found} />
+      <Stage label="AI checked" done={s.stages.scored} total={s.stages.found} />
+      <Stage label="Contacts revealed" done={s.stages.revealed} total={s.stages.to_reveal} tone="bg-emerald-500" />
+      <div className="flex flex-col items-end gap-1 text-xs">
+        {s.groups.review > 0 && <Button type="button" variant="link" onClick={() => onOpen(s.id, "review")} className="h-auto p-0 text-xs text-amber-600 dark:text-amber-400">Review {s.groups.review} →</Button>}
+        <Button type="button" variant="link" onClick={() => onOpen(s.id)} className="h-auto p-0 text-xs">Open batch →</Button>
+      </div>
+    </div>
+  );
+}
+
+/** "N searches running" as a compact button for the top toolbar (left of List | Kanban). Clicking it
+ *  opens each running search's progress. Shows nothing when no search is running. */
+export function RunningSearchesPill({ data, onOpen }: { data: ScoredData | null; onOpen: (searchId: string, group?: Group) => void }) {
+  const running = (data?.searches ?? []).filter((s) => s.in_progress > 0);
+  if (!running.length) return null;
+  const first = running[0];
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="gap-1.5">
+          <Loader2 className="size-3.5 animate-spin text-primary" />
+          {running.length} search{running.length > 1 ? "es" : ""} running
+          <span className="font-mono text-[11px] font-normal text-muted-foreground tabular-nums">{first.stages.scored}/{first.total}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[min(46rem,92vw)] p-4">
+        <p className="eyebrow mb-1">Running now</p>
+        <div className="divide-y divide-border">
+          {running.slice(0, 4).map((s) => <SearchRow key={s.id} s={s} onOpen={onOpen} />)}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** The bar under the toolbar is only for what needs you: waiting for credits, a problem, or companies to
+ *  review. A search that is simply running is the toolbar button's job. Hidden when nothing needs you. */
 export function RunningSearchesBar({ data, onOpen }: { data: ScoredData | null; onOpen: (searchId: string, group?: Group) => void }) {
   const [open, setOpen] = useState(false);
   const searches = data?.searches ?? [];
-  const running = searches.filter((s) => s.in_progress > 0);
   const waiting = searches.filter((s) => s.stages.waiting_credits > 0);
   const failed = searches.filter((s) => s.status !== "done" && Date.now() - new Date(s.created_at).getTime() < 24 * 3600_000);
   const toReview = searches.filter((s) => s.groups.review > 0);
-  if (!running.length && !waiting.length && !failed.length && !toReview.length) return null;
-  const shown = searches.filter((s) => s.in_progress > 0 || s.stages.waiting_credits > 0 || s.groups.review > 0 || failed.includes(s)).slice(0, 6);
+  if (!waiting.length && !failed.length && !toReview.length) return null;
+  const shown = searches.filter((s) => s.stages.waiting_credits > 0 || s.groups.review > 0 || failed.includes(s)).slice(0, 6);
 
   return (
     <div className="rounded-xl border border-border bg-field dark:bg-card px-4 py-2.5 text-sm">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        {running.length > 0 && <span className="flex items-center gap-1.5 font-semibold"><Loader2 className="size-3.5 animate-spin text-primary" />{running.length} search{running.length > 1 ? "es" : ""} running</span>}
-        {running.slice(0, 2).map((s) => (
-          <span key={s.id} className="flex items-center gap-2 text-xs text-muted-foreground">
-            {s.batch_name} · {s.stages.scored} of {s.total} checked
-            <span className="h-1.5 w-24 overflow-hidden rounded-full bg-secondary"><span className="block h-full bg-primary" style={{ width: `${s.total ? (s.stages.scored / s.total) * 100 : 0}%` }} /></span>
-          </span>
-        ))}
+        {(data?.review_total ?? 0) > 0 && <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{data!.review_total} need review</span>}
         {waiting.length > 0 && <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{waiting.reduce((t, s) => t + s.stages.waiting_credits, 0)} waiting for Apollo credits</span>}
         {failed.length > 0 && <span className="flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400"><AlertTriangle className="size-3.5" />{failed.length} search{failed.length > 1 ? "es" : ""} had a problem</span>}
-        {(data?.review_total ?? 0) > 0 && <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{data!.review_total} need review</span>}
         <Button type="button" variant="ghost" size="sm" onClick={() => setOpen((o) => !o)} className="ml-auto h-7 gap-1 text-xs">
           {open ? <>Hide <ChevronUp className="size-3.5" /></> : <>Details <ChevronDown className="size-3.5" /></>}
         </Button>
       </div>
       {open && (
         <div className="mt-2 divide-y divide-border border-t border-border">
-          {shown.map((s) => (
-            <div key={s.id} className="grid items-center gap-4 py-3 md:grid-cols-[1.3fr_repeat(4,minmax(0,1fr))_auto]">
-              <div className="min-w-0">
-                <BatchPill name={s.batch_name} color={s.color} />
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {new Date(s.created_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {s.credits_used} Apollo credit{s.credits_used === 1 ? "" : "s"} used{s.max_credits != null ? ` (limit ${s.max_credits})` : ""}{s.mock ? " · test, nothing charged" : ""}
-                </p>
-                {s.target_leads != null && (
-                  <p className="text-[11px] text-muted-foreground">
-                    <b className="text-foreground">{s.leads} of {s.target_leads} leads</b> · {s.pages.length} page{s.pages.length === 1 ? "" : "s"} read{s.pages.length ? ` (${s.pages.join(", ")})` : ""}{s.run_note ? ` · ${s.run_note}` : ""}
-                  </p>
-                )}
-                {s.status === "failed" && <p className="text-[11px] font-medium text-red-600 dark:text-red-400">Search failed: {s.error}</p>}
-                {s.status === "paying" && <p className="text-[11px] font-medium text-red-600 dark:text-red-400">{s.error ?? "Apollo didn't answer — charge unknown"}</p>}
-              </div>
-              <Stage label="Found" done={s.stages.found} total={s.stages.found} />
-              <Stage label="Websites read" done={s.stages.read} total={s.stages.found} />
-              <Stage label="AI checked" done={s.stages.scored} total={s.stages.found} />
-              <Stage label="Contacts revealed" done={s.stages.revealed} total={s.stages.to_reveal} tone="bg-emerald-500" />
-              <div className="flex flex-col items-end gap-1 text-xs">
-                {s.groups.review > 0 && <Button type="button" variant="link" onClick={() => onOpen(s.id, "review")} className="h-auto p-0 text-xs text-amber-600 dark:text-amber-400">Review {s.groups.review} →</Button>}
-                <Button type="button" variant="link" onClick={() => onOpen(s.id)} className="h-auto p-0 text-xs">Open batch →</Button>
-              </div>
-            </div>
-          ))}
+          {shown.map((s) => <SearchRow key={s.id} s={s} onOpen={onOpen} />)}
         </div>
       )}
     </div>
