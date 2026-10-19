@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   const q = (sp.get("q") ?? "").trim().toLowerCase();
 
   const { data: searchRows, error: sErr } = await db.from("prospect_searches")
-    .select("id, filters, status, credits_spent, returned, new_companies, total_entries, error, mock, created_at, auto_reveals_used")
+    .select("*") // newer columns (lead target, page memory) appear once their migration has run
     .order("created_at", { ascending: false }).limit(20);
   if (sErr) return fail(500, "INTERNAL", sErr.message);
   const searches = searchRows ?? [];
@@ -60,8 +60,14 @@ export async function GET(req: NextRequest) {
       // Apollo credits this batch has really used: the search page + 1 per contact revealed.
       credits_used: (s.credits_spent ?? 0) + (s.mock ? 0 : n("promoted")),
       // The limit chosen on the search screen (search + automatic reveals); approvals add 1 each.
-      max_credits: f.max_auto_reveals != null ? f.max_auto_reveals + 1 : null,
-      in_progress: rs.filter((r) => isWorking(r as never)).length,
+      max_credits: (s.max_credits as number | null) ?? (f.max_auto_reveals != null && !s.target_leads ? f.max_auto_reveals + 1 : null),
+      target_leads: (s.target_leads as number | null) ?? null,
+      leads: n("promoted"),
+      pages: (s.pages as number[] | null) ?? [],
+      run_status: (s.run_status as string | null) ?? "complete",
+      run_note: (s.run_note as string | null) ?? null,
+      // A search still reading pages counts as in progress even between pages.
+      in_progress: rs.filter((r) => isWorking(r as never)).length + (s.run_status === "running" ? 1 : 0),
       groups: g,
       stages: {
         found: rs.length,

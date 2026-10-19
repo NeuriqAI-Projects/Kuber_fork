@@ -9,6 +9,7 @@ import { parseFitScoring } from "./fit-rules";
 import { isMockProspecting, mockDeps, realDeps } from "./deps";
 import { runBatch, WORKABLE, type Deps } from "./pipeline";
 import { supabaseStore } from "./store";
+import { continueRun } from "./search";
 
 /** Measured 9 Oct 2026 (200 real companies): a 45 s budget let runs reach 57–61 s,
  *  past the 60 s route limit. So: no new company after 30 s, and no paid website
@@ -74,6 +75,12 @@ export async function runProspectWorker(admin: SupabaseClient, companyId: string
       },
     };
   }
+  // Searches with a lead target: read their next Apollo page when it's time (search.ts continueRun).
+  const { data: runs } = await scoped.from("prospect_searches").select("id").eq("run_status", "running");
+  for (const r of runs ?? []) {
+    try { await continueRun(scoped, companyId, r.id as string); }
+    catch (e) { console.error("continueRun failed", r.id, (e as Error).message); }
+  }
   const res = await runBatch(deps, supabaseStore(admin, companyId), cfg, { budgetMs, lanes: WORKER_LANES, paidStartMs: budgetMs + (WORKER_PAID_START_MS - WORKER_BUDGET_MS) });
   return { ...res, promotedImports: [...promotedImports] };
 }
@@ -81,7 +88,9 @@ export async function runProspectWorker(admin: SupabaseClient, companyId: string
 /** Companies that currently have work waiting (for the cron pump). */
 export async function companiesWithWork(admin: SupabaseClient): Promise<string[]> {
   const { data } = await admin.from("prospect_companies").select("company_id").in("status", WORKABLE).limit(1000);
-  return [...new Set((data ?? []).map((r) => r.company_id as string))];
+  // Plus searches waiting to read their next page (nothing in progress, target not reached yet).
+  const { data: runs } = await admin.from("prospect_searches").select("company_id").eq("run_status", "running").limit(1000);
+  return [...new Set([...(data ?? []), ...(runs ?? [])].map((r) => r.company_id as string))];
 }
 
 /** Start the email reveal for batches that just got contacts — what Company

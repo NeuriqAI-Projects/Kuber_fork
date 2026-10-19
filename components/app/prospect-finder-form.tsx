@@ -22,71 +22,92 @@ import { LocationsPicker } from "@/components/ui/locations-picker";
 import { Stepper } from "@/components/ui/stepper";
 import { getBatchColor } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { LEADS_PER_PAGE, suggestedMaxCredits } from "@/lib/services/prospects/digging";
 
 const STEPS = ["Criteria", "Settings", "Batch", "Assign"];
 const SIZE_SUGGESTIONS = ["1,10", "11,50", "51,200", "201,500", "501,1000", "1001,5000", "5001,10000"];
-/** Default Apollo limit for one batch: 1 search + up to 39 contacts. One batch of
- *  100 companies gave about 33 leads in the 17 Oct 2026 live tests. */
-const DEFAULT_MAX_CREDITS = 40;
+/** Leads asked for by default. */
+const DEFAULT_TARGET = 100;
 /** Measured live on 17 Oct 2026 with only the every-minute background job. */
 const COMPANIES_PER_MINUTE = 20;
 
-interface MarketEstimate { companies: { low: number; mid: number; high: number }; leads: { low: number; high: number } }
+interface MarketEstimate {
+  companies: { low: number; mid: number; high: number };
+  leads: { low: number; high: number };
+  pages_used?: number; total_pages?: number | null;
+  leads_left?: { low: number; high: number };
+}
 
-/** Expected Apollo use for one batch, from the 17 Oct 2026 live tests: about
- *  25–40 leads per 100 companies with good keywords (1 credit each), plus 1 for
- *  the search, and never more than the limit. */
-function ExpectedUse({ maxCredits }: { maxCredits: number }) {
-  const contacts = Math.max(0, maxCredits - 1);
-  const low = 1 + Math.min(contacts, 25), high = 1 + Math.min(contacts, 40);
+/** What a lead target is expected to cost, from the 17 Oct 2026 live tests:
+ *  about 33 leads per 100 companies (1 Apollo credit per lead) + 1 credit per
+ *  page of 100 companies, and never more than the limit. */
+function ExpectedUse({ target, maxCredits }: { target: number; maxCredits: number }) {
+  const pages = Math.ceil(target / LEADS_PER_PAGE);
+  const expected = Math.min(maxCredits, target + pages);
+  const minutes = Math.max(1, Math.round((pages * 100) / COMPANIES_PER_MINUTE));
   return (
     <div className="space-y-1 rounded-lg border border-border px-3 py-2.5 text-sm">
-      <p><b>Expected use: about {low === high ? low : `${low}–${high}`} credits</b> · never more than {maxCredits}.</p>
+      <p><b>Expected use: about {expected} credits</b> for {target} leads · never more than {maxCredits}.</p>
       <p className="text-xs text-muted-foreground">
-        1 credit for the search (up to 100 companies) + 1 per lead. One batch usually gives about 25–40 leads with good keywords.
-        {contacts < 40 && ` With this limit you get at most ${contacts} lead${contacts === 1 ? "" : "s"}; extra good companies wait for your review (1 credit each if you approve).`}
-        {" "}Companies that aren&apos;t plastic makers, or have nobody with an email, cost nothing.
+        About {pages} search{pages === 1 ? "" : "es"} of 100 companies (1 credit each) + 1 credit per lead. Companies that aren&apos;t plastic makers, or have nobody with an email, cost nothing.
+        {" "}Website reading: about {pages * 100} Firecrawl credits. Time: about {minutes} min in the background.
+        {maxCredits < target + pages && ` With this limit Kuber may stop before ${target} leads.`}
       </p>
     </div>
   );
 }
 
-/** Free size check (Apollo People Search, 0 credits) shown under the filters. */
-function MarketSize({ keywords, countries, sizes }: { keywords: string[]; countries: string[]; sizes: string[] }) {
+/** Free size check (Apollo People Search, 0 credits): is there enough for the lead target? */
+function MarketSize({ filters, target }: { filters: Record<string, unknown> & { keywords: string[] }; target: number }) {
   const [est, setEst] = useState<MarketEstimate | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
-  const key = JSON.stringify([keywords, countries, sizes]);
+  const key = JSON.stringify(filters);
   useEffect(() => {
-    if (!keywords.length) { setEst(null); setState("idle"); return; }
+    if (!filters.keywords.length) { setEst(null); setState("idle"); return; }
     let alive = true;
     setState("loading");
     const t = setTimeout(() => {
-      api<MarketEstimate>("/api/v1/prospects/estimate", { keywords, locations: countries.length ? countries : undefined, employee_ranges: sizes.length ? sizes : undefined })
+      api<MarketEstimate>("/api/v1/prospects/estimate", filters)
         .then((e) => { if (alive) { setEst(e); setState("idle"); } })
         .catch(() => { if (alive) setState("error"); });
     }, 600);
     return () => { alive = false; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  if (!keywords.length) return null;
+  if (!filters.keywords.length) return null;
   const n = (x: number) => x.toLocaleString();
+  const left = est?.leads_left ?? est?.leads;
+  const used = est?.pages_used ?? 0;
+  const tooFew = !!left && target > left.high;
+  const maybe = !!left && !tooFew && target > left.low;
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-border px-3 py-2.5 text-sm">
-      {state === "loading" ? <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" /> : <Search className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}
-      <div className="min-w-0 flex-1">
-        {state === "error" && <p className="text-muted-foreground">Couldn&apos;t check the size right now. You can still search.</p>}
-        {state !== "error" && !est && <p className="text-muted-foreground">Checking how many companies match…</p>}
-        {state !== "error" && est && (
-          est.companies.mid === 0
-            ? <p className="font-medium text-amber-600 dark:text-amber-400">Apollo has almost no companies for these keywords. Try a different keyword.</p>
-            : <p>
-                <b>About {n(est.companies.mid)} companies</b> match ({n(est.companies.low)}–{n(est.companies.high)}) · <b>about {n(est.leads.low)}–{n(est.leads.high)} leads</b> possible in total.
-              </p>
-        )}
-        <p className="flex items-center gap-1 text-xs text-muted-foreground">Free check, no credits used. One batch reads up to 100 of these.
-          <InfoTip side="right" text="Estimated from Apollo's free People Search. It is a range: the exact number of companies is only known after the paid search. About 1 in 3 companies becomes a lead (makes plastic and has a person with an email)." />
-        </p>
+    <div className="space-y-2">
+      <div className="flex items-start gap-2 rounded-lg border border-border px-3 py-2.5 text-sm">
+        {state === "loading" ? <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" /> : <Search className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}
+        <div className="min-w-0 flex-1">
+          {state === "error" && <p className="text-muted-foreground">Couldn&apos;t check the size right now. You can still search.</p>}
+          {state !== "error" && !est && <p className="text-muted-foreground">Checking how many companies match…</p>}
+          {state !== "error" && est && (
+            est.companies.mid === 0
+              ? <p className="font-medium text-amber-600 dark:text-amber-400">Apollo has almost no companies for these keywords. Try a different keyword.</p>
+              : <p>
+                  <b>About {n(est.companies.mid)} companies</b> match ({n(est.companies.low)}–{n(est.companies.high)}) · <b>about {n(left!.low)}–{n(left!.high)} leads</b> available
+                  {used > 0 ? ` (you already searched ${used} page${used === 1 ? "" : "s"} of these; Kuber continues from page ${used + 1})` : ""}.
+                </p>
+          )}
+          <p className="flex items-center gap-1 text-xs text-muted-foreground">Free check, no credits used.
+            <InfoTip side="right" text="Estimated from Apollo's free People Search, so it is a range. About 1 in 3 companies becomes a lead (makes plastic and has a person with an email). Pages read by earlier searches with the same filters are not read again." />
+          </p>
+        </div>
       </div>
+      {est && est.companies.mid > 0 && (tooFew || maybe) && (
+        <p className={cn("flex items-start gap-1.5 rounded-lg border px-3 py-2 text-sm", tooFew ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400" : "border-border text-muted-foreground")}>
+          <CircleAlert className="mt-0.5 size-4 shrink-0" />
+          {tooFew
+            ? `These keywords can give only about ${n(left!.low)}–${n(left!.high)} leads, not ${n(target)}. Add more keywords or countries, or ask for fewer leads.`
+            : `${n(target)} leads is near the limit of these keywords (about ${n(left!.low)}–${n(left!.high)}). Kuber may stop a little short.`}
+        </p>
+      )}
     </div>
   );
 }
@@ -152,6 +173,17 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
         <span className={cn("inline-flex shrink-0 items-center rounded-full border px-3 py-1 text-xs font-semibold", getBatchColor(batchColor).pill)}>{batchName}</span>
       </div>
 
+      {s?.target_leads != null && (
+        <div className="space-y-1.5 rounded-xl border border-border bg-field p-4 dark:bg-card">
+          <p className="text-sm"><b className="text-lg tabular-nums">{s.leads} of {s.target_leads} leads</b>
+            <span className="text-muted-foreground"> · {s.pages.length} page{s.pages.length === 1 ? "" : "s"} of 100 companies read{s.pages.length ? ` (page ${s.pages.join(", ")})` : ""}</span>
+          </p>
+          <div className="h-1.5 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${Math.min(100, (s.leads / s.target_leads) * 100)}%` }} /></div>
+          {s.run_note && <p className={cn("text-sm", s.leads < s.target_leads ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400")}>{s.run_note}</p>}
+          {!s.run_note && s.run_status === "running" && <p className="text-xs text-muted-foreground">Kuber reads the next 100 companies on its own when these are checked, until it has {s.target_leads} leads or hits your credit limit.</p>}
+        </div>
+      )}
+
       {netError && <p className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-400"><CircleAlert className="size-4" />Can&apos;t reach the server right now ({netError}). The search keeps running; these numbers update when the connection is back.</p>}
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -188,7 +220,7 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
 
       {s && (
         <p className="rounded-lg border border-border px-3 py-2 text-sm">
-          <b>Apollo credits used so far: {s.credits_used}</b>{s.max_credits != null ? ` of your limit of ${s.max_credits}` : ""} ({s.credits_spent} for the search + {s.credits_used - s.credits_spent} contact{s.credits_used - s.credits_spent === 1 ? "" : "s"}){s.mock ? " · test batch, nothing is charged" : ""}.
+          <b>Apollo credits used so far: {s.credits_used}</b>{s.max_credits != null ? ` of your limit of ${s.max_credits}` : ""} ({s.credits_spent} for search{s.credits_spent === 1 ? "" : "es"} + {s.credits_used - s.credits_spent} contact{s.credits_used - s.credits_spent === 1 ? "" : "s"}){s.mock ? " · test batch, nothing is charged" : ""}.
           <span className="text-muted-foreground"> Website reading: about {s.stages.read} Firecrawl credits.</span>
         </p>
       )}
@@ -216,7 +248,11 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   const [lookalikes, setLookalikes] = useState<string[]>([]);
   const [exclude, setExclude] = useState<string[]>([]);
   const [advanced, setAdvanced] = useState<Record<string, string>>({});
-  const [maxCredits, setMaxCredits] = useState(DEFAULT_MAX_CREDITS);
+  const [target, setTarget] = useState(DEFAULT_TARGET);
+  // Follows the lead target until the user types their own limit.
+  const [maxCreditsTyped, setMaxCreditsTyped] = useState<number | null>(null);
+  const maxCredits = maxCreditsTyped ?? suggestedMaxCredits(target);
+  const pages = Math.ceil(target / LEADS_PER_PAGE);
   const [batchName, setBatchName] = useState("");
   const [batchColor, setBatchColor] = useState("green");
   const [batchError, setBatchError] = useState(false);
@@ -245,7 +281,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
       const out = await api<{ search_id: string }>("/api/v1/prospects/search", {
         keywords, locations: countries.length ? countries : undefined, employee_ranges: sizes.length ? sizes : undefined,
         lookalike_org_ids: lookalikes.length ? lookalikes : undefined, exclude_websites: exclude.length ? exclude : undefined,
-        advanced: buildAdvanced(advanced), max_auto_reveals: Math.max(0, maxCredits - 1), page: 1,
+        advanced: buildAdvanced(advanced), target_leads: target, max_credits: maxCredits,
         batch_name: batchName.trim(), color: batchColor, ...buildImportAssignment(assignMode, assignTo),
       });
       setStarted({ searchId: out.search_id, batchName: batchName.trim(), color: batchColor });
@@ -285,7 +321,19 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
           <TagInput label="Lookalike companies (Apollo IDs)" pills={lookalikes} suggestions={[]} onChange={setLookalikes} max={5} placeholder="Optional — up to 5 best customers" tip="Apollo ranks results by similarity to these companies." />
           <TagInput label="Leave out websites" pills={exclude} suggestions={[]} onChange={setExclude} placeholder="Optional — e.g. competitor.com" />
           <CompanyAdvancedSearch value={advanced} onChange={setAdvanced} omit={["employeeRanges", "keywordTags"]} />
-          <MarketSize keywords={keywords} countries={countries} sizes={sizes} />
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1">
+              <Label htmlFor="target-leads">How many leads do you want?</Label>
+              <InfoTip side="right" text="Kuber checks companies 100 at a time until it has this many leads (plastic makers with a person to email), your credit limit is reached, or the keywords run out. Next time you search the same filters, it continues where it stopped." />
+            </div>
+            <Input id="target-leads" type="number" min={1} max={2000} value={target}
+              onChange={(e) => setTarget(Math.max(1, Math.min(2000, Number(e.target.value) || 1)))} className="w-32" />
+          </div>
+          <MarketSize target={target} filters={{
+            keywords, locations: countries.length ? countries : undefined, employee_ranges: sizes.length ? sizes : undefined,
+            lookalike_org_ids: lookalikes.length ? lookalikes : undefined, exclude_websites: exclude.length ? exclude : undefined,
+            advanced: buildAdvanced(advanced),
+          }} />
         </div>
       )}
 
@@ -293,12 +341,17 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
         <div className="space-y-4">
           <div className="space-y-1.5">
             <div className="flex items-center gap-1">
-              <Label htmlFor="max-credits">Most Apollo credits to spend on this batch</Label>
-              <InfoTip side="right" text="1 credit for the search (up to 100 companies), then 1 credit per contact revealed at a good-fit company. The batch never goes over this number; extra good fits wait for your review, where each approval is 1 more credit." />
+              <Label htmlFor="max-credits">Most Apollo credits to spend</Label>
+              <InfoTip side="right" text="1 credit per search of 100 companies, then 1 credit per lead. Kuber never goes over this number; if it is reached first, it stops and tells you how many leads it found. Each approval in review is 1 more credit." />
             </div>
-            <Input id="max-credits" type="number" min={1} max={101} value={maxCredits}
-              onChange={(e) => setMaxCredits(Math.max(1, Math.min(101, Number(e.target.value) || 1)))} className="w-32" />
-            <ExpectedUse maxCredits={maxCredits} />
+            <div className="flex items-center gap-2">
+              <Input id="max-credits" type="number" min={2} max={5000} value={maxCredits}
+                onChange={(e) => setMaxCreditsTyped(Math.max(2, Math.min(5000, Number(e.target.value) || 2)))} className="w-32" />
+              {maxCreditsTyped !== null && (
+                <Button type="button" variant="ghost" size="sm" onClick={() => setMaxCreditsTyped(null)}>Use suggested ({suggestedMaxCredits(target)})</Button>
+              )}
+            </div>
+            <ExpectedUse target={target} maxCredits={maxCredits} />
           </div>
           <div className="space-y-1 text-sm text-muted-foreground">
             <p><b className="text-foreground">Good fit</b> — makes plastic products: one contact is revealed automatically. Score 9 if it makes the products you searched for, 7 if other plastic products.</p>
@@ -317,8 +370,8 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
           <AssignStrategyPicker employees={employees} mode={assignMode} onModeChange={setAssignMode} assignTo={assignTo} onAssignToChange={setAssignTo} />
           <ApolloCostNote
             credits={maxCredits}
-            spendingOn={`1 company search (up to 100 companies) + up to ${Math.max(0, maxCredits - 1)} contacts revealed`}
-            rate="At most this many Apollo credits: 1 for the search, then 1 per contact revealed. Companies that aren't plastic makers, or have nobody with an email, cost nothing. Reading websites uses about 1 Firecrawl credit per company (up to 100)."
+            spendingOn={`${target} leads: about ${pages} search${pages === 1 ? "" : "es"} of 100 companies + 1 credit per lead`}
+            rate="At most this many Apollo credits: 1 per search of 100 companies, then 1 per lead. Companies that aren't plastic makers, or have nobody with an email, cost nothing. Reading websites uses about 1 Firecrawl credit per company."
           />
         </div>
       )}

@@ -24,7 +24,8 @@ import { cn } from "@/lib/utils";
 export interface ScoredSearch {
   id: string; batch_name: string; color: string; keywords: string[]; status: string; error: string | null;
   credits_spent: number; returned: number | null; new_companies: number | null; mock: boolean; created_at: string;
-  max_auto_reveals: number | null; credits_used: number; max_credits: number | null; total: number; in_progress: number; groups: Record<Group, number>;
+  max_auto_reveals: number | null; credits_used: number; max_credits: number | null;
+  target_leads: number | null; leads: number; pages: number[]; run_status: string; run_note: string | null; total: number; in_progress: number; groups: Record<Group, number>;
   stages: { found: number; read: number; scored: number; to_reveal: number; revealed: number; waiting_credits: number };
 }
 export interface ScoredCompany {
@@ -224,6 +225,11 @@ export function RunningSearchesBar({ data, onOpen }: { data: ScoredData | null; 
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   {new Date(s.created_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {s.credits_used} Apollo credit{s.credits_used === 1 ? "" : "s"} used{s.max_credits != null ? ` (limit ${s.max_credits})` : ""}{s.mock ? " · test, nothing charged" : ""}
                 </p>
+                {s.target_leads != null && (
+                  <p className="text-[11px] text-muted-foreground">
+                    <b className="text-foreground">{s.leads} of {s.target_leads} leads</b> · {s.pages.length} page{s.pages.length === 1 ? "" : "s"} read{s.pages.length ? ` (${s.pages.join(", ")})` : ""}{s.run_note ? ` · ${s.run_note}` : ""}
+                  </p>
+                )}
                 {s.status === "failed" && <p className="text-[11px] font-medium text-red-600 dark:text-red-400">Search failed: {s.error}</p>}
                 {s.status === "paying" && <p className="text-[11px] font-medium text-red-600 dark:text-red-400">{s.error ?? "Apollo didn't answer — charge unknown"}</p>}
               </div>
