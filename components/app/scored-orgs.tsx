@@ -90,15 +90,17 @@ export function useScoredOrgs(filter: ScoredFilter, q: string, enabled = true) {
   }, [load, enabled]);
 
   const busy = (data?.searches ?? []).some((s) => s.in_progress > 0 || s.stages.waiting_credits > 0);
+  // Idle pages still look every 15 s: a search started after this page loaded (Add Leads closed
+  // mid-start, another tab, a teammate) must show up without a reload.
   useEffect(() => {
-    if (!enabled || !busy) return;
+    if (!enabled) return;
     const t = setInterval(() => {
-      if (!kicking.current && (data?.searches ?? []).some((s) => s.in_progress > 0)) {
+      if (busy && !kicking.current && (data?.searches ?? []).some((s) => s.in_progress > 0)) {
         kicking.current = true;
         api("/api/v1/prospects/run", {}).catch(() => {}).finally(() => { kicking.current = false; });
       }
       void load();
-    }, 4000);
+    }, busy ? 4000 : 15000);
     return () => clearInterval(t);
   }, [enabled, busy, load, data]);
 
