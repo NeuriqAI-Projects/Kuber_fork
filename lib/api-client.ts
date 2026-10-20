@@ -2102,3 +2102,75 @@ export function prefetchCampaign(id: string): void {
     prefetch(cacheKeys.campaignLeads(id), async () => fetchCampaignLeads(await getToken(), id));
   });
 }
+
+// ─── Kuber AI assistant ──────────────────────────────────────────────────────
+
+export type AssistantActionResult = { ok: boolean; message: string; link?: string; data?: Record<string, unknown> };
+
+export async function executeAssistantAction(token: string, proposalToken: string): Promise<AssistantActionResult> {
+  return apiFetch<AssistantActionResult>("/api/v1/assistant/actions", { method: "POST", body: JSON.stringify({ token: proposalToken }) }, token);
+}
+
+export type AssistantThreadSummary = {
+  id: string; title: string; updated_at: string; message_count: number;
+  preview: string | null; last_role: "user" | "assistant" | null;
+};
+
+export type AssistantOverview = {
+  scope: string;
+  leads: { total: number; added_last_7_days: number };
+  in_campaigns: { total: number; hot: number; interested: number };
+  campaigns: { total: number; by_status: Array<{ value: string; count: number }> };
+  to_do: { replies_needing_answer: number; unread_emails: number; drafts_waiting_review: number; enrichment_failures_last_7_days: number };
+};
+
+export async function fetchAssistantOverview(token: string): Promise<AssistantOverview> {
+  return apiFetch("/api/v1/assistant/overview", {}, token);
+}
+
+export async function fetchAssistantThreads(token: string): Promise<{ available: boolean; threads: AssistantThreadSummary[] }> {
+  return apiFetch("/api/v1/assistant/threads", {}, token);
+}
+
+export async function fetchAssistantThread<M = unknown>(token: string, id: string): Promise<{ id: string; title: string; messages: M[] }> {
+  return apiFetch(`/api/v1/assistant/threads/${encodeURIComponent(id)}`, {}, token);
+}
+
+export async function saveAssistantThread(token: string, id: string, messages: unknown[]): Promise<void> {
+  await apiFetch(`/api/v1/assistant/threads/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ messages }) }, token);
+}
+
+export async function deleteAssistantThread(token: string, id: string): Promise<void> {
+  await apiFetch(`/api/v1/assistant/threads/${encodeURIComponent(id)}`, { method: "DELETE" }, token);
+}
+
+export type AssistantModelSettings = {
+  providers: Array<{
+    id: string; label: string; configured: boolean;
+    defaults: { fast: string; deep: string; utility: string };
+    overrides: { fast?: string; deep?: string };
+  }>;
+};
+
+export async function fetchAssistantModels(token: string): Promise<AssistantModelSettings> {
+  return apiFetch("/api/v1/assistant/models", {}, token);
+}
+
+export async function saveAssistantModel(token: string, provider: string, patch: { fast?: string | null; deep?: string | null }): Promise<void> {
+  await apiFetch("/api/v1/assistant/models", { method: "PUT", body: JSON.stringify({ provider, ...patch }) }, token);
+}
+
+type UsageAgg = { calls: number; cost_usd: number; tokens: number; failed: number; unpriced: number; last_used: string | null };
+export type AssistantUsageData = {
+  window_days: number;
+  per_person_available: boolean;
+  total: UsageAgg;
+  by_purpose: Array<UsageAgg & { purpose: string }>;
+  by_person: Array<UsageAgg & { user_id: string | null; name: string; email: string | null; role: string | null }>;
+  by_model: Array<UsageAgg & { model: string }>;
+  daily: Array<{ date: string; assistant: number; other: number }>;
+};
+
+export async function fetchAssistantUsage(token: string, days = 30): Promise<AssistantUsageData> {
+  return apiFetch(`/api/v1/assistant/usage?days=${days}`, {}, token);
+}

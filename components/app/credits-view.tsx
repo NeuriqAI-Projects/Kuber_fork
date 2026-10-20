@@ -11,6 +11,7 @@ import { LlmKeysPanel, ServiceKeysPanel } from "@/components/app/keys-view";
 import { ApolloUsageView } from "@/components/app/keys-usage-apollo";
 import { InstantlyUsageView } from "@/components/app/keys-usage-instantly";
 import { AiUsageView } from "@/components/app/keys-usage-ai";
+import { AssistantModelsPanel, AssistantUsageView } from "@/components/app/keys-usage-assistant";
 import { FirecrawlUsageView } from "@/components/app/keys-usage-firecrawl";
 import { JevUsageView, TavilyUsageView } from "@/components/app/keys-usage-jev-tavily";
 
@@ -19,7 +20,7 @@ type Tab = "apollo" | "instantly" | "ai" | "firecrawl" | "jev" | "tavily";
 const TABS: { id: Tab; label: string; blurb: string }[] = [
   { id: "apollo", label: "Apollo", blurb: "Finds companies and people, and reveals their emails." },
   { id: "instantly", label: "Instantly", blurb: "Sends campaign emails and brings replies back." },
-  { id: "ai", label: "AI", blurb: "Writes drafts and replies. OpenRouter, OpenAI and Claude share one try-order." },
+  { id: "ai", label: "AI", blurb: "Writes drafts and replies, and powers Kuber AI. OpenRouter, OpenAI and Claude share one try-order." },
   { id: "firecrawl", label: "Firecrawl", blurb: "Reads company websites." },
   { id: "jev", label: "Jev", blurb: "Scores whether a company makes plastic, before any email is bought." },
   { id: "tavily", label: "Tavily", blurb: "Reads LinkedIn pages and searches the web when a website says too little." },
@@ -59,6 +60,8 @@ export function CreditsView() {
       {tab === "ai" ? (
         <>
           <SettingsSection title="Keys" description={active?.blurb} className="space-y-3"><LlmKeysPanel /></SettingsSection>
+          <AssistantModelsPanel />
+          <AssistantUsageView />
           <AiUsageView />
         </>
       ) : (

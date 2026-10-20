@@ -37,6 +37,11 @@ const PRICES: Record<string, Price> = {
   // ── Anthropic (direct) ────────────────────────────────────────────────────
   "claude-fable-5":    [10, 50],
   "claude-mythos-5":   [10, 50],
+  // The 5.5 generation must be listed explicitly: prefix matching would
+  // otherwise price claude-opus-5-5 as claude-opus-5 ($5/$25 instead of $4/$20).
+  "claude-opus-5-5":   [4, 20],
+  "claude-sonnet-5-5": [2, 10],
+  "claude-haiku-5-5":  [0.1, 0.5],
   "claude-opus-5":     [5, 25],
   "claude-opus-4-8":   [5, 25],
   "claude-opus-4-7":   [5, 25],
@@ -46,12 +51,19 @@ const PRICES: Record<string, Price> = {
   "claude-haiku-4-5":  [1, 5],
 
   // ── OpenAI ────────────────────────────────────────────────────────────────
+  "gpt-6.1-sol": [2, 10],
+  "gpt-6-sol":   [2, 10],
+  "gpt-6-luna":  [0.1, 0.5],
+  "gpt-6-astra": [10, 50],
   "gpt-4o":      [2.5, 10],
   "gpt-4o-mini": [0.15, 0.6],
 };
 
 function lookup(model: string): Price | null {
-  const m = model.trim().toLowerCase();
+  let m = model.trim().toLowerCase();
+  // OpenRouter spells Claude versions with dots (claude-sonnet-5.5); the
+  // Anthropic API uses dashes (claude-sonnet-5-5). Price both the same.
+  if (m.startsWith("claude-")) m = m.replace(/\./g, "-");
   if (PRICES[m]) return PRICES[m];
   // Prefix match, longest first, so claude-opus-4-8 wins over claude-opus-4.
   const hit = Object.keys(PRICES)

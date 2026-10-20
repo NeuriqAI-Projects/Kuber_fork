@@ -21,7 +21,7 @@ export interface LlmResult<T> {
  * visible instead of just expensive.
  */
 export interface LlmCallMeta {
-  purpose: "draft" | "followup" | "reply" | "enrichment" | "classify" | "other";
+  purpose: "draft" | "followup" | "reply" | "enrichment" | "classify" | "assistant" | "other";
   campaignId?: string | null;
   leadId?: string | null;
   draftId?: string | null;

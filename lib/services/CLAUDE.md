@@ -15,9 +15,13 @@ Grouped by job (file prefix tells you where to look):
 | **Leads & people** | `assignment.ts` (deferred assignment), `territory-allocator.ts`, `handover.ts`, `lead-events.ts` (activity log), `lead-lookup.ts`, `lead-removal.ts` |
 | **Keys & settings** | `provider-keys.ts`, `service-keys.ts` (`getServiceSecret`), `provider-credits.ts`, `provider-errors.ts`, `settings.ts` (company + user layers) |
 | **Model Lab** | `model-lab.ts` |
+| **Kuber AI assistant** | `assistant/` — `agent.ts` (streamed tool loop), `provider-chain.ts` (try-order + key rotation as one AI SDK model), `models.ts` (fast/deep/utility model per provider), `prompt.ts`, `tools/` (read tools + `propose_*` action tools), `actions.ts` (signed proposals, run via the app's own routes), `threads.ts`, `usage.ts`. `model-catalog.ts` = live model lists for every LLM provider. |
 
 Rules:
 - Paid calls (Apollo reveal, org search, Firecrawl): save the result immediately, never pay twice on retry.
 - Email structure/tone lives in `settings.system_prompt`, not in code.
 - Keys come from the DB first (`getServiceSecret(provider, companyId)`), `.env.local` is fallback.
 - Pure logic gets a `*.test.mts` next to it.
+- Assistant tools always query through the caller's scoped client and apply the employee
+  filter; action tools only PROPOSE (nothing changes until the user confirms the card).
+  After changing the prompt or a tool, run `scripts/assistant-eval/run.mts`.

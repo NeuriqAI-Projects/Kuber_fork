@@ -590,7 +590,7 @@ function AddProviderModal({ available, onClose, onAdded }: {
  *  a guess. Falls back to the static option list / free text when the catalog
  *  can't be loaded (e.g. no key stored yet), and always keeps a manual-entry
  *  escape hatch so a brand-new model name never requires a code change. */
-function ModelField({ provider, value, onChange }: {
+export function ModelField({ provider, value, onChange }: {
   provider: ProviderConfig;
   value: string;
   onChange: (v: string) => void;

@@ -4,6 +4,7 @@
 - `check-*` — small self-checks for one piece of logic (run with `node` / `npx tsx`).
 - `repair-*`, `replay-*` — data fixes on the LIVE DB. Read before running; ask first.
 - `probe-*`, `measure-*`, `diagnose-*` — read-only investigations of Apollo/Instantly.
+- `assistant-eval/` — Kuber AI eval suite (`run.mts`, cases in `cases.mts`); see `docs/assistant-evals/README.md`.
 - `e2e-*` — Playwright end-to-end runs (screenshots go to `scripts/e2e-shots/`, git-ignored).
 - `create-admin-user.mjs`, `register-webhook.mjs`, `seed-*`, `simulate-*`, `sync-keyword-seed.ts`.
 

@@ -8,6 +8,8 @@ import {
   LayoutDashboard, Users, Megaphone, Settings, Inbox, FlaskConical,
   PanelLeft, Bug, Coins, Search, User, LogOut,
 } from "lucide-react";
+import { KuberAiMark } from "@/components/app/assistant/kuber-ai-mark";
+import { AssistantLauncher, useAssistantSize, useIsPhone } from "@/components/app/assistant/assistant-launcher";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CommandMenu, type CommandGroup } from "@/components/ui/command-menu";
@@ -21,6 +23,10 @@ import { supabase } from "@/lib/supabase";
 
 const CreateCampaignModal = dynamic(
   () => import("@/components/app/create-campaign-modal").then((m) => m.CreateCampaignModal),
+  { ssr: false },
+);
+const AssistantPanel = dynamic(
+  () => import("@/components/app/assistant/assistant-panel").then((m) => m.AssistantPanel),
   { ssr: false },
 );
 const LeadDrawer = dynamic(
@@ -37,6 +43,7 @@ const AddLeadsDrawer = dynamic(
 );
 
 const SIDEBAR_COLLAPSED_KEY = "kuber_sidebar_collapsed";
+const ASSISTANT_OPEN_KEY = "kuber_assistant_open";
 const BUG_REPORT_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdzYy8kUC3a9JSyhrWZJjvrmde9V3qBVycKMRSpLLUpQqkWug/viewform";
 
 // Sidebar groups, Attio-style: a top group, "Records", then "Workspace".
@@ -91,6 +98,34 @@ function AppShell({ children }: { children: React.ReactNode }) {
   // no blank skeleton swap.
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
+  // Kuber AI side panel. Remembered per browser so it stays open across pages.
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  // Once opened the panel stays mounted (hidden when closed), so a conversation survives closing it.
+  const [assistantMounted, setAssistantMounted] = useState(false);
+  const [assistantSize, setAssistantSize] = useAssistantSize();
+  const phone = useIsPhone();
+  useEffect(() => { if (assistantOpen) setAssistantMounted(true); }, [assistantOpen]);
+  useEffect(() => {
+    if (!assistantOpen) return;
+    // Esc steps out of full screen, and closes the floating card; the docked panel stays put.
+    function onEsc(e: KeyboardEvent) {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (assistantSize === "full") setAssistantSize("expanded");
+      else if (assistantSize === "compact" || phone) toggleAssistant(false);
+    }
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [assistantOpen, assistantSize, phone, setAssistantSize]);
+  const toggleAssistant = (next?: boolean) => {
+    setAssistantOpen((prev) => {
+      const value = next ?? !prev;
+      try { localStorage.setItem(ASSISTANT_OPEN_KEY, value ? "1" : "0"); } catch { /* ignore */ }
+      return value;
+    });
+  };
+  useEffect(() => {
+    try { if (localStorage.getItem(ASSISTANT_OPEN_KEY) === "1") setAssistantOpen(true); } catch { /* ignore */ }
+  }, []);
   // Starts false on both server and client's first render to avoid a
   // hydration mismatch, then syncs from the persisted value after mount.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -121,6 +156,13 @@ function AppShell({ children }: { children: React.ReactNode }) {
         e.preventDefault();
         setCommandOpen((v) => !v);
       }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        setAssistantOpen((v) => {
+          try { localStorage.setItem(ASSISTANT_OPEN_KEY, v ? "0" : "1"); } catch { /* ignore */ }
+          return !v;
+        });
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -134,6 +176,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
   }, [commandOpen, session, leads.length, loadLeads]);
 
   const commandGroups = useMemo<CommandGroup[]>(() => [
+    {
+      label: "Kuber AI",
+      items: [{ id: "ask-ai", label: "Ask Kuber AI", icon: <KuberAiMark />, hint: "⌘J", onSelect: () => toggleAssistant(true) }],
+    },
     {
       label: "Go to",
       items: visibleNavItems.map(({ href, label, icon: Icon }) => ({
@@ -312,6 +358,25 @@ function AppShell({ children }: { children: React.ReactNode }) {
                 </>
               )}
             </button>
+            <button
+              type="button"
+              onClick={() => toggleAssistant()}
+              title={sidebarCollapsed ? "Ask Kuber AI (⌘J)" : undefined}
+              aria-pressed={assistantOpen}
+              className={cn(
+                "mt-1.5 w-full h-8 flex items-center rounded-md text-[13px] transition-colors",
+                assistantOpen ? "bg-accent text-foreground" : "text-foreground/80 hover:bg-hover hover:text-foreground",
+                sidebarCollapsed ? "justify-center" : "gap-2 px-2",
+              )}
+            >
+              <KuberAiMark className="size-4" />
+              {!sidebarCollapsed && (
+                <>
+                  <span className="flex-1 text-left">Ask Kuber AI</span>
+                  <kbd className="text-[11px] font-medium text-muted-foreground/80">⌘J</kbd>
+                </>
+              )}
+            </button>
           </div>
 
           <nav className="flex-1 overflow-y-auto px-2 pb-2">
@@ -463,7 +528,22 @@ function AppShell({ children }: { children: React.ReactNode }) {
           {navigating && <div className="route-progress" aria-hidden />}
           {children}
         </main>
+
+        {assistantMounted && (
+          <AssistantPanel
+            hidden={!assistantOpen}
+            size={assistantSize}
+            phone={phone}
+            onSize={setAssistantSize}
+            onClose={() => toggleAssistant(false)}
+          />
+        )}
       </div>
+
+      {assistantOpen && assistantSize === "full" && !phone && (
+        <div className="fixed inset-0 z-40 bg-black/40" onClick={() => toggleAssistant(false)} aria-hidden />
+      )}
+      {!assistantOpen && <AssistantLauncher onOpen={() => toggleAssistant(true)} />}
 
       <CommandMenu open={commandOpen} onOpenChange={setCommandOpen} groups={commandGroups} />
 

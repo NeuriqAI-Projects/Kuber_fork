@@ -66,7 +66,7 @@ export function AiUsageView() {
 
   return (
     <div className="space-y-6">
-      <UsageHeader info="Key health for every configured LLM, plus how many drafts and replies this app has generated. There is no per-call token or cost log, so volume is counted from real output, not tokens." refreshing={refreshing} onRefresh={() => void load(true)} />
+      <UsageHeader info="Key health for every configured LLM, plus how many drafts and replies this app has generated. Token and dollar spend is in AI spend above." refreshing={refreshing} onRefresh={() => void load(true)} />
 
       <div className="rounded-lg border border-border bg-secondary px-3.5 py-2.5 text-[13px] text-muted-foreground flex items-center gap-1.5">
         <ArrowRightLeft className="size-3.5 shrink-0" />

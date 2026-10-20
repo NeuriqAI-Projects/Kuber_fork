@@ -258,3 +258,48 @@ button:disabled, [role="button"][aria-disabled="true"] { cursor: not-allowed; }
    email table its grid in a mail client. Restore it for draft/thread previews. */
 table[border="1"] { border-collapse: collapse; }
 table[border="1"] :is(td, th) { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
+
+/* Kuber AI launcher (components/app/assistant/assistant-launcher.tsx): a pill with an
+   indigo hairline that slowly travels around it — reads as "live" without a loud fill.
+   One rotating conic gradient masked to the border; nothing else moves. Not an entrance
+   animation, and it stops under reduced motion. */
+@property --kuber-ai-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+.kuber-ai-launcher { isolation: isolate; }
+.kuber-ai-launcher::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--kuber-ai-angle),
+    rgb(99 102 241 / 0.9) 0deg,
+    rgb(129 140 248 / 0.5) 90deg,
+    color-mix(in srgb, var(--border) 80%, transparent) 190deg,
+    rgb(99 102 241 / 0.9) 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: kuber-ai-orbit 5s linear infinite;
+  pointer-events: none;
+}
+@keyframes kuber-ai-orbit { to { --kuber-ai-angle: 360deg; } }
+@media (prefers-reduced-motion: reduce) {
+  .kuber-ai-launcher::before { animation: none; }
+}
+
+/* Kuber AI Home tab hero: the mark's own indigo, so it reads as the product's
+   space whatever theme colour the company picked. Fixed, like the mark. */
+.kuber-ai-hero {
+  background-color: #312e81;
+  background-image:
+    radial-gradient(120% 90% at 100% 0%, rgb(96 165 250 / 0.35), transparent 60%),
+    radial-gradient(110% 80% at 0% 0%, rgb(79 70 229 / 0.9), transparent 70%);
+}
+/* Icon buttons on the hero: a light veil on hover (the ghost button's grey would vanish on indigo). */
+.kuber-ai-hero-btn:hover { background-color: rgb(255 255 255 / 0.15); }

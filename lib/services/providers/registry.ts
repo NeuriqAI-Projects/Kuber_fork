@@ -32,7 +32,7 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
   openai: {
     id: "openai", category: "llm", label: "OpenAI",
     modelInputMode: "dropdown",
-    modelOptions: ["gpt-5.4-mini", "gpt-5-mini", "gpt-4o-mini", "gpt-4o"],
+    modelOptions: ["gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra", "gpt-5.4-mini", "gpt-4o-mini"],
     defaultModel: "gpt-4o-mini",
   },
   anthropic: {
@@ -52,7 +52,13 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
     // Sonnet 5 is the default: best quality-per-rupee for bulk drafting
     // ($2/$10 per Mtok). Haiku 4.5 ($1/$5) is the cheap option and the closest
     // behavioural match to the current setup.
-    modelOptions: ["claude-opus-5", "claude-sonnet-5", "claude-sonnet-4-6", "claude-haiku-4-5"],
+    //
+    // The 5.5 generation (Oct 2026) leads the list: Sonnet 5.5 is the same
+    // price as Sonnet 5, Haiku 5.5 is the cheapest Claude by far ($0.10/$0.50).
+    modelOptions: [
+      "claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5", "claude-fable-5-1",
+      "claude-opus-5", "claude-sonnet-5", "claude-sonnet-4-6", "claude-haiku-4-5",
+    ],
     defaultModel: "claude-sonnet-5",
   },
   gemini: {
@@ -308,9 +314,26 @@ const callGroq = (secret: string, model: string, opts: CompletionOpts) =>
  */
 const ANTHROPIC_NO_SAMPLING = [
   "claude-fable-5", "claude-mythos-5",
-  "claude-opus-5", "claude-sonnet-5",
+  "claude-opus-5", "claude-sonnet-5", "claude-haiku-5",
   "claude-opus-4-8", "claude-opus-4-7",
 ];
+
+/**
+ * Claude models that REJECT a forced tool_choice (`any` / `tool`) with a 400:
+ * "tool_choice: type "tool" and "any" are not supported for this model."
+ * callAnthropic forces `emit_result` to get JSON back, so on these models it
+ * asks with tool_choice `auto` plus an instruction instead. Haiku 5.5 and the
+ * Opus 5 / Sonnet 5 generation still accept a forced choice.
+ */
+const ANTHROPIC_NO_FORCED_TOOL = [
+  "claude-fable-5-1", "claude-mythos-5-1",
+  "claude-opus-5-5", "claude-sonnet-5-5",
+];
+
+export function anthropicRejectsForcedToolChoice(model: string): boolean {
+  const m = model.trim().toLowerCase();
+  return ANTHROPIC_NO_FORCED_TOOL.some((p) => m.startsWith(p));
+}
 
 export function anthropicRejectsTemperature(model: string): boolean {
   const m = model.trim().toLowerCase();
@@ -346,7 +369,12 @@ async function callAnthropic(secret: string, model: string, opts: CompletionOpts
     description: "Return the requested JSON object. Every field named in the instructions goes in here.",
     input_schema: { type: "object", additionalProperties: true },
   }];
-  body.tool_choice = { type: "tool", name: "emit_result" };
+  if (anthropicRejectsForcedToolChoice(model)) {
+    body.tool_choice = { type: "auto" };
+    body.system = `${opts.system}\n\nReturn your answer by calling the emit_result tool exactly once. Do not answer in plain text.`;
+  } else {
+    body.tool_choice = { type: "tool", name: "emit_result" };
+  }
 
   if (thinkingModel) {
     // Drafting is a rule-following task, not a research one, so the reasoning

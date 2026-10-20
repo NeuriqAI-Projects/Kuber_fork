@@ -11,6 +11,7 @@ One folder per resource; `route.ts` exports GET/POST/PATCH/DELETE.
 - `settings/` — company settings, `keys/` (provider keys + usage), users, assignment, signature, logo.
 - `me/` — current user, availability, personal settings.
 - `webhooks/instantly` — Instantly events (absolute ngrok/Vercel URL).
+- `assistant/` — Kuber AI: `chat` (streamed answer), `actions` (run a confirmed card), `threads` (saved chats), `models` (fast/deep model per provider), `usage` (AI spend by person/purpose).
 - `dashboard/`, `service-health`, `apollo-credits`, `ai-readiness`, `health`, `meta`, `model-lab`.
 
 Every handler: auth → scoped client → zod validate → service call → `ok()`/`fail()`.
