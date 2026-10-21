@@ -242,9 +242,11 @@ function InlineTextArea({
       title="Double-click to edit"
       className={cn(
         "rounded-md px-2 py-1.5 -mx-2 -my-1.5 cursor-text hover:bg-hover transition-colors leading-relaxed",
-        !value && "text-muted-foreground",
-        saving && "opacity-60",
         className,
+        // Last, so a caller's own text colour cannot override it: an empty field shows its
+        // placeholder in gray, a filled one shows the real text in the normal colour, bolder.
+        value ? "text-foreground font-medium" : "text-muted-foreground font-normal",
+        saving && "opacity-60",
       )}
     >
       {saving ? "Saving…" : (value || placeholder || "\u00A0")}

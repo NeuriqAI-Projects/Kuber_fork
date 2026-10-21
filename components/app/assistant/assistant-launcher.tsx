@@ -51,7 +51,7 @@ export function assistantPanelClass(size: AssistantSize, phone: boolean): string
   return "fixed bottom-5 right-5 z-50 h-[min(42rem,calc(100dvh-2.5rem))] w-[min(28rem,calc(100vw-2.5rem))] rounded-2xl border border-border shadow-2xl";
 }
 
-/** The pill in the bottom-right corner while the panel is closed. */
+/** The bubble in the bottom-right corner while the panel is closed: logo + ⌘J, and the label slides out on hover. */
 export function AssistantLauncher({ onOpen }: { onOpen: () => void }) {
   return (
     <button
@@ -59,11 +59,11 @@ export function AssistantLauncher({ onOpen }: { onOpen: () => void }) {
       onClick={onOpen}
       aria-label="Ask Kuber AI"
       title="Ask Kuber AI (⌘J)"
-      className="kuber-ai-launcher fixed bottom-5 right-5 z-40 flex h-11 items-center gap-2 rounded-full bg-popover py-1.5 pl-1.5 pr-4 text-foreground shadow-[0_10px_30px_-12px_rgb(15_23_42/0.45)] transition-shadow hover:shadow-[0_14px_36px_-12px_rgb(79_70_229/0.55)]"
+      className="kuber-ai-launcher group fixed bottom-5 right-5 z-40 flex h-11 items-center rounded-full border border-border bg-popover py-1.5 pl-1.5 pr-3 text-foreground shadow-[0_10px_30px_-12px_rgb(15_23_42/0.45)] transition-shadow hover:shadow-[0_14px_36px_-12px_rgb(79_70_229/0.55)]"
     >
       <KuberAiMark className="size-8" />
-      <span className="text-[13.5px] font-semibold whitespace-nowrap">Ask Kuber AI</span>
-      <kbd className={cn("hidden sm:inline text-[11px] font-medium text-muted-foreground")}>⌘J</kbd>
+      <span className="max-w-0 overflow-hidden whitespace-nowrap text-[13.5px] font-semibold opacity-0 transition-all duration-150 group-hover:ml-2 group-hover:max-w-40 group-hover:opacity-100">Ask Kuber AI</span>
+      <kbd className={cn("ml-2 hidden sm:inline text-[11px] font-medium text-muted-foreground")}>⌘J</kbd>
     </button>
   );
 }
