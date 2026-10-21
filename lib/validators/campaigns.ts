@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { dbId } from "./id";
+import { MAX_FOLLOWUP_STEPS } from "@/lib/followup-schedule-preview";
 
 export const CreateCampaignSchema = z.object({
   name: z.string().min(1),
@@ -18,7 +19,7 @@ export const CreateCampaignSchema = z.object({
   followup_steps: z.array(z.object({
     delay: z.number().int().min(1).max(365),
     delay_unit: z.enum(["minutes", "hours", "days"]).default("days"),
-  })).optional(),
+  })).max(MAX_FOLLOWUP_STEPS).optional(),
 
   // Campaign attachment fields (set by upload endpoint)
   attachment_path: z.string().optional(),
@@ -94,7 +95,8 @@ export const CampaignStepInput = z.object({
 });
 
 export const CampaignStepsSchema = z.object({
-  steps: z.array(CampaignStepInput).min(1).max(10),
+  // The opening email + up to MAX_FOLLOWUP_STEPS follow-ups.
+  steps: z.array(CampaignStepInput).min(1).max(MAX_FOLLOWUP_STEPS + 1),
   /** Applied to every follow-up in the campaign. */
   followup_instruction: z.string().trim().max(1000).nullable().optional(),
   /** false = follow-ups are each step's default text, never AI-written. */

@@ -14,7 +14,7 @@ import { extractFollowupWaitsFromSteps, rebuildStepsWithFollowupWaits } from "@/
 import { fetchCampaignSteps, patchCampaignConfig, saveCampaignSteps } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
-import { cumulativeDays, dayLabel } from "@/lib/followup-schedule-preview";
+import { cumulativeDays, dayLabel, MAX_FOLLOWUP_STEPS } from "@/lib/followup-schedule-preview";
 
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
 
@@ -219,6 +219,9 @@ export function EditCampaignForm({
           : "space-y-2",
       )}
     >
+      {/* Up to MAX_FOLLOWUP_STEPS rows. In the dialog only the rows scroll, so the counter, Add and Save
+          stay in view; on the page (grid) this wrapper disappears (`contents`). */}
+      <div className={isPage ? "contents" : "max-h-[22rem] space-y-2 overflow-y-auto pr-1"}>
       {followupSteps.map((step, idx) => (
         <div
           key={idx}
@@ -235,7 +238,7 @@ export function EditCampaignForm({
               isPage ? "w-fit gap-1.5 px-2 py-1.5" : "w-full flex-1 min-w-0 gap-1.5 px-3 py-2",
             )}
           >
-            <span className={cn("text-xs text-muted-foreground shrink-0 whitespace-nowrap", !isPage && "w-24")}>
+            <span className={cn("text-xs text-muted-foreground shrink-0 whitespace-nowrap", !isPage && "w-28")}>
               Follow-up {idx + 1} after
             </span>
             <Input
@@ -288,7 +291,13 @@ export function EditCampaignForm({
           </div>
         </div>
       ))}
-      {!readOnly && followupSteps.length < 8 && (
+      </div>
+      {!readOnly && (
+        <p className={cn("text-[11px] text-muted-foreground tabular-nums", isPage && "col-span-full")}>
+          {followupSteps.length} of {MAX_FOLLOWUP_STEPS} follow-ups{followupSteps.length >= MAX_FOLLOWUP_STEPS ? " · maximum reached" : ""}
+        </p>
+      )}
+      {!readOnly && followupSteps.length < MAX_FOLLOWUP_STEPS && (
         <Button
           type="button"
           variant="link"

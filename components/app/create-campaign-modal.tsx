@@ -21,7 +21,7 @@ import { COUNTRY_TO_TIMEZONE } from "@/lib/constants";
 import { createCampaign, addLeadsToCampaign, triggerDraftGeneration, checkAiReadiness, applyDefaultDrafts, mapDbCampaign, fetchMySettings, uploadCampaignAttachment, assignCampaign, fetchUsers, type Profile } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-context";
-import { cumulativeDays, dayLabel } from "@/lib/followup-schedule-preview";
+import { cumulativeDays, dayLabel, MAX_FOLLOWUP_STEPS } from "@/lib/followup-schedule-preview";
 
 export type Campaign = {
   id: string;
@@ -523,10 +523,12 @@ export function CreateCampaignModal({
                 </div>
               </div>
               <div className="space-y-2">
+                {/* Up to MAX_FOLLOWUP_STEPS rows: only the rows scroll, so the counter and Add stay in view. */}
+                <div className="max-h-[22rem] space-y-2 overflow-y-auto pr-1">
                 {followupSteps.map((fu, idx) => (
                   <div key={idx} className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-1.5">
                     <span className="grid size-5 shrink-0 place-items-center rounded-full border border-border bg-field text-[11px] font-semibold tabular-nums text-muted-foreground" aria-hidden>{idx + 1}</span>
-                    <span className="text-xs text-muted-foreground shrink-0 w-24">Follow-up {idx + 1} after</span>
+                    <span className="text-xs text-muted-foreground shrink-0 w-28 whitespace-nowrap">Follow-up {idx + 1} after</span>
                     <Input
                       type="number"
                       min={1}
@@ -576,7 +578,11 @@ export function CreateCampaignModal({
                     )}
                   </div>
                 ))}
-                {followupSteps.length < 8 && (
+                </div>
+                <p className="text-[11px] text-muted-foreground tabular-nums">
+                  {followupSteps.length} of {MAX_FOLLOWUP_STEPS} follow-ups{followupSteps.length >= MAX_FOLLOWUP_STEPS ? " · maximum reached" : ""}
+                </p>
+                {followupSteps.length < MAX_FOLLOWUP_STEPS && (
                   <Button
                     type="button"
                     variant="link"

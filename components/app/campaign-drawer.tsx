@@ -130,7 +130,7 @@ import {
   type DeliveryBucket,
   type DeliveryLeadLike,
 } from "@/lib/campaign-status";
-import { cumulativeDays, dayLabel } from "@/lib/followup-schedule-preview";
+import { cumulativeDays, dayLabel, MAX_FOLLOWUP_STEPS } from "@/lib/followup-schedule-preview";
 import { TEMPERATURE_BADGE } from "@/lib/temperature-badge";
 import { delayInDays, writeByAt } from "@/lib/services/followup-schedule";
 import { extractFollowupWaitsFromSteps, rebuildStepsWithFollowupWaits } from "@/lib/constants";
@@ -5916,8 +5916,12 @@ export function CampaignDetail({
                   ))}
                   </div>
                   {canEditSettings && (
-                    <div className="flex items-center gap-2.5 flex-wrap">
-                      {seqStepEdits.length < 8 && (
+                    // mb-16: room to scroll Save steps clear of the floating Ask Kuber AI bubble (bottom-right).
+                    <div className="mb-16 flex items-center gap-2.5 flex-wrap">
+                      <span className="text-[11px] text-muted-foreground tabular-nums">
+                        {seqStepEdits.length} of {MAX_FOLLOWUP_STEPS} follow-ups{seqStepEdits.length >= MAX_FOLLOWUP_STEPS ? " · maximum reached" : ""}
+                      </span>
+                      {seqStepEdits.length < MAX_FOLLOWUP_STEPS && (
                         <Button
                           type="button"
                           variant="link"

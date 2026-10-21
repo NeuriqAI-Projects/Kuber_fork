@@ -15,6 +15,11 @@
 
 export type FollowupDelay = { delay: number; delay_unit: "minutes" | "hours" | "days" };
 
+/** Most follow-ups one campaign may have (the opening email is extra). One number for every
+ *  composer and the API validators. Was 8 until 21 Oct 2026, when the client's two live
+ *  campaigns hit it and asked for more. */
+export const MAX_FOLLOWUP_STEPS = 15;
+
 export function delayToDays(step: FollowupDelay): number {
   const n = step.delay ?? 0;
   switch (step.delay_unit) {
