@@ -112,6 +112,7 @@ export function actionTools(caller: AssistantCaller) {
             { label: "Leads", value: `${ready.length} ready` },
             { label: "Picked by", value: leads.description },
             { label: "Daily limit", value: `${daily_limit} emails/day` },
+            { label: "Drafts", value: "AI writes them right after, for your review" },
             { label: "Sending", value: "Off — draft only, you start it later" },
           ],
           warnings: notReady ? [`${notReady} matching lead${notReady === 1 ? " is" : "s are"} not ready (no email, not enriched, or unsubscribed) and will be left out.`] : [],

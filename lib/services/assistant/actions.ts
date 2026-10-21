@@ -148,9 +148,14 @@ export async function executeAction(caller: AssistantCaller, token: string): Pro
       if ("error" in added) {
         return { ok: false, message: `Campaign "${p.name}" was created, but adding leads failed: ${added.error}`, link: `/campaigns/${created.data.id}` };
       }
+      // Same as the New campaign screen (create-campaign-modal): start writing the drafts right away,
+      // otherwise the Outbox waits on "The AI is writing this email" forever. Only for a NEW campaign:
+      // this route also sets status "processing", which must not happen to a live one.
+      const drafts = added.added.length ? await callApi(caller, "POST", `/api/v1/campaigns/${created.data.id}/generate-drafts`) : null;
+      const draftNote = !drafts ? "" : drafts.ok ? " AI is writing the drafts now; review them in the Outbox." : ` Drafts did not start (${drafts.message}); open the campaign and start them there.`;
       return {
         ok: true,
-        message: `Created draft campaign "${p.name}" — ${addLeadsMessage(added)}. Nothing is sent until you set it up and start it.`,
+        message: `Created draft campaign "${p.name}" — ${addLeadsMessage(added)}.${draftNote} Nothing is sent until you review and start it.`,
         link: `/campaigns/${created.data.id}`,
         data: { campaign_id: created.data.id, added: added.added.length },
       };
