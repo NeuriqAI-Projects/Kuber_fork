@@ -9,6 +9,7 @@ import { AlertCircle, Check, CircleAlert, Loader2, Search, X } from "lucide-reac
 import { ApolloCostNote } from "@/components/app/apollo-cost-note";
 import { TagInput } from "@/components/app/tag-input";
 import { buildAdvanced, CompanyAdvancedSearch } from "@/components/app/company-lookup-form";
+import { JobTitlesPicker } from "@/components/app/apollo-people-advanced";
 import {
   AssignStrategyPicker, BatchNameField, buildImportAssignment, clearDraft, getToken, IndustryKeywordsDropdown, useDraft,
   useAssignableEmployees, useIndustryKeywordGroups, type ImportAssignMode,
@@ -323,6 +324,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   const [sizes, setSizes] = useDraft<string[]>("scored", "sizes", []);
   const [lookalikes, setLookalikes] = useDraft<string[]>("scored", "lookalikes", []);
   const [exclude, setExclude] = useDraft<string[]>("scored", "exclude", []);
+  const [jobTitles, setJobTitles] = useDraft<string[]>("scored", "jobTitles", []);
   const [advanced, setAdvanced] = useDraft<Record<string, string>>("scored", "advanced", {});
   const [target, setTarget] = useDraft("scored", "target", DEFAULT_TARGET);
   // Follows the lead target until the user types their own limit.
@@ -440,6 +442,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
       keywords, locations: countries.length ? countries : undefined, employee_ranges: sizes.length ? sizes : undefined,
       lookalike_org_ids: lookalikes.length ? lookalikes : undefined, exclude_websites: exclude.length ? exclude : undefined,
       advanced: buildAdvanced(advanced), target_leads: target, max_credits: maxCredits,
+      job_titles: jobTitles.length ? jobTitles : undefined,
       batch_name: name, color, ...buildImportAssignment(assignMode, assignTo),
     };
     ssDel(KEY_RESULT);
@@ -508,6 +511,13 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
           <p className="-mt-2 text-xs text-muted-foreground">Pick as many as you like — one search covers all of them and still costs 1 credit per 100 companies.</p>
           <LocationsPicker selected={countries} onChangeSelected={setCountries} />
           <TagInput label="Company size (employees)" pills={sizes} suggestions={SIZE_SUGGESTIONS} onChange={setSizes} allowCustom={false} placeholder="Any size" />
+          <JobTitlesPicker
+            values={jobTitles}
+            onChange={setJobTitles}
+            label="Job titles to reveal (optional)"
+            placeholder="Any buyer (purchase, owner, plant head, director)"
+            tip="At each good-fit company, only a person with one of these titles is revealed (1 credit). If nobody there has one, the company waits in Needs review and nothing is spent. Leave empty to let Kuber pick the best buyer. Titles do not change which companies are found."
+          />
           <TagInput label="Lookalike companies (Apollo IDs)" pills={lookalikes} suggestions={[]} onChange={setLookalikes} max={5} placeholder="Optional — up to 5 best customers" tip="Apollo ranks results by similarity to these companies." />
           <TagInput label="Leave out websites" pills={exclude} suggestions={[]} onChange={setExclude} placeholder="Optional — e.g. competitor.com" />
           <CompanyAdvancedSearch value={advanced} onChange={setAdvanced} omit={["employeeRanges", "keywordTags"]} />

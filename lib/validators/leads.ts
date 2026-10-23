@@ -205,6 +205,8 @@ export const ProspectSearchSchema = z.object({
   target_leads: z.number().int().min(1).max(660 /* MAX_LEADS_PER_SEARCH */).optional(),
   // Most Apollo credits this search may use (pages + contacts).
   max_credits: z.number().int().min(2).max(5000).optional(),
+  // Only reveal people with one of these titles (empty = Kuber's own buyer ranking).
+  job_titles: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
 });
 
 export const ProspectDecisionSchema = z.object({

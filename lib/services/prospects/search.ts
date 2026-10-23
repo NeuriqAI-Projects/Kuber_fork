@@ -39,6 +39,9 @@ export interface ProspectSearchInput {
   assigned_to?: string | null;
   assignment_strategy?: "manual" | "round_robin" | "territory";
   max_auto_reveals?: number;
+  /** Only reveal people with one of these titles (picked in our code from the free People Search;
+   *  not an Apollo filter, so it never changes which companies are found or the page memory). */
+  job_titles?: string[];
   /** How many leads the client wants. Set = keep reading pages (with page memory). */
   target_leads?: number;
   /** Most Apollo credits this search may use (pages + contacts). */

@@ -3,7 +3,7 @@
 // fake that can be told to fail, and the store is in memory. Zero spend.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { advance, runBatch, OutOfTime, WORKABLE, MAX_ATTEMPTS, type Deps, type ProspectRow, type ProspectPatch, type Store } from "./pipeline.ts";
+import { advance, runBatch, OutOfTime, WORKABLE, MAX_ATTEMPTS, matchesJobTitle, type Deps, type ProspectRow, type ProspectPatch, type Store } from "./pipeline.ts";
 import { DEFAULT_FIT_SCORING, parseFitScoring } from "./fit-rules.ts";
 import { parseJevResponse } from "./jev.ts";
 import type { JevVerdict } from "./jev.ts";
@@ -417,4 +417,36 @@ test("31. reveal limit counts only real reveals: good fits with nobody to email 
   assert.equal(["c", "d", "e"].filter((id) => st(id) === "review").length, 1, "the third good fit waits for the client");
   assert.equal(store.autoRevealCount, 2);
   assert.equal(calls.promote, 2);
+});
+
+test("31. job titles: words in any order, simple endings, case-insensitive", () => {
+  assert.equal(matchesJobTitle("Manager - Purchase & Stores", ["purchase manager"]), true);
+  assert.equal(matchesJobTitle("Senior Purchasing Manager", ["purchase manager"]), true);
+  assert.equal(matchesJobTitle("Purchase Managers", ["Purchase Manager"]), true);
+  assert.equal(matchesJobTitle("Sales Manager", ["purchase manager"]), false);
+  assert.equal(matchesJobTitle(null, ["owner"]), false);
+  assert.equal(matchesJobTitle("Plant Head", ["owner", "plant head"]), true);
+});
+
+test("32. the search's job titles decide who is revealed; nobody matching goes to review for free", async () => {
+  const clock = { t: 0 }; const store = new MemStore(clock);
+  const picked: string[] = [];
+  const { deps } = makeDeps(clock, {
+    jobTitles: async () => ["plant head"],
+    findPeople: async (orgId: string) => orgId === "org-none"
+      ? [{ id: "x1", title: "Purchase Manager", has_email: true }]
+      : [{ id: "p1", title: "Purchase Manager", has_email: true }, { id: "p2", title: "Plant Head", has_email: true }],
+    promote: async (_r: ProspectRow, p) => { picked.push(p.title ?? ""); return "org-" + picked.length; },
+  });
+  store.add({ id: "a", website_url: "https://a.com" });
+  store.add({ id: "b", website_url: "https://b.com", apollo_org_id: "org-none" });
+  await drain(store, deps, clock);
+  assert.equal(store.get("a").status, "promoted");
+  assert.deepEqual(picked, ["Plant Head"], "the wanted title wins over the usual buyer ranking");
+  assert.equal(store.get("b").status, "review");
+  assert.match(String(store.get("b").last_error), /No one with your job titles/);
+  assert.equal(picked.length, 1, "no credit spent on the company without a matching title");
+  store.get("b").status = "approved";
+  await drain(store, deps, clock);
+  assert.equal(store.get("b").status, "promoted", "an approval still reveals the best person");
 });

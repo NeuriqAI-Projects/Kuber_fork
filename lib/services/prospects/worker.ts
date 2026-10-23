@@ -75,6 +75,15 @@ export async function runProspectWorker(admin: SupabaseClient, companyId: string
       },
     };
   }
+  // The job titles each search asked for, read once per search per pass.
+  const titlesBySearch = new Map<string, Promise<string[]>>();
+  deps.jobTitles = (searchId) => {
+    if (!titlesBySearch.has(searchId)) {
+      titlesBySearch.set(searchId, Promise.resolve(scoped.from("prospect_searches").select("filters").eq("id", searchId).maybeSingle())
+        .then(({ data }) => ((data?.filters as { job_titles?: string[] } | null)?.job_titles ?? []).filter(Boolean)));
+    }
+    return titlesBySearch.get(searchId)!;
+  };
   // Searches with a lead target: read their next Apollo page when it's time (search.ts continueRun).
   const { data: runs } = await scoped.from("prospect_searches").select("id").eq("run_status", "running");
   for (const r of runs ?? []) {

@@ -432,6 +432,29 @@ function PrimaryFilterPicker({
   );
 }
 
+/** The same job-titles picker as Apollo Search (preset buying roles + your own), for other forms.
+ *  `label` / `tip` / `placeholder` let a form say what the titles do there. */
+export function JobTitlesPicker({ values, onChange, label, tip, placeholder }: {
+  values: string[]; onChange: (next: string[]) => void; label?: string; tip?: string; placeholder?: string;
+}) {
+  const f = PRIMARY_FILTERS.find((x) => x.key === "titles")!;
+  return (
+    <PrimaryFilterPicker
+      label={label ?? f.label}
+      tip={tip ?? f.tip}
+      values={values}
+      defaults={f.defaults}
+      formatValue={f.format}
+      onChange={onChange}
+      placeholder={placeholder ?? f.placeholder}
+      unit={f.unit}
+      unitPlural={f.unitPlural}
+      customPlaceholder={f.customPlaceholder}
+      normalizeCustom={f.normalizeCustom}
+    />
+  );
+}
+
 /** Raw text inputs → the typed shape ApolloSearchSchema.advanced expects.
  *  Primary filter keys are always emitted when present in raw (including an
  *  empty list) so clearing every pill turns the filter off instead of

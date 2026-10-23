@@ -96,6 +96,8 @@ export interface Deps {
   /** Apollo credits free for NEW reveals (balance minus reveals already queued). null = unknown, proceed. */
   apolloCreditsFree(row: ProspectRow): Promise<number | null>;
   findPeople(apolloOrgId: string): Promise<Person[]>;
+  /** The job titles the search asked for (empty = use the buyer ranking). Optional so test deps can skip it. */
+  jobTitles?(searchId: string): Promise<string[]>;
   /** Create (or find) the organization + one lead. Must be idempotent. Returns organization id. */
   promote(row: ProspectRow, person: Person): Promise<string>;
 }
@@ -122,6 +124,16 @@ const WAIT_FOR_CREDITS_MS = 10 * 60_000;
 const backoffMs = (attempt: number) => attempt * 2 * 60_000;
 /** Contact types worth an automatic reveal (lead-ranking.ts tiers). */
 const BUYER_TIERS = new Set(["procurement", "owner", "technical", "leadership"]);
+
+/** A person's title matches a wanted title when it contains every word of it, in any order and case,
+ *  ignoring simple word endings: "purchase manager" matches "Manager - Purchase & Stores",
+ *  "Senior Purchasing Manager" and "Purchase Managers". */
+export function matchesJobTitle(title: string | null | undefined, wanted: string[]): boolean {
+  const stem = (w: string) => (w.length > 4 ? w.replace(/(ing|ers|er|es|s|e)$/, "") : w);
+  const words = (s: string) => s.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(stem);
+  const have = new Set(words(title ?? ""));
+  return wanted.some((w) => { const need = words(w); return need.length > 0 && need.every((x) => have.has(x)); });
+}
 
 export async function advance(row: ProspectRow, deps: Deps, store: Store, cfg: FitScoring, startBy = Infinity): Promise<void> {
   try {
@@ -275,14 +287,22 @@ async function promoteStage(row: ProspectRow, deps: Deps, store: Store, cfg: Fit
     return { status: "waiting_credits", attempts: row.attempts, last_error: "Apollo has no credits free for a reveal", retry_at: deps.now() + WAIT_FOR_CREDITS_MS };
   }
   const people = (await deps.findPeople(row.apollo_org_id)).filter((p) => p.has_email);
-  const best = pickBestContact(people);
+  if (!people.length) return { status: "no_contact", last_error: "Apollo has no one with an email at this company" };
+  // The client's own job titles, when the search has them: only those people are revealed
+  // automatically. Nobody matching → their call (no credit spent); an approval takes the best anyway.
+  const titles = (await deps.jobTitles?.(row.search_id)) ?? [];
+  const wanted = titles.length ? people.filter((p) => matchesJobTitle(p.title, titles)) : [];
+  if (titles.length && !wanted.length && automatic) {
+    return { status: "review", last_error: `No one with your job titles has an email here (${people.length} other ${people.length === 1 ? "person" : "people"})` };
+  }
+  const best = pickBestContact(wanted.length ? wanted : people);
   if (!best) return { status: "no_contact", last_error: "Apollo has no one with an email at this company" };
   // Automatic reveals only buy a buyer: purchase, owner, production/plant or a
   // director. When the only emailable people are IT, sales, marketing or an
   // unclear title (9 of 50 companies on 17 Oct 2026), the client decides
   // instead of a credit going to someone who can't buy masterbatch. A company
   // the client approved gets the best person anyway — they already chose.
-  if (automatic && !BUYER_TIERS.has(titleTier(best.title))) {
+  if (automatic && !wanted.length && !BUYER_TIERS.has(titleTier(best.title))) {
     return { status: "review", last_error: `No buyer found: only ${best.title || "a person with no title"} has an email` };
   }
   // The automatic-reveal cap, counted only on real reveals (17 Oct 2026 live test:
