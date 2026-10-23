@@ -25,6 +25,7 @@ import { Pill } from "@/components/ui/pill";
 import type { BatchColorName } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { FIRECRAWL_PER_PAGE, LEADS_PER_PAGE, MAX_LEADS_PER_SEARCH, MAX_PAGES_PER_SEARCH, minCredits, suggestedMaxCredits } from "@/lib/services/prospects/digging";
+import { noLeadsLeft } from "@/lib/services/prospects/estimate";
 
 const STEPS = ["Criteria", "Settings", "Batch", "Assign"];
 const SIZE_SUGGESTIONS = ["1,10", "11,50", "51,200", "201,500", "501,1000", "1001,5000", "5001,10000"];
@@ -56,7 +57,7 @@ function Bill({ target, maxCredits, firecrawlShort }: { target: number; maxCredi
     <div className="space-y-1.5 rounded-lg border border-border bg-card p-4 text-[13px]">
       <p className="text-[15px] font-semibold">Your search</p>
       <div className={line}><span>{target} lead{target === 1 ? "" : "s"} × 1 credit</span><span>{target}</span></div>
-      <div className={line}><span>~{pages} search{pages === 1 ? "" : "es"} of 100 companies</span><span>{pages}</span></div>
+      <div className={line}><span>~{pages} page{pages === 1 ? "" : "s"} of 100 companies (most {MAX_PAGES_PER_SEARCH})</span><span>{pages}</span></div>
       <div className={cn(line, "border-t border-dashed border-border pt-2 text-sm font-semibold")}><span className="flex items-center gap-1">Expected <InfoTip side="left" text="Companies that aren't plastic makers, or have nobody to email, cost nothing." /></span><span>~{expected} credits</span></div>
       <div className={cn(line, maxCredits < expected ? "font-semibold text-destructive" : "text-muted-foreground")}><span>Your limit</span><span>{maxCredits} credits</span></div>
       <div className="space-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
@@ -97,17 +98,19 @@ function Bill({ target, maxCredits, firecrawlShort }: { target: number; maxCredi
 }
 
 /** Free size check (Apollo People Search, 0 credits): is there enough for the lead target? */
-function MarketSize({ filters, target, onPick, onFits }: { filters: Record<string, unknown> & { keywords: string[] }; target: number; onPick: (n: number) => void; onFits: (f: Fits | null) => void }) {
+function MarketSize({ filters, target, onPick, onFits, onNoneLeft }: { filters: Record<string, unknown> & { keywords: string[] }; target: number; onPick: (n: number) => void; onFits: (f: Fits | null) => void; onNoneLeft: (none: boolean) => void }) {
   const [est, setEst] = useState<MarketEstimate | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const key = JSON.stringify(filters);
   useEffect(() => {
+    // Only a finished check may block Next; loading, failed or no keywords never do (the server still refuses).
+    onNoneLeft(false);
     if (!filters.keywords.length) { setEst(null); setState("idle"); return; }
     let alive = true;
     setState("loading");
     const t = setTimeout(() => {
       api<MarketEstimate>("/api/v1/prospects/estimate", filters)
-        .then((e) => { if (alive) { setEst(e); setState("idle"); onFits(e.fits ?? null); } })
+        .then((e) => { if (alive) { setEst(e); setState("idle"); onFits(e.fits ?? null); onNoneLeft(noLeadsLeft(e)); } })
         .catch(() => { if (alive) setState("error"); });
     }, 600);
     return () => { alive = false; clearTimeout(t); };
@@ -130,7 +133,7 @@ function MarketSize({ filters, target, onPick, onFits }: { filters: Record<strin
             est.companies.mid === 0
               ? <span className="font-medium text-amber-700 dark:text-amber-300">Almost no companies for these keywords.</span>
               : left!.high === 0
-                ? <span className="font-medium text-amber-700 dark:text-amber-300">No new leads left for these keywords.</span>
+                ? <span className="font-medium text-amber-700 dark:text-amber-300">{used > 0 ? "No new leads left for these keywords." : "Almost no leads for these keywords."}</span>
                 : <span>Available: <b className="font-semibold tabular-nums">~{n(left!.low)} leads</b> <span className="text-muted-foreground">(up to {n(left!.high)})</span></span>
           )}
         </div>
@@ -157,7 +160,8 @@ async function api<T>(url: string, body?: unknown): Promise<T> {
     body: body ? JSON.stringify(body) : undefined,
   });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json?.error?.message ?? `Request failed (${res.status})`);
+  // No message from our API (a crash, a proxy page): never show the bare HTTP code.
+  if (!res.ok) throw new Error(json?.error?.message ?? "Kuber's server had a problem and did not answer. Try again in a minute.");
   return json?.data as T;
 }
 
@@ -221,7 +225,7 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
         </div>
       )}
 
-      {netError && <p className="flex items-center gap-1.5 text-[13px] text-amber-700 dark:text-amber-300"><CircleAlert className="size-4" />Can&apos;t reach the server right now ({netError}). The search keeps running; these numbers update when the connection is back.</p>}
+      {netError && <p className="flex items-center gap-1.5 text-[13px] text-amber-700 dark:text-amber-300"><CircleAlert className="size-4" /><span title={netError}>Can&apos;t reach the server right now.</span> The search keeps running; these numbers update when the connection is back.</p>}
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div className={tile}>
@@ -268,7 +272,9 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
         </p>
       )}
 
-      <div className="flex justify-center gap-2">
+      {/* Sticks to the bottom of the dialog's scroll area: the screen grows (leads box, notes) and
+          the buttons were cut off below the fold. Same pattern as the lead drawer's footer. */}
+      <div className="sticky -bottom-5 -mb-7 flex justify-center gap-2 border-t border-border bg-background pb-5 pt-3">
         <Button type="button" onClick={onOpen}>Open in Organizations →</Button>
         <Button type="button" variant="outline" onClick={onAnother}>Start another search</Button>
       </div>
@@ -312,7 +318,7 @@ const START_MAX_AGE_MS = 3 * 60_000;
 export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   const [step, setStep] = useDraft("scored", "step", 0);
   const [keywords, setKeywords] = useDraft<string[]>("scored", "keywords", []);
-  const [industryGroups, setIndustryGroups] = useIndustryKeywordGroups();
+  const [industryGroups, setIndustryGroups, industryGroupsLoading] = useIndustryKeywordGroups();
   const [countries, setCountries] = useDraft<string[]>("scored", "countries", []);
   const [sizes, setSizes] = useDraft<string[]>("scored", "sizes", []);
   const [lookalikes, setLookalikes] = useDraft<string[]>("scored", "lookalikes", []);
@@ -324,11 +330,24 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   const maxCredits = maxCreditsTyped ?? suggestedMaxCredits(target);
   const pages = Math.ceil(target / LEADS_PER_PAGE);
   const needCredits = minCredits(target);
-  const creditsTooLow = maxCredits < needCredits;
+  // An emptied box must block, not keep using the old number.
+  const [targetEmpty, setTargetEmpty] = useState(false);
+  const [creditsEmpty, setCreditsEmpty] = useState(false);
+  const targetMsg = targetEmpty || target < 1 ? "Enter how many leads you want." : null;
+  const creditsEmptyMsg = creditsEmpty ? "Enter the most Apollo credits to spend." : null;
+  const inputMsg = targetMsg ?? creditsEmptyMsg;
+  const pickTarget = (n: number) => { setError(""); setTargetEmpty(false); setTarget(n); };
+  const creditsTooLow = !inputMsg && maxCredits < needCredits;
   const [fits, setFits] = useState<Fits | null>(null);
+  const [noneLeft, setNoneLeft] = useState(false);
+  // The credit box cannot go over the Apollo balance when it is known (5,000 otherwise); the field says so.
+  const creditCap = fits?.apollo_credits ? Math.min(5000, fits.apollo_credits) : 5000;
   // What stops step 2, each with the lead count that would fit.
   const fitBlock: { msg: string; fix: number } | null =
-    target > MAX_LEADS_PER_SEARCH
+    targetMsg ? null
+    : noneLeft
+      ? { msg: "No new leads left for these filters: every page was read in earlier searches. Go back to step 1 and add keywords or countries.", fix: 0 }
+    : target > MAX_LEADS_PER_SEARCH
       ? { msg: `One search can give at most ${MAX_LEADS_PER_SEARCH} leads (it checks up to ${(MAX_PAGES_PER_SEARCH * 100).toLocaleString()} companies). Ask for ${MAX_LEADS_PER_SEARCH} or fewer. To get more, run the same search again later: Kuber continues where it stopped.`, fix: MAX_LEADS_PER_SEARCH }
       : fits?.firecrawl_leads != null && target > fits.firecrawl_leads
         ? { msg: `Not enough Firecrawl credits. Kuber reads about 100 company websites (100 Firecrawl credits) for every ${LEADS_PER_PAGE} leads, so ${target} leads need about ${(pages * FIRECRAWL_PER_PAGE).toLocaleString()}. What is left is enough for about ${fits.firecrawl_leads} leads. Ask for fewer leads or top up Firecrawl.`, fix: fits.firecrawl_leads }
@@ -400,7 +419,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   function next() {
     setError("");
     if (step === 0 && !keywords.length) { setError("Pick at least one industry keyword."); return; }
-    if (step === 1 && (creditsTooLow || fitBlock)) return; // the red notes on the page already say why
+    if (step === 1 && (inputMsg || creditsTooLow || fitBlock)) return; // the red notes on the page already say why
     if (step === 2 && !batchName.trim()) { setBatchError(true); setError("Give this batch a name so its leads are easy to find later."); return; }
     setStep((s) => s + 1);
   }
@@ -408,7 +427,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   async function startSearch() {
     if (!keywords.length) { setStep(0); setError("Pick at least one industry keyword."); return; }
     if (!batchName.trim()) { setStep(2); setBatchError(true); return; }
-    if (creditsTooLow || fitBlock) { setStep(1); setError(fitBlock?.msg ?? creditsMsg); return; }
+    if (inputMsg || creditsTooLow || fitBlock) { setStep(1); setError(inputMsg ?? fitBlock?.msg ?? creditsMsg); return; }
     if (assignMode === "manual" && !assignTo) { setError("Pick the employee who should get these leads."); return; }
     // One search at a time (see `starting`).
     if (starting) { setError("A search is still starting. Wait for it to finish."); return; }
@@ -485,7 +504,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
           <p className="text-sm text-muted-foreground">
             Find companies, let the AI read each one&apos;s website or LinkedIn, and reveal <b>one</b> contact only at companies that make plastic products (so they can buy masterbatch). Unclear ones wait for your decision; the rest are hidden.
           </p>
-          <IndustryKeywordsDropdown selected={keywords} onChange={setKeywords} groups={industryGroups} onGroupsChange={setIndustryGroups} />
+          <IndustryKeywordsDropdown selected={keywords} onChange={setKeywords} groups={industryGroups} onGroupsChange={setIndustryGroups} loading={industryGroupsLoading} />
           <p className="-mt-2 text-xs text-muted-foreground">Pick as many as you like — one search covers all of them and still costs 1 credit per 100 companies.</p>
           <LocationsPicker selected={countries} onChangeSelected={setCountries} />
           <TagInput label="Company size (employees)" pills={sizes} suggestions={SIZE_SUGGESTIONS} onChange={setSizes} allowCustom={false} placeholder="Any size" />
@@ -505,23 +524,24 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
                   <InfoTip side="right" text="A lead = a plastic maker with a buyer we can email. Kuber checks companies 100 at a time until it has this many leads, your credit limit is reached, or the keywords run out. Searching the same filters again continues where it stopped." />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <NumberInput id="target-leads" min={1} max={100_000} value={target} aria-invalid={!!fitBlock}
-                    onValueChange={(n) => { setError(""); setTarget(n); }} className="w-28" />
+                  <NumberInput id="target-leads" min={0} max={100_000} value={targetEmpty ? null : target} aria-invalid={!!(targetMsg || fitBlock)}
+                    onValueChange={(n) => { setError(""); setTargetEmpty(n === null); if (n !== null) setTarget(n); }} className="w-28" />
                   {TARGET_CHIPS.map((n) => (
-                    <Button key={n} type="button" variant="outline" className={cn("tabular-nums", target === n && "border-primary/50 bg-primary/5 hover:bg-primary/5")} onClick={() => setTarget(n)}>{n}</Button>
+                    <Button key={n} type="button" variant="outline" className={cn("tabular-nums", target === n && "border-primary/50 bg-primary/5 hover:bg-primary/5")} onClick={() => pickTarget(n)}>{n}</Button>
                   ))}
                 </div>
+                {targetMsg && <p className="flex items-start gap-1.5 text-sm font-medium text-destructive"><AlertCircle className="mt-0.5 size-4 shrink-0" />{targetMsg}</p>}
               </div>
               {fitBlock && (
                 <div className="flex items-start gap-1.5 text-sm font-medium text-destructive">
                   <AlertCircle className="mt-0.5 size-4 shrink-0" />
                   <div className="space-y-1.5">
                     <p>{fitBlock.msg}</p>
-                    {fitBlock.fix > 0 && <Button type="button" size="sm" variant="outline" onClick={() => setTarget(fitBlock.fix)}>Ask for {fitBlock.fix} leads instead</Button>}
+                    {fitBlock.fix > 0 && <Button type="button" size="sm" variant="outline" onClick={() => pickTarget(fitBlock.fix)}>Ask for {fitBlock.fix} leads instead</Button>}
                   </div>
                 </div>
               )}
-              <MarketSize target={target} onPick={setTarget} onFits={setFits} filters={{
+              <MarketSize target={targetMsg ? 0 : target} onPick={pickTarget} onFits={setFits} onNoneLeft={setNoneLeft} filters={{
                 keywords, locations: countries.length ? countries : undefined, employee_ranges: sizes.length ? sizes : undefined,
                 lookalike_org_ids: lookalikes.length ? lookalikes : undefined, exclude_websites: exclude.length ? exclude : undefined,
                 advanced: buildAdvanced(advanced),
@@ -532,12 +552,14 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
                   <InfoTip side="right" text={`1 credit per search of 100 companies, then 1 per lead. Kuber never goes over this number; it stops and tells you how many leads it found. Each approval in review is 1 more credit. Suggested for ${target} lead${target === 1 ? "" : "s"}: at least ${needCredits}, plus 10% extra in case some companies have nobody to email.`} />
                 </div>
                 <div className="flex items-center gap-2">
-                  <NumberInput id="max-credits" min={0} max={5000} value={maxCredits} aria-invalid={creditsTooLow}
-                    onValueChange={(n) => { setError(""); setMaxCreditsTyped(n); }} className="w-28" />
-                  {maxCreditsTyped !== null && (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setMaxCreditsTyped(null)}>Use suggested ({suggestedMaxCredits(target)})</Button>
+                  <NumberInput id="max-credits" min={0} max={creditCap} value={creditsEmpty ? null : maxCredits} aria-invalid={creditsTooLow || creditsEmpty}
+                    onValueChange={(n) => { setError(""); setCreditsEmpty(n === null); if (n !== null) setMaxCreditsTyped(n); }} className="w-28" />
+                  {(maxCreditsTyped !== null || creditsEmpty) && (
+                    <Button type="button" variant="ghost" size="sm" onClick={() => { setCreditsEmpty(false); setMaxCreditsTyped(null); }}>Use suggested ({suggestedMaxCredits(target)})</Button>
                   )}
                 </div>
+                <p className="text-xs text-muted-foreground">{creditCap === fits?.apollo_credits ? `Most you can set: ${creditCap.toLocaleString()}, your Apollo balance.` : `Most you can set: ${creditCap.toLocaleString()}.`}</p>
+                {creditsEmptyMsg && <p className="flex items-start gap-1.5 text-sm font-medium text-destructive"><AlertCircle className="mt-0.5 size-4 shrink-0" />{creditsEmptyMsg}</p>}
                 {creditsTooLow && <p className="flex items-start gap-1.5 text-sm font-medium text-destructive"><AlertCircle className="mt-0.5 size-4 shrink-0" />Not enough credits. {creditsMsg}</p>}
               </div>
               <div className="space-y-1.5">
@@ -555,7 +577,8 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
                 </div>
               </div>
             </div>
-            <Bill target={target} maxCredits={maxCredits} firecrawlShort={fits?.firecrawl_leads != null && target > fits.firecrawl_leads} />
+            {/* Over the 20-page cap the bill would promise pages a search never reads; the block message explains instead. */}
+            {!inputMsg && target <= MAX_LEADS_PER_SEARCH && <Bill target={target} maxCredits={maxCredits} firecrawlShort={fits?.firecrawl_leads != null && target > fits.firecrawl_leads} />}
             {fits && (fits.apollo_leads != null || fits.firecrawl_leads != null) && (
               <div className="space-y-1 text-[13px] font-medium tabular-nums text-amber-700 dark:text-amber-300">
                 {fits.apollo_leads != null && <p>Apollo credits left: {fits.apollo_credits != null ? `${fits.apollo_credits.toLocaleString()} → ` : ""}enough for about {fits.apollo_leads.toLocaleString()} leads</p>}
@@ -588,7 +611,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
           {step > 0 && <Button type="button" variant="outline" onClick={() => { setError(""); setStep((s) => s - 1); }}>Back</Button>}
         </div>
         {step < STEPS.length - 1 ? (
-          <Button type="button" onClick={next} disabled={step === 1 && (creditsTooLow || !!fitBlock)}>Next</Button>
+          <Button type="button" onClick={next} disabled={step === 1 && (!!inputMsg || creditsTooLow || !!fitBlock)}>Next</Button>
         ) : (
           <Button type="button" onClick={startSearch} disabled={busy}>
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />} Find {target} leads

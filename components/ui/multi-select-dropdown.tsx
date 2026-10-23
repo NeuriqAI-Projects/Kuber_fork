@@ -103,7 +103,7 @@ export function MultiSelectDropdown<T extends string>({
                 autoFocus
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search or type to add…"
+                placeholder={`Search ${label.toLowerCase()}…`}
                 className="h-auto flex-1 border-0 bg-transparent px-0 py-0 text-xs shadow-none outline-none placeholder:text-muted-foreground/60"
               />
             </div>

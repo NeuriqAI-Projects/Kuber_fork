@@ -29,3 +29,8 @@ export function estimateMarket(people: number): MarketEstimate {
     leads: { low: round(mid * LEADS_PER_COMPANY.low), high: round(mid * LEADS_PER_COMPANY.high) },
   };
 }
+
+/** The size check says every page of these filters was read before: a search would find nothing new. */
+export function noLeadsLeft(e: { companies: { mid: number }; leads_left?: { high: number }; pages_used?: number } | null): boolean {
+  return !!e && e.companies.mid > 0 && (e.pages_used ?? 0) > 0 && e.leads_left?.high === 0;
+}

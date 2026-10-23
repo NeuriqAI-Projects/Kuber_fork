@@ -73,7 +73,9 @@ export function AddLeadsDrawer({
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent className="flex h-[min(46rem,90vh)] w-full max-w-6xl flex-col gap-0 overflow-hidden rounded-lg p-0">
+      {/* From lg up it centres in the space right of the sidebar (--app-sidebar-w, set by app-shell)
+          and never grows over it. */}
+      <DialogContent className="flex h-[min(46rem,90vh)] w-full max-w-6xl flex-col gap-0 overflow-hidden rounded-lg p-0 lg:left-[calc(50%+var(--app-sidebar-w,0px)/2)] lg:max-w-[min(72rem,calc(100vw-var(--app-sidebar-w,0px)-2rem))]">
         {/* 48px Attio header bar (the dialog's own close button sits at its right). */}
         <DialogHeader className="flex h-12 shrink-0 flex-row items-center gap-2.5 space-y-0 border-b border-border pl-4 pr-12 text-left">
           <DialogTitle className="shrink-0 text-[15px]">{editMode ? "Edit leads" : "Add leads"}</DialogTitle>

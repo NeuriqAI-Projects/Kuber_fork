@@ -35,9 +35,18 @@ export function reasonFor(plastic: number, onTarget: number, cfg: FitScoring): s
   const v = verdict(plastic, cfg);
   if (v === "hidden") return `Not a plastic maker (${pct(plastic)})`;
   if (v === "unsure") return `Unclear if it makes plastic (${pct(plastic)})`;
+  // Only the plastic-maker % is shown: a low "searched products" % next to it read like a bad score.
   return onTarget >= cfg.yes_min
-    ? `Makes plastic products (${pct(plastic)}) · matches the searched products (${pct(onTarget)})`
-    : `Makes plastic products (${pct(plastic)}) · other products than searched (${pct(onTarget)})`;
+    ? `Makes plastic products (${pct(plastic)} sure) · makes the products you searched`
+    : `Makes plastic products (${pct(plastic)} sure) · other plastic products than the ones you searched`;
+}
+
+/** Reasons saved before 23 Oct 2026 in the new wording (the text is stored per company). */
+export function plainReason(reason: string | null): string | null {
+  return reason
+    ?.replace(/^Makes plastic products \((\d+%)\)/, "Makes plastic products ($1 sure)")
+    .replace(/ · matches the searched products \(\d+%\)$/, " · makes the products you searched")
+    .replace(/ · other products than searched \(\d+%\)$/, " · other plastic products than the ones you searched") ?? null;
 }
 
 /** Merge a stored (possibly partial or malformed) setting over the defaults. */

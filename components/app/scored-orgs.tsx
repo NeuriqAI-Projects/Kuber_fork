@@ -25,7 +25,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { DetailRow, DetailSection } from "@/components/ui/record-layout";
 import { prefetchOrg } from "@/lib/api-client";
 import { getBatchColor } from "@/lib/constants";
-import { GROUP_LABEL, GROUPS, statusLine, type Group, type Tone } from "@/lib/services/prospects/groups";
+import { plainReason } from "@/lib/services/prospects/fit-rules";
+import { GROUP_LABEL, GROUPS, plainCause, REVIEW_TOTAL_EVENT, statusLine, type Group, type Tone } from "@/lib/services/prospects/groups";
 import { cn } from "@/lib/utils";
 
 // ── data ─────────────────────────────────────────────────────────────────────
@@ -44,11 +45,12 @@ export interface ScoredCompany {
 }
 export interface ScoredData { searches: ScoredSearch[]; counts: Record<Group, number>; companies: ScoredCompany[]; review_total: number }
 export type DecideAction = "approve" | "reject" | "retry" | "undo";
-export interface ScoredFilter { searchIds: string[]; groups: Group[]; hidden: boolean }
-export const EMPTY_SCORED_FILTER: ScoredFilter = { searchIds: [], groups: [], hidden: false };
-export const scoredFilterActive = (f: ScoredFilter) => f.searchIds.length > 0 || f.groups.length > 0 || f.hidden;
+/** `waiting` = only "Waiting for credits" companies (a part of Good fit / Approved, not a column of its own). */
+export interface ScoredFilter { searchIds: string[]; groups: Group[]; hidden: boolean; waiting?: boolean }
+export const EMPTY_SCORED_FILTER: ScoredFilter = { searchIds: [], groups: [], hidden: false, waiting: false };
+export const scoredFilterActive = (f: ScoredFilter) => f.searchIds.length > 0 || f.groups.length > 0 || f.hidden || !!f.waiting;
 /** Number shown on the Filters button: how many filters are set (Status, Batch), like the Leads button. */
-export const scoredFilterCount = (f: ScoredFilter) => (f.groups.length > 0 || f.hidden ? 1 : 0) + (f.searchIds.length > 0 ? 1 : 0);
+export const scoredFilterCount = (f: ScoredFilter) => (f.groups.length > 0 || f.hidden || f.waiting ? 1 : 0) + (f.searchIds.length > 0 ? 1 : 0);
 
 async function api<T>(url: string, body?: unknown): Promise<T> {
   const token = await getToken();
@@ -58,7 +60,8 @@ async function api<T>(url: string, body?: unknown): Promise<T> {
     body: body ? JSON.stringify(body) : undefined,
   });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json?.error?.message ?? `Request failed (${res.status})`);
+  // No message from our API (a crash, a proxy page): never show the bare HTTP code.
+  if (!res.ok) throw new Error(json?.error?.message ?? "Kuber's server had a problem and did not answer. Try again in a minute.");
   return json?.data as T;
 }
 
@@ -81,9 +84,13 @@ export function useScoredOrgs(filter: ScoredFilter, q: string, enabled = true) {
     const groups = filter.hidden ? [...filter.groups, "hidden"] : filter.groups;
     if (groups.length) p.set("groups", groups.join(","));
     if (filter.hidden) p.set("hidden", "1");
+    if (filter.waiting) p.set("waiting", "1");
     if (q.trim()) p.set("q", q.trim());
     try {
-      setData(await api<ScoredData>(`/api/v1/prospects?${p}`));
+      const d = await api<ScoredData>(`/api/v1/prospects?${p}`);
+      setData(d);
+      // The side menu's "N to review" polls once a minute; give it this fresher number so both always match.
+      window.dispatchEvent(new CustomEvent(REVIEW_TOTAL_EVENT, { detail: d.review_total }));
       setError(null);
     } catch (e) { setError((e as Error).message); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -137,6 +144,11 @@ export const GRID_TABLE =
   "w-full border-separate border-spacing-0 text-[13px] [&_td]:whitespace-nowrap [&_td]:border-b [&_th]:border-b [&_td]:border-border [&_th]:border-border";
 export const HEAD_CELL = "sticky top-0 z-20 bg-card";
 /** A sticky body cell: opaque, follows the row's hover/selected tint (row needs `group`). */
+/** Header of the Why column: the one column that stretches/shrinks to fit (see WhyCell). */
+export const WHY_HEAD = "w-full min-w-[120px]";
+/** Decide column sticks to the right edge, so Approve/Decline stay on screen even when extra
+ *  columns make the grid scroll sideways. Header: DECIDE_HEAD, body cells: STICKY_CELL + "right-0". */
+export const DECIDE_HEAD = "right-0 z-30 text-right";
 export const STICKY_CELL =
   "sticky z-10 bg-card group-hover:bg-hover before:pointer-events-none before:absolute before:inset-0 group-data-[state=selected]:before:bg-primary/5";
 
@@ -162,17 +174,19 @@ export function OrgTile() {
   );
 }
 
-/** The scored "Why" text and its status line, on one line (both in the hover title). */
+/** The scored "Why" text and its status line, on one line (both in the hover title).
+ *  `w-0 min-w-full`: the text never widens the column, so the Why column (WHY_HEAD) takes
+ *  whatever room is left and the grid fits the screen instead of scrolling sideways. */
 export function WhyCell({ reason, line }: { reason: string | null; line: { text: string; tone: Tone } | null }) {
   const warn = line && (line.tone === "red" || line.tone === "amber");
   return (
-    <div className="flex max-w-[420px] min-w-0 items-center gap-2" title={[reason, line?.text].filter(Boolean).join("\n")}>
+    <div className="flex w-0 min-w-full items-center gap-2" title={[plainReason(reason), line?.text].filter(Boolean).join("\n")}>
       {warn && (
         <span className={cn("max-w-[50%] shrink-0 truncate text-xs font-medium", line.tone === "red" ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-300")}>
           {line.text}
         </span>
       )}
-      <span className="min-w-0 truncate text-muted-foreground">{reason ?? (warn ? "" : line?.text ?? "—")}</span>
+      <span className="min-w-0 truncate text-muted-foreground">{plainReason(reason) ?? (warn ? "" : line?.text ?? "—")}</span>
     </div>
   );
 }
@@ -194,7 +208,9 @@ function problemLabel(c: ScoredCompany, text: string): string {
   return "Error";
 }
 
-export function FitPill({ score }: { score: number | null }) {
+export function FitPill({ score, group }: { score: number | null; group?: Group }) {
+  // Needs review = the AI could not decide, so there is no number: show a "?" for "your call", not a blank.
+  if (score == null && group === "review") return <Tip text="No fit score: the AI could not tell if it makes plastic products. Your call: Approve or Decline."><span className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold", TONE.amber)}>?</span></Tip>;
   if (score == null) return <Tip text="Not scored yet."><span className="text-xs text-muted-foreground">–</span></Tip>;
   const tip = score === 9 ? "Fit score 9: makes the products you searched." : score === 7 ? "Fit score 7: makes other plastic products." : `Fit score ${score}: not a fit.`;
   // A circle in the primary shade for a real fit (7+); neutral for the rest.
@@ -203,7 +219,7 @@ export function FitPill({ score }: { score: number | null }) {
 
 export function BatchPill({ name, color, wide = false }: { name: string; color: string; wide?: boolean }) {
   // Only as wide as its text; a long name is cut with "…" (full name on hover).
-  return <Tip text={`Batch: ${name.replace(/^Batch: /, "")}`} className={wide ? "max-w-full" : "max-w-[150px]"}><span className={cn("inline-flex w-fit min-w-0 max-w-full items-center rounded-[5px] border px-1.5 py-[3px] text-xs font-medium leading-none", getBatchColor(color).pill)}><span className="truncate">{name}</span></span></Tip>;
+  return <Tip text={`Batch: ${name.replace(/^Batch: /, "")}`} className={wide ? "max-w-full" : "max-w-[130px]"}><span className={cn("inline-flex w-fit min-w-0 max-w-full items-center rounded-[5px] border px-1.5 py-[3px] text-xs font-medium leading-none", getBatchColor(color).pill)}><span className="truncate">{name}</span></span></Tip>;
 }
 
 function Links({ c, linkedin = true }: { c: ScoredCompany; linkedin?: boolean }) {
@@ -216,6 +232,9 @@ function Links({ c, linkedin = true }: { c: ScoredCompany; linkedin?: boolean })
   );
 }
 
+/** Whether <Decide> shows any button for this company. */
+export const canDecide = (c: ScoredCompany) => c.status === "rejected" || c.group === "review" || c.status === "hidden";
+
 export function Decide({ c, busy, onDecide, large = false }: { c: ScoredCompany; busy: boolean; onDecide: (ids: string[], a: DecideAction) => void; large?: boolean }) {
   const act = (a: DecideAction) => (e: React.MouseEvent) => { e.stopPropagation(); onDecide([c.id], a); };
   // `large` = the drawer footer: full-width, taller buttons. Cards keep the compact size.
@@ -224,7 +243,7 @@ export function Decide({ c, busy, onDecide, large = false }: { c: ScoredCompany;
   if (c.status === "rejected") {
     return <span className={large ? "flex" : "flex justify-end"}><Tip text="Put it back where it was before the Decline." className={large ? "flex-1" : undefined}><Button size="sm" variant="outline" disabled={busy} onClick={act("undo")} className={cn(btn, "w-full border-amber-300 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-500/40 dark:text-amber-300 dark:hover:bg-amber-500/10 dark:hover:text-amber-200")}><Undo2 />Undo</Button></Tip></span>;
   }
-  if (c.group !== "review" && c.status !== "hidden") return null;
+  if (!canDecide(c)) return null;
   return (
     <span className={row}>
       {c.status === "site_down"
@@ -258,7 +277,7 @@ function SearchRow({ s, onOpen }: { s: ScoredSearch; onOpen: (searchId: string, 
         </p>
         {s.target_leads != null && (
           <p className="text-[11px] text-muted-foreground">
-            <b className="text-foreground">{s.leads} of {s.target_leads} leads</b> · {s.pages.length} page{s.pages.length === 1 ? "" : "s"} read{s.pages.length ? ` (${s.pages.join(", ")})` : ""}{s.run_note ? ` · ${s.run_note}` : ""}
+            <b className="text-foreground">{s.leads} of {s.target_leads} leads</b> · {s.pages.length} page{s.pages.length === 1 ? "" : "s"} read{s.pages.length ? ` (${s.pages.join(", ")})` : ""}{s.run_note && !(s.error && s.run_note.endsWith(s.error)) ? ` · ${s.run_note}` : ""}
           </p>
         )}
         {s.status === "failed" && <p className="text-[11px] font-medium text-red-600 dark:text-red-400">Search failed: {s.error}</p>}
@@ -281,14 +300,16 @@ function SearchRow({ s, onOpen }: { s: ScoredSearch; onOpen: (searchId: string, 
 export function RunningSearchesPill({ data, onOpen }: { data: ScoredData | null; onOpen: (searchId: string, group?: Group) => void }) {
   const running = (data?.searches ?? []).filter((s) => s.in_progress > 0);
   if (!running.length) return null;
-  const first = running[0];
+  // Summed over every running search, so the number matches the "N searches" beside it.
+  const checked = running.reduce((t, s) => t + s.stages.scored, 0);
+  const found = running.reduce((t, s) => t + s.total, 0);
   return (
     <Popover>
       <PopoverTrigger asChild>
         <Button type="button" variant="outline" size="sm" className="gap-1.5">
           <Loader2 className="size-3.5 animate-spin text-primary" />
           {running.length} search{running.length > 1 ? "es" : ""} running
-          <span className="text-xs font-normal text-muted-foreground tabular-nums">{first.stages.scored}/{first.total}</span>
+          <span className="text-xs font-normal text-muted-foreground tabular-nums">{checked} of {found} companies checked</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[min(46rem,92vw)] p-4">
@@ -315,7 +336,7 @@ export function RunningSearchesBar({ data, onOpen }: { data: ScoredData | null; 
   return (
     <div className="rounded-lg border border-border bg-card px-3 py-1.5 text-[13px]">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        {(data?.review_total ?? 0) > 0 && <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{data!.review_total} need review</span>}
+        {(data?.review_total ?? 0) > 0 && <span title="Companies in your 20 most recent searches that wait for your Approve or Decline" className="text-xs font-medium text-amber-600 dark:text-amber-400">{data!.review_total} need review</span>}
         {waiting.length > 0 && <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{waiting.reduce((t, s) => t + s.stages.waiting_credits, 0)} waiting for Apollo credits</span>}
         {failed.length > 0 && <span className="flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400"><AlertTriangle className="size-3.5" />{failed.length} search{failed.length > 1 ? "es" : ""} had a problem</span>}
         <Button type="button" variant="ghost" size="sm" onClick={() => setOpen((o) => !o)} className="ml-auto text-muted-foreground">
@@ -337,14 +358,18 @@ export function RunningSearchesBar({ data, onOpen }: { data: ScoredData | null; 
 export function ScoredFiltersDialog({ onOpenChange, value, onApply, data }: {
   onOpenChange: (o: boolean) => void; value: ScoredFilter; onApply: (f: ScoredFilter) => void; data: ScoredData | null;
 }) {
-  const [draft, setDraft] = useState<ScoredFilter>(() => ({ searchIds: [...value.searchIds], groups: [...value.groups], hidden: value.hidden }));
+  const [draft, setDraft] = useState<ScoredFilter>(() => ({ searchIds: [...value.searchIds], groups: [...value.groups], hidden: value.hidden, waiting: !!value.waiting }));
   const allCounts = (data?.searches ?? []).reduce((acc, s) => { for (const g of GROUPS) acc[g] += s.groups[g]; return acc; }, { checking: 0, review: 0, good: 0, approved: 0, declined: 0, hidden: 0 } as Record<Group, number>);
 
   // "Hidden" is one more Status option in the dropdown (same as the Leads
   // filter's single Status list); it maps to the `hidden` flag, which adds the
   // Hidden column to the Kanban.
-  const statusOptions: DropdownOption<Group>[] = GROUPS.map((g) => ({ value: g, label: `${GROUP_LABEL[g]} (${allCounts[g]})`, chip: GROUP_LABEL[g], dot: STATUS_DOT[g] }));
-  const statusSelected = new Set<Group>([...draft.groups, ...(draft.hidden ? (["hidden"] as Group[]) : [])]);
+  const waitingCount = (data?.searches ?? []).reduce((t, s) => t + s.stages.waiting_credits, 0);
+  const statusOptions: DropdownOption<Group | "waiting">[] = [
+    ...GROUPS.map((g) => ({ value: g, label: `${GROUP_LABEL[g]} (${allCounts[g]})`, chip: GROUP_LABEL[g], dot: STATUS_DOT[g] })),
+    { value: "waiting", label: `Waiting for credits (${waitingCount})`, chip: "Waiting for credits", dot: "bg-amber-500" },
+  ];
+  const statusSelected = new Set<Group | "waiting">([...draft.groups, ...(draft.hidden ? (["hidden"] as const) : []), ...(draft.waiting ? (["waiting"] as const) : [])]);
   const batchOptions: DropdownOption<string>[] = (data?.searches ?? []).map((s) => ({
     value: s.id, label: `${s.batch_name} (${s.in_progress > 0 ? "running" : s.total})`, chip: s.batch_name, dot: getBatchColor(s.color).bg,
   }));
@@ -357,10 +382,10 @@ export function ScoredFiltersDialog({ onOpenChange, value, onApply, data }: {
     >
       <MultiSelectDropdown
         label="Status"
-        hint="Show only companies in these stages."
+        hint="Show only companies in these stages. The numbers count your 20 most recent searches (the ones this page lists)."
         options={statusOptions}
         selected={statusSelected}
-        onChange={(next) => setDraft((d) => ({ ...d, groups: [...next].filter((g) => g !== "hidden"), hidden: next.has("hidden") }))}
+        onChange={(next) => setDraft((d) => ({ ...d, groups: [...next].filter((g): g is Group => g !== "hidden" && g !== "waiting"), hidden: next.has("hidden"), waiting: next.has("waiting") }))}
       />
       {batchOptions.length > 0 && (
         <MultiSelectDropdown
@@ -403,9 +428,9 @@ export function ScoredOrgsTable({ data, error, loading, visible = DEFAULT_SCORED
     { label: "Fit", icon: Gauge, show: true },
     { label: "Domain", icon: Globe, show: visible.domain },
     { label: "LinkedIn", icon: Link2, show: visible.linkedin },
-    { label: "Why", icon: MessageSquareText, show: visible.why, className: "min-w-[280px]" },
+    { label: "Why", icon: MessageSquareText, show: visible.why, className: WHY_HEAD },
     { label: "Batch", icon: Tag, show: visible.batch },
-    { label: "Decide", icon: CheckCheck, show: true, className: "text-right" },
+    { label: "Decide", icon: CheckCheck, show: true, className: DECIDE_HEAD },
   ];
   return (
     <div>
@@ -418,7 +443,7 @@ export function ScoredOrgsTable({ data, error, loading, visible = DEFAULT_SCORED
       <table className={cn(GRID_TABLE, (error || reviewIds.length > 0) && "border-t border-border")}>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <ColHead icon={Building2} label="Organization" className="left-0 z-30 min-w-[220px]" />
+            <ColHead icon={Building2} label="Organization" className="left-0 z-30 min-w-[200px]" />
             {cols.filter((c) => c.show).map((c) => <ColHead key={c.label} icon={c.icon} label={c.label} className={c.className} />)}
           </TableRow>
         </TableHeader>
@@ -437,23 +462,26 @@ export function ScoredOrgsTable({ data, error, loading, visible = DEFAULT_SCORED
                 <TableCell className={cn(STICKY_CELL, "left-0")}>
                   <div className="flex min-w-0 items-center gap-2">
                     <OrgTile />
-                    <span className="max-w-[240px] truncate font-medium" title={c.name}>{c.name}</span>
+                    <span className="max-w-[160px] truncate font-medium" title={c.name}>{c.name}</span>
                   </div>
                 </TableCell>
                 <TableCell><GroupPill group={c.group} status={c.status} /></TableCell>
-                <TableCell><FitPill score={c.score} /></TableCell>
+                <TableCell><FitPill score={c.score} group={c.group} /></TableCell>
                 {visible.domain && <TableCell><DomainLink text={c.domain} href={c.website_url} /></TableCell>}
                 {visible.linkedin && <TableCell><DomainLink text={c.linkedin_url ? "LinkedIn" : null} href={c.linkedin_url} tip="Open the LinkedIn page in a new tab." /></TableCell>}
                 {visible.why && <TableCell><WhyCell reason={c.reason} line={line} /></TableCell>}
                 {visible.batch && <TableCell><BatchPill name={c.batch_name} color={c.batch_color} /></TableCell>}
-                <TableCell><Decide c={c} busy={busy} onDecide={run} /></TableCell>
+                <TableCell className={cn(STICKY_CELL, "right-0")}><Decide c={c} busy={busy} onDecide={run} /></TableCell>
               </TableRow>
             );
           })}
         </TableBody>
       </table>
+      {/* Room under the last row, so its Decide buttons can scroll clear of the floating "Ask Kuber AI" button. */}
+      <div aria-hidden className="h-16" />
+      {/* pr-28 keeps the buttons clear of the floating "Ask Kuber AI" button (bottom-right). */}
       {reviewIds.length > 1 && (
-        <div className="sticky bottom-0 z-20 flex items-center justify-end gap-2 border-t border-border bg-background px-4 py-2">
+        <div className="sticky bottom-0 z-20 flex items-center justify-end gap-2 border-t border-border bg-background py-2 pl-4 pr-28">
           <Button size="sm" variant="outline" disabled={busy} onClick={() => run(reviewIds, "reject")}>Decline all {reviewIds.length}</Button>
           <Button size="sm" disabled={busy} onClick={() => run(reviewIds, "approve")}>Approve all {reviewIds.length} · up to {reviewIds.length} credit{reviewIds.length === 1 ? "" : "s"}</Button>
         </div>
@@ -532,7 +560,7 @@ export function ScoredOrgsKanban({ data, error, loading, groups, showHidden, onD
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex min-w-0 items-center gap-2"><OrgTile /><p className="line-clamp-2 text-[13px] font-medium leading-snug">{c.name}</p></div>
-                        <FitPill score={c.score} />
+                        <FitPill score={c.score} group={c.group} />
                       </div>
                       <Links c={c} linkedin={false} />
                       {/* Batch and status/problem pill share one line (wrapping only when they must). */}
@@ -559,6 +587,31 @@ export function ScoredOrgsKanban({ data, error, loading, groups, showHidden, onD
 }
 
 // ── drawer for a scored company that is not an organization yet ──────────────
+/** Status line, the AI's reason and the last problem of a scored company. Shared by
+ *  the scored-company drawer and the org drawer (orgs that came from a scored search). */
+export function ScoredStatus({ c }: { c: ScoredCompany }) {
+  const line = statusLine(c);
+  return (
+    <>
+      <p className="text-xs text-muted-foreground">Status</p>
+      <p className={cn("text-sm", line.tone === "red" ? "text-red-600 dark:text-red-400" : line.tone === "amber" ? "text-amber-700 dark:text-amber-300" : "text-foreground")}>{line.text}</p>
+      {c.reason && (
+        <>
+          <p className="flex items-center gap-1 pt-2 text-xs text-muted-foreground">Why this score <InfoTip text="The AI's short reason for the score." side="right" /></p>
+          <p className="text-sm leading-relaxed">{plainReason(c.reason)}</p>
+        </>
+      )}
+      {c.last_error && c.last_error !== line.text && (
+        <>
+          {/* Plain cause for people; the raw service text stays in the tip for whoever debugs it. */}
+          <p className="flex items-center gap-1 pt-2 text-xs text-muted-foreground">Last problem <InfoTip text={c.last_error} side="right" /></p>
+          <p className="text-[13px] text-amber-700 dark:text-amber-300">{/^Website /i.test(c.last_error) ? "The company's website could not be read." : /HTTP|\(mock\)|JEV_|timeout|aborted|network|fetch failed|ECONN/i.test(c.last_error) ? `${plainCause(c.last_error).replace(/^./, (x) => x.toUpperCase())}.` : c.last_error}</p>
+        </>
+      )}
+    </>
+  );
+}
+
 /** Everything we know about a scored company, in the same right-hand record sheet
  *  as an organization. Used for companies that have no organization yet (not
  *  approved / no contact added) — approved ones open the normal org drawer. */
@@ -578,7 +631,7 @@ export function ScoredCompanyDrawer({ company, onClose, onDecide, onFilterBatch 
   const site = c ? (c.website_url ?? (c.domain ? `https://${c.domain}` : null)) : null;
   const line = c ? statusLine(c) : null;
   if (!c || !line) return null;
-  const hasDecide = c.status === "rejected" || c.group === "review" || c.status === "hidden";
+  const hasDecide = canDecide(c);
 
   return (
     <>
@@ -594,27 +647,14 @@ export function ScoredCompanyDrawer({ company, onClose, onDecide, onFilterBatch 
             <h2 className="truncate text-lg font-semibold leading-tight">{c.name}</h2>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <GroupPill group={c.group} status={c.status} />
-              <FitPill score={c.score} />
+              <FitPill score={c.score} group={c.group} />
               <button type="button" onClick={() => onFilterBatch(c.search_id)} aria-label="Show only this batch" className="max-w-full cursor-pointer text-left hover:opacity-80"><BatchPill name={`Batch: ${c.batch_name}`} color={c.batch_color} wide /></button>
             </div>
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto border-t border-border">
           <div className="space-y-2 px-6 py-4">
-            <p className="text-xs text-muted-foreground">Status</p>
-            <p className={cn("text-sm", line.tone === "red" ? "text-red-600 dark:text-red-400" : line.tone === "amber" ? "text-amber-700 dark:text-amber-300" : "text-foreground")}>{line.text}</p>
-            {c.reason && (
-              <>
-                <p className="flex items-center gap-1 pt-2 text-xs text-muted-foreground">Why this score <InfoTip text="The AI's short reason for the score." side="right" /></p>
-                <p className="text-sm leading-relaxed">{c.reason}</p>
-              </>
-            )}
-            {c.last_error && c.status !== "review" && (
-              <>
-                <p className="pt-2 text-xs text-muted-foreground">Last error</p>
-                <p className="text-[13px] text-amber-700 dark:text-amber-300">{c.last_error}</p>
-              </>
-            )}
+            <ScoredStatus c={c} />
           </div>
           <DetailSection title="Record details" className="border-t border-border px-6">
             <DetailRow icon={<Tag />} label="Batch">

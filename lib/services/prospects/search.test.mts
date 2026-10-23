@@ -3,9 +3,10 @@
 // Apollo timeouts, saving failures, re-runs. Fake Apollo + tiny in-memory DB.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { runProspectSearch, type SearchDeps, type ProspectSearchInput } from "./search.ts";
+import { continueRun, runProspectSearch, type SearchDeps, type ProspectSearchInput } from "./search.ts";
 
 import { fakeDb } from "./fake-db.mts";
+import { statusLine } from "./groups.ts";
 
 const org = (id: string, domain: string | null = `${id}.com`) => ({
   id, name: `Co ${id}`, primary_domain: domain, website_url: domain ? `https://${domain}` : null, linkedin_url: null, twitter_url: null, facebook_url: null, raw: {},
@@ -40,21 +41,46 @@ test("S3. Apollo answers with an error (e.g. 429/500): search marked failed, no 
   assert.equal(tables.prospect_searches[0].status, "failed");
   assert.equal(tables.prospect_searches[0].credits_spent, undefined);
   assert.equal(tables.enrichment_logs.length, 0);
+  // Plain words for the user: no HTTP code or raw Apollo text (M3).
+  for (const t of [out.message, tables.prospect_searches[0].error, tables.prospect_searches[0].run_note]) {
+    assert.match(String(t), /Apollo is busy.*Nothing was charged\. Try again in a few minutes/);
+    assert.doesNotMatch(String(t), /429|rate limited|org search/);
+  }
 });
 
-test("S4. Apollo times out (no answer): left as 'paying' = charge unknown, never silently dropped", async () => {
+test("S4. Apollo times out (no answer): search failed with a plain 'safe to try again' note, never left 'paying'", async () => {
   const { db, tables } = fakeDb();
   const out = await runProspectSearch(db, "co", "u", INPUT, deps({ search: async () => { throw new Error("The operation was aborted due to timeout"); } }));
   assert.ok(!out.ok);
-  assert.equal(tables.prospect_searches[0].status, "paying");
-  assert.match(String(tables.prospect_searches[0].error), /charge unknown/);
+  assert.equal(tables.prospect_searches[0].status, "failed");
+  assert.match(out.message, /safe to try again/);
+  assert.doesNotMatch(String(tables.prospect_searches[0].error), /aborted/);
+});
+
+test("S4b. timeout on page 1 of a lead-target search: the page is given back, the re-run reads page 1", async () => {
+  const { db, tables } = fakeDb();
+  const asked: number[] = [];
+  const timeout = deps({ search: async (i) => { asked.push(i.page); throw new Error("The operation was aborted due to timeout"); } });
+  await runProspectSearch(db, "co", "u", { ...INPUT, target_leads: 3 }, timeout);
+  assert.equal(tables.prospect_page_memory[0].last_page, 0, "page 1 not marked as read");
+  assert.equal(tables.prospect_searches[0].run_status, "complete");
+  assert.match(String(tables.prospect_searches[0].run_note), /safe to try again/);
+  const again = await runProspectSearch(db, "co", "u", { ...INPUT, target_leads: 3 }, deps({ search: async (i) => { asked.push(i.page); return { organizations: [org("a")], pagination: { total_entries: 1 } }; } }));
+  assert.ok(again.ok); assert.equal(again.page, 1);
+  assert.deepEqual(asked, [1, 1]);
+});
+
+test("S4c. a delivered page stays read even when saving fails: the re-run never pays for it again", async () => {
+  const { db, tables } = fakeDb({ fail: { prospect_companies: "upsert" } });
+  await runProspectSearch(db, "co", "u", { ...INPUT, target_leads: 3 }, deps());
+  assert.equal(tables.prospect_page_memory[0].last_page, 1);
 });
 
 test("S5. paid but saving the companies fails: the search row says so", async () => {
   const { db, tables } = fakeDb({ fail: { prospect_companies: "upsert" } });
   const out = await runProspectSearch(db, "co", "u", INPUT, deps());
   assert.ok(!out.ok);
-  assert.match(String(tables.prospect_searches[0].error), /Paid, but saving companies failed/);
+  assert.match(String(tables.prospect_searches[0].error), /saving them failed, so none were added/);
   assert.equal(tables.prospect_companies.length, 0);
 });
 
@@ -91,4 +117,74 @@ test("S10. a mock run in a real client workspace is refused (local runs share th
   const out = await runProspectSearch(db, "00000000-0000-0000-0000-00000000000b", "u", INPUT, deps({ mock: true }));
   assert.ok(!out.ok); assert.equal(out.code, "MOCK_ONLY_IN_DEV");
   assert.equal(tables.prospect_searches.length, 0);
+});
+
+test("S11. a lead-target search stays locked while its first page is read, so the minute job can't jump to page 2", async () => {
+  const { db, tables } = fakeDb();
+  let lockedDuringFetch: unknown = null;
+  const out = await runProspectSearch(db, "co", "u", { ...INPUT, target_leads: 3 }, deps({
+    search: async () => { lockedDuringFetch = tables.prospect_searches[0].run_locked_until; return { organizations: [org("a")], pagination: { total_entries: 1 } }; },
+  }));
+  assert.ok(out.ok);
+  assert.ok(lockedDuringFetch && Date.parse(String(lockedDuringFetch)) > Date.now(), "locked while reading");
+  assert.equal(tables.prospect_searches[0].run_locked_until, null, "unlocked after");
+  assert.equal(tables.prospect_searches[0].run_status, "running");
+});
+
+test("S12. empty first page on fresh filters: no talk of earlier searches", async () => {
+  const { db, tables } = fakeDb();
+  await runProspectSearch(db, "co", "u", { ...INPUT, target_leads: 3 }, deps({ search: async () => ({ organizations: [], pagination: { total_entries: 0 } }) }));
+  assert.equal(tables.prospect_searches[0].run_status, "complete");
+  assert.doesNotMatch(String(tables.prospect_searches[0].run_note), /earlier searches/);
+});
+
+// A running search whose page 1 is done: `status` for each of its 10 companies.
+const runAfterPage1 = (statuses: [string, string | null][]) => {
+  const { db, tables } = fakeDb();
+  tables.prospect_searches.push({ id: "s1", run_status: "running", filters: INPUT, target_leads: 50, max_credits: 60, filter_key: "k", pages: [1], credits_spent: 1, mock: false });
+  tables.prospect_page_memory.push({ filter_key: "k", last_page: 1, total_pages: 9 });
+  statuses.forEach(([status, last_error], i) => tables.prospect_companies.push({ id: `c${i}`, search_id: "s1", page: 1, status, last_error }));
+  let pagesBought = 0;
+  const depsFor = () => deps({ search: async () => { pagesBought++; return { organizations: [org("x")], pagination: { total_entries: 900 } }; } });
+  return { db, tables, depsFor, bought: () => pagesBought };
+};
+
+test("S13. AI down on page 1: no new page is bought, the note blames the AI", async () => {
+  const r = runAfterPage1(Array(10).fill(["review", "Stopped after 3 tries: JEV_HTTP_503"]));
+  assert.equal(await continueRun(r.db, "co", "s1", r.depsFor), "stopped");
+  assert.equal(r.bought(), 0, "page 2 never read");
+  assert.equal(r.tables.prospect_searches[0].run_status, "complete");
+  assert.match(String(r.tables.prospect_searches[0].run_note), /10 of 10 companies could not be checked because the AI/);
+});
+
+test("S14. websites down on page 1: stops too", async () => {
+  const r = runAfterPage1(Array(10).fill(["site_down", null]));
+  assert.equal(await continueRun(r.db, "co", "s1", r.depsFor), "stopped");
+  assert.equal(r.bought(), 0);
+  assert.match(String(r.tables.prospect_searches[0].run_note), /websites of 10 of 10/);
+});
+
+test("S15. page 1 really scored but gave no leads: one weak page, page 2 is read", async () => {
+  const r = runAfterPage1(Array(10).fill(["rejected", null]));
+  assert.equal(await continueRun(r.db, "co", "s1", r.depsFor), "fetched");
+  assert.equal(r.bought(), 1);
+});
+
+test("S16. Apollo answers 500 mid-run: plain 'Stopped at' note, no HTTP code or (mock) text", async () => {
+  const r = runAfterPage1(Array(10).fill(["rejected", null]));
+  const down = () => deps({ search: async () => { throw Object.assign(new Error("Apollo org search 500: internal error (mock)"), { status: 500 }); } });
+  assert.equal(await continueRun(r.db, "co", "s1", down), "stopped");
+  const s = r.tables.prospect_searches[0];
+  assert.equal(s.run_status, "complete");
+  assert.equal(s.run_note, "Stopped at 0 of 50 leads: Apollo is not answering right now. Nothing was charged. Try again in a few minutes.");
+  assert.doesNotMatch(String(s.error), /500|mock|org search/);
+});
+
+test("S17. company status lines say what happened in plain words; raw text stays in last_error", () => {
+  const retry = statusLine({ status: "read", attempts: 1, last_error: "The operation was aborted due to timeout (mock)" });
+  assert.match(retry.text, /^Retrying \(try 2 of 3\): a service we use did not answer in time/);
+  const gaveUp = statusLine({ status: "review", last_error: "Stopped after 3 tries: JEV_HTTP_503 (mock)" });
+  assert.match(gaveUp.text, /AI that scores companies was not answering\. Approve or decline/);
+  assert.doesNotMatch(statusLine({ status: "site_down", last_error: "Website answered HTTP 503 (mock)" }).text, /HTTP|503|mock/);
+  assert.match(statusLine({ status: "review", last_error: "No buyer found: only CEO has an email" }).text, /No buyer found/);
 });

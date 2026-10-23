@@ -4,9 +4,10 @@
 // Order matters for money:
 //   1. Credit check first — out of credits = refused, nothing saved.
 //   2. A prospect_searches row in status 'paying' is written BEFORE the call.
-//   3. The call. On a clean failure the row becomes 'failed'. If the function
-//      dies or times out mid-call, the row stays 'paying', which the UI shows
-//      as "charge unknown", so a possible charge is never invisible.
+//   3. The call. On an error or a timeout the row becomes 'failed' and the page
+//      is given back to page memory (nothing was delivered). If the function
+//      itself dies mid-call, the row stays 'paying', which the UI shows as
+//      "charge unknown", so a possible charge is never invisible.
 //   4. Companies saved (one row per Apollo company per client; a company we
 //      already have is skipped, never re-scored), then the row becomes 'done'.
 //
@@ -22,7 +23,8 @@ import { DEV_COMPANY_ID, parseIndustryKeywordGroups, resolveApolloKeyword } from
 import type { ApolloOrgAdvancedFilters } from "@/lib/services/apollo";
 import { normalizeDomain } from "@/lib/utils/domain";
 import { companyName } from "./text";
-import { FIRECRAWL_PER_PAGE, filterKey, nextStep, revealCap, suggestedMaxCredits } from "./digging";
+import { isWorking } from "./groups";
+import { FIRECRAWL_PER_PAGE, filterKey, nextStep, outageNote, revealCap, suggestedMaxCredits, type RunState } from "./digging";
 
 export interface ProspectSearchInput {
   keywords: string[];
@@ -154,17 +156,23 @@ export async function runProspectSearch(db: SupabaseClient, companyId: string, u
   const { data: search, error: sErr } = await db.from("prospect_searches")
     .insert({
       created_by: userId, filters: { ...input, keyword_labels: keywordLabels }, page: input.page, status: "paying", mock,
-      ...(target ? { target_leads: target, max_credits: maxCredits, filter_key: key, run_status: "running" } : {}),
+      // Locked while the first page is read: else the minute job sees 0 companies, reads page 2 and ends the run.
+      ...(target ? { target_leads: target, max_credits: maxCredits, filter_key: key, run_status: "running", run_locked_until: new Date(Date.now() + 2 * 60_000).toISOString() } : {}),
     })
     .select("id").single();
-  if (sErr || !search) return { ok: false, status: 500, code: "INTERNAL", message: `Could not start search: ${sErr?.message}` };
+  if (sErr || !search) {
+    console.error("[prospects] could not save the search row:", sErr?.message);
+    return { ok: false, status: 500, code: "INTERNAL", message: "Could not start the search because our database did not answer. Nothing was searched or charged. Try again in a minute." };
+  }
   const searchId = search.id as string;
 
   const page = key ? await claimPage(db, companyId, key) : input.page;
-  const res = await fetchPageInto(db, searchId, { ...input, page }, deps, key);
+  const res = await fetchPageInto(db, searchId, { ...input, page }, deps, key).finally(async () => {
+    if (target) await db.from("prospect_searches").update({ run_locked_until: null }).eq("id", searchId);
+  });
   if (!res.ok) return { ...res, search_id: searchId };
   if (target && res.returned === 0) {
-    await db.from("prospect_searches").update({ run_status: "complete", run_note: "Apollo has no more companies for these filters (all pages were read in earlier searches). Add more keywords or countries." }).eq("id", searchId);
+    await db.from("prospect_searches").update({ run_status: "complete", run_note: `Apollo has no more companies for these filters${page > 1 ? " (all pages were read in earlier searches)" : ""}. Add more keywords or countries.` }).eq("id", searchId);
   }
   return { ok: true, search_id: searchId, returned: res.returned, new_companies: res.inserted, total_entries: res.totalEntries, credits_spent: res.creditsSpent, mock, page };
 }
@@ -175,9 +183,17 @@ async function claimPage(db: SupabaseClient, companyId: string, key: string): Pr
   return Number(data);
 }
 
-/** Apollo refused the page (no charge): give the page back so the next search reads it. */
+/** Apollo delivered nothing for the page: give it back so the next search reads it. */
 async function releasePage(db: SupabaseClient, key: string, page: number) {
   await db.from("prospect_page_memory").update({ last_page: page - 1 }).eq("filter_key", key).eq("last_page", page);
+}
+
+/** Apollo answered with an error code: what it means for the user, in plain words. Nothing is charged. */
+export function apolloRefusedNote(status: number): string {
+  if (status === 402 || status === 422) return "Apollo has no credits left. Nothing was charged. Top up Apollo, then try again.";
+  if (status === 401 || status === 403) return "Apollo did not accept our key. Nothing was charged. Check the Apollo key in Settings > Keys, then try again.";
+  if (status === 429) return "Apollo is busy (too many searches at once). Nothing was charged. Try again in a few minutes.";
+  return "Apollo is not answering right now. Nothing was charged. Try again in a few minutes.";
 }
 
 type PageResult = { ok: true; returned: number; inserted: number; totalEntries: number; creditsSpent: number } | { ok: false; status: number; code: string; message: string };
@@ -196,13 +212,20 @@ async function fetchPageInto(db: SupabaseClient, searchId: string, input: Prospe
   } catch (err) {
     const status = (err as { status?: number }).status;
     const msg = (err as Error).message.slice(0, 500);
-    // An HTTP error answer means Apollo refused (no charge). No answer at all
-    // (timeout, network) means we can't know — leave it 'paying'.
+    // Either way Apollo delivered nothing, so the page goes back to page memory:
+    // the next search reads it. Nothing was received, so nothing can be paid twice.
+    if (key) await releasePage(db, key, input.page);
+    // An HTTP error answer means Apollo refused (no charge). The raw answer goes to the log only.
     if (status) {
-      await db.from("prospect_searches").update({ status: "failed", error: msg, run_status: "complete", run_note: `Apollo refused page ${input.page}: ${msg}`, updated_at: new Date().toISOString() }).eq("id", searchId);
-      if (key) await releasePage(db, key, input.page);
-    } else await db.from("prospect_searches").update({ error: `No answer from Apollo — charge unknown: ${msg}`, run_status: "complete", run_note: "Stopped: Apollo didn't answer (charge unknown).", updated_at: new Date().toISOString() }).eq("id", searchId);
-    return { ok: false, status: 502, code: "UPSTREAM_APOLLO", message: msg };
+      console.error(`[prospects] Apollo refused page ${input.page}:`, msg);
+      const note = apolloRefusedNote(status);
+      await db.from("prospect_searches").update({ status: "failed", error: note, run_status: "complete", run_note: note, updated_at: new Date().toISOString() }).eq("id", searchId);
+      return { ok: false, status: 502, code: "UPSTREAM_APOLLO", message: note };
+    }
+    // No answer at all (timeout, network): Apollo may have used 1 credit, but no companies came back.
+    const note = `Apollo didn't answer in time (it may have used 1 credit). No companies were saved and page ${input.page} was not marked as read, so it is safe to try again.`;
+    await db.from("prospect_searches").update({ status: "failed", error: note, run_status: "complete", run_note: note, updated_at: new Date().toISOString() }).eq("id", searchId);
+    return { ok: false, status: 502, code: "UPSTREAM_APOLLO", message: note };
   }
 
   // Skip companies already in the system (organizations) — matched on Apollo id, then domain.
@@ -234,8 +257,10 @@ async function fetchPageInto(db: SupabaseClient, searchId: string, input: Prospe
       { onConflict: "apollo_org_id", ignoreDuplicates: true }, // same company from an earlier search: keep the first
     ).select("id");
     if (error) {
-      await db.from("prospect_searches").update({ error: `Paid, but saving companies failed: ${error.message}`, updated_at: new Date().toISOString() }).eq("id", searchId);
-      return { ok: false, status: 500, code: "INTERNAL", message: error.message };
+      console.error("[prospects] saving companies failed:", error.message);
+      const note = "Apollo sent the companies (1 credit may be used), but saving them failed, so none were added. Try the search again in a minute.";
+      await db.from("prospect_searches").update({ error: note, updated_at: new Date().toISOString() }).eq("id", searchId);
+      return { ok: false, status: 500, code: "INTERNAL", message: note };
     }
     inserted = data?.length ?? 0;
   }
@@ -265,8 +290,6 @@ async function fetchPageInto(db: SupabaseClient, searchId: string, input: Prospe
   return { ok: true, returned: orgs.length, inserted, totalEntries: total, creditsSpent };
 }
 
-const WORKING = ["queued", "read_social", "read", "good", "approved", "waiting_credits"];
-
 /**
  * One step of a search with a lead target, called by the background job:
  * read the next page, wait for the companies in progress, or finish with a
@@ -284,40 +307,56 @@ export async function continueRun(db: SupabaseClient, companyId: string, searchI
   if (!s) return "busy";
   const unlock = (extra: Record<string, unknown> = {}) => db.from("prospect_searches").update({ run_locked_until: null, ...extra }).eq("id", searchId);
   try {
-    const { data: rows } = await db.from("prospect_companies").select("status, page").eq("search_id", searchId);
+    const { data: rows } = await db.from("prospect_companies").select("status, page, last_error").eq("search_id", searchId);
     const rs = rows ?? [];
     const pages = (s.pages as number[] | null) ?? [];
     const promoted = rs.filter((r) => r.status === "promoted");
     const { data: mem } = await db.from("prospect_page_memory").select("last_page, total_pages").eq("filter_key", s.filter_key).maybeSingle();
     const target = s.target_leads as number, maxCredits = s.max_credits as number;
     const input = s.filters as ProspectSearchInput;
-    const working = rs.filter((r) => WORKING.includes(r.status)).length;
+    // Companies waiting for Apollo credits are not "working": they can wait for days.
+    const working = rs.filter(isWorking).length;
+    const waitingCredits = rs.filter((r) => r.status === "waiting_credits").length;
     // Asked only when a new page might be read, so a waiting search makes no Firecrawl calls.
-    const firecrawlLeft = working === 0 && promoted.length < target ? ((await depsFor(input).firecrawlLeft?.()) ?? null) : null;
-    const step = nextStep({
+    const firecrawlLeft = working === 0 && !waitingCredits && promoted.length < target ? ((await depsFor(input).firecrawlLeft?.()) ?? null) : null;
+    // Why companies did not become leads: service errors and dead websites are not the keywords' fault.
+    const failedRows = rs.filter((r) => r.status === "review" && String(r.last_error ?? "").startsWith("Stopped after"));
+    const checks = (list: typeof rs) => {
+      const done = list.filter((r) => !isWorking(r) && r.status !== "waiting_credits");
+      return { checked: done.length, failed: done.filter((r) => failedRows.includes(r)).length, siteDown: done.filter((r) => r.status === "site_down").length };
+    };
+    const state: RunState = {
       target, maxCredits,
       // Counted the same way in test batches, so the rules behave the same there.
       creditsUsed: pages.length + promoted.length,
       leads: promoted.length,
       working,
+      waitingCredits,
       pagesRead: pages.length,
       leadsPerPage: pages.map((p) => promoted.filter((r) => r.page === p).length),
       totalPages: (mem?.total_pages as number | null) ?? null,
       nextPage: ((mem?.last_page as number | null) ?? 0) + 1,
       lastPageEmpty: false,
       firecrawlLeft,
-    });
+      checked: rs.length - working - waitingCredits,
+      failed: failedRows.length,
+      failedError: (failedRows[0]?.last_error as string | null) ?? null,
+      siteDown: rs.filter((r) => r.status === "site_down").length,
+      pageChecks: pages.map((p) => checks(rs.filter((r) => r.page === p))),
+    };
+    const step = nextStep(state);
     if (step.action === "wait") { await unlock(); return "waiting"; }
     if (step.action === "stop") { await unlock({ run_status: "complete", run_note: step.note }); return "stopped"; }
 
     const page = await claimPage(db, companyId, s.filter_key as string);
     const res = await fetchPageInto(db, searchId, { ...input, page }, depsFor(input), s.filter_key as string);
-    if (!res.ok) { await unlock(); return "stopped"; }
+    // Same "Stopped at …" start as the other stop notes; fetchPageInto already wrote the plain reason.
+    if (!res.ok) { await unlock(res.code === "UPSTREAM_APOLLO" ? { run_note: `Stopped at ${promoted.length} of ${target} leads: ${res.message}` } : {}); return "stopped"; }
     // Each page paid for leaves 1 fewer credit for contacts.
     const cap = revealCap(target, maxCredits, pages.length + 1);
     await unlock({
       filters: { ...(s.filters as Record<string, unknown>), max_auto_reveals: cap },
-      ...(res.returned === 0 ? { run_status: "complete", run_note: `Stopped at ${promoted.length} of ${target} leads: Apollo has no more companies for these filters. Add more keywords or countries.` } : {}),
+      ...(res.returned === 0 ? { run_status: "complete", run_note: outageNote(state) ?? `Stopped at ${promoted.length} of ${target} leads: Apollo has no more companies for these filters. Add more keywords or countries.` } : {}),
     });
     return "fetched";
   } catch (e) {

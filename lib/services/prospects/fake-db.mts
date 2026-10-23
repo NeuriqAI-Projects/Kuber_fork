@@ -39,9 +39,18 @@ export function fakeDb(opts: { fail?: Partial<Record<string, "insert" | "upsert"
       neq: (k: string, v: unknown) => { filters.push((r) => r[k] !== v); return q; },
       in: (k: string, vs: unknown[]) => { filters.push((r) => vs.includes(r[k])); return q; },
       is: (k: string, v: unknown) => { filters.push((r) => (r[k] ?? null) === v); return q; },
+      order: () => q, limit: () => q, // ponytail: no sorting, tests hold one matching row
+      or: () => q, // ponytail: ignored, tests never hold a live lock
       then: (res: (v: unknown) => void, rej: (e: unknown) => void) => Promise.resolve(run()).then(res, rej),
     });
     return q;
   };
-  return { db: { from } as never, tables };
+  // claim_prospect_page: last_page + 1 per filter key in prospect_page_memory, like the real one.
+  const rpc = async (_fn: string, a: { p_key: string }) => {
+    const mem = tables.prospect_page_memory;
+    const row = mem.find((r) => r.filter_key === a.p_key) ?? (mem.push({ filter_key: a.p_key, last_page: 0 }), mem[mem.length - 1]);
+    row.last_page = (row.last_page as number) + 1;
+    return { data: row.last_page, error: null };
+  };
+  return { db: { from, rpc } as never, tables };
 }

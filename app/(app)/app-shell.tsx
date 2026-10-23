@@ -19,6 +19,7 @@ import { APP_LOGO_INITIAL, APP_NAME, BRAND_LOGO_CHANGED } from "@/lib/branding";
 import { isCampaignEligible, type Lead } from "@/lib/leads";
 import { deleteLead, fetchLogo, fetchUniboxUnread, fetchApolloCredits } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { REVIEW_TOTAL_EVENT } from "@/lib/services/prospects/groups";
 import { supabase } from "@/lib/supabase";
 
 const CreateCampaignModal = dynamic(
@@ -133,6 +134,11 @@ function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1") setSidebarCollapsed(true);
   }, []);
+  // The sidebar's width as a CSS variable, so wide dialogs (Add leads) can centre in the space
+  // beside it instead of sliding under it and covering the "N to review" badge.
+  useEffect(() => {
+    document.documentElement.style.setProperty("--app-sidebar-w", sidebarCollapsed ? "3.5rem" : "15rem");
+  }, [sidebarCollapsed]);
 
   function toggleSidebar() {
     setSidebarCollapsed((prev) => {
@@ -244,7 +250,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
     };
     load();
     const id = setInterval(load, 60_000);
-    return () => clearInterval(id);
+    // The Leads page refreshes every few seconds and passes its number on, so badge and banner match.
+    const onTotal = (e: Event) => setScoredToReview(Number((e as CustomEvent<number>).detail) || 0);
+    window.addEventListener(REVIEW_TOTAL_EVENT, onTotal);
+    return () => { clearInterval(id); window.removeEventListener(REVIEW_TOTAL_EVENT, onTotal); };
   }, [session, role]);
 
   useEffect(() => {
@@ -414,7 +423,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                           <Icon className={cn("size-4 shrink-0", active ? "text-foreground" : "text-muted-foreground")} />
                           {!sidebarCollapsed && <span className="flex-1 truncate text-left">{label}</span>}
                           {label === "Leads" && scoredToReview > 0 && !sidebarCollapsed && (
-                            <span title={`${scoredToReview} scored companies need your review`} className="inline-flex shrink-0 items-center whitespace-nowrap text-[11px] font-medium rounded-[4px] px-1.5 py-px tabular-nums bg-amber-500/15 text-amber-700 dark:text-amber-400">
+                            <span title={`${scoredToReview} scored companies in your 20 most recent searches need your review`} className="inline-flex shrink-0 items-center whitespace-nowrap text-[11px] font-medium rounded-[4px] px-1.5 py-px tabular-nums bg-amber-500/15 text-amber-700 dark:text-amber-400">
                               {scoredToReview} to review
                             </span>
                           )}

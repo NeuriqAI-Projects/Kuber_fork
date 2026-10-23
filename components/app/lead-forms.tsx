@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { AlertCircle, Check, CheckCircle2, FileText, Plus, Search, Upload, X } from "lucide-react";
+import { AlertCircle, Check, CheckCircle2, FileText, Loader2, Plus, Search, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChoiceCard } from "@/components/ui/choice-card";
 import { badgeVariants } from "@/components/ui/badge";
@@ -152,16 +152,18 @@ export function useAssignableEmployees(enabled: boolean) {
 // The Industry Segments taxonomy (Settings > Industry Segments) is
 // per-company data now, not a compile-time constant — fetched once per form
 // so both the dropdown and the keyword-group-count summary below it agree.
+// `loading` lets the dropdown say so instead of opening empty for a few seconds.
 export function useIndustryKeywordGroups() {
   const [groups, setGroups] = useState<IndustryKeywordGroup[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     getToken().then((token) => fetchSettings(token)).then((settings) => {
       setGroups(parseIndustryKeywordGroups(settings.industry_keyword_groups));
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
-  return [groups, setGroups] as const;
+  return [groups, setGroups, loading] as const;
 }
 
 function AssignToField({
@@ -294,11 +296,14 @@ export function IndustryKeywordsDropdown({
   onChange,
   groups,
   onGroupsChange,
+  loading = false,
 }: {
   selected: string[];
   onChange: (v: string[]) => void;
   groups: IndustryKeywordGroup[];
   onGroupsChange: (groups: IndustryKeywordGroup[]) => void;
+  /** Segments still loading: the panel shows a spinner instead of an empty grid. */
+  loading?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [customInput, setCustomInput] = useState("");
@@ -489,6 +494,11 @@ export function IndustryKeywordsDropdown({
               </Button>
             </div>
 
+            {groups.length === 0 && (
+              <p className="flex items-center justify-center gap-2 px-3 py-6 text-[13px] text-muted-foreground">
+                {loading ? <><Loader2 className="size-4 animate-spin" />Loading segments…</> : "No segments yet. Add them in Settings > Industry segments."}
+              </p>
+            )}
             {/* 3-column grid of groups */}
             <div className="grid grid-cols-3 max-h-72 overflow-y-auto">
               {(() => {
@@ -728,7 +738,7 @@ export function clearDraft(form: string) {
 
 export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
   const [keywords,      setKeywords     ] = useDraft<string[]>("apollo", "keywords", []);
-  const [industryKeywordGroups, setIndustryKeywordGroups] = useIndustryKeywordGroups();
+  const [industryKeywordGroups, setIndustryKeywordGroups, industryGroupsLoading] = useIndustryKeywordGroups();
   const [locations,     setLocations    ] = useDraft<string[]>("apollo", "locations", []);
   // The ONLY two knobs. Search depth is no longer a choice — the server pages
   // until these are met (apollo-search/route.ts). Every lead landed here
@@ -949,6 +959,7 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
               onChange={setKeywords}
               groups={industryKeywordGroups}
               onGroupsChange={setIndustryKeywordGroups}
+              loading={industryGroupsLoading}
             />
             <LocationsDropdown
               selected={locations}

@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { cleanText, wordCount, htmlToText, linksFromMarkdown, pickSecondPage, sitemapLocs, dropCookieText, companyName } from "./text.ts";
-import { verdict, displayScore, reasonFor, DEFAULT_FIT_SCORING } from "./fit-rules.ts";
+import { verdict, displayScore, reasonFor, plainReason, DEFAULT_FIT_SCORING } from "./fit-rules.ts";
 
 test("cleaning drops images, link targets, bare URLs and repeated lines", () => {
   const t = cleanText("![logo](a.png)\n# Hi [About us](/about) https://x.com\nHi About us\nhi about us\n");
@@ -29,6 +29,17 @@ test("decision rules: plastic maker ≥65% good, ≤35% hidden, between unsure; 
   assert.deepEqual([0.1, 0.35, 0.5, 0.64, 0.65, 0.95].map((p) => verdict(p, C)), ["hidden", "hidden", "unsure", "unsure", "good", "good"]);
   assert.deepEqual([displayScore(0.9, 0.9, C), displayScore(0.9, 0.1, C), displayScore(0.5, 0.9, C), displayScore(0.1, 0.9, C)], [9, 7, null, 2]);
   assert.match(reasonFor(0.12, 0.9, C), /Not a plastic maker \(12%\)/);
+});
+
+test("good-fit reason reads as a positive fit; old saved wording is rewritten the same way", () => {
+  const C = DEFAULT_FIT_SCORING;
+  const other = reasonFor(0.8, 0.2, C);
+  assert.equal(other, "Makes plastic products (80% sure) · other plastic products than the ones you searched");
+  assert.doesNotMatch(other, /20%/);
+  assert.equal(plainReason("Makes plastic products (80%) · other products than searched (20%)"), other);
+  assert.equal(plainReason("Makes plastic products (90%) · matches the searched products (90%)"), reasonFor(0.9, 0.9, C));
+  assert.equal(plainReason("Not a plastic maker (12%)"), "Not a plastic maker (12%)");
+  assert.equal(plainReason(null), null);
 });
 
 test("cookie banners are dropped, so a banner-only page reads as almost no text", () => {

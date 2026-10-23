@@ -30,7 +30,7 @@ import { KanbanBoard } from "@/components/app/kanban-board";
 import {
   EMPTY_SCORED_FILTER, GroupPill, RunningSearchesBar, RunningSearchesPill, scoredFilterCount, ScoredCompanyDrawer, SCORED_COLUMN_DEFS, DEFAULT_SCORED_VISIBILITY, FitPill, BatchPill, Decide as ScoredDecide, type ScoredColVisibility, type ScoredCompany, type DecideAction, ScoredFiltersDialog, ScoredOrgsKanban, ScoredOrgsTable,
   decideScored, scoredFilterActive, useScoredOrgs, type ScoredFilter,
-  GRID_TABLE, HEAD_CELL, STICKY_CELL, ColHead, OrgTile, WhyCell,
+  GRID_TABLE, HEAD_CELL, STICKY_CELL, WHY_HEAD, DECIDE_HEAD, ColHead, OrgTile, WhyCell,
 } from "@/components/app/scored-orgs";
 import { GROUPS, statusLine, type Group } from "@/lib/services/prospects/groups";
 import { Button } from "@/components/ui/button";
@@ -426,12 +426,12 @@ const ORG_GRID_COLS: { key: OrgColKey; label: string; icon: LucideIcon; classNam
   { key: "fit_status",  label: "Status",      icon: CircleDot },
   { key: "fit",         label: "Fit",         icon: Gauge },
   { key: "domain",      label: "Domain",      icon: Globe },
-  { key: "why",         label: "Why",         icon: MessageSquareText, className: "min-w-[280px]" },
+  { key: "why",         label: "Why",         icon: MessageSquareText, className: WHY_HEAD },
   { key: "batch",       label: "Batch",       icon: Tag },
   { key: "description", label: "Description", icon: FileText },
   { key: "sells_to",    label: "Sells to",    icon: Target },
   { key: "leads",       label: "Leads",       icon: Users },
-  { key: "decide",      label: "Decide",      icon: CheckCheck, className: "text-right" },
+  { key: "decide",      label: "Decide",      icon: CheckCheck, className: DECIDE_HEAD },
 ];
 
 function Dash() {
@@ -555,6 +555,7 @@ export default function LeadsPage() {
     searchIds: (searchParams.get("sbatch") ?? "").split(",").filter(Boolean),
     groups: (searchParams.get("sgroups") ?? "").split(",").filter((g): g is Group => (GROUPS as readonly string[]).includes(g)),
     hidden: searchParams.get("shidden") === "1",
+    waiting: searchParams.get("swaiting") === "1",
   }));
   const [showScoredFilters, setShowScoredFilters] = useState(false);
   const [page,             setPage            ] = useState(1);
@@ -613,6 +614,7 @@ export default function LeadsPage() {
     if (scoredFilter.searchIds.length) params.set("sbatch",  scoredFilter.searchIds.join(","));
     if (scoredFilter.groups.length)    params.set("sgroups", scoredFilter.groups.join(","));
     if (scoredFilter.hidden)           params.set("shidden", "1");
+    if (scoredFilter.waiting)          params.set("swaiting", "1");
     const qs = params.toString();
     // Debounced. `searchQuery` is in the dep list and moves on every keystroke,
     // and Next 15 defaults staleTimes.dynamic to 0 — a dynamic route is never
@@ -1114,10 +1116,11 @@ export default function LeadsPage() {
         ) : scoredView ? (
           <ScoredOrgsTable data={scored.data} error={scored.error} loading={scored.loading} visible={scoredVisibleCols} onDecide={handleScoredDecide} onOpenCompany={openScoredCompany} />
         ) : leadsEntityMode === "orgs" ? (
+          <>
           <table className={GRID_TABLE}>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <ColHead icon={Building2} label="Organization" className="left-0 z-30 min-w-[220px]" />
+                <ColHead icon={Building2} label="Organization" className="left-0 z-30 min-w-[200px]" />
                 {ORG_GRID_COLS.filter((c) => orgVisibleCols[c.key]).map((c) => (
                   <ColHead key={c.key} icon={c.icon} label={c.label} className={c.className} />
                 ))}
@@ -1153,11 +1156,11 @@ export default function LeadsPage() {
                       <TableCell className={cn(STICKY_CELL, "left-0")}>
                         <div className="flex min-w-0 items-center gap-2">
                           <OrgTile />
-                          <span className="max-w-[240px] truncate font-medium" title={org.name || undefined}>{org.name || "—"}</span>
+                          <span className="max-w-[160px] truncate font-medium" title={org.name || undefined}>{org.name || "—"}</span>
                         </div>
                       </TableCell>
                       {orgVisibleCols.fit_status && <TableCell>{sc ? <GroupPill group={sc.group} status={sc.status} /> : <Dash />}</TableCell>}
-                      {orgVisibleCols.fit && <TableCell>{sc ? <FitPill score={sc.score} /> : <Dash />}</TableCell>}
+                      {orgVisibleCols.fit && <TableCell>{sc ? <FitPill score={sc.score} group={sc.group} /> : <Dash />}</TableCell>}
                       {orgVisibleCols.domain && <TableCell><DomainLink text={org.domain || null} /></TableCell>}
                       {orgVisibleCols.why && (
                         <TableCell>
@@ -1168,13 +1171,16 @@ export default function LeadsPage() {
                       {orgVisibleCols.description && <TableCell><Clip text={org.companyDescription} className="max-w-[320px]" /></TableCell>}
                       {orgVisibleCols.sells_to && <TableCell><Clip text={org.sellsTo} className="max-w-[240px]" /></TableCell>}
                       {orgVisibleCols.leads && <TableCell className="text-right tabular-nums">{org.leads.length}</TableCell>}
-                      {orgVisibleCols.decide && <TableCell>{sc ? <ScoredDecide c={sc} busy={false} onDecide={handleScoredDecide} /> : null}</TableCell>}
+                      {orgVisibleCols.decide && <TableCell className={cn(STICKY_CELL, "right-0")}>{sc ? <ScoredDecide c={sc} busy={false} onDecide={handleScoredDecide} /> : null}</TableCell>}
                     </TableRow>
                   );
                 })
               )}
             </TableBody>
           </table>
+          {/* Room under the last row, so its Decide buttons can scroll clear of the floating "Ask Kuber AI" button. */}
+          <div aria-hidden className="h-16" />
+          </>
         ) : leadsViewMode === "kanban" ? (
           <div className="p-4">
             <KanbanBoard
@@ -1331,7 +1337,8 @@ export default function LeadsPage() {
 
       {/* ── Footer: rows shown + pagination (list view only) ── */}
       {leadsEntityMode === "individual" && leadsViewMode === "list" && displayLeads.length > 0 && (
-        <div className="flex h-11 shrink-0 items-center gap-3 border-t border-border px-4 text-[13px]">
+        // pr-28: the page buttons stay clear of the floating "Ask Kuber AI" button (bottom-right).
+        <div className="flex h-11 shrink-0 items-center gap-3 border-t border-border pl-4 pr-28 text-[13px]">
           <span className="tabular-nums text-muted-foreground">
             {firstRow}–{lastRow} of {displayLeads.length}
           </span>

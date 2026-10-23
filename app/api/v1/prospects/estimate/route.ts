@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
       leads_left: { low: Math.round(est.leads.low * leftShare), high: Math.round(est.leads.high * leftShare) },
     });
   } catch (e) {
-    return fail(502, "UPSTREAM_APOLLO", `Couldn't check the size right now: ${(e as Error).message}`);
+    console.error("[prospects/estimate]", (e as Error).message);
+    return fail(502, "UPSTREAM_APOLLO", "Couldn't check the size right now: Apollo is not answering. Nothing was charged. Try again in a few minutes.");
   }
 }

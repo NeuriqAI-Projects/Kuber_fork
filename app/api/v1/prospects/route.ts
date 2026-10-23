@@ -11,6 +11,7 @@ const ROW_COLS = "id, search_id, name, domain, website_url, linkedin_url, status
  *   ?search_ids=a,b   only these searches (default: the 20 most recent)
  *   ?groups=review    only these columns (checking,review,good,approved,declined,hidden)
  *   ?hidden=1         include Hidden when no groups are given
+ *   ?waiting=1        also "Waiting for credits" companies (a part of Good fit / Approved), beside any groups
  *   ?q=acme           name/domain contains
  *   ?summary=1        searches + counts only (for the side-menu badge / running bar)
  * A search is at most 100 companies (one Apollo page), so 20 searches fit in a few reads.
@@ -23,6 +24,7 @@ export async function GET(req: NextRequest) {
   const list = (k: string) => (sp.get(k) ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   const groups = list("groups").filter((g): g is Group => (GROUPS as readonly string[]).includes(g));
   const showHidden = sp.get("hidden") === "1";
+  const waiting = sp.get("waiting") === "1";
   const q = (sp.get("q") ?? "").trim().toLowerCase();
 
   const { data: searchRows, error: sErr } = await db.from("prospect_searches")
@@ -79,6 +81,7 @@ export async function GET(req: NextRequest) {
       },
     };
   });
+  // Like every count here, only the 20 most recent searches (the ones the page lists).
   const reviewTotal = searchesOut.reduce((t, s) => t + s.groups.review, 0);
   if (sp.get("summary") === "1") return ok({ searches: searchesOut, counts: emptyCounts(), companies: [], review_total: reviewTotal });
 
@@ -89,7 +92,8 @@ export async function GET(req: NextRequest) {
   for (const r of inScope) counts[groupOf(r as never)]++;
   const companies = inScope.filter((r) => {
     const grp = groupOf(r as never);
-    return groups.length ? groups.includes(grp) : grp !== "hidden" || showHidden;
+    if (groups.length || waiting) return groups.includes(grp) || (waiting && r.status === "waiting_credits");
+    return grp !== "hidden" || showHidden;
   });
 
   // The revealed contact for companies that reached the reveal step.

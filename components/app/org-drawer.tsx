@@ -19,7 +19,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { RecordLayout, RecordHeader, DetailSection, DetailRow } from "@/components/ui/record-layout";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { Avatar } from "@/components/leads/lead-ui";
-import { getBatchColor } from "@/lib/constants";
+import { toast } from "sonner";
+import { BatchPill, canDecide, Decide, decideScored, FitPill, GroupPill, ScoredStatus, type DecideAction, type ScoredCompany } from "@/components/app/scored-orgs";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,7 +37,8 @@ interface OrgData {
   city: string | null;
   country: string | null;
   enrichment_stage: string | null;
-  scored_batch?: { name: string; color: string } | null;
+  /** The scored-search row that found this company (managers only). */
+  scored?: ScoredCompany | null;
   leads?: Array<{ id: string; first_name: string | null; last_name: string | null; title: string | null; email: string | null }>;
 }
 
@@ -205,6 +207,15 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [onClose]);
+
+  // Approve / Decline / Undo for an org that came from a scored search, then refresh it.
+  const [deciding, setDeciding] = useState(false);
+  async function decide(ids: string[], action: DecideAction) {
+    setDeciding(true);
+    try { await decideScored(ids, action); } catch (e) { toast.error((e as Error).message); }
+    finally { setDeciding(false); }
+    if (orgId) void loadOrg(orgId);
+  }
 
   const open = orgId !== null;
   if (!open) return null;
@@ -387,10 +398,12 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
                     )}
                   </span>
                 ) : undefined}
-                badges={org.scored_batch ? (
-                  <span className={cn("inline-flex max-w-full truncate rounded-[5px] border px-1.5 py-[3px] text-xs font-medium leading-none", getBatchColor(org.scored_batch.color).pill)} title="Scored-search batch">
-                    Batch: {org.scored_batch.name}
-                  </span>
+                badges={org.scored ? (
+                  <>
+                    <GroupPill group={org.scored.group} status={org.scored.status} />
+                    <FitPill score={org.scored.score} group={org.scored.group} />
+                    <BatchPill name={`Batch: ${org.scored.batch_name}`} color={org.scored.batch_color} wide />
+                  </>
                 ) : undefined}
               />
             }
@@ -454,6 +467,7 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
               /* ── View mode: overview ── */
               <div className="space-y-6">
                 {errorBox}
+                {org.scored && <section className="space-y-2"><ScoredStatus c={org.scored} /></section>}
                 {/* Below lg the Details rail is hidden — show the same attributes here. */}
                 <div className="overflow-hidden rounded-lg border border-border bg-card lg:hidden">{details}</div>
 
@@ -493,6 +507,9 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
               </div>
             )}
           </RecordLayout>
+        )}
+        {org?.scored && !editing && canDecide(org.scored) && (
+          <div className="shrink-0 border-t border-border p-4"><Decide c={org.scored} busy={deciding} onDecide={decide} large /></div>
         )}
       </div>
     </>

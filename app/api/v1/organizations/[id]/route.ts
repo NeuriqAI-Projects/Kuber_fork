@@ -4,6 +4,7 @@ import { ok, fail } from "@/lib/api-response";
 import { PatchOrgSchema } from "@/lib/validators/organizations";
 import { normalizeDomain } from "@/lib/utils/domain";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { scoredForOrg } from "@/lib/services/prospects/groups";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   let user: Awaited<ReturnType<typeof requireAuth>>;
@@ -37,30 +38,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { data: leads } = await db
     .from("leads")
-    .select("id, first_name, last_name, email, email_status, title, lead_source, created_at")
+    .select("id, apollo_id, first_name, last_name, email, email_status, title, lead_source, created_at")
     .eq("organization_id", id)
     .order("created_at", { ascending: false });
 
-  // Which scored-search batch found this company, if any — the Kanban card no
-  // longer carries the batch name, so the drawer is where it is shown. Managers
-  // only (the scored tables are manager-scoped); anyone else just gets null.
-  let scoredBatch: { name: string; color: string } | null = null;
-  if (user.role === "manager") {
-    const { data: pc } = await db
-      .from("prospect_companies")
-      .select("search_id")
-      .eq("organization_id", id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (pc?.search_id) {
-      const { data: search } = await db.from("prospect_searches").select("filters").eq("id", pc.search_id).maybeSingle();
-      const f = (search?.filters ?? {}) as { batch_name?: string; color?: string };
-      scoredBatch = { name: f.batch_name ?? "Scored search", color: f.color ?? "green" };
-    }
-  }
+  // The scored-search row that found this company, if any (fit, why, status,
+  // Approve / Decline in the drawer). Managers only: the scored tables are manager-scoped.
+  const scored = user.role === "manager" ? await scoredForOrg(db, id, leads ?? []) : null;
 
-  return ok({ ...org, leads: leads ?? [], scored_batch: scoredBatch });
+  return ok({ ...org, leads: leads ?? [], scored });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
