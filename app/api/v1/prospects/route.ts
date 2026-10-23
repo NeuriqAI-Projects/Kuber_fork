@@ -3,6 +3,7 @@ import { requireManager } from "@/lib/auth/api-auth";
 import { fail, ok } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { GROUPS, groupOf, isWorking, type Group } from "@/lib/services/prospects/groups";
+import { liveRunNote } from "@/lib/services/prospects/digging";
 
 const ROW_COLS = "id, search_id, name, domain, website_url, linkedin_url, status, score, score_confidence, reason, text_source, extra_sources, last_error, attempts, locked_until, decided_by, decided_at, organization_id, contact_apollo_id, created_at, updated_at";
 
@@ -12,7 +13,7 @@ const ROW_COLS = "id, search_id, name, domain, website_url, linkedin_url, status
  *   ?groups=review    only these columns (checking,review,good,approved,declined,hidden)
  *   ?hidden=1         include Hidden when no groups are given
  *   ?waiting=1        also "Waiting for credits" companies (a part of Good fit / Approved), beside any groups
- *   ?q=acme           name/domain contains
+ *   ?q=acme           name/domain contains (Hidden ones too)
  *   ?summary=1        searches + counts only (for the side-menu badge / running bar)
  * A search is at most 100 companies (one Apollo page), so 20 searches fit in a few reads.
  */
@@ -67,7 +68,12 @@ export async function GET(req: NextRequest) {
       leads: n("promoted"),
       pages: (s.pages as number[] | null) ?? [],
       run_status: (s.run_status as string | null) ?? "complete",
-      run_note: (s.run_note as string | null) ?? null,
+      // Written when the run stopped; leads that came later (top-up, approvals) are counted in.
+      run_note: liveRunNote({
+        note: (s.run_note as string | null) ?? null, leads: n("promoted"), target: (s.target_leads as number | null) ?? null,
+        approved: rs.filter((r) => r.status === "promoted" && r.decided_by).length, waiting: n("waiting_credits"),
+      }),
+      job_titles: ((s.filters as { job_titles?: string[] } | null)?.job_titles ?? []).filter(Boolean),
       // A search still reading pages counts as in progress even between pages.
       in_progress: rs.filter((r) => isWorking(r as never)).length + (s.run_status === "running" ? 1 : 0),
       groups: g,
@@ -88,12 +94,13 @@ export async function GET(req: NextRequest) {
   const wanted = list("search_ids");
   const inScope = rows.filter((r) => !wanted.length || wanted.includes(r.search_id as string))
     .filter((r) => !q || String(r.name).toLowerCase().includes(q) || String(r.domain ?? "").toLowerCase().includes(q));
+  // A name search finds a company in every group, Hidden included.
   const counts = emptyCounts();
   for (const r of inScope) counts[groupOf(r as never)]++;
   const companies = inScope.filter((r) => {
     const grp = groupOf(r as never);
     if (groups.length || waiting) return groups.includes(grp) || (waiting && r.status === "waiting_credits");
-    return grp !== "hidden" || showHidden;
+    return grp !== "hidden" || showHidden || !!q;
   });
 
   // The revealed contact for companies that reached the reveal step.

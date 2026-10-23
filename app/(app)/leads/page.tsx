@@ -852,6 +852,16 @@ export default function LeadsPage() {
     });
     return sortOrgs(filtered, leadsSort);
   })();
+  // The list above is built from leads, so a scored company without leads yet (Needs review, Hidden…)
+  // is not in it. A search must still find it: those come from the scored API, already filtered by `q`.
+  const scoredOnlyRows = (() => {
+    if (!q || leadsEntityMode !== "orgs") return [];
+    const ids = new Set(orgRows.map((o) => o.id));
+    const lq = q.toLowerCase();
+    // Matched here too: until the refetch for a new `q` lands, the data is the previous answer.
+    return (scored.data?.companies ?? []).filter((c) => (!c.organization_id || !ids.has(c.organization_id))
+      && (c.name.toLowerCase().includes(lq) || (c.domain ?? "").toLowerCase().includes(lq)));
+  })();
 
   const totalPages = Math.max(1, Math.ceil(displayLeads.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -895,7 +905,7 @@ export default function LeadsPage() {
   }
 
   const countLabel = leadsEntityMode === "orgs"
-    ? scoredView ? `${scored.data?.companies.length ?? 0} companies` : `${orgRows.length} organizations`
+    ? scoredView ? `${scored.data?.companies.length ?? 0} companies` : `${orgRows.length + scoredOnlyRows.length} organizations`
     : searchLoading ? "…" : `${displayLeads.length} leads`;
   const openScoredBatch = (searchId: string, group?: Group) => {
     setLeadsViewMode("list");
@@ -1127,7 +1137,7 @@ export default function LeadsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {orgRows.length === 0 ? (
+              {orgRows.length === 0 && scoredOnlyRows.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell colSpan={orgColCount} className="border-r-0 p-0">
                     <EmptyState
@@ -1176,6 +1186,26 @@ export default function LeadsPage() {
                   );
                 })
               )}
+              {/* Scored companies with no organization yet (Needs review, Checking, Hidden…) that match the search. */}
+              {scoredOnlyRows.map((c) => (
+                <TableRow key={`scored-${c.id}`} onClick={() => openScoredCompany(c)} className="group cursor-pointer">
+                  <TableCell className={cn(STICKY_CELL, "left-0")}>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <OrgTile />
+                      <span className="max-w-[160px] truncate font-medium" title={c.name}>{c.name}</span>
+                    </div>
+                  </TableCell>
+                  {orgVisibleCols.fit_status && <TableCell><GroupPill group={c.group} status={c.status} /></TableCell>}
+                  {orgVisibleCols.fit && <TableCell><FitPill score={c.score} group={c.group} /></TableCell>}
+                  {orgVisibleCols.domain && <TableCell><DomainLink text={c.domain} href={c.website_url} /></TableCell>}
+                  {orgVisibleCols.why && <TableCell><WhyCell reason={c.reason} line={statusLine(c)} /></TableCell>}
+                  {orgVisibleCols.batch && <TableCell><BatchPill name={c.batch_name} color={c.batch_color} /></TableCell>}
+                  {orgVisibleCols.description && <TableCell><Dash /></TableCell>}
+                  {orgVisibleCols.sells_to && <TableCell><Dash /></TableCell>}
+                  {orgVisibleCols.leads && <TableCell className="text-right tabular-nums">0</TableCell>}
+                  {orgVisibleCols.decide && <TableCell className={cn(STICKY_CELL, "right-0")}><ScoredDecide c={c} busy={false} onDecide={handleScoredDecide} /></TableCell>}
+                </TableRow>
+              ))}
             </TableBody>
           </table>
           {/* Room under the last row, so its Decide buttons can scroll clear of the floating "Ask Kuber AI" button. */}

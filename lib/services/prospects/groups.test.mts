@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fakeDb } from "./fake-db.mts";
-import { scoredForOrg } from "./groups.ts";
+import { scoredForOrg, statusLine } from "./groups.ts";
 
 test("scoredForOrg: an org from a scored search gets its fit, reason, group, batch and contact", async () => {
   const { db, tables } = fakeDb();
@@ -21,4 +21,10 @@ test("scoredForOrg: an org from a scored search gets its fit, reason, group, bat
 test("scoredForOrg: an org that did not come from a scored search gets null", async () => {
   const { db } = fakeDb();
   assert.equal(await scoredForOrg(db, "o2", []), null);
+});
+
+test("no-title-match review says nothing was spent and what Approve does", () => {
+  const l = statusLine({ status: "review", last_error: "No one with your job titles has an email here (3 other people)" });
+  assert.equal(l.tone, "amber");
+  assert.match(l.text, /^No one with your job titles has an email here \(3 other people\)\. Nothing was spent\. Approve to reveal the best of them \(1 credit\)/);
 });

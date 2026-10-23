@@ -1,7 +1,7 @@
 // npx tsx --test lib/services/prospects/digging.test.mts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nextStep, minCredits, leadsApolloFits, leadsFirecrawlFits, MAX_LEADS_PER_SEARCH, suggestedMaxCredits, revealCap, filterKey, type RunState } from "./digging.ts";
+import { nextStep, liveRunNote, minCredits, leadsApolloFits, leadsFirecrawlFits, MAX_LEADS_PER_SEARCH, suggestedMaxCredits, revealCap, filterKey, type RunState } from "./digging.ts";
 
 const base: RunState = { target: 200, maxCredits: 230, creditsUsed: 0, leads: 0, working: 0, pagesRead: 0, leadsPerPage: [], totalPages: null, nextPage: 1, lastPageEmpty: false };
 const step = (o: Partial<RunState>) => nextStep({ ...base, ...o });
@@ -78,4 +78,18 @@ test("credit maths", () => {
 test("page memory key ignores order, case and empty filters", () => {
   assert.equal(filterKey({ keywords: ["PVC pipes", "upvc pipes"], locations: ["India"] }), filterKey({ keywords: [" upvc pipes", "pvc PIPES"], locations: ["india"], advanced: { revenueMin: "" } }));
   assert.notEqual(filterKey({ keywords: ["pvc pipes"] }), filterKey({ keywords: ["pvc pipes"], locations: ["India"] }));
+});
+
+test("the stop note follows leads that arrive after the stop", () => {
+  const credits = "Stopped at 3 of 10 leads: Apollo ran out of credits. 22 good companies are waiting for credits and get their contact on their own after a top-up, within your credit limit.";
+  assert.equal(liveRunNote({ note: credits, leads: 3, target: 10, waiting: 22 }), credits, "nothing changed");
+  assert.match(liveRunNote({ note: credits, leads: 6, target: 10, waiting: 19 })!, /^Now 6 of 10 leads\. It had stopped at 3: Apollo ran out of credits\. 19 good companies are waiting/);
+  assert.equal(liveRunNote({ note: credits, leads: 10, target: 10, waiting: 15 }), "Done: 10 leads. It had stopped at 3 (Apollo ran out of credits); the rest came in later.");
+  assert.match(liveRunNote({ note: credits, leads: 3, target: 10, waiting: 0 })!, /No companies are waiting any more/);
+  assert.equal(liveRunNote({ note: "Done: 5 leads, as asked.", leads: 5, target: 5 }), "Done: 5 leads, as asked.");
+  assert.equal(liveRunNote({ note: "Done: 5 leads, as asked.", leads: 7, target: 5, approved: 2 }), "Done: 7 leads (5 automatic + 2 approved).");
+  const limit = "Stopped at 4 of 10 leads: your credit limit of 12 is reached.";
+  assert.equal(liveRunNote({ note: limit, leads: 6, target: 10, approved: 2 }), "Now 6 of 10 leads (4 automatic + 2 approved). It had stopped at 4: your credit limit of 12 is reached.");
+  assert.equal(liveRunNote({ note: "Apollo found no companies for these filters.", leads: 0, target: 10 }), "Apollo found no companies for these filters.");
+  assert.equal(liveRunNote({ note: null, leads: 2, target: 10 }), null);
 });

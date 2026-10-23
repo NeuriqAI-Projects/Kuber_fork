@@ -67,6 +67,8 @@ export function statusLine(r: GroupRow & { contact?: { first_name: string | null
     case "review":
       // pipeline.ts writes "Stopped after 3 tries: <raw error>" when a service kept failing.
       if (r.last_error?.startsWith("Stopped after")) return { text: `Could not be checked after 3 tries because ${plainCause(r.last_error)}. Approve or decline it yourself.`, tone: "amber" };
+      // Search with job titles, nobody here has one (pipeline.ts): say what Approve does instead.
+      if (r.last_error?.startsWith("No one with your job titles")) return { text: `${r.last_error}. Nothing was spent. Approve to reveal the best of them (1 credit), or decline.`, tone: "amber" };
       return { text: r.last_error ?? "AI unsure — your call", tone: "amber" };
     case "flagged": return { text: r.last_error ?? "Not enough information to check", tone: "amber" };
     case "site_down": return { text: "Website down: its website and social pages could not be read. Retry it later.", tone: "red" };

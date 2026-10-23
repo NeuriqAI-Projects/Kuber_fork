@@ -175,7 +175,7 @@ export async function runProspectSearch(db: SupabaseClient, companyId: string, u
   });
   if (!res.ok) return { ...res, search_id: searchId };
   if (target && res.returned === 0) {
-    await db.from("prospect_searches").update({ run_status: "complete", run_note: `Apollo has no more companies for these filters${page > 1 ? " (all pages were read in earlier searches)" : ""}. Add more keywords or countries.` }).eq("id", searchId);
+    await db.from("prospect_searches").update({ run_status: "complete", run_note: page > 1 ? "Apollo has no more companies for these filters (all pages were read in earlier searches). Add more keywords or countries." : "Apollo found no companies for these filters. Add more keywords or countries." }).eq("id", searchId);
   }
   return { ok: true, search_id: searchId, returned: res.returned, new_companies: res.inserted, total_entries: res.totalEntries, credits_spent: res.creditsSpent, mock, page };
 }
@@ -226,7 +226,7 @@ async function fetchPageInto(db: SupabaseClient, searchId: string, input: Prospe
       return { ok: false, status: 502, code: "UPSTREAM_APOLLO", message: note };
     }
     // No answer at all (timeout, network): Apollo may have used 1 credit, but no companies came back.
-    const note = `Apollo didn't answer in time (it may have used 1 credit). No companies were saved and page ${input.page} was not marked as read, so it is safe to try again.`;
+    const note = "Apollo was too slow to answer. At most 1 credit may have been used. Nothing was saved, so you can safely try again.";
     await db.from("prospect_searches").update({ status: "failed", error: note, run_status: "complete", run_note: note, updated_at: new Date().toISOString() }).eq("id", searchId);
     return { ok: false, status: 502, code: "UPSTREAM_APOLLO", message: note };
   }

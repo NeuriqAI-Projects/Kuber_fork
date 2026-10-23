@@ -34,7 +34,7 @@ export interface ScoredSearch {
   id: string; batch_name: string; color: string; keywords: string[]; status: string; error: string | null;
   credits_spent: number; returned: number | null; new_companies: number | null; mock: boolean; created_at: string;
   max_auto_reveals: number | null; credits_used: number; max_credits: number | null;
-  target_leads: number | null; leads: number; pages: number[]; run_status: string; run_note: string | null; total: number; in_progress: number; groups: Record<Group, number>;
+  target_leads: number | null; leads: number; pages: number[]; run_status: string; run_note: string | null; job_titles?: string[]; total: number; in_progress: number; groups: Record<Group, number>;
   stages: { found: number; read: number; scored: number; to_reveal: number; revealed: number; waiting_credits: number };
 }
 export interface ScoredCompany {
@@ -205,6 +205,9 @@ function problemLabel(c: ScoredCompany, text: string): string {
   if (c.status === "flagged") return "Not enough info";
   if (c.status === "review" && !c.last_error) return "AI unsure";
   if (c.status === "waiting_credits") return "Waiting for credits";
+  if (c.last_error?.startsWith("No one with your job titles")) return "No title match";
+  if (c.last_error?.startsWith("No buyer found")) return "No buyer";
+  if (c.last_error?.includes("automatic reveals")) return "Reveal limit";
   return "Error";
 }
 
@@ -219,7 +222,7 @@ export function FitPill({ score, group }: { score: number | null; group?: Group 
 
 export function BatchPill({ name, color, wide = false }: { name: string; color: string; wide?: boolean }) {
   // Only as wide as its text; a long name is cut with "…" (full name on hover).
-  return <Tip text={`Batch: ${name.replace(/^Batch: /, "")}`} className={wide ? "max-w-full" : "max-w-[130px]"}><span className={cn("inline-flex w-fit min-w-0 max-w-full items-center rounded-[5px] border px-1.5 py-[3px] text-xs font-medium leading-none", getBatchColor(color).pill)}><span className="truncate">{name}</span></span></Tip>;
+  return <Tip text={`Batch: ${name.replace(/^Batch: /, "")}`} className={wide ? "max-w-full" : "max-w-[min(180px,100%)]"}><span className={cn("inline-flex w-fit min-w-0 max-w-full items-center rounded-[5px] border px-1.5 py-[3px] text-xs font-medium leading-none", getBatchColor(color).pill)}><span className="truncate">{name}</span></span></Tip>;
 }
 
 function Links({ c, linkedin = true }: { c: ScoredCompany; linkedin?: boolean }) {
@@ -265,19 +268,24 @@ function Stage({ label, done, total, tone = "bg-primary" }: { label: string; don
   );
 }
 
+/** "3 of 10 leads", or just "7 leads" once approvals took it past the target. Shared so every screen says the same. */
+export const leadsCount = (s: Pick<ScoredSearch, "leads" | "target_leads">) =>
+  s.target_leads != null && s.leads <= s.target_leads ? `${s.leads} of ${s.target_leads} leads` : `${s.leads} lead${s.leads === 1 ? "" : "s"}`;
+
 /** One search's progress and links (found / read / checked / revealed). Used by the running-search
  *  popover and by the details of the needs-attention bar, so they always match. */
 function SearchRow({ s, onOpen }: { s: ScoredSearch; onOpen: (searchId: string, group?: Group) => void }) {
   return (
-    <div className="grid items-center gap-4 py-3 md:grid-cols-[1.3fr_repeat(4,minmax(0,1fr))_auto]">
+    <div className="grid items-center gap-4 py-3 md:grid-cols-[1.6fr_repeat(4,minmax(0,1fr))_auto]">
       <div className="min-w-0">
-        <BatchPill name={s.batch_name} color={s.color} />
+        <BatchPill name={s.batch_name} color={s.color} wide />
         <p className="mt-1 text-[11px] text-muted-foreground">
-          {new Date(s.created_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {s.credits_used} Apollo credit{s.credits_used === 1 ? "" : "s"} used{s.max_credits != null ? ` (limit ${s.max_credits})` : ""}
+          {new Date(s.created_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {s.credits_used.toLocaleString()} Apollo credit{s.credits_used === 1 ? "" : "s"} used{s.max_credits != null ? ` (limit ${s.max_credits.toLocaleString()})` : ""}
         </p>
+        {!!s.job_titles?.length && <p className="truncate text-[11px] text-muted-foreground" title={s.job_titles.join(", ")}>Job titles: {s.job_titles.join(", ")}</p>}
         {s.target_leads != null && (
           <p className="text-[11px] text-muted-foreground">
-            <b className="text-foreground">{s.leads} of {s.target_leads} leads</b> · {s.pages.length} page{s.pages.length === 1 ? "" : "s"} read{s.pages.length ? ` (${s.pages.join(", ")})` : ""}{s.run_note && !(s.error && s.run_note.endsWith(s.error)) ? ` · ${s.run_note}` : ""}
+            <b className="text-foreground">{leadsCount(s)}</b> · {s.pages.length} page{s.pages.length === 1 ? "" : "s"} read{s.pages.length ? ` (${s.pages.join(", ")})` : ""}{s.run_note && !(s.error && s.run_note.endsWith(s.error)) ? ` · ${s.run_note}` : ""}
           </p>
         )}
         {s.status === "failed" && <p className="text-[11px] font-medium text-red-600 dark:text-red-400">Search failed: {s.error}</p>}
@@ -343,8 +351,9 @@ export function RunningSearchesBar({ data, onOpen }: { data: ScoredData | null; 
           {open ? <>Hide <ChevronUp className="size-3.5" /></> : <>Details <ChevronDown className="size-3.5" /></>}
         </Button>
       </div>
+      {/* md:pr-24: the row's links on the right stay clear of the floating "Ask Kuber AI" button (bottom-right). */}
       {open && (
-        <div className="mt-2 divide-y divide-border border-t border-border">
+        <div className="mt-2 divide-y divide-border border-t border-border md:pr-24">
           {shown.map((s) => <SearchRow key={s.id} s={s} onOpen={onOpen} />)}
         </div>
       )}
@@ -366,8 +375,9 @@ export function ScoredFiltersDialog({ onOpenChange, value, onApply, data }: {
   // Hidden column to the Kanban.
   const waitingCount = (data?.searches ?? []).reduce((t, s) => t + s.stages.waiting_credits, 0);
   const statusOptions: DropdownOption<Group | "waiting">[] = [
-    ...GROUPS.map((g) => ({ value: g, label: `${GROUP_LABEL[g]} (${allCounts[g]})`, chip: GROUP_LABEL[g], dot: STATUS_DOT[g] })),
-    { value: "waiting", label: `Waiting for credits (${waitingCount})`, chip: "Waiting for credits", dot: "bg-amber-500" },
+    // No data yet (still loading, or the last load failed): "…", never a made-up 0.
+    ...GROUPS.map((g) => ({ value: g, label: `${GROUP_LABEL[g]} (${data ? allCounts[g] : "…"})`, chip: GROUP_LABEL[g], dot: STATUS_DOT[g] })),
+    { value: "waiting", label: `Waiting for credits (${data ? waitingCount : "…"})`, chip: "Waiting for credits", dot: "bg-amber-500" },
   ];
   const statusSelected = new Set<Group | "waiting">([...draft.groups, ...(draft.hidden ? (["hidden"] as const) : []), ...(draft.waiting ? (["waiting"] as const) : [])]);
   const batchOptions: DropdownOption<string>[] = (data?.searches ?? []).map((s) => ({
@@ -539,7 +549,7 @@ export function ScoredOrgsKanban({ data, error, loading, groups, showHidden, onD
               </div>
               {col.id === "checking" && checking.map((s) => (
                 <div key={s.id} className="space-y-1.5 rounded-lg border border-primary/20 bg-primary/5 px-2.5 py-2">
-                  <p className="truncate text-xs font-medium">{s.batch_name}</p>
+                  <p className="truncate text-xs font-medium" title={s.batch_name}>{s.batch_name}</p>
                   <div className="h-1.5 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-primary transition-[width]" style={{ width: `${s.total ? (s.stages.scored / s.total) * 100 : 0}%` }} /></div>
                   <p className="text-xs tabular-nums text-muted-foreground">{s.stages.scored}/{s.total} checked</p>
                 </div>
@@ -601,7 +611,7 @@ export function ScoredStatus({ c }: { c: ScoredCompany }) {
           <p className="text-sm leading-relaxed">{plainReason(c.reason)}</p>
         </>
       )}
-      {c.last_error && c.last_error !== line.text && (
+      {c.last_error && !line.text.startsWith(c.last_error) && (
         <>
           {/* Plain cause for people; the raw service text stays in the tip for whoever debugs it. */}
           <p className="flex items-center gap-1 pt-2 text-xs text-muted-foreground">Last problem <InfoTip text={c.last_error} side="right" /></p>

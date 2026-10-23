@@ -98,6 +98,26 @@ export function nextStep(s: RunState): DigStep {
   return { action: "fetch" };
 }
 
+/** The stop note with today's numbers. Leads still arrive after a run stopped (waiting companies get
+ *  their contact after a top-up, approvals), so the note written at the stop would go stale. */
+export function liveRunNote({ note, leads, target, approved = 0, waiting = 0 }: { note: string | null; leads: number; target: number | null; approved?: number; waiting?: number }): string | null {
+  if (!note || target == null) return note;
+  const split = approved > 0 ? ` (${leads - approved} automatic + ${approved} approved)` : "";
+  const m = note.match(/^Stopped at (\d+) of \d+ leads: ([\s\S]*)$/);
+  if (/^Done:/.test(note)) return leads < target || (leads === target && !approved) ? note : `Done: ${leads} leads${split}.`;
+  if (!m) return note;
+  const at = Number(m[1]);
+  let reason = m[2];
+  if (/^Apollo ran out of credits\./.test(reason)) {
+    reason = waiting > 0
+      ? `Apollo ran out of credits. ${waiting} good compan${waiting === 1 ? "y is" : "ies are"} waiting for credits and get their contact on their own after a top-up, within your credit limit.`
+      : "Apollo ran out of credits. No companies are waiting any more.";
+  }
+  if (leads >= target) return `Done: ${leads} leads${split}. It had stopped at ${at} (${reason.split(/(?<=\.)\s/)[0].replace(/\.$/, "")}); the rest came in later.`;
+  if (leads === at) return `Stopped at ${at} of ${target} leads: ${reason}`;
+  return `Now ${leads} of ${target} leads${split}. It had stopped at ${at}: ${reason}`;
+}
+
 /** Fewest credits that can buy a lead target: 1 per lead + 1 per page of 100 companies. */
 export function minCredits(target: number): number {
   return target + Math.ceil(target / LEADS_PER_PAGE);

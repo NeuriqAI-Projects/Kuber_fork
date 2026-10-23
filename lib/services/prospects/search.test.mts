@@ -53,7 +53,7 @@ test("S4. Apollo times out (no answer): search failed with a plain 'safe to try 
   const out = await runProspectSearch(db, "co", "u", INPUT, deps({ search: async () => { throw new Error("The operation was aborted due to timeout"); } }));
   assert.ok(!out.ok);
   assert.equal(tables.prospect_searches[0].status, "failed");
-  assert.match(out.message, /safe to try again/);
+  assert.match(out.message, /safely try again/);
   assert.doesNotMatch(String(tables.prospect_searches[0].error), /aborted/);
 });
 
@@ -64,7 +64,7 @@ test("S4b. timeout on page 1 of a lead-target search: the page is given back, th
   await runProspectSearch(db, "co", "u", { ...INPUT, target_leads: 3 }, timeout);
   assert.equal(tables.prospect_page_memory[0].last_page, 0, "page 1 not marked as read");
   assert.equal(tables.prospect_searches[0].run_status, "complete");
-  assert.match(String(tables.prospect_searches[0].run_note), /safe to try again/);
+  assert.match(String(tables.prospect_searches[0].run_note), /safely try again/);
   const again = await runProspectSearch(db, "co", "u", { ...INPUT, target_leads: 3 }, deps({ search: async (i) => { asked.push(i.page); return { organizations: [org("a")], pagination: { total_entries: 1 } }; } }));
   assert.ok(again.ok); assert.equal(again.page, 1);
   assert.deepEqual(asked, [1, 1]);
@@ -136,6 +136,7 @@ test("S12. empty first page on fresh filters: no talk of earlier searches", asyn
   await runProspectSearch(db, "co", "u", { ...INPUT, target_leads: 3 }, deps({ search: async () => ({ organizations: [], pagination: { total_entries: 0 } }) }));
   assert.equal(tables.prospect_searches[0].run_status, "complete");
   assert.doesNotMatch(String(tables.prospect_searches[0].run_note), /earlier searches/);
+  assert.match(String(tables.prospect_searches[0].run_note), /^Apollo found no companies for these filters/);
 });
 
 // A running search whose page 1 is done: `status` for each of its 10 companies.
