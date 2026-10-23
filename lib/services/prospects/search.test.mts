@@ -189,3 +189,43 @@ test("S17. company status lines say what happened in plain words; raw text stays
   assert.doesNotMatch(statusLine({ status: "site_down", last_error: "Website answered HTTP 503 (mock)" }).text, /HTTP|503|mock/);
   assert.match(statusLine({ status: "review", last_error: "No buyer found: only CEO has an email" }).text, /No buyer found/);
 });
+
+test("S18. the same wizard request sent twice (reload, double click) starts one search, the second is refused with its id", async () => {
+  const { db, tables } = fakeDb(); let calls = 0;
+  const d = deps({ search: async () => { calls++; return { organizations: [org("a")], pagination: { total_entries: 1 } }; } });
+  const first = await runProspectSearch(db, "co", "u", { ...INPUT, target_leads: 3, request_id: "r1" }, d);
+  assert.ok(first.ok);
+  const again = await runProspectSearch(db, "co", "u", { ...INPUT, target_leads: 3, request_id: "r1" }, d);
+  assert.ok(!again.ok); assert.equal(again.status, 409); assert.equal(again.code, "ALREADY_STARTED");
+  assert.equal(again.search_id, first.search_id);
+  assert.match(again.message, /already started — open it in Organizations/);
+  assert.equal(calls, 1, "Apollo read once"); assert.equal(tables.prospect_searches.length, 1);
+  // A new wizard session (new id) is a new search.
+  assert.ok((await runProspectSearch(db, "co", "u", { ...INPUT, request_id: "r2" }, d)).ok);
+});
+
+test("S19. a request whose search failed may be sent again", async () => {
+  const { db } = fakeDb();
+  await runProspectSearch(db, "co", "u", { ...INPUT, request_id: "r1" }, deps({ search: async () => { throw new Error("The operation was aborted due to timeout"); } }));
+  assert.ok((await runProspectSearch(db, "co", "u", { ...INPUT, request_id: "r1" }, deps())).ok);
+});
+
+test("S20. every page taken by the same search still running: 'already running', not 'you have every company'", async () => {
+  const { db, tables } = fakeDb();
+  const one = deps({ search: async () => ({ organizations: [org("a")], pagination: { total_entries: 1, total_pages: 1 } }) });
+  const first = await runProspectSearch(db, "co", "u", { ...INPUT, target_leads: 3 }, one);
+  assert.ok(first.ok); assert.equal(tables.prospect_searches[0].run_status, "running");
+  const again = await runProspectSearch(db, "co", "u", { ...INPUT, target_leads: 3 }, one);
+  assert.ok(!again.ok); assert.equal(again.code, "ALREADY_RUNNING"); assert.match(again.message, /already running \("Brazil film test"\)/);
+  tables.prospect_searches[0].run_status = "complete";
+  const done = await runProspectSearch(db, "co", "u", { ...INPUT, target_leads: 3 }, one);
+  assert.ok(!done.ok); assert.equal(done.code, "NO_MORE_PAGES");
+});
+
+test("S21. Apollo has no more pages and good fits only miss the job titles: the note names the titles", async () => {
+  const r = runAfterPage1([...Array(7).fill(["review", "No one with your job titles has an email here (2 other people)"]), ...Array(3).fill(["hidden", null])]);
+  r.tables.prospect_page_memory[0].total_pages = 1;
+  assert.equal(await continueRun(r.db, "co", "s1", r.depsFor), "stopped");
+  assert.equal(r.bought(), 0);
+  assert.equal(r.tables.prospect_searches[0].run_note, "Stopped at 0 of 50 leads: 7 good companies had nobody with your job titles; they wait in Needs review for free. Approve them or widen the titles.");
+});

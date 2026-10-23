@@ -29,7 +29,7 @@ import { Avatar, StatusBadge } from "@/components/leads/lead-ui";
 import { KanbanBoard } from "@/components/app/kanban-board";
 import {
   EMPTY_SCORED_FILTER, GroupPill, RunningSearchesBar, RunningSearchesPill, scoredFilterCount, ScoredCompanyDrawer, SCORED_COLUMN_DEFS, DEFAULT_SCORED_VISIBILITY, FitPill, BatchPill, Decide as ScoredDecide, type ScoredColVisibility, type ScoredCompany, type DecideAction, ScoredFiltersDialog, ScoredOrgsKanban, ScoredOrgsTable,
-  decideScored, scoredFilterActive, useScoredOrgs, type ScoredFilter,
+  decideScored, optimisticChange, scoredFilterActive, useScoredOrgs, type ScoredFilter,
   GRID_TABLE, HEAD_CELL, STICKY_CELL, WHY_HEAD, DECIDE_HEAD, ColHead, OrgTile, WhyCell,
 } from "@/components/app/scored-orgs";
 import { GROUPS, statusLine, type Group } from "@/lib/services/prospects/groups";
@@ -67,7 +67,7 @@ import {
   Building2, SlidersHorizontal, Trash2, UserPlus, User,
   ArrowUpDown, Mail, Phone, Briefcase, CircleDot, UserCheck, ArrowDownToLine,
   Globe, MapPin, Tag, CalendarDays, Gauge, MessageSquareText, FileText, Target,
-  CheckCheck, type LucideIcon,
+  CheckCheck, Loader2, type LucideIcon,
 } from "lucide-react";
 
 // ── Types & constants ─────────────────────────────────────────────────────────
@@ -628,8 +628,10 @@ export default function LeadsPage() {
     return () => clearTimeout(handle);
   }, [searchQuery, leadsSort, leadsViewMode, leadsEntityMode, filters, scoredFilter, pathname, router]);
 
-  const scored = useScoredOrgs(scoredFilter, searchQuery, leadsEntityMode === "orgs");
   const scoredView = leadsEntityMode === "orgs" && (leadsViewMode === "kanban" || scoredFilterActive(scoredFilter));
+  // The plain Organization list only needs the scored companies that already have an organization
+  // (plus name-search hits): a far smaller answer than every company of every search.
+  const scored = useScoredOrgs(scoredFilter, searchQuery, leadsEntityMode === "orgs", { orgsOnly: !scoredView });
   // Status of each organization that came from a scored search, for the classic list's Status column.
   const orgFitStatus = useMemo(() => {
     const m = new Map<string, ScoredCompany>();
@@ -645,7 +647,12 @@ export default function LeadsPage() {
     else setScoredDrawerId(c.id);
   }
   async function handleScoredDecide(ids: string[], action: DecideAction) {
-    try { await decideScored(ids, action); } catch (e) { toast.error((e as Error).message); }
+    try {
+      await decideScored(ids, action, () => void scored.reload());
+      // Shown at once (drawer, rows); the reload below brings the real state.
+      const change = optimisticChange(action);
+      if (change) scored.patch(ids, change);
+    } catch (e) { toast.error((e as Error).message); }
     await scored.reload();
   }
   // "Open in Organizations" from Add leads > Scored Companies lands here, on that batch.
@@ -904,9 +911,12 @@ export default function LeadsPage() {
     });
   }
 
+  // Only the newest 500 leads are loaded until "Show more": say so, never "500 leads" when there are more.
+  const partial = !searchResults && leadsTotal != null && leadsTotal > leads.length;
   const countLabel = leadsEntityMode === "orgs"
-    ? scoredView ? `${scored.data?.companies.length ?? 0} companies` : `${orgRows.length + scoredOnlyRows.length} organizations`
-    : searchLoading ? "…" : `${displayLeads.length} leads`;
+    ? scoredView ? (scored.stale || !scored.data ? "…" : `${scored.data.companies.length} companies`)
+      : loadingLeads && !leads.length ? "…" : `${orgRows.length + scoredOnlyRows.length} organizations${partial && !q ? ` (from ${leads.length} of ${leadsTotal} leads)` : ""}`
+    : searchLoading ? "…" : partial ? `${displayLeads.length} of ${leadsTotal} leads` : `${displayLeads.length} leads`;
   const openScoredBatch = (searchId: string, group?: Group) => {
     setLeadsViewMode("list");
     setScoredFilter({ ...EMPTY_SCORED_FILTER, searchIds: [searchId], groups: group ? [group] : [] });
@@ -1109,7 +1119,8 @@ export default function LeadsPage() {
         {/* Not gated on `q`: a filter with no search text also fetches from the
             server, and skipping the skeleton there rendered the stale 500-row
             window through matchesFilters — i.e. "No leads yet" — until it landed. */}
-        {loadingLeads || searchLoading ? (
+        {/* The scored views come from their own API: they never wait for the 500 leads to load. */}
+        {!scoredView && (loadingLeads || searchLoading) ? (
           <GridSkeleton />
         ) : scoredView && leadsViewMode === "kanban" ? (
           <div className="p-4">
@@ -1117,6 +1128,7 @@ export default function LeadsPage() {
               data={scored.data}
               error={scored.error}
               loading={scored.loading}
+              stale={scored.stale}
               onDecide={handleScoredDecide}
               groups={scoredFilter.groups}
               showHidden={scoredFilter.hidden}
@@ -1124,7 +1136,7 @@ export default function LeadsPage() {
             />
           </div>
         ) : scoredView ? (
-          <ScoredOrgsTable data={scored.data} error={scored.error} loading={scored.loading} visible={scoredVisibleCols} onDecide={handleScoredDecide} onOpenCompany={openScoredCompany} />
+          <ScoredOrgsTable data={scored.data} error={scored.error} loading={scored.loading} stale={scored.stale} visible={scoredVisibleCols} onDecide={handleScoredDecide} onOpenCompany={openScoredCompany} />
         ) : leadsEntityMode === "orgs" ? (
           <>
           <table className={GRID_TABLE}>
@@ -1137,7 +1149,14 @@ export default function LeadsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {orgRows.length === 0 && scoredOnlyRows.length === 0 ? (
+              {orgRows.length === 0 && scoredOnlyRows.length === 0 && q && scored.loading ? (
+                // The name search of scored companies is still on its way: not "No matches" yet.
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={orgColCount} className="border-r-0 py-16 text-center text-[13px] text-muted-foreground">
+                    <span className="inline-flex items-center gap-2"><Loader2 className="size-4 animate-spin" />Searching…</span>
+                  </TableCell>
+                </TableRow>
+              ) : orgRows.length === 0 && scoredOnlyRows.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell colSpan={orgColCount} className="border-r-0 p-0">
                     <EmptyState
@@ -1177,7 +1196,7 @@ export default function LeadsPage() {
                           {sc ? <WhyCell reason={sc.reason} line={line} /> : <Dash />}
                         </TableCell>
                       )}
-                      {orgVisibleCols.batch && <TableCell>{sc ? <BatchPill name={sc.batch_name} color={sc.batch_color} /> : <Dash />}</TableCell>}
+                      {orgVisibleCols.batch && <TableCell>{sc ? <BatchPill name={sc.batch_name} color={sc.batch_color} cell /> : <Dash />}</TableCell>}
                       {orgVisibleCols.description && <TableCell><Clip text={org.companyDescription} className="max-w-[320px]" /></TableCell>}
                       {orgVisibleCols.sells_to && <TableCell><Clip text={org.sellsTo} className="max-w-[240px]" /></TableCell>}
                       {orgVisibleCols.leads && <TableCell className="text-right tabular-nums">{org.leads.length}</TableCell>}
@@ -1199,7 +1218,7 @@ export default function LeadsPage() {
                   {orgVisibleCols.fit && <TableCell><FitPill score={c.score} group={c.group} /></TableCell>}
                   {orgVisibleCols.domain && <TableCell><DomainLink text={c.domain} href={c.website_url} /></TableCell>}
                   {orgVisibleCols.why && <TableCell><WhyCell reason={c.reason} line={statusLine(c)} /></TableCell>}
-                  {orgVisibleCols.batch && <TableCell><BatchPill name={c.batch_name} color={c.batch_color} /></TableCell>}
+                  {orgVisibleCols.batch && <TableCell><BatchPill name={c.batch_name} color={c.batch_color} cell /></TableCell>}
                   {orgVisibleCols.description && <TableCell><Dash /></TableCell>}
                   {orgVisibleCols.sells_to && <TableCell><Dash /></TableCell>}
                   {orgVisibleCols.leads && <TableCell className="text-right tabular-nums">0</TableCell>}
@@ -1208,8 +1227,8 @@ export default function LeadsPage() {
               ))}
             </TableBody>
           </table>
-          {/* Room under the last row, so its Decide buttons can scroll clear of the floating "Ask Kuber AI" button. */}
-          <div aria-hidden className="h-16" />
+          {/* Room under the last row, so its Decide buttons scroll clear of the floating "Ask Kuber AI" button (64px tall with its margin). */}
+          <div aria-hidden className="h-24" />
           </>
         ) : leadsViewMode === "kanban" ? (
           <div className="p-4">

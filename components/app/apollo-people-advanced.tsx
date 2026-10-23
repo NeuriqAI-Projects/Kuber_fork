@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useEscClose } from "@/components/ui/use-esc-close";
 import { ChevronDown, Plus, X } from "lucide-react";
 import { format } from "date-fns";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -202,6 +203,8 @@ function PrimaryFilterPicker({
   normalizeCustom: (raw: string) => string | null;
 }) {
   const [open, setOpen] = useState(false);
+  const closeMenu = useCallback(() => setOpen(false), []);
+  useEscClose(open, closeMenu); // Esc closes this list only, not the dialog around it
   const [customInput, setCustomInput] = useState("");
   const [customOptions, setCustomOptions] = useState<string[]>([]);
   const ref = useRef<HTMLDivElement>(null);
@@ -306,15 +309,6 @@ function PrimaryFilterPicker({
                     Clear
                   </Button>
                 )}
-                <Button
-                  type="button"
-                  variant="link"
-                  size="sm"
-                  onClick={selectAll}
-                  className="h-auto p-0 text-xs"
-                >
-                  Select all
-                </Button>
               </div>
             </div>
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useEscClose } from "@/components/ui/use-esc-close";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { AlertCircle, Check, CheckCircle2, FileText, Loader2, Plus, Search, Upload, X } from "lucide-react";
@@ -307,6 +308,8 @@ export function IndustryKeywordsDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const [customInput, setCustomInput] = useState("");
+  const closeMenu = useCallback(() => setOpen(false), []);
+  useEscClose(open, closeMenu); // Esc closes this list only, not the dialog around it
   const [targetGroupId, setTargetGroupId] = useState("");
   const [adding, setAdding] = useState(false);
   // The search word used to be editable inline here ("Edit word"). Removed
@@ -337,11 +340,8 @@ export function IndustryKeywordsDropdown({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Default the "add to which group" choice to the first group once the
-  // company's taxonomy has loaded.
-  useEffect(() => {
-    if (!targetGroupId && groups.length > 0) setTargetGroupId(groups[0].id);
-  }, [groups, targetGroupId]);
+  // No default group: it used to pick the first one ("Film Extrusion") silently, so a keyword
+  // typed in a hurry landed in the wrong group. Add stays disabled until a group is picked.
 
   // Debounced so a manager typing "shopping bags" does not fire eight searches.
   useEffect(() => {
@@ -387,12 +387,7 @@ export function IndustryKeywordsDropdown({
   // Settings-only action (Settings > Industry Segments).
   async function addKeywordToGroup() {
     const label = customInput.trim();
-    const targetGroup = groups.find((g) => g.id === targetGroupId);
-    if (!label || !targetGroup) return;
-    if (targetGroup.keywords.some((k) => k.label.toLowerCase() === label.toLowerCase())) {
-      toast.error(`"${label}" is already in ${targetGroup.label}.`);
-      return;
-    }
+    if (!label || !groups.some((g) => g.id === targetGroupId)) return;
     // The NAME stays exactly what was typed — that is what the manager
     // recognises in the list. The QUERY is the wording that actually finds
     // companies, which is not always the same thing: saving `query: label`
@@ -401,12 +396,35 @@ export function IndustryKeywordsDropdown({
     // already knows the working form, so use it.
     const deadTerm = kwCheck !== null && kwCheck.total === 0;
     const query = deadTerm && kwCheck?.suggestion ? kwCheck.suggestion.term : label;
-    const updatedGroups = groups.map((g) =>
-      g.id === targetGroupId ? { ...g, keywords: [...g.keywords, { id: crypto.randomUUID(), label, query }] } : g,
-    );
     setAdding(true);
     try {
       const token = await getToken();
+      // Added to the list as saved NOW, not the copy this form loaded: two windows adding a keyword at
+      // the same time each kept only their own (the last save wrote its whole stale list).
+      // ponytail: re-read then write, a save in the same split second can still race; a DB-side append would close it.
+      const latest = parseIndustryKeywordGroups((await fetchSettings(token)).industry_keyword_groups);
+      const targetGroup = latest.find((g) => g.id === targetGroupId);
+      if (!targetGroup) {
+        onGroupsChange(latest);
+        setTargetGroupId("");
+        toast.error("That group was removed in Settings. Pick another group.");
+        return;
+      }
+      const same = (k: { label: string }) => k.label.toLowerCase() === label.toLowerCase();
+      if (targetGroup.keywords.some(same)) {
+        onGroupsChange(latest);
+        toast.error(`"${label}" is already in ${targetGroup.label}.`);
+        return;
+      }
+      const other = latest.find((g) => g.id !== targetGroupId && g.keywords.some(same));
+      if (other) {
+        onGroupsChange(latest);
+        toast.error(`"${label}" is already in ${other.label}. Pick it there, or rename or move it in Settings > Industry segments.`);
+        return;
+      }
+      const updatedGroups = latest.map((g) =>
+        g.id === targetGroupId ? { ...g, keywords: [...g.keywords, { id: crypto.randomUUID(), label, query }] } : g,
+      );
       await patchSettings(token, { industry_keyword_groups: JSON.stringify(updatedGroups) });
       onGroupsChange(updatedGroups);
       onChange([...selected, label]);
@@ -601,7 +619,7 @@ export function IndustryKeywordsDropdown({
                 />
                 <Select value={targetGroupId} onValueChange={setTargetGroupId}>
                   <SelectTrigger className="h-7 w-40 shrink-0 text-[13px]">
-                    <SelectValue placeholder="Group…" />
+                    <SelectValue placeholder="Pick a group…" />
                   </SelectTrigger>
                   <SelectContent>
                     {groups.map((g) => (

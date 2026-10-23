@@ -207,6 +207,8 @@ export const ProspectSearchSchema = z.object({
   max_credits: z.number().int().min(2).max(5000).optional(),
   // Only reveal people with one of these titles (empty = Kuber's own buyer ranking).
   job_titles: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
+  // One id per wizard session: a second send of the same search (reload, double click) is refused.
+  request_id: z.string().trim().min(8).max(100).optional(),
 });
 
 export const ProspectDecisionSchema = z.object({

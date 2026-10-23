@@ -93,3 +93,14 @@ test("the stop note follows leads that arrive after the stop", () => {
   assert.equal(liveRunNote({ note: "Apollo found no companies for these filters.", leads: 0, target: 10 }), "Apollo found no companies for these filters.");
   assert.equal(liveRunNote({ note: null, leads: 2, target: 10 }), null);
 });
+
+test("job titles that nobody has: the note names them, not Apollo or the keywords", () => {
+  const end = { pagesRead: 1, leadsPerPage: [0], creditsUsed: 1, nextPage: 2, totalPages: 1, target: 20, checked: 48 };
+  const n = note({ ...end, titleBlocked: 35 });
+  assert.equal(n, "Stopped at 0 of 20 leads: 35 good companies had nobody with your job titles; they wait in Needs review for free. Approve them or widen the titles.");
+  assert.match(note({ ...end, titleBlocked: 1 }), /1 good company had nobody .*; it waits in Needs review/);
+  assert.match(note({ ...end, totalPages: 9, pagesRead: 2, leadsPerPage: [0, 1], nextPage: 3, titleBlocked: 4 }), /4 good companies had nobody with your job titles/, "dry pages too");
+  assert.match(note({ ...end, titleBlocked: 0 }), /no more companies/);
+  // An outage is still the first cause.
+  assert.match(note({ ...end, failed: 48, failedError: "JEV_HTTP_503", titleBlocked: 3 }), /AI that scores/);
+});

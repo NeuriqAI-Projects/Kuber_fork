@@ -18,6 +18,7 @@ import { displayScore, reasonFor, verdict, type FitScoring } from "./fit-rules";
 import type { JevVerdict } from "./jev";
 import { cleanText, dropCookieText, htmlToText, linksFromMarkdown, pickSecondPage, sitemapLocs, wordCount } from "./text";
 import { pickBestContact, titleTier } from "../lead-ranking";
+import { NO_TITLE_MATCH, REVEAL_CAP_HIT } from "./groups";
 
 export type ProspectStatus =
   | "queued"          // waiting to be read
@@ -293,7 +294,7 @@ async function promoteStage(row: ProspectRow, deps: Deps, store: Store, cfg: Fit
   const titles = (await deps.jobTitles?.(row.search_id)) ?? [];
   const wanted = titles.length ? people.filter((p) => matchesJobTitle(p.title, titles)) : [];
   if (titles.length && !wanted.length && automatic) {
-    return { status: "review", last_error: `No one with your job titles has an email here (${people.length} other ${people.length === 1 ? "person" : "people"})` };
+    return { status: "review", last_error: `${NO_TITLE_MATCH} has an email here (${people.length} other ${people.length === 1 ? "person" : "people"})` };
   }
   const best = pickBestContact(wanted.length ? wanted : people);
   if (!best) return { status: "no_contact", last_error: "Apollo has no one with an email at this company" };
@@ -310,7 +311,7 @@ async function promoteStage(row: ProspectRow, deps: Deps, store: Store, cfg: Fit
   // cap of 5 gave 2–3 leads). One atomic step, so parallel lanes never overshoot.
   // A crash after taking the slot loses it: fewer reveals, never more.
   if (automatic && !(await store.reserveAutoReveal(row.search_id, cfg.max_auto_reveals_per_search))) {
-    return { status: "review", last_error: "Good fit, but this search already used all its automatic reveals" };
+    return { status: "review", last_error: REVEAL_CAP_HIT };
   }
   const orgId = await deps.promote(row, best);
   return { status: "promoted", organization_id: orgId, contact_apollo_id: best.id, last_error: null, ...(automatic ? { auto_reveal: true } : {}) };

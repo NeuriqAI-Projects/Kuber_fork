@@ -11,10 +11,10 @@ import { TagInput } from "@/components/app/tag-input";
 import { buildAdvanced, CompanyAdvancedSearch } from "@/components/app/company-lookup-form";
 import { JobTitlesPicker } from "@/components/app/apollo-people-advanced";
 import {
-  AssignStrategyPicker, BatchNameField, buildImportAssignment, clearDraft, getToken, IndustryKeywordsDropdown, useDraft,
+  AssignStrategyPicker, BatchNameField, buildImportAssignment, clearDraft, IndustryKeywordsDropdown, useDraft,
   useAssignableEmployees, useIndustryKeywordGroups, type ImportAssignMode,
 } from "@/components/app/lead-forms";
-import { leadsCount, type ScoredSearch } from "@/components/app/scored-orgs";
+import { api, checkedDone, leadsCount, type ApiError, type ScoredSearch } from "@/components/app/scored-orgs";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { NumberInput } from "@/components/ui/number-input";
@@ -73,7 +73,7 @@ function Bill({ target, maxCredits, firecrawlShort, size, jobTitles }: { target:
       <div className={line}><span>{target} lead{target === 1 ? "" : "s"} × 1 credit</span><span>{target}</span></div>
       <div className={line}><span>~{pages} page{pages === 1 ? "" : "s"} of 100 companies (most {MAX_PAGES_PER_SEARCH})</span><span>{pages}</span></div>
       <div className={cn(line, "border-t border-dashed border-border pt-2 text-sm font-semibold")}><span className="flex items-center gap-1">Expected <InfoTip side="left" text="Companies that aren't plastic makers, or have nobody to email, cost nothing." /></span><span>~{expected} credits</span></div>
-      <div className={cn(line, maxCredits < expected ? "font-semibold text-destructive" : "text-muted-foreground")}><span>Your limit</span><span>{maxCredits.toLocaleString()} credits</span></div>
+      <div className={cn(line, maxCredits < expected ? "font-semibold text-destructive" : "text-muted-foreground")}><span>Your limit</span><span>{maxCredits.toLocaleString()} credit{maxCredits === 1 ? "" : "s"}</span></div>
       {jobTitles > 0 && <p className="text-xs text-muted-foreground">Your job titles can lower the number of automatic leads: companies with nobody of those titles wait in Needs review (free).</p>}
       <div className="space-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
         <div className={cn(line, firecrawlShort && "font-semibold text-destructive")}><span>Website reading</span><span>~{pages * FIRECRAWL_PER_PAGE} Firecrawl</span></div>
@@ -178,24 +178,14 @@ function MarketSize({ filters, target, onPick, onFits, onSize }: { filters: Reco
   );
 }
 
-async function api<T>(url: string, body?: unknown): Promise<T> {
-  const token = await getToken();
-  const res = await fetch(url, {
-    method: body ? "POST" : "GET",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const json = await res.json().catch(() => ({}));
-  // No message from our API (a crash, a proxy page): never show the bare HTTP code.
-  if (!res.ok) throw new Error(json?.error?.message ?? "Kuber's server had a problem and did not answer. Try again in a minute.");
-  return json?.data as T;
-}
 
 /** "Search started": live numbers for the search just launched, and where to go next. */
 function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
   searchId: string; batchName: string; batchColor: string; onOpen: () => void; onAnother: () => void;
 }) {
   const [s, setS] = useState<ScoredSearch | null>(null);
+  // false until the first answer: after it, no `s` = the search is not among the 20 most recent any more.
+  const [loaded, setLoaded] = useState(false);
   const [netError, setNetError] = useState<string | null>(null);
   const kicking = useRef(false);
 
@@ -206,7 +196,7 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
         const d = await api<{ searches: ScoredSearch[] }>("/api/v1/prospects?summary=1");
         const mine = d.searches.find((x) => x.id === searchId) ?? null;
         if (!alive) return;
-        setS(mine); setNetError(null);
+        setS(mine); setLoaded(true); setNetError(null);
         // On a laptop there's no minute pump; nudge the background job while there's work.
         if (mine && mine.in_progress > 0 && !kicking.current) {
           kicking.current = true;
@@ -220,27 +210,34 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
   }, [searchId]);
 
   const total = s?.total ?? 0;
+  // Really scored by the AI; the ones it gave up on are counted apart, never as "checked".
   const checked = s?.stages.scored ?? 0;
-  const left = Math.max(0, total - checked);
+  const failed = s?.stages.score_failed ?? 0;
+  const left = Math.max(0, total - (s ? checkedDone(s) : 0));
   const done = !!s && s.in_progress === 0;
+  const gone = loaded && !s;
+  const none = done && total === 0;
   const tile = "flex flex-col gap-1 rounded-lg border border-border bg-card p-4";
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5 py-2">
       <div className="flex items-center gap-4 rounded-lg border border-border bg-card p-4">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          {done ? <Check className="size-5" /> : <Loader2 className="size-5 animate-spin" />}
+          {done || gone ? <Check className="size-5" /> : <Loader2 className="size-5 animate-spin" />}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-lg font-semibold">{done ? "All companies checked" : "Search started"}</p>
+          <p className="text-lg font-semibold">{gone ? "Search finished" : none ? "No companies found" : done ? "All companies checked" : "Search started"}</p>
           <p className="text-sm text-muted-foreground">
-            {done ? "Good fits are getting their contact; the rest wait in Organizations." : "Kuber is checking every company in the background. You can close this window — nothing stops."}
+            {gone ? "It is no longer among your 20 most recent searches. Open Organizations to see its companies."
+              : none ? (s?.run_note ?? s?.error ?? "Apollo found no new companies for these filters. Add other keywords or countries.")
+              : done ? (failed > 0 ? `Done. ${failed} compan${failed === 1 ? "y" : "ies"} could not be checked; they wait in Needs review.` : "Good fits got their contact; the rest wait in Organizations.")
+              : "Kuber is checking every company in the background. You can close this window — nothing stops."}
           </p>
         </div>
         <Pill color={batchColor as BatchColorName} dot className="shrink-0">{batchName}</Pill>
       </div>
 
-      {s?.target_leads != null && (
+      {s?.target_leads != null && !none && (
         <div className="space-y-1.5 rounded-lg border border-border bg-card p-4">
           <p className="text-sm"><b className="text-[15px] font-semibold tabular-nums">{leadsCount(s)}</b>
             <span className="text-muted-foreground"> · {s.pages.length} page{s.pages.length === 1 ? "" : "s"} of 100 companies read{s.pages.length ? ` (page ${s.pages.join(", ")})` : ""}</span>
@@ -261,13 +258,18 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
           <span className="text-xs text-muted-foreground">{s ? `${s.total} new to you` : " "}</span>
         </div>
         <div className={tile}>
-          <span className="text-xs text-muted-foreground">Checked so far</span>
-          <span className="text-2xl font-semibold tabular-nums">{checked}</span>
-          <div className="h-1.5 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-primary transition-[width] duration-500" style={{ width: `${total ? (checked / total) * 100 : 0}%` }} /></div>
+          <span className="text-xs text-muted-foreground">Checked by the AI</span>
+          <span className="text-2xl font-semibold tabular-nums">{checked}<span className="text-sm font-normal text-muted-foreground">/{total}</span></span>
+          <div className="flex h-1.5 overflow-hidden rounded-full bg-secondary">
+            <div className="h-full bg-primary transition-[width] duration-500" style={{ width: `${total ? (checked / total) * 100 : 0}%` }} />
+            {failed > 0 && <div className="h-full bg-red-400 transition-[width] duration-500 dark:bg-red-500/70" style={{ width: `${(failed / total) * 100}%` }} />}
+          </div>
+          {failed > 0 && <span className="text-xs font-medium tabular-nums text-red-600 dark:text-red-400">{failed} could not be checked</span>}
+          {!!s?.stages.read_failed && <span className="text-xs tabular-nums text-muted-foreground">{s.stages.read} websites read · {s.stages.read_failed} could not be read</span>}
         </div>
         <div className={tile}>
           <span className="text-xs text-muted-foreground">Time left</span>
-          <span className="text-2xl font-semibold tabular-nums">{done ? "Done" : `~${Math.max(1, Math.ceil(left / COMPANIES_PER_MINUTE))} min`}</span>
+          <span className="text-2xl font-semibold tabular-nums">{done || gone ? "Done" : `~${Math.max(1, Math.ceil(left / COMPANIES_PER_MINUTE))} min`}</span>
           <span className="text-xs text-muted-foreground">about {COMPANIES_PER_MINUTE} companies a minute</span>
         </div>
       </div>
@@ -334,7 +336,7 @@ type StartOutcome = { ok: true; started: StartedInfo } | { ok: false; error: str
 let starting: { batchName: string; promise: Promise<StartOutcome> } | null = null;
 const KEY_START = "kuber:scored:start";
 const KEY_RESULT = "kuber:scored:result";
-type StartMarker = { batchName: string; color: string; at: number };
+type StartMarker = { batchName: string; color: string; at: number; requestId?: string };
 type StoredResult = { kind: "started"; started: StartedInfo } | { kind: "error"; error: string };
 function ssGet<T>(k: string): T | null { try { const r = sessionStorage.getItem(k); return r ? (JSON.parse(r) as T) : null; } catch { return null; } }
 function ssSet(k: string, v: unknown) { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch { /* storage full or private mode: the in-memory path still works */ } }
@@ -361,10 +363,15 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   // An emptied box must block, not keep using the old number.
   const [targetEmpty, setTargetEmpty] = useState(false);
   const [creditsEmpty, setCreditsEmpty] = useState(false);
+  // Why a typed number was changed (12.5 → 13, 99999 → the balance): said, never done silently.
+  const [targetNote, setTargetNote] = useState<string | null>(null);
+  const [creditsNote, setCreditsNote] = useState<string | null>(null);
+  const adjustNote = (typed: number, kept: number, overMax: string) =>
+    typed === kept ? null : !Number.isInteger(typed) && Math.abs(typed - kept) < 1 ? `Whole numbers only, so ${kept.toLocaleString()} is used.` : typed > kept ? overMax : null;
   const targetMsg = targetEmpty || target < 1 ? "Enter how many leads you want." : null;
   const creditsEmptyMsg = creditsEmpty ? "Enter the most Apollo credits to spend." : null;
   const inputMsg = targetMsg ?? creditsEmptyMsg;
-  const pickTarget = (n: number) => { setError(""); setTargetEmpty(false); setTarget(n); };
+  const pickTarget = (n: number) => { setError(""); setTargetEmpty(false); setTargetNote(null); setTarget(n); };
   const creditsTooLow = !inputMsg && maxCredits < needCredits;
   // undefined = the balances are still loading, null = unknown.
   const [fits, setFits] = useState<Fits | null | undefined>(undefined);
@@ -390,6 +397,10 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   const [batchError, setBatchError] = useState(false);
   const [assignMode, setAssignMode] = useDraft<ImportAssignMode>("scored", "assignMode", "pool");
   const [assignTo, setAssignTo] = useDraft("scored", "assignTo", "");
+  // One id per wizard session, sent with the search: the server refuses a second search with the
+  // same id (a reload mid-request, a second click), so the same search is never paid twice.
+  // Cleared with the draft when the search has started, so "Start another search" gets a new one.
+  const [requestId, setRequestId] = useDraft("scored", "requestId", "");
   const employees = useAssignableEmployees(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(() => {
@@ -429,7 +440,8 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
         const look = async () => {
           try {
             const d = await api<{ searches: ScoredSearch[] }>("/api/v1/prospects?summary=1");
-            const mine = d.searches.find((x) => x.batch_name === m.batchName && new Date(x.created_at).getTime() >= m.at - 5000);
+            // By the request id (the clocks of this computer and the server may differ); old markers by name and time.
+            const mine = d.searches.find((x) => (m.requestId ? x.request_id === m.requestId : x.batch_name === m.batchName && new Date(x.created_at).getTime() >= m.at - 5000));
             if (mine && alive) {
               const info = { searchId: mine.id, batchName: m.batchName, color: m.color };
               // The request that would have cleared the draft died with the page: clear it here.
@@ -466,6 +478,8 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
     if (starting) { setError("A search is still starting. Wait for it to finish."); return; }
     setError(""); setBusy(true);
     const name = batchName.trim(), color = batchColor;
+    const rid = requestId || crypto.randomUUID();
+    if (!requestId) setRequestId(rid);
     // Show the progress screen right away. The request can take a long time (several Apollo and
     // database round trips), so the button must not be the only sign anything is happening.
     setResuming(name);
@@ -474,13 +488,17 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
       lookalike_org_ids: lookalikes.length ? lookalikes : undefined, exclude_websites: exclude.length ? exclude : undefined,
       advanced: buildAdvanced(advanced), target_leads: target, max_credits: maxCredits,
       job_titles: jobTitles.length ? jobTitles : undefined,
-      batch_name: name, color, ...buildImportAssignment(assignMode, assignTo),
+      batch_name: name, color, ...buildImportAssignment(assignMode, assignTo), request_id: rid,
     };
     ssDel(KEY_RESULT);
-    ssSet(KEY_START, { batchName: name, color, at: Date.now() } satisfies StartMarker);
+    ssSet(KEY_START, { batchName: name, color, at: Date.now(), requestId: rid } satisfies StartMarker);
     const promise: Promise<StartOutcome> = (async () => {
       try {
-        const out = await api<{ search_id: string }>("/api/v1/prospects/search", payload);
+        // Already started with this id (e.g. before a reload): show that search, never start another.
+        const out = await api<{ search_id: string }>("/api/v1/prospects/search", payload).catch((e: ApiError) => {
+          if (e.code === "ALREADY_STARTED" && e.details?.search_id) return { search_id: e.details.search_id };
+          throw e;
+        });
         clearDraft("scored");
         const started = { searchId: out.search_id, batchName: name, color };
         // Saved here, not by the form, so it is kept even if the form was closed meanwhile.
@@ -566,12 +584,14 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <NumberInput id="target-leads" min={0} max={100_000} value={targetEmpty ? null : target} aria-invalid={!!(targetMsg || fitBlock)}
-                    onValueChange={(n) => { setError(""); setTargetEmpty(n === null); if (n !== null) setTarget(n); }} className="w-28" />
+                    onAdjust={(t, k) => setTargetNote(adjustNote(t, k, `${k.toLocaleString()} is the most you can type here.`))}
+                    onValueChange={(n) => { setError(""); setTargetEmpty(n === null); if (n === null) setTargetNote(null); else setTarget(n); }} className="w-28" />
                   {TARGET_CHIPS.map((n) => (
                     <Button key={n} type="button" variant="outline" className={cn("tabular-nums", target === n && "border-primary/50 bg-primary/5 hover:bg-primary/5")} onClick={() => pickTarget(n)}>{n}</Button>
                   ))}
                 </div>
                 {targetMsg && <p className="flex items-start gap-1.5 text-sm font-medium text-destructive"><AlertCircle className="mt-0.5 size-4 shrink-0" />{targetMsg}</p>}
+                {!targetMsg && targetNote && <p className="text-xs text-amber-700 dark:text-amber-300">{targetNote}</p>}
               </div>
               {fitBlock && (
                 <div className="flex items-start gap-1.5 text-sm font-medium text-destructive">
@@ -594,12 +614,16 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
                 </div>
                 <div className="flex items-center gap-2">
                   <NumberInput id="max-credits" min={0} max={creditCap} value={creditsEmpty ? null : maxCredits} aria-invalid={creditsTooLow || creditsEmpty}
-                    onValueChange={(n) => { setError(""); setCreditsEmpty(n === null); if (n !== null) setMaxCreditsTyped(n); }} className="w-28" />
+                    onAdjust={(t, k) => setCreditsNote(adjustNote(t, k, creditCap === fits?.apollo_credits
+                      ? `Your Apollo balance is ${creditCap.toLocaleString()} credits, so ${creditCap.toLocaleString()} is the most you can set.`
+                      : `${creditCap.toLocaleString()} is the most one search can use.`))}
+                    onValueChange={(n) => { setError(""); setCreditsEmpty(n === null); if (n === null) setCreditsNote(null); else setMaxCreditsTyped(n); }} className="w-28" />
                   {(maxCreditsTyped !== null || creditsEmpty) && (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => { setCreditsEmpty(false); setMaxCreditsTyped(null); }}>Use suggested ({suggestedMaxCredits(target)})</Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => { setCreditsEmpty(false); setCreditsNote(null); setMaxCreditsTyped(null); }}>Use suggested ({suggestedMaxCredits(target)})</Button>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">{fits === undefined ? "Checking your Apollo balance…" : creditCap === fits?.apollo_credits ? `Most you can set: ${creditCap.toLocaleString()}, your Apollo balance.` : `Most you can set: ${creditCap.toLocaleString()}.`}</p>
+                {!creditsEmpty && creditsNote && <p className="text-xs font-medium text-amber-700 dark:text-amber-300">{creditsNote}</p>}
                 {creditsEmptyMsg && <p className="flex items-start gap-1.5 text-sm font-medium text-destructive"><AlertCircle className="mt-0.5 size-4 shrink-0" />{creditsEmptyMsg}</p>}
                 {creditsTooLow && <p className="flex items-start gap-1.5 text-sm font-medium text-destructive"><AlertCircle className="mt-0.5 size-4 shrink-0" />Not enough credits. {creditsMsg}</p>}
               </div>

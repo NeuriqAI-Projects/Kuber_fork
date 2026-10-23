@@ -19,6 +19,7 @@ no site → LinkedIn via Tavily) → **Jev** classifier → reveal ONE contact o
 
 - Lead target (19 Oct 2026): `continueRun` in `search.ts`, called by `worker.ts` for `run_status = running` searches, reads the next page; `prospect_page_memory` + `claim_prospect_page` RPC remember pages per filter set.
 
+- Same search twice (23 Oct 2026): the wizard sends one `request_id` per session (kept in its draft, stored in `prospect_searches.filters`); `runProspectSearch` answers 409 `ALREADY_STARTED` with that search's id. Not unique-indexed, see the ponytail note.
 - Tests: `npx tsx --test lib/services/prospects/*.test.mts` (fake DB in `fake-db.mts`).
 - Mock scenarios by batch-name words (Dev only): `[no-credits] [credits-run-out] [sites-down] [no-socials] [jev-down] [flaky] [apollo-down] [apollo-timeout] [apollo-0] [apollo-empty] [pages-N] [firecrawl-low]`.
 - Tables: `prospect_searches`, `prospect_companies`, `prospect_page_memory` (migrations `2026_10_08_*`, `2026_10_09_*`, `2026_10_19_*`).

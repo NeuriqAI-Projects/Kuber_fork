@@ -115,7 +115,7 @@ export type IndustryKeywordGroup = { id: string; label: string; emoji: string; k
 export const DEFAULT_INDUSTRY_KEYWORD_GROUPS: IndustryKeywordGroup[] = [
   {
     id: "film",
-    label: "Film Extrusion (client's priority list)",
+    label: "Film Extrusion (priority)",
     emoji: "🎞️",
     keywords: [
       { id: "film-stretch-cling-film", label: "Stretch & Cling Film", query: "stretch film", starred: true },

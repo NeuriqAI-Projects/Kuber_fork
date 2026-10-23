@@ -9,6 +9,9 @@ type Props = Omit<ComponentProps<typeof Input>, "value" | "onChange" | "type" | 
   onValueChange: (n: number | null) => void;
   min?: number;
   max?: number;
+  /** Called on every typed number with what was kept (rounded to a whole number, clamped to min/max),
+   *  so the caller can say why the number differs instead of changing it silently. */
+  onAdjust?: (typed: number, kept: number) => void;
 };
 
 /**
@@ -18,7 +21,7 @@ type Props = Omit<ComponentProps<typeof Input>, "value" | "onChange" | "type" | 
  * the parent can block and never keep using an old number), every valid number is passed up (clamped
  * to min/max), and when you leave the field it shows the value that was kept.
  */
-export function NumberInput({ value, onValueChange, min = 0, max = Number.MAX_SAFE_INTEGER, onBlur, ...rest }: Props) {
+export function NumberInput({ value, onValueChange, min = 0, max = Number.MAX_SAFE_INTEGER, onAdjust, onBlur, ...rest }: Props) {
   const [text, setText] = useState(value === null ? "" : String(value));
 
   // The value changed from outside (a quick-pick chip, a clamp, emptied): show it.
@@ -30,6 +33,7 @@ export function NumberInput({ value, onValueChange, min = 0, max = Number.MAX_SA
     <Input
       {...rest}
       type="number"
+      step={1}
       min={min}
       max={max}
       value={text}
@@ -38,7 +42,10 @@ export function NumberInput({ value, onValueChange, min = 0, max = Number.MAX_SA
         setText(t);
         if (t.trim() === "") { onValueChange(null); return; }
         const n = Number(t);
-        if (Number.isFinite(n)) onValueChange(Math.max(min, Math.min(max, Math.round(n))));
+        if (!Number.isFinite(n)) return;
+        const kept = Math.max(min, Math.min(max, Math.round(n)));
+        onAdjust?.(n, kept);
+        onValueChange(kept);
       }}
       onBlur={(e) => { setText(value === null ? "" : String(value)); onBlur?.(e); }}
     />

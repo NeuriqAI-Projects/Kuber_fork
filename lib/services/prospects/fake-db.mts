@@ -10,6 +10,8 @@ export function fakeDb(opts: { fail?: Partial<Record<string, "insert" | "upsert"
     const t = tables[table];
     let op = "select", val: unknown, single = false, maybe = false, countHead = false;
     const filters: ((r: Row) => boolean)[] = [];
+    // "filters->>request_id": a JSON field read, like PostgREST's.
+    const get = (r: Row, k: string) => { const [col, f] = k.split("->>"); return f ? (r[col] as Row | null)?.[f] : r[col]; };
     const run = () => {
       if (op === "insert" || op === "upsert") {
         if (opts.fail?.[table] === op) return { data: null, error: { message: `${op} failed (fake)` } };
@@ -35,8 +37,8 @@ export function fakeDb(opts: { fail?: Partial<Record<string, "insert" | "upsert"
       select: (_cols?: string, o?: { count?: string; head?: boolean }) => { if (o?.head) countHead = true; return q; },
       single: () => { single = true; return q; },
       maybeSingle: () => { maybe = true; return q; },
-      eq: (k: string, v: unknown) => { filters.push((r) => r[k] === v); return q; },
-      neq: (k: string, v: unknown) => { filters.push((r) => r[k] !== v); return q; },
+      eq: (k: string, v: unknown) => { filters.push((r) => get(r, k) === v); return q; },
+      neq: (k: string, v: unknown) => { filters.push((r) => get(r, k) !== v); return q; },
       in: (k: string, vs: unknown[]) => { filters.push((r) => vs.includes(r[k])); return q; },
       is: (k: string, v: unknown) => { filters.push((r) => (r[k] ?? null) === v); return q; },
       order: () => q, limit: () => q, // ponytail: no sorting, tests hold one matching row

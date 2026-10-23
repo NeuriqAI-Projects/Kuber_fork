@@ -37,6 +37,11 @@ export function groupOf(r: GroupRow): Group {
 /** Still being worked on by the background job (polling stays on while any exist). */
 export const isWorking = (r: GroupRow) => ["queued", "read_social", "read", "good", "approved"].includes(r.status);
 
+/** Start of last_error when a good fit has nobody with the search's job titles (pipeline.ts writes it). */
+export const NO_TITLE_MATCH = "No one with your job titles";
+/** Start of last_error when a good fit was not revealed because the search's automatic reveals ran out. */
+export const REVEAL_CAP_HIT = "Good fit, but this search already used all its automatic reveals";
+
 export type Tone = "blue" | "amber" | "green" | "red" | "gray";
 
 /** A raw service error ("JEV_HTTP_503", "aborted due to timeout") in plain words, for "… because <this>".
@@ -68,7 +73,8 @@ export function statusLine(r: GroupRow & { contact?: { first_name: string | null
       // pipeline.ts writes "Stopped after 3 tries: <raw error>" when a service kept failing.
       if (r.last_error?.startsWith("Stopped after")) return { text: `Could not be checked after 3 tries because ${plainCause(r.last_error)}. Approve or decline it yourself.`, tone: "amber" };
       // Search with job titles, nobody here has one (pipeline.ts): say what Approve does instead.
-      if (r.last_error?.startsWith("No one with your job titles")) return { text: `${r.last_error}. Nothing was spent. Approve to reveal the best of them (1 credit), or decline.`, tone: "amber" };
+      if (r.last_error?.startsWith(NO_TITLE_MATCH)) return { text: "Nobody here has the job titles you picked. Nothing spent. Approve to reveal the best buyer (1 credit).", tone: "amber" };
+      if (r.last_error?.startsWith(REVEAL_CAP_HIT)) return { text: "Good fit. Not revealed because you already got the leads you asked for. Approve to reveal (1 credit).", tone: "amber" };
       return { text: r.last_error ?? "AI unsure — your call", tone: "amber" };
     case "flagged": return { text: r.last_error ?? "Not enough information to check", tone: "amber" };
     case "site_down": return { text: "Website down: its website and social pages could not be read. Retry it later.", tone: "red" };

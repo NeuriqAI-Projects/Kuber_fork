@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ApolloCostNote } from "@/components/app/apollo-cost-note";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { getToken } from "@/components/app/lead-forms";
 import { Button } from "@/components/ui/button";
 import { FilterModal } from "@/components/ui/filter-modal";
@@ -26,16 +27,17 @@ import { DetailRow, DetailSection } from "@/components/ui/record-layout";
 import { prefetchOrg } from "@/lib/api-client";
 import { getBatchColor } from "@/lib/constants";
 import { plainReason } from "@/lib/services/prospects/fit-rules";
-import { GROUP_LABEL, GROUPS, plainCause, REVIEW_TOTAL_EVENT, statusLine, type Group, type Tone } from "@/lib/services/prospects/groups";
+import { GROUP_LABEL, GROUPS, NO_TITLE_MATCH, plainCause, REVIEW_TOTAL_EVENT, statusLine, type Group, type Tone } from "@/lib/services/prospects/groups";
 import { cn } from "@/lib/utils";
 
 // ── data ─────────────────────────────────────────────────────────────────────
 export interface ScoredSearch {
-  id: string; batch_name: string; color: string; keywords: string[]; status: string; error: string | null;
+  id: string; batch_name: string; color: string; keywords: string[]; status: string; error: string | null; request_id?: string | null;
   credits_spent: number; returned: number | null; new_companies: number | null; mock: boolean; created_at: string;
   max_auto_reveals: number | null; credits_used: number; max_credits: number | null;
   target_leads: number | null; leads: number; pages: number[]; run_status: string; run_note: string | null; job_titles?: string[]; total: number; in_progress: number; groups: Record<Group, number>;
-  stages: { found: number; read: number; scored: number; to_reveal: number; revealed: number; waiting_credits: number };
+  /** read / scored = really read / really scored by the AI; *_failed = gave up there (site down, AI down). */
+  stages: { found: number; read: number; read_failed: number; scored: number; score_failed: number; to_reveal: number; revealed: number; waiting_credits: number };
 }
 export interface ScoredCompany {
   id: string; search_id: string; name: string; domain: string | null; website_url: string | null; linkedin_url: string | null;
@@ -52,7 +54,10 @@ export const scoredFilterActive = (f: ScoredFilter) => f.searchIds.length > 0 ||
 /** Number shown on the Filters button: how many filters are set (Status, Batch), like the Leads button. */
 export const scoredFilterCount = (f: ScoredFilter) => (f.groups.length > 0 || f.hidden || f.waiting ? 1 : 0) + (f.searchIds.length > 0 ? 1 : 0);
 
-async function api<T>(url: string, body?: unknown): Promise<T> {
+/** An API refusal: the plain message, plus the code and details (e.g. the search_id of a search already started). */
+export type ApiError = Error & { code?: string; details?: { search_id?: string } };
+
+export async function api<T>(url: string, body?: unknown): Promise<T> {
   const token = await getToken();
   const res = await fetch(url, {
     method: body ? "POST" : "GET",
@@ -61,20 +66,30 @@ async function api<T>(url: string, body?: unknown): Promise<T> {
   });
   const json = await res.json().catch(() => ({}));
   // No message from our API (a crash, a proxy page): never show the bare HTTP code.
-  if (!res.ok) throw new Error(json?.error?.message ?? "Kuber's server had a problem and did not answer. Try again in a minute.");
+  if (!res.ok) throw Object.assign(new Error(json?.error?.message ?? "Kuber's server had a problem and did not answer. Try again in a minute."), { code: json?.error?.code, details: json?.error?.details }) as ApiError;
   return json?.data as T;
 }
+
+/** Companies done checking so far: scored by the AI, or given up on (counts toward progress, shown apart). */
+export const checkedDone = (s: Pick<ScoredSearch, "stages">) => s.stages.scored + (s.stages.score_failed ?? 0);
 
 /** Loads scored companies for the filter; while anything is still being worked on it
  *  refreshes every 4 s and nudges the background job (the minute pump does the same
  *  in production — running both is safe, rows are locked). Network errors are shown,
  *  never thrown away: the last good data stays on screen. */
-export function useScoredOrgs(filter: ScoredFilter, q: string, enabled = true) {
-  const [data, setData] = useState<ScoredData | null>(null);
+export function useScoredOrgs(filter: ScoredFilter, q: string, enabled = true, { orgsOnly = false }: { orgsOnly?: boolean } = {}) {
+  // `state.key` = the filter the data on screen was loaded for. Until the answer for a new filter
+  // arrives, the old rows are `stale`: screens show a loading state and hide bulk actions, so
+  // "Approve all" never acts on rows of a filter that is no longer picked.
+  const [state, setState] = useState<{ data: ScoredData; key: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const kicking = useRef(false);
-  const key = JSON.stringify({ filter, q });
+  const key = JSON.stringify({ filter, q, orgsOnly });
+  const keyRef = useRef(key);
+  keyRef.current = key;
+  const data = state?.data ?? null;
+  const stale = !!state && state.key !== key;
 
   const load = useCallback(async () => {
     const p = new URLSearchParams();
@@ -86,9 +101,12 @@ export function useScoredOrgs(filter: ScoredFilter, q: string, enabled = true) {
     if (filter.hidden) p.set("hidden", "1");
     if (filter.waiting) p.set("waiting", "1");
     if (q.trim()) p.set("q", q.trim());
+    if (orgsOnly) p.set("orgs", "1");
     try {
       const d = await api<ScoredData>(`/api/v1/prospects?${p}`);
-      setData(d);
+      // An answer for a filter that was changed meanwhile must not replace the newer one.
+      if (keyRef.current !== key) return;
+      setState({ data: d, key });
       // The side menu's "N to review" polls once a minute; give it this fresher number so both always match.
       window.dispatchEvent(new CustomEvent(REVIEW_TOTAL_EVENT, { detail: d.review_total }));
       setError(null);
@@ -117,14 +135,31 @@ export function useScoredOrgs(filter: ScoredFilter, q: string, enabled = true) {
     return () => clearInterval(t);
   }, [enabled, busy, load, data]);
 
-  return { data, error, loading, reload: load };
+  /** Change companies on screen at once (after a decision), before the reload lands. */
+  const patch = useCallback((ids: string[], change: Partial<ScoredCompany>) => {
+    setState((st) => st && { ...st, data: { ...st.data, companies: st.data.companies.map((c) => (ids.includes(c.id) ? { ...c, ...change } : c)) } });
+  }, []);
+
+  return { data, error, loading: loading || stale, stale, reload: load, patch };
 }
 
-export async function decideScored(ids: string[], action: DecideAction) {
+/** After a Decline the toast offers Undo (the button's tip promises it); `onUndone` runs once it is undone. */
+export async function decideScored(ids: string[], action: DecideAction, onUndone?: () => void) {
   const r = await api<{ changed: number; skipped: number }>("/api/v1/prospects/decide", { ids, action });
   const verb = action === "approve" ? "Approved" : action === "reject" ? "Declined" : action === "undo" ? "Restored" : "Retrying";
-  toast.success(`${verb} ${r.changed} compan${r.changed === 1 ? "y" : "ies"}${r.skipped ? ` · ${r.skipped} had already moved on` : ""}`);
+  const undo = action === "reject" && r.changed > 0
+    ? { duration: 8000, action: { label: "Undo", onClick: () => { decideScored(ids, "undo").then(() => onUndone?.(), (e) => toast.error((e as Error).message)); } } }
+    : {};
+  toast.success(`${verb} ${r.changed} compan${r.changed === 1 ? "y" : "ies"}${r.skipped ? ` · ${r.skipped} had already moved on` : ""}`, undo);
   return r;
+}
+
+/** What a decision changes on screen right away (the reload then brings the real state). */
+export function optimisticChange(action: DecideAction): Partial<ScoredCompany> | null {
+  if (action === "approve") return { status: "approved", group: "approved", decided_by: "you" };
+  if (action === "reject") return { status: "rejected", group: "declined" };
+  if (action === "retry") return { status: "queued", group: "checking" };
+  return null; // undo: where it goes back to is only known to the server
 }
 
 // ── small pieces ─────────────────────────────────────────────────────────────
@@ -180,13 +215,16 @@ export function OrgTile() {
 export function WhyCell({ reason, line }: { reason: string | null; line: { text: string; tone: Tone } | null }) {
   const warn = line && (line.tone === "red" || line.tone === "amber");
   return (
-    <div className="flex w-0 min-w-full items-center gap-2" title={[plainReason(reason), line?.text].filter(Boolean).join("\n")}>
-      {warn && (
-        <span className={cn("max-w-[50%] shrink-0 truncate text-xs font-medium", line.tone === "red" ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-300")}>
-          {line.text}
-        </span>
-      )}
-      <span className="min-w-0 truncate text-muted-foreground">{plainReason(reason) ?? (warn ? "" : line?.text ?? "—")}</span>
+    // Up to 2 lines (1 line cut it to "No one with your j…"); the full text stays in the hover title.
+    <div className="w-0 min-w-full" title={[plainReason(reason), line?.text].filter(Boolean).join("\n")}>
+      <p className="line-clamp-2 whitespace-normal leading-snug">
+        {warn && (
+          <span className={cn("text-xs font-medium", line.tone === "red" ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-300")}>
+            {line.text}{" "}
+          </span>
+        )}
+        <span className="text-muted-foreground">{plainReason(reason) ?? (warn ? "" : line?.text ?? "—")}</span>
+      </p>
     </div>
   );
 }
@@ -205,7 +243,7 @@ function problemLabel(c: ScoredCompany, text: string): string {
   if (c.status === "flagged") return "Not enough info";
   if (c.status === "review" && !c.last_error) return "AI unsure";
   if (c.status === "waiting_credits") return "Waiting for credits";
-  if (c.last_error?.startsWith("No one with your job titles")) return "No title match";
+  if (c.last_error?.startsWith(NO_TITLE_MATCH)) return "No title match";
   if (c.last_error?.startsWith("No buyer found")) return "No buyer";
   if (c.last_error?.includes("automatic reveals")) return "Reveal limit";
   return "Error";
@@ -213,16 +251,18 @@ function problemLabel(c: ScoredCompany, text: string): string {
 
 export function FitPill({ score, group }: { score: number | null; group?: Group }) {
   // Needs review = the AI could not decide, so there is no number: show a "?" for "your call", not a blank.
-  if (score == null && group === "review") return <Tip text="No fit score: the AI could not tell if it makes plastic products. Your call: Approve or Decline."><span className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold", TONE.amber)}>?</span></Tip>;
-  if (score == null) return <Tip text="Not scored yet."><span className="text-xs text-muted-foreground">–</span></Tip>;
+  if (score == null && group === "review") return <Tip text="No fit score: the AI could not tell if it makes plastic products. Your call: Approve or Decline."><span className={cn("inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-full border px-2 text-xs font-medium", TONE.amber)}>Unsure</span></Tip>;
+  if (score == null) return <Tip text="Not scored: the AI has not checked this company (yet)."><span className="whitespace-nowrap text-xs text-muted-foreground">No score</span></Tip>;
   const tip = score === 9 ? "Fit score 9: makes the products you searched." : score === 7 ? "Fit score 7: makes other plastic products." : `Fit score ${score}: not a fit.`;
   // A circle in the primary shade for a real fit (7+); neutral for the rest.
   return <Tip text={tip}><span className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold tabular-nums", score >= 7 ? "border-primary/25 bg-primary/10 text-primary" : TONE.gray)}>{score}</span></Tip>;
 }
 
-export function BatchPill({ name, color, wide = false }: { name: string; color: string; wide?: boolean }) {
+/** `cell`: inside a grid cell, a fixed 180px cap. A percentage cap does not count when the table sizes its
+ *  columns, so a long batch name made the Batch column take the room the Why column needs. */
+export function BatchPill({ name, color, wide = false, cell = false }: { name: string; color: string; wide?: boolean; cell?: boolean }) {
   // Only as wide as its text; a long name is cut with "…" (full name on hover).
-  return <Tip text={`Batch: ${name.replace(/^Batch: /, "")}`} className={wide ? "max-w-full" : "max-w-[min(180px,100%)]"}><span className={cn("inline-flex w-fit min-w-0 max-w-full items-center rounded-[5px] border px-1.5 py-[3px] text-xs font-medium leading-none", getBatchColor(color).pill)}><span className="truncate">{name}</span></span></Tip>;
+  return <Tip text={`Batch: ${name.replace(/^Batch: /, "")}`} className={wide ? "max-w-full" : cell ? "max-w-[180px]" : "max-w-[min(180px,100%)]"}><span className={cn("inline-flex w-fit min-w-0 max-w-full items-center rounded-[5px] border px-1.5 py-[3px] text-xs font-medium leading-none", getBatchColor(color).pill)}><span className="truncate">{name}</span></span></Tip>;
 }
 
 function Links({ c, linkedin = true }: { c: ScoredCompany; linkedin?: boolean }) {
@@ -258,12 +298,18 @@ export function Decide({ c, busy, onDecide, large = false }: { c: ScoredCompany;
 }
 
 // ── running searches bar ─────────────────────────────────────────────────────
-function Stage({ label, done, total, tone = "bg-primary" }: { label: string; done: number; total: number; tone?: string }) {
-  const pct = total ? Math.round((done / total) * 100) : 0;
+/** `failed` = gave up at this stage (site down, AI down): its own red part of the bar and its own words,
+ *  so an outage never reads as "48/48" done. */
+function Stage({ label, done, total, failed = 0, failedText = "could not be checked", tone = "bg-primary" }: { label: string; done: number; total: number; failed?: number; failedText?: string; tone?: string }) {
+  const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
   return (
     <div className="min-w-0 space-y-1">
       <div className="flex justify-between gap-2 text-[11px] text-muted-foreground"><span className="truncate">{label}</span><span className="tabular-nums">{done}/{total}</span></div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-secondary"><div className={cn("h-full rounded-full transition-all duration-500", tone)} style={{ width: `${pct}%` }} /></div>
+      <div className="flex h-1.5 overflow-hidden rounded-full bg-secondary">
+        <div className={cn("h-full transition-all duration-500", tone)} style={{ width: `${pct(done)}%` }} />
+        {failed > 0 && <div className="h-full bg-red-400 transition-all duration-500 dark:bg-red-500/70" style={{ width: `${pct(failed)}%` }} />}
+      </div>
+      {failed > 0 && <p className="text-[11px] font-medium tabular-nums text-red-600 dark:text-red-400">{failed} {failedText}</p>}
     </div>
   );
 }
@@ -292,8 +338,8 @@ function SearchRow({ s, onOpen }: { s: ScoredSearch; onOpen: (searchId: string, 
         {s.status === "paying" && <p className="text-[11px] font-medium text-red-600 dark:text-red-400">{s.error ?? "Apollo didn't answer — charge unknown"}</p>}
       </div>
       <Stage label="Found" done={s.stages.found} total={s.stages.found} />
-      <Stage label="Websites read" done={s.stages.read} total={s.stages.found} />
-      <Stage label="AI checked" done={s.stages.scored} total={s.stages.found} />
+      <Stage label="Websites read" done={s.stages.read} total={s.stages.found} failed={s.stages.read_failed} failedText="could not be read" />
+      <Stage label="AI checked" done={s.stages.scored} total={s.stages.found} failed={s.stages.score_failed} />
       <Stage label="Contacts revealed" done={s.stages.revealed} total={s.stages.to_reveal} tone="bg-emerald-500" />
       <div className="flex flex-col items-end gap-1 text-xs">
         {s.groups.review > 0 && <Button type="button" variant="link" onClick={() => onOpen(s.id, "review")} className="h-auto p-0 text-xs text-amber-600 dark:text-amber-400">Review {s.groups.review} →</Button>}
@@ -309,7 +355,7 @@ export function RunningSearchesPill({ data, onOpen }: { data: ScoredData | null;
   const running = (data?.searches ?? []).filter((s) => s.in_progress > 0);
   if (!running.length) return null;
   // Summed over every running search, so the number matches the "N searches" beside it.
-  const checked = running.reduce((t, s) => t + s.stages.scored, 0);
+  const checked = running.reduce((t, s) => t + checkedDone(s), 0);
   const found = running.reduce((t, s) => t + s.total, 0);
   return (
     <Popover>
@@ -334,12 +380,14 @@ export function RunningSearchesPill({ data, onOpen }: { data: ScoredData | null;
  *  review. A search that is simply running is the toolbar button's job. Hidden when nothing needs you. */
 export function RunningSearchesBar({ data, onOpen }: { data: ScoredData | null; onOpen: (searchId: string, group?: Group) => void }) {
   const [open, setOpen] = useState(false);
+  const [limit, setLimit] = useState(6);
   const searches = data?.searches ?? [];
   const waiting = searches.filter((s) => s.stages.waiting_credits > 0);
   const failed = searches.filter((s) => s.status !== "done" && Date.now() - new Date(s.created_at).getTime() < 24 * 3600_000);
   const toReview = searches.filter((s) => s.groups.review > 0);
   if (!waiting.length && !failed.length && !toReview.length) return null;
-  const shown = searches.filter((s) => s.stages.waiting_credits > 0 || s.groups.review > 0 || failed.includes(s)).slice(0, 6);
+  const needing = searches.filter((s) => s.stages.waiting_credits > 0 || s.groups.review > 0 || failed.includes(s));
+  const shown = needing.slice(0, limit);
 
   return (
     <div className="rounded-lg border border-border bg-card px-3 py-1.5 text-[13px]">
@@ -355,6 +403,9 @@ export function RunningSearchesBar({ data, onOpen }: { data: ScoredData | null; 
       {open && (
         <div className="mt-2 divide-y divide-border border-t border-border md:pr-24">
           {shown.map((s) => <SearchRow key={s.id} s={s} onOpen={onOpen} />)}
+          {needing.length > shown.length && (
+            <div className="py-2 text-center"><Button type="button" variant="ghost" size="sm" onClick={() => setLimit((n) => n + 10)}>Show more ({shown.length} of {needing.length})</Button></div>
+          )}
         </div>
       )}
     </div>
@@ -423,16 +474,20 @@ export type ScoredColKey = (typeof SCORED_COLUMN_DEFS)[number]["key"];
 export type ScoredColVisibility = Record<ScoredColKey, boolean>;
 export const DEFAULT_SCORED_VISIBILITY = Object.fromEntries(SCORED_COLUMN_DEFS.map((c) => [c.key, c.defaultVisible])) as ScoredColVisibility;
 
-export function ScoredOrgsTable({ data, error, loading, visible = DEFAULT_SCORED_VISIBILITY, onDecide, onOpenCompany }: {
+export function ScoredOrgsTable({ data, error, loading, stale = false, visible = DEFAULT_SCORED_VISIBILITY, onDecide, onOpenCompany }: {
   data: ScoredData | null; error: string | null; loading: boolean; visible?: ScoredColVisibility;
+  /** The rows on screen are for the previous filter: show loading, never act on them. */
+  stale?: boolean;
   onDecide: (ids: string[], a: DecideAction) => Promise<void>; onOpenCompany: (c: ScoredCompany) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [confirmApprove, setConfirmApprove] = useState<string[] | null>(null);
   const run = async (ids: string[], a: DecideAction) => { setBusy(true); try { await onDecide(ids, a); } finally { setBusy(false); } };
   const rows = data?.companies ?? [];
   const reviewIds = rows.filter((c) => c.group === "review" && c.status !== "site_down").map((c) => c.id);
 
-  if (!data && loading) return <div className="flex items-center justify-center gap-2 py-16 text-[13px] text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading scored companies…</div>;
+  if ((!data && loading) || stale) return <div className="flex items-center justify-center gap-2 py-16 text-[13px] text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading scored companies…</div>;
+  const n = confirmApprove?.length ?? 0;
   const cols: { label: string; icon: LucideIcon; show: boolean; className?: string }[] = [
     { label: "Status", icon: CircleDot, show: true },
     { label: "Fit", icon: Gauge, show: true },
@@ -447,7 +502,7 @@ export function ScoredOrgsTable({ data, error, loading, visible = DEFAULT_SCORED
       {(error || reviewIds.length > 0) && (
         <div className="space-y-3 px-4 py-3">
           {error && <p className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-800 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-300"><AlertTriangle className="size-4" />Couldn&apos;t refresh: {error}. Showing the last loaded list; it retries on its own.</p>}
-          {reviewIds.length > 0 && <ApolloCostNote credits={reviewIds.length} spendingOn={`revealing one contact at each of the ${reviewIds.length} companies you approve`} rate="1 credit per contact revealed. Retry on a website that was down uses 1 Firecrawl credit, not Apollo." />}
+          {reviewIds.length > 0 && <ApolloCostNote credits={reviewIds.length} spendingOn="" headline={<>Approving all {reviewIds.length} would cost up to <strong className="font-semibold tabular-nums">{reviewIds.length} credit{reviewIds.length === 1 ? "" : "s"}</strong>.</>} rate="1 Apollo credit per contact revealed. Retry on a website that was down uses 1 Firecrawl credit, not Apollo." />}
         </div>
       )}
       <table className={cn(GRID_TABLE, (error || reviewIds.length > 0) && "border-t border-border")}>
@@ -480,22 +535,34 @@ export function ScoredOrgsTable({ data, error, loading, visible = DEFAULT_SCORED
                 {visible.domain && <TableCell><DomainLink text={c.domain} href={c.website_url} /></TableCell>}
                 {visible.linkedin && <TableCell><DomainLink text={c.linkedin_url ? "LinkedIn" : null} href={c.linkedin_url} tip="Open the LinkedIn page in a new tab." /></TableCell>}
                 {visible.why && <TableCell><WhyCell reason={c.reason} line={line} /></TableCell>}
-                {visible.batch && <TableCell><BatchPill name={c.batch_name} color={c.batch_color} /></TableCell>}
+                {visible.batch && <TableCell><BatchPill name={c.batch_name} color={c.batch_color} cell /></TableCell>}
                 <TableCell className={cn(STICKY_CELL, "right-0")}><Decide c={c} busy={busy} onDecide={run} /></TableCell>
               </TableRow>
             );
           })}
         </TableBody>
       </table>
-      {/* Room under the last row, so its Decide buttons can scroll clear of the floating "Ask Kuber AI" button. */}
-      <div aria-hidden className="h-16" />
+      {/* Room under the last row, so its Decide buttons scroll clear of the floating "Ask Kuber AI" button (64px tall with its margin). */}
+      <div aria-hidden className="h-24" />
       {/* pr-28 keeps the buttons clear of the floating "Ask Kuber AI" button (bottom-right). */}
       {reviewIds.length > 1 && (
         <div className="sticky bottom-0 z-20 flex items-center justify-end gap-2 border-t border-border bg-background py-2 pl-4 pr-28">
           <Button size="sm" variant="outline" disabled={busy} onClick={() => run(reviewIds, "reject")}>Decline all {reviewIds.length}</Button>
-          <Button size="sm" disabled={busy} onClick={() => run(reviewIds, "approve")}>Approve all {reviewIds.length} · up to {reviewIds.length} credit{reviewIds.length === 1 ? "" : "s"}</Button>
+          {/* Spends credits: asks first, with the exact numbers. The ids are the rows shown right now. */}
+          <Button size="sm" disabled={busy} onClick={() => setConfirmApprove(reviewIds)}>Approve all {reviewIds.length} · up to {reviewIds.length} credit{reviewIds.length === 1 ? "" : "s"}</Button>
         </div>
       )}
+      <ConfirmDialog
+        open={!!confirmApprove}
+        tone="warning"
+        title={`Approve ${n} compan${n === 1 ? "y" : "ies"}?`}
+        description={`Kuber reveals one contact at each of the ${n} companies shown: up to ${n} Apollo credit${n === 1 ? "" : "s"}. A company where Apollo has nobody with an email costs nothing.`}
+        confirmLabel={`Approve ${n} · up to ${n} credit${n === 1 ? "" : "s"}`}
+        confirmIcon={<Check />}
+        loading={busy}
+        onClose={() => setConfirmApprove(null)}
+        onConfirm={() => { const ids = confirmApprove ?? []; setConfirmApprove(null); void run(ids, "approve"); }}
+      />
     </div>
   );
 }
@@ -516,13 +583,13 @@ const COL_TIP: Record<Group, string> = {
   hidden: "The AI thinks these aren't plastic makers. Approve one if it got it wrong.",
 };
 
-export function ScoredOrgsKanban({ data, error, loading, groups, showHidden, onDecide, onOpenCompany }: {
-  data: ScoredData | null; error: string | null; loading: boolean; groups: Group[]; showHidden: boolean;
+export function ScoredOrgsKanban({ data, error, loading, stale = false, groups, showHidden, onDecide, onOpenCompany }: {
+  data: ScoredData | null; error: string | null; loading: boolean; stale?: boolean; groups: Group[]; showHidden: boolean;
   onDecide: (ids: string[], a: DecideAction) => Promise<void>; onOpenCompany: (c: ScoredCompany) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const run = async (ids: string[], a: DecideAction) => { setBusy(true); try { await onDecide(ids, a); } finally { setBusy(false); } };
-  if (!data && loading) return <div className="flex items-center justify-center gap-2 py-16 text-[13px] text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading scored companies…</div>;
+  if ((!data && loading) || stale) return <div className="flex items-center justify-center gap-2 py-16 text-[13px] text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading scored companies…</div>;
   if (!data?.searches.length) return <EmptyState icon={Building2} title="No scored searches yet" message="Use Add leads → Scored companies to start one." />;
   const companies = data.companies;
   const checking = data.searches.filter((s) => s.in_progress > 0);
@@ -551,7 +618,7 @@ export function ScoredOrgsKanban({ data, error, loading, groups, showHidden, onD
                 <div key={s.id} className="space-y-1.5 rounded-lg border border-primary/20 bg-primary/5 px-2.5 py-2">
                   <p className="truncate text-xs font-medium" title={s.batch_name}>{s.batch_name}</p>
                   <div className="h-1.5 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-primary transition-[width]" style={{ width: `${s.total ? (s.stages.scored / s.total) * 100 : 0}%` }} /></div>
-                  <p className="text-xs tabular-nums text-muted-foreground">{s.stages.scored}/{s.total} checked</p>
+                  <p className="text-xs tabular-nums text-muted-foreground">{s.stages.scored}/{s.total} checked{s.stages.score_failed ? <span className="text-red-600 dark:text-red-400"> · {s.stages.score_failed} could not be checked</span> : null}</p>
                 </div>
               ))}
               <div className="flex flex-col gap-1.5">

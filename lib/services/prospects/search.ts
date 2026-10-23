@@ -23,8 +23,8 @@ import { DEV_COMPANY_ID, parseIndustryKeywordGroups, resolveApolloKeyword } from
 import type { ApolloOrgAdvancedFilters } from "@/lib/services/apollo";
 import { normalizeDomain } from "@/lib/utils/domain";
 import { companyName } from "./text";
-import { isWorking } from "./groups";
-import { FIRECRAWL_PER_PAGE, filterKey, nextStep, outageNote, revealCap, suggestedMaxCredits, type RunState } from "./digging";
+import { isWorking, NO_TITLE_MATCH } from "./groups";
+import { FIRECRAWL_PER_PAGE, filterKey, nextStep, outageNote, revealCap, suggestedMaxCredits, titlesNote, type RunState } from "./digging";
 
 export interface ProspectSearchInput {
   keywords: string[];
@@ -46,6 +46,8 @@ export interface ProspectSearchInput {
   target_leads?: number;
   /** Most Apollo credits this search may use (pages + contacts). */
   max_credits?: number;
+  /** One id per wizard session: the same id twice = the same search sent again (reload, double click). */
+  request_id?: string;
 }
 
 export type SearchOutcome =
@@ -122,15 +124,23 @@ export async function runProspectSearch(db: SupabaseClient, companyId: string, u
     return { ok: false, status: 400, code: "MOCK_ONLY_IN_DEV", message: "This is a test (mock) run. Switch to the Dev workspace to try it, so test companies never land in a client's real data." };
   }
 
+  // Sent again after a reload or a second click: never a second (paid) search. A failed one may be retried.
+  // ponytail: check-then-insert, two requests in the same ~100 ms can both pass; a unique index on
+  // (company_id, filters->>'request_id') closes it if that ever happens.
+  if (input.request_id) {
+    const { data: same } = await db.from("prospect_searches").select("id").eq("filters->>request_id", input.request_id).neq("status", "failed").limit(1).maybeSingle();
+    if (same) return { ok: false, status: 409, code: "ALREADY_STARTED", message: "This search was already started — open it in Organizations.", search_id: same.id as string };
+  }
+
   {
-    // Mock mode only reports a number in the [apollo-0] test scenario.
-    const left = await deps.creditsLeft();
+    // Mock mode only reports a number in the [apollo-0] test scenario. Both balances are asked at once
+    // (each is a live call to the provider; one after the other made "Starting your search" slow).
+    const [left, fc] = await Promise.all([deps.creditsLeft(), deps.firecrawlLeft?.() ?? null]);
     if (left !== null && left < 1) {
       return { ok: false, status: 402, code: "APOLLO_OUT_OF_CREDITS", message: "Apollo has no credits left. Nothing was searched or charged." };
     }
     // Every company found is read by Firecrawl; don't pay Apollo for companies we can't read.
-    const fc = (await deps.firecrawlLeft?.()) ?? null;
-    if (fc !== null && fc < FIRECRAWL_PER_PAGE) {
+    if (fc != null && fc < FIRECRAWL_PER_PAGE) {
       return { ok: false, status: 402, code: "FIRECRAWL_LOW", message: `Firecrawl (it reads company websites) has only ${fc} credits left, and 100 companies need up to 100. Top up Firecrawl first. Nothing was searched or charged.` };
     }
   }
@@ -152,6 +162,12 @@ export async function runProspectSearch(db: SupabaseClient, companyId: string, u
     // Every page was read before: don't pay 1 credit for Apollo to say so.
     const { data: mem } = await db.from("prospect_page_memory").select("last_page, total_pages").eq("filter_key", key).maybeSingle();
     if (mem?.total_pages != null && (mem.last_page as number) >= (mem.total_pages as number)) {
+      // Every page is taken because the same search is still reading them: say that, not "used up".
+      const { data: running } = await db.from("prospect_searches").select("id, filters").eq("filter_key", key).eq("run_status", "running").limit(1).maybeSingle();
+      if (running) {
+        const name = (running.filters as { batch_name?: string } | null)?.batch_name;
+        return { ok: false, status: 409, code: "ALREADY_RUNNING", message: `A search with these filters is already running${name ? ` ("${name}")` : ""}. Open it in Organizations; it keeps going on its own.`, search_id: running.id as string };
+      }
       return { ok: false, status: 409, code: "NO_MORE_PAGES", message: "You already have every company these keywords can give. Add other keywords or countries in step 1." };
     }
   }
@@ -346,6 +362,7 @@ export async function continueRun(db: SupabaseClient, companyId: string, searchI
       failedError: (failedRows[0]?.last_error as string | null) ?? null,
       siteDown: rs.filter((r) => r.status === "site_down").length,
       pageChecks: pages.map((p) => checks(rs.filter((r) => r.page === p))),
+      titleBlocked: rs.filter((r) => r.status === "review" && String(r.last_error ?? "").startsWith(NO_TITLE_MATCH)).length,
     };
     const step = nextStep(state);
     if (step.action === "wait") { await unlock(); return "waiting"; }
@@ -359,7 +376,7 @@ export async function continueRun(db: SupabaseClient, companyId: string, searchI
     const cap = revealCap(target, maxCredits, pages.length + 1);
     await unlock({
       filters: { ...(s.filters as Record<string, unknown>), max_auto_reveals: cap },
-      ...(res.returned === 0 ? { run_status: "complete", run_note: outageNote(state) ?? `Stopped at ${promoted.length} of ${target} leads: Apollo has no more companies for these filters. Add more keywords or countries.` } : {}),
+      ...(res.returned === 0 ? { run_status: "complete", run_note: outageNote(state) ?? titlesNote(state) ?? `Stopped at ${promoted.length} of ${target} leads: Apollo has no more companies for these filters. Add more keywords or countries.` } : {}),
     });
     return "fetched";
   } catch (e) {

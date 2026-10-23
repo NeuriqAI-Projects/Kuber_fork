@@ -45,6 +45,8 @@ export interface RunState {
   siteDown?: number;
   /** The same three counts per page read, in `leadsPerPage` order: tells outage pages from weak ones. */
   pageChecks?: PageCheck[];
+  /** Good fits waiting in Needs review only because nobody there has the search's job titles. */
+  titleBlocked?: number;
 }
 
 export interface PageCheck { checked: number; failed: number; siteDown: number }
@@ -66,6 +68,13 @@ export function outageNote(s: RunState): string | null {
   return `${head} the websites of ${down} of ${checked} companies could not be read (site down or the website reader failed). This is not a keyword problem — retry them from Review later.`;
 }
 
+/** When the job titles, not Apollo, kept leads away: say so (those companies are good fits, free to approve). */
+export function titlesNote(s: RunState): string | null {
+  const n = s.titleBlocked ?? 0;
+  if (n < 1) return null;
+  return `Stopped at ${s.leads} of ${s.target} leads: ${n} good compan${n === 1 ? "y" : "ies"} had nobody with your job titles; ${n === 1 ? "it waits" : "they wait"} in Needs review for free. Approve them or widen the titles.`;
+}
+
 export type DigStep = { action: "fetch" } | { action: "wait" } | { action: "stop"; note: string };
 
 export function nextStep(s: RunState): DigStep {
@@ -78,7 +87,7 @@ export function nextStep(s: RunState): DigStep {
     return { action: "stop", note: `Stopped at ${s.leads} of ${s.target} leads: Apollo ran out of credits. ${w} good compan${w === 1 ? "y is" : "ies are"} waiting for credits and get their contact on their own after a top-up, within your credit limit.` };
   }
   if (s.lastPageEmpty || (s.totalPages !== null && s.nextPage > s.totalPages)) {
-    return { action: "stop", note: outageNote(s) ?? `Stopped at ${s.leads} of ${s.target} leads: Apollo has no more companies for these filters. Add more keywords or countries.` };
+    return { action: "stop", note: outageNote(s) ?? titlesNote(s) ?? `Stopped at ${s.leads} of ${s.target} leads: Apollo has no more companies for these filters. Add more keywords or countries.` };
   }
   // The last page could not really be scored (AI or websites down): another page would be
   // paid for and fail the same way, so stop and say why instead of buying more.
@@ -92,7 +101,7 @@ export function nextStep(s: RunState): DigStep {
   // Only pages whose companies were really scored can show the keywords are used up.
   const last2 = s.leadsPerPage.filter((_, i) => !(s.pageChecks?.[i] && isOutage(s.pageChecks[i]))).slice(-2);
   if (last2.length === 2 && last2.every((n) => n < DRY_PAGE_LEADS)) {
-    return { action: "stop", note: outageNote(s) ?? `Stopped at ${s.leads} of ${s.target} leads: the last 2 pages gave almost no leads, so these keywords are used up. Try other keywords.` };
+    return { action: "stop", note: outageNote(s) ?? titlesNote(s) ?? `Stopped at ${s.leads} of ${s.target} leads: the last 2 pages gave almost no leads, so these keywords are used up. Try other keywords.` };
   }
   if (s.pagesRead >= MAX_PAGES_PER_SEARCH) return { action: "stop", note: `Stopped at ${s.leads} of ${s.target} leads: ${MAX_PAGES_PER_SEARCH} pages is the most one search reads.` };
   return { action: "fetch" };

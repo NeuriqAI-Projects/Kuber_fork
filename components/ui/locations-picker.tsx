@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useEscClose } from "@/components/ui/use-esc-close";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -166,6 +167,8 @@ export function LocationsPicker({
   triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const closeMenu = useCallback(() => setOpen(false), []);
+  useEscClose(open, closeMenu); // Esc closes this list only, not the dialog around it
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

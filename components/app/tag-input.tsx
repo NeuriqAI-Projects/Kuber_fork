@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useEscClose } from "@/components/ui/use-esc-close";
 import { Plus, X } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -30,6 +31,8 @@ export function TagInput({
 }) {
   const [query,     setQuery] = useState("");
   const [open,      setOpen ] = useState(false);
+  const closeMenu = useCallback(() => setOpen(false), []);
+  useEscClose(open, closeMenu); // Esc closes this list only, not the dialog around it
   const containerRef          = useRef<HTMLDivElement>(null);
   const inputRef              = useRef<HTMLInputElement>(null);
 

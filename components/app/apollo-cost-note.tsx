@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Coins } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -19,8 +20,11 @@ export function ApolloCostNote({
   spendingOn,
   rate = "1 credit per contact, charged whether or not Apollo has an email on file.",
   mock = false,
+  headline,
   className,
 }: {
+  /** Replaces the "Will spend N Apollo credits {spendingOn}" sentence when a different wording fits better. */
+  headline?: ReactNode;
   /** Total credits this action will cost right now. 0 renders a neutral "free" note instead of a warning. */
   credits: number;
   /** Clause completing "will spend N credit(s) ", e.g. "revealing emails for the 12 selected contacts". */
@@ -44,8 +48,8 @@ export function ApolloCostNote({
     <div className={cn("flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300", className)}>
       <Coins className="size-3.5 shrink-0 mt-0.5" />
       <p>
-        Will spend <strong className="font-semibold tabular-nums">{credits.toLocaleString()} Apollo credit{credits === 1 ? "" : "s"}</strong> {spendingOn}
-        {mock && <> <strong className="font-semibold">(test)</strong></>}.
+        {headline ?? <>Will spend <strong className="font-semibold tabular-nums">{credits.toLocaleString()} Apollo credit{credits === 1 ? "" : "s"}</strong> {spendingOn}</>}
+        {mock && <> <strong className="font-semibold">(test)</strong></>}{headline ? "" : "."}
         {rate && <span className="mt-0.5 block text-xs text-amber-700 dark:text-amber-300/80">{rate}{mock && " No real credits move in test mode."}</span>}
       </p>
     </div>

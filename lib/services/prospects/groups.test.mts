@@ -26,5 +26,10 @@ test("scoredForOrg: an org that did not come from a scored search gets null", as
 test("no-title-match review says nothing was spent and what Approve does", () => {
   const l = statusLine({ status: "review", last_error: "No one with your job titles has an email here (3 other people)" });
   assert.equal(l.tone, "amber");
-  assert.match(l.text, /^No one with your job titles has an email here \(3 other people\)\. Nothing was spent\. Approve to reveal the best of them \(1 credit\)/);
+  assert.equal(l.text, "Nobody here has the job titles you picked. Nothing spent. Approve to reveal the best buyer (1 credit).");
+});
+
+test("reveal-cap review says the leads asked for were reached and what Approve costs", () => {
+  const l = statusLine({ status: "review", last_error: "Good fit, but this search already used all its automatic reveals" });
+  assert.equal(l.text, "Good fit. Not revealed because you already got the leads you asked for. Approve to reveal (1 credit).");
 });
