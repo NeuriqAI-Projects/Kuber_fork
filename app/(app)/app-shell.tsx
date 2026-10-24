@@ -423,7 +423,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                           <Icon className={cn("size-4 shrink-0", active ? "text-foreground" : "text-muted-foreground")} />
                           {!sidebarCollapsed && <span className="flex-1 truncate text-left">{label}</span>}
                           {label === "Leads" && scoredToReview > 0 && !sidebarCollapsed && (
-                            <span title={`${scoredToReview} scored companies in your 20 most recent searches need your review`} className="inline-flex shrink-0 items-center whitespace-nowrap text-[11px] font-medium rounded-[4px] px-1.5 py-px tabular-nums bg-amber-500/15 text-amber-700 dark:text-amber-400">
+                            <span title={`${scoredToReview} scored companies (all your searches) need your review`} className="inline-flex shrink-0 items-center whitespace-nowrap text-[11px] font-medium rounded-[4px] px-1.5 py-px tabular-nums bg-amber-500/15 text-amber-700 dark:text-amber-400">
                               {scoredToReview} to review
                             </span>
                           )}

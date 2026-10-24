@@ -14,7 +14,7 @@ import {
   AssignStrategyPicker, BatchNameField, buildImportAssignment, clearDraft, IndustryKeywordsDropdown, useDraft,
   useAssignableEmployees, useIndustryKeywordGroups, type ImportAssignMode,
 } from "@/components/app/lead-forms";
-import { api, checkedDone, leadsCount, type ApiError, type ScoredSearch } from "@/components/app/scored-orgs";
+import { api, leadsCount, type ApiError, type ScoredSearch } from "@/components/app/scored-orgs";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { NumberInput } from "@/components/ui/number-input";
@@ -27,6 +27,7 @@ import type { BatchColorName } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { FIRECRAWL_PER_PAGE, LEADS_PER_PAGE, MAX_LEADS_PER_SEARCH, MAX_PAGES_PER_SEARCH, minCredits, suggestedMaxCredits } from "@/lib/services/prospects/digging";
 import { noLeadsLeft } from "@/lib/services/prospects/estimate";
+import { finishedHeadline, goodFitsLine, timeLeft } from "@/lib/services/prospects/progress";
 
 const STEPS = ["Criteria", "Settings", "Batch", "Assign"];
 const SIZE_SUGGESTIONS = ["1,10", "11,50", "51,200", "201,500", "501,1000", "1001,5000", "5001,10000"];
@@ -35,6 +36,8 @@ const DEFAULT_TARGET = 100;
 const TARGET_CHIPS = [50, 100, 200, 500];
 /** Measured live on 17 Oct 2026 with only the every-minute background job. */
 const COMPANIES_PER_MINUTE = 20;
+/** "1 lead", "2 leads", "1,200 leads". */
+const leadsN = (x: number) => `${x.toLocaleString()} lead${x === 1 ? "" : "s"}`;
 
 interface MarketEstimate {
   companies: { low: number; mid: number; high: number };
@@ -89,7 +92,7 @@ function Bill({ target, maxCredits, firecrawlShort, size, jobTitles }: { target:
             <section className="space-y-1.5">
               <p className="font-medium text-foreground">Apollo credits</p>
               <div className={line}><span>Searching: {pages} × 100 companies</span><span>{pages}</span></div>
-              <p className="text-xs text-muted-foreground">Apollo charges 1 credit for every page of 100 companies. About 1 in {Math.round(100 / LEADS_PER_PAGE)} companies becomes a lead, so {target} leads need ~{pages} pages.</p>
+              <p className="text-xs text-muted-foreground">Apollo charges 1 credit for every page of 100 companies. About 1 in {Math.round(100 / LEADS_PER_PAGE)} companies becomes a lead, so {leadsN(target)} need ~{pages} page{pages === 1 ? "" : "s"}.</p>
               <div className={line}><span>Lead contacts: {target} × 1</span><span>{target}</span></div>
               <p className="text-xs text-muted-foreground">Each good-fit company gets one buyer revealed. Apollo charges 1 credit per revealed contact.</p>
               <div className={cn(line, "border-t border-dashed border-border pt-1.5 font-semibold")}><span>Expected</span><span>~{expected}</span></div>
@@ -156,11 +159,13 @@ function MarketSize({ filters, target, onPick, onFits, onSize }: { filters: Reco
           {state === "error" && <span className="text-muted-foreground">Couldn&apos;t check the size. You can still search.</span>}
           {state !== "error" && !est && <span className="text-muted-foreground">Checking available leads…</span>}
           {state !== "error" && est && (
-            est.companies.mid === 0
+            noLeadsLeft(est)
+              ? <span className="font-medium text-amber-700 dark:text-amber-300">No new companies left for these keywords: every page was read in earlier searches.</span>
+              : est.companies.mid === 0
               ? <span className="font-medium text-amber-700 dark:text-amber-300">Almost no companies for these keywords.</span>
               : left!.high === 0
                 ? <span className="font-medium text-amber-700 dark:text-amber-300">{used > 0 ? "No new leads left for these keywords." : "Almost no leads for these keywords."}</span>
-                : <span>Available: <b className="font-semibold tabular-nums">~{n(left!.low)} leads</b> <span className="text-muted-foreground">(up to {n(left!.high)})</span></span>
+                : <span>Available: <b className="font-semibold tabular-nums">~{leadsN(left!.low)}</b> <span className="text-muted-foreground">(up to {n(left!.high)})</span></span>
           )}
         </div>
         <InfoTip side="left" text={`Free check, no credits used. A rough guess. A lead = a plastic maker with a person we can email (about 1 in 3 companies). Your keywords match about ${est ? n(est.companies.mid) : "…"} companies in Apollo.${used > 0 ? " You searched them before, so companies you already got are skipped." : ""}`} />
@@ -169,8 +174,8 @@ function MarketSize({ filters, target, onPick, onFits, onSize }: { filters: Reco
         <div className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
           <CircleAlert className="mt-0.5 size-4 shrink-0" />
           <div className="space-y-1.5">
-            <p>Only about <b className="font-semibold tabular-nums">{n(left!.low)}</b> leads available. Add keywords or countries in step 1 for more.</p>
-            <Button type="button" size="sm" variant="outline" onClick={() => onPick(left!.low)}>Ask for {n(left!.low)} leads instead</Button>
+            <p>Only about <b className="font-semibold tabular-nums">{leadsN(left!.low)}</b> available. Add keywords or countries in step 1 for more.</p>
+            <Button type="button" size="sm" variant="outline" onClick={() => onPick(left!.low)}>Ask for {leadsN(left!.low)} instead</Button>
           </div>
         </div>
       )}
@@ -184,19 +189,25 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
   searchId: string; batchName: string; batchColor: string; onOpen: () => void; onAnother: () => void;
 }) {
   const [s, setS] = useState<ScoredSearch | null>(null);
-  // false until the first answer: after it, no `s` = the search is not among the 20 most recent any more.
+  // false until the first answer: after it, no `s` = the search is gone (it is asked for by id).
   const [loaded, setLoaded] = useState(false);
   const [netError, setNetError] = useState<string | null>(null);
   const kicking = useRef(false);
+  // When the numbers last moved: no change for a while means a service is down, not slow (Time left).
+  const progress = useRef({ sig: "", at: Date.now() });
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     let alive = true;
     async function tick() {
       try {
-        const d = await api<{ searches: ScoredSearch[] }>("/api/v1/prospects?summary=1");
+        // Asked for by id, so its numbers come back however many searches were started since.
+        const d = await api<{ searches: ScoredSearch[] }>(`/api/v1/prospects?summary=1&search_ids=${searchId}`);
         const mine = d.searches.find((x) => x.id === searchId) ?? null;
         if (!alive) return;
-        setS(mine); setLoaded(true); setNetError(null);
+        setS(mine); setLoaded(true); setNetError(null); setNow(Date.now());
+        const sig = mine ? `${mine.stages.read}/${mine.stages.read_failed}/${mine.stages.scored}/${mine.stages.score_failed}/${mine.total}` : "";
+        if (sig !== progress.current.sig) progress.current = { sig, at: Date.now() };
         // On a laptop there's no minute pump; nudge the background job while there's work.
         if (mine && mine.in_progress > 0 && !kicking.current) {
           kicking.current = true;
@@ -213,24 +224,27 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
   // Really scored by the AI; the ones it gave up on are counted apart, never as "checked".
   const checked = s?.stages.scored ?? 0;
   const failed = s?.stages.score_failed ?? 0;
-  const left = Math.max(0, total - (s ? checkedDone(s) : 0));
   const done = !!s && s.in_progress === 0;
   const gone = loaded && !s;
   const none = done && total === 0;
+  // Honest once done: "All companies checked" only when the AI really checked every one.
+  const head = s && done && !none ? finishedHeadline(s) : null;
+  const time = s ? timeLeft(s, done || gone, now - progress.current.at, COMPANIES_PER_MINUTE) : { value: gone ? "Done" : "…", note: " " };
+  const goodLine = s ? goodFitsLine(s) : null;
   const tile = "flex flex-col gap-1 rounded-lg border border-border bg-card p-4";
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5 py-2">
       <div className="flex items-center gap-4 rounded-lg border border-border bg-card p-4">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          {done || gone ? <Check className="size-5" /> : <Loader2 className="size-5 animate-spin" />}
+          {head && !head.complete ? <CircleAlert className="size-5 text-amber-600 dark:text-amber-400" /> : done || gone ? <Check className="size-5" /> : <Loader2 className="size-5 animate-spin" />}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-lg font-semibold">{gone ? "Search finished" : none ? "No companies found" : done ? "All companies checked" : "Search started"}</p>
+          <p className="text-lg font-semibold">{gone ? "Search finished" : none ? "No companies found" : head ? head.title : "Search started"}</p>
           <p className="text-sm text-muted-foreground">
-            {gone ? "It is no longer among your 20 most recent searches. Open Organizations to see its companies."
+            {gone ? "Open Organizations to see its companies."
               : none ? (s?.run_note ?? s?.error ?? "Apollo found no new companies for these filters. Add other keywords or countries.")
-              : done ? (failed > 0 ? `Done. ${failed} compan${failed === 1 ? "y" : "ies"} could not be checked; they wait in Needs review.` : "Good fits got their contact; the rest wait in Organizations.")
+              : head ? head.text
               : "Kuber is checking every company in the background. You can close this window — nothing stops."}
           </p>
         </div>
@@ -245,7 +259,7 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
           <div className="h-1.5 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-emerald-500 transition-[width] duration-500" style={{ width: `${Math.min(100, (s.leads / s.target_leads) * 100)}%` }} /></div>
           {s.run_note && <p className={cn("text-sm", s.leads < s.target_leads ? "text-amber-700 dark:text-amber-300" : "text-emerald-700 dark:text-emerald-300")}>{s.run_note}</p>}
           {!!s.job_titles?.length && <p className="text-xs text-muted-foreground">Only people with these job titles are revealed: {s.job_titles.join(", ")}.</p>}
-          {!s.run_note && s.run_status === "running" && <p className="text-xs text-muted-foreground">Kuber reads the next 100 companies on its own when these are checked, until it has {s.target_leads} leads or hits your credit limit.</p>}
+          {!s.run_note && s.run_status === "running" && <p className="text-xs text-muted-foreground">Kuber reads the next 100 companies on its own when these are checked, until it has {leadsN(s.target_leads)} or hits your credit limit.</p>}
         </div>
       )}
 
@@ -269,14 +283,14 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
         </div>
         <div className={tile}>
           <span className="text-xs text-muted-foreground">Time left</span>
-          <span className="text-2xl font-semibold tabular-nums">{done || gone ? "Done" : `~${Math.max(1, Math.ceil(left / COMPANIES_PER_MINUTE))} min`}</span>
-          <span className="text-xs text-muted-foreground">about {COMPANIES_PER_MINUTE} companies a minute</span>
+          <span className={cn("text-2xl font-semibold tabular-nums", time.value === "Retrying" && "text-amber-700 dark:text-amber-300")}>{time.value}</span>
+          <span className="text-xs text-muted-foreground">{time.note}</span>
         </div>
       </div>
 
       <div className="divide-y divide-border rounded-lg border border-border bg-card px-4">
         {[
-          { icon: <Check className="size-4" />, tone: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300", title: "Good fits", text: "One contact revealed automatically, then it appears in Leads", side: s ? `${s.groups.good} so far` : "" },
+          { icon: <Check className="size-4" />, tone: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300", title: "Good fits", text: goodLine?.text ?? "One contact revealed automatically, then it appears in Leads", side: goodLine?.side ?? "" },
           { icon: <CircleAlert className="size-4" />, tone: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300", title: "Need your review", text: "Approve or decline them in Organizations", side: s ? `${s.groups.review} so far · no cost until approved` : "" },
           { icon: <X className="size-4" />, tone: "bg-secondary text-muted-foreground", title: "Not a fit", text: "Traders, distributors, machine makers — hidden", side: s ? `${s.groups.hidden} · nothing spent` : "" },
         ].map((r) => (
@@ -387,11 +401,11 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
     : target > MAX_LEADS_PER_SEARCH
       ? { msg: `One search can give at most ${MAX_LEADS_PER_SEARCH} leads (it checks up to ${(MAX_PAGES_PER_SEARCH * 100).toLocaleString()} companies). Ask for ${MAX_LEADS_PER_SEARCH} or fewer. To get more, run the same search again later: Kuber continues where it stopped.`, fix: MAX_LEADS_PER_SEARCH }
       : fits?.firecrawl_leads != null && target > fits.firecrawl_leads
-        ? { msg: `Not enough Firecrawl credits. Kuber reads about 100 company websites (100 Firecrawl credits) for every ${LEADS_PER_PAGE} leads, so ${target} leads need about ${(pages * FIRECRAWL_PER_PAGE).toLocaleString()}. What is left is enough for about ${fits.firecrawl_leads} leads. Ask for fewer leads or top up Firecrawl.`, fix: fits.firecrawl_leads }
+        ? { msg: `Not enough Firecrawl credits. Kuber reads about 100 company websites (100 Firecrawl credits) for every ${LEADS_PER_PAGE} leads, so ${leadsN(target)} need about ${(pages * FIRECRAWL_PER_PAGE).toLocaleString()}. What is left is enough for about ${leadsN(fits.firecrawl_leads)}. Ask for fewer leads or top up Firecrawl.`, fix: fits.firecrawl_leads }
         : fits?.apollo_leads != null && target > fits.apollo_leads
-          ? { msg: `Not enough Apollo credits. ${target} leads need at least ${needCredits} Apollo credits. What is left is enough for about ${fits.apollo_leads} leads. Ask for fewer leads or top up Apollo.`, fix: fits.apollo_leads }
+          ? { msg: `Not enough Apollo credits. ${leadsN(target)} need at least ${needCredits} Apollo credits. What is left is enough for about ${leadsN(fits.apollo_leads)}. Ask for fewer leads or top up Apollo.`, fix: fits.apollo_leads }
           : null;
-  const creditsMsg = `${target} leads need at least ${needCredits} credits (${target} for the leads + ${pages} for searching). Raise your credits to ${needCredits} or more, or ask for fewer leads.`;
+  const creditsMsg = `${leadsN(target)} need at least ${needCredits} credits (${target} for the leads + ${pages} for searching). Raise your credits to ${needCredits} or more, or ask for fewer leads.`;
   const [batchName, setBatchName] = useDraft("scored", "batchName", "");
   const [batchColor, setBatchColor] = useDraft("scored", "batchColor", "green");
   const [batchError, setBatchError] = useState(false);
@@ -419,6 +433,30 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
     const m = ssGet<StartMarker>(KEY_START);
     return m && Date.now() - m.at < START_MAX_AGE_MS ? m.batchName : null;
   });
+  // A draft that already sent its search (same request id): find that search before offering
+  // "Find N leads" again (it was live after a reload and only the server's 409 showed the search).
+  const [lookingUp, setLookingUp] = useState(() => !!requestId && !started && !resuming);
+  useEffect(() => {
+    if (!lookingUp) return;
+    let alive = true;
+    let t: ReturnType<typeof setTimeout>;
+    const look = (tries: number) => api<{ searches: ScoredSearch[] }>("/api/v1/prospects?summary=1")
+      .then((d) => {
+        if (!alive) return;
+        const mine = d.searches.find((x) => x.request_id === requestId);
+        if (mine) {
+          const info = { searchId: mine.id, batchName: mine.batch_name, color: mine.color };
+          ssSet(KEY_RESULT, { kind: "started", started: info } satisfies StoredResult); clearDraft("scored");
+          setStarted(info);
+        }
+        setLookingUp(false);
+      })
+      // A busy server: try twice more. After that the button comes back; the server still refuses a second search (409).
+      .catch(() => { if (!alive) return; if (tries < 2) t = setTimeout(() => void look(tries + 1), 1500); else setLookingUp(false); });
+    void look(0);
+    return () => { alive = false; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -598,7 +636,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
                   <AlertCircle className="mt-0.5 size-4 shrink-0" />
                   <div className="space-y-1.5">
                     <p>{fitBlock.msg}</p>
-                    {fitBlock.fix > 0 && <Button type="button" size="sm" variant="outline" onClick={() => pickTarget(fitBlock.fix)}>Ask for {fitBlock.fix} leads instead</Button>}
+                    {fitBlock.fix > 0 && <Button type="button" size="sm" variant="outline" onClick={() => pickTarget(fitBlock.fix)}>Ask for {leadsN(fitBlock.fix)} instead</Button>}
                   </div>
                 </div>
               )}
@@ -646,8 +684,8 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
             {!inputMsg && target <= MAX_LEADS_PER_SEARCH && <Bill target={target} maxCredits={maxCredits} firecrawlShort={fits?.firecrawl_leads != null && target > fits.firecrawl_leads} size={size} jobTitles={jobTitles.length} />}
             {fits && (fits.apollo_leads != null || fits.firecrawl_leads != null) && (
               <div className="space-y-1 text-[13px] font-medium tabular-nums text-amber-700 dark:text-amber-300">
-                {fits.apollo_leads != null && <p>Apollo credits left: {fits.apollo_credits != null ? `${fits.apollo_credits.toLocaleString()} → ` : ""}enough for about {fits.apollo_leads.toLocaleString()} leads</p>}
-                {fits.firecrawl_leads != null && <p>Firecrawl credits left: {fits.firecrawl_credits != null ? `${fits.firecrawl_credits.toLocaleString()} → ` : ""}enough for about {fits.firecrawl_leads.toLocaleString()} leads</p>}
+                {fits.apollo_leads != null && <p>Apollo credits left: {fits.apollo_credits != null ? `${fits.apollo_credits.toLocaleString()} → ` : ""}enough for about {leadsN(fits.apollo_leads)}</p>}
+                {fits.firecrawl_leads != null && <p>Firecrawl credits left: {fits.firecrawl_credits != null ? `${fits.firecrawl_credits.toLocaleString()} → ` : ""}enough for about {leadsN(fits.firecrawl_leads)}</p>}
               </div>
             )}
           </div>
@@ -663,7 +701,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
           <AssignStrategyPicker employees={employees} mode={assignMode} onModeChange={setAssignMode} assignTo={assignTo} onAssignToChange={setAssignTo} />
           <ApolloCostNote
             credits={maxCredits}
-            spendingOn={`at most (about ${needCredits} expected) for ${target} leads: ~${pages} search${pages === 1 ? "" : "es"} of 100 companies + 1 credit per lead${jobTitles.length ? `. Only people with these job titles are revealed: ${jobTitles.join(", ")}` : ""}`}
+            spendingOn={`at most (about ${needCredits} expected) for ${leadsN(target)}: ~${pages} search${pages === 1 ? "" : "es"} of 100 companies + 1 credit per lead${jobTitles.length ? `. Only people with these job titles are revealed: ${jobTitles.join(", ")}` : ""}`}
             rate={`At most this many Apollo credits: 1 per search of 100 companies, then 1 per lead. Companies that aren't plastic makers, or have nobody with an email, cost nothing.${jobTitles.length ? " Companies with nobody of your job titles wait in Needs review for free, so you may get fewer automatic leads." : ""} Reading websites uses about 1 Firecrawl credit per company.`}
           />
         </div>
@@ -678,8 +716,8 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
         {step < STEPS.length - 1 ? (
           <Button type="button" onClick={next} disabled={step === 1 && (!!inputMsg || creditsTooLow || !!fitBlock)}>Next</Button>
         ) : (
-          <Button type="button" onClick={startSearch} disabled={busy}>
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />} Find {target} leads
+          <Button type="button" onClick={startSearch} disabled={busy || lookingUp}>
+            {busy || lookingUp ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />} {lookingUp ? "Checking for a search already started…" : `Find ${leadsN(target)}`}
           </Button>
         )}
       </div>

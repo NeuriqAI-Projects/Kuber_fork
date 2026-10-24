@@ -44,8 +44,24 @@ export interface ScoredCompany {
   status: string; score: number | null; reason: string | null; text_source: string | null; last_error: string | null; attempts: number;
   decided_by: string | null; organization_id: string | null; group: Group; batch_name: string; batch_color: string;
   contact: { first_name: string | null; title: string | null; email: string | null } | null;
+  /** The search's job titles, sent only when nobody here had one (the status line names them). */
+  job_titles?: string[];
 }
-export interface ScoredData { searches: ScoredSearch[]; counts: Record<Group, number>; companies: ScoredCompany[]; review_total: number }
+/** Every search of the company, for the Batch filter. `size` = companies found, "running", or null (older searches carry no numbers). */
+export interface ScoredBatch { id: string; batch_name: string; color: string; created_at: string; size: number | "running" | null }
+export interface ScoredData {
+  /** The 20 newest searches (plus any filtered on) with full progress numbers. */
+  searches: ScoredSearch[]; batches?: ScoredBatch[];
+  /** Per column for the current batch filter (company-wide without one). */
+  counts: Record<Group, number>;
+  /** Company-wide, every search: the Status filter's numbers. */
+  all_counts?: (Record<Group, number> & { waiting: number }) | null;
+  companies: ScoredCompany[]; review_total: number;
+  /** How many companies match the filter; `companies` holds the newest of them (see "Show more"). */
+  total_matching?: number;
+}
+/** Companies per list answer; "Show more" adds this many. */
+export const SCORED_PAGE = 300;
 export type DecideAction = "approve" | "reject" | "retry" | "undo";
 /** `waiting` = only "Waiting for credits" companies (a part of Good fit / Approved, not a column of its own). */
 export interface ScoredFilter { searchIds: string[]; groups: Group[]; hidden: boolean; waiting?: boolean }
@@ -81,17 +97,31 @@ export function useScoredOrgs(filter: ScoredFilter, q: string, enabled = true, {
   // `state.key` = the filter the data on screen was loaded for. Until the answer for a new filter
   // arrives, the old rows are `stale`: screens show a loading state and hide bulk actions, so
   // "Approve all" never acts on rows of a filter that is no longer picked.
-  const [state, setState] = useState<{ data: ScoredData; key: string } | null>(null);
+  // `fk` = the same without the row limit: "Show more" keeps the rows on screen (not stale).
+  const [state, setState] = useState<{ data: ScoredData; key: string; fk: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const kicking = useRef(false);
-  const key = JSON.stringify({ filter, q, orgsOnly });
+  // "Show more" raises it; a new filter starts again from one page.
+  const [limit, setLimit] = useState(SCORED_PAGE);
+  const filterKey = JSON.stringify({ filter, q, orgsOnly });
+  const [limitFor, setLimitFor] = useState(filterKey);
+  if (limitFor !== filterKey) { setLimitFor(filterKey); setLimit(SCORED_PAGE); }
+  const shown = limitFor === filterKey ? limit : SCORED_PAGE;
+  const key = JSON.stringify({ filter, q, orgsOnly, limit: shown });
   const keyRef = useRef(key);
   keyRef.current = key;
   const data = state?.data ?? null;
-  const stale = !!state && state.key !== key;
+  const stale = !!state && state.fk !== filterKey;
+  const loadingMore = !!state && !stale && state.key !== key;
 
+  const answered = useRef(new Set<string>());
+  const loadRef = useRef<(() => Promise<void>) | null>(null);
+  // One request per filter at a time: the 4 s poll used to send another while a slow one was still
+  // running, so several heavy reads piled up (an Apply once took 21 s to show).
+  const inflight = useRef(new Set<string>());
   const load = useCallback(async () => {
+    if (inflight.current.has(key)) return;
     const p = new URLSearchParams();
     if (filter.searchIds.length) p.set("search_ids", filter.searchIds.join(","));
     // Hidden is just another Status option: the API returns ONLY the selected
@@ -102,17 +132,26 @@ export function useScoredOrgs(filter: ScoredFilter, q: string, enabled = true, {
     if (filter.waiting) p.set("waiting", "1");
     if (q.trim()) p.set("q", q.trim());
     if (orgsOnly) p.set("orgs", "1");
+    p.set("limit", String(shown));
+    inflight.current.add(key);
     try {
       const d = await api<ScoredData>(`/api/v1/prospects?${p}`);
       // An answer for a filter that was changed meanwhile must not replace the newer one.
       if (keyRef.current !== key) return;
-      setState({ data: d, key });
+      answered.current.add(key);
+      setState({ data: d, key, fk: filterKey });
       // The side menu's "N to review" polls once a minute; give it this fresher number so both always match.
       window.dispatchEvent(new CustomEvent(REVIEW_TOTAL_EVENT, { detail: d.review_total }));
       setError(null);
-    } catch (e) { setError((e as Error).message); }
+    } catch (e) {
+      setError((e as Error).message);
+      // A new filter's first answer failed: try again soon instead of waiting for the 15 s poll
+      // (the list sat on "Loading…" that long, once 21 s).
+      if (keyRef.current === key) setTimeout(() => { if (keyRef.current === key && !answered.current.has(key)) void loadRef.current?.(); }, 2000);
+    } finally { inflight.current.delete(key); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+  loadRef.current = load;
 
   useEffect(() => {
     if (!enabled) return;
@@ -140,7 +179,8 @@ export function useScoredOrgs(filter: ScoredFilter, q: string, enabled = true, {
     setState((st) => st && { ...st, data: { ...st.data, companies: st.data.companies.map((c) => (ids.includes(c.id) ? { ...c, ...change } : c)) } });
   }, []);
 
-  return { data, error, loading: loading || stale, stale, reload: load, patch };
+  const showMore = useCallback(() => setLimit((n) => n + SCORED_PAGE), []);
+  return { data, error, loading: (loading && !loadingMore) || stale, stale, loadingMore, reload: load, patch, showMore };
 }
 
 /** After a Decline the toast offers Undo (the button's tip promises it); `onUndone` runs once it is undone. */
@@ -251,7 +291,8 @@ function problemLabel(c: ScoredCompany, text: string): string {
 
 export function FitPill({ score, group }: { score: number | null; group?: Group }) {
   // Needs review = the AI could not decide, so there is no number: show a "?" for "your call", not a blank.
-  if (score == null && group === "review") return <Tip text="No fit score: the AI could not tell if it makes plastic products. Your call: Approve or Decline."><span className={cn("inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-full border px-2 text-xs font-medium", TONE.amber)}>Unsure</span></Tip>;
+  // It stays "Unsure" after an Approve or Decline: the AI's verdict does not change because you decided.
+  if (score == null && (group === "review" || group === "approved" || group === "declined")) return <Tip text={group === "review" ? "No fit score: the AI could not tell if it makes plastic products. Your call: Approve or Decline." : "No fit score: the AI could not tell if it makes plastic products, so you decided."}><span className={cn("inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-full border px-2 text-xs font-medium", TONE.amber)}>Unsure</span></Tip>;
   if (score == null) return <Tip text="Not scored: the AI has not checked this company (yet)."><span className="whitespace-nowrap text-xs text-muted-foreground">No score</span></Tip>;
   const tip = score === 9 ? "Fit score 9: makes the products you searched." : score === 7 ? "Fit score 7: makes other plastic products." : `Fit score ${score}: not a fit.`;
   // A circle in the primary shade for a real fit (7+); neutral for the rest.
@@ -385,14 +426,15 @@ export function RunningSearchesBar({ data, onOpen }: { data: ScoredData | null; 
   const waiting = searches.filter((s) => s.stages.waiting_credits > 0);
   const failed = searches.filter((s) => s.status !== "done" && Date.now() - new Date(s.created_at).getTime() < 24 * 3600_000);
   const toReview = searches.filter((s) => s.groups.review > 0);
-  if (!waiting.length && !failed.length && !toReview.length) return null;
+  // review_total counts every search: older searches' review companies keep the bar up too.
+  if (!waiting.length && !failed.length && !toReview.length && !(data?.review_total ?? 0)) return null;
   const needing = searches.filter((s) => s.stages.waiting_credits > 0 || s.groups.review > 0 || failed.includes(s));
   const shown = needing.slice(0, limit);
 
   return (
     <div className="rounded-lg border border-border bg-card px-3 py-1.5 text-[13px]">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        {(data?.review_total ?? 0) > 0 && <span title="Companies in your 20 most recent searches that wait for your Approve or Decline" className="text-xs font-medium text-amber-600 dark:text-amber-400">{data!.review_total} need review</span>}
+        {(data?.review_total ?? 0) > 0 && <span title="Companies (in all your searches) that wait for your Approve or Decline" className="text-xs font-medium text-amber-600 dark:text-amber-400">{data!.review_total.toLocaleString()} need review</span>}
         {waiting.length > 0 && <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{waiting.reduce((t, s) => t + s.stages.waiting_credits, 0)} waiting for Apollo credits</span>}
         {failed.length > 0 && <span className="flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400"><AlertTriangle className="size-3.5" />{failed.length} search{failed.length > 1 ? "es" : ""} had a problem</span>}
         <Button type="button" variant="ghost" size="sm" onClick={() => setOpen((o) => !o)} className="ml-auto text-muted-foreground">
@@ -419,20 +461,22 @@ export function ScoredFiltersDialog({ onOpenChange, value, onApply, data }: {
   onOpenChange: (o: boolean) => void; value: ScoredFilter; onApply: (f: ScoredFilter) => void; data: ScoredData | null;
 }) {
   const [draft, setDraft] = useState<ScoredFilter>(() => ({ searchIds: [...value.searchIds], groups: [...value.groups], hidden: value.hidden, waiting: !!value.waiting }));
-  const allCounts = (data?.searches ?? []).reduce((acc, s) => { for (const g of GROUPS) acc[g] += s.groups[g]; return acc; }, { checking: 0, review: 0, good: 0, approved: 0, declined: 0, hidden: 0 } as Record<Group, number>);
+  // Company-wide, every search (not only the newest 20).
+  const allCounts = data?.all_counts ?? null;
 
   // "Hidden" is one more Status option in the dropdown (same as the Leads
   // filter's single Status list); it maps to the `hidden` flag, which adds the
   // Hidden column to the Kanban.
-  const waitingCount = (data?.searches ?? []).reduce((t, s) => t + s.stages.waiting_credits, 0);
   const statusOptions: DropdownOption<Group | "waiting">[] = [
     // No data yet (still loading, or the last load failed): "…", never a made-up 0.
-    ...GROUPS.map((g) => ({ value: g, label: `${GROUP_LABEL[g]} (${data ? allCounts[g] : "…"})`, chip: GROUP_LABEL[g], dot: STATUS_DOT[g] })),
-    { value: "waiting", label: `Waiting for credits (${data ? waitingCount : "…"})`, chip: "Waiting for credits", dot: "bg-amber-500" },
+    ...GROUPS.map((g) => ({ value: g, label: `${GROUP_LABEL[g]} (${allCounts ? allCounts[g].toLocaleString() : "…"})`, chip: GROUP_LABEL[g], dot: STATUS_DOT[g] })),
+    { value: "waiting", label: `Waiting for credits (${allCounts ? allCounts.waiting.toLocaleString() : "…"})`, chip: "Waiting for credits", dot: "bg-amber-500" },
   ];
   const statusSelected = new Set<Group | "waiting">([...draft.groups, ...(draft.hidden ? (["hidden"] as const) : []), ...(draft.waiting ? (["waiting"] as const) : [])]);
-  const batchOptions: DropdownOption<string>[] = (data?.searches ?? []).map((s) => ({
-    value: s.id, label: `${s.batch_name} (${s.in_progress > 0 ? "running" : s.total})`, chip: s.batch_name, dot: getBatchColor(s.color).bg,
+  // Every search, newest first (the list box has a search field). Older ones carry the date instead of a count.
+  const batchOptions: DropdownOption<string>[] = (data?.batches ?? data?.searches.map((s) => ({ ...s, size: s.total })) ?? []).map((b) => ({
+    value: b.id, chip: b.batch_name, dot: getBatchColor(b.color).bg,
+    label: `${b.batch_name} (${b.size ?? new Date(b.created_at).toLocaleDateString([], { day: "numeric", month: "short" })})`,
   }));
 
   return (
@@ -443,7 +487,7 @@ export function ScoredFiltersDialog({ onOpenChange, value, onApply, data }: {
     >
       <MultiSelectDropdown
         label="Status"
-        hint="Show only companies in these stages. The numbers count your 20 most recent searches (the ones this page lists)."
+        hint="Show only companies in these stages. The numbers count every search."
         options={statusOptions}
         selected={statusSelected}
         onChange={(next) => setDraft((d) => ({ ...d, groups: [...next].filter((g): g is Group => g !== "hidden" && g !== "waiting"), hidden: next.has("hidden"), waiting: next.has("waiting") }))}
@@ -451,7 +495,7 @@ export function ScoredFiltersDialog({ onOpenChange, value, onApply, data }: {
       {batchOptions.length > 0 && (
         <MultiSelectDropdown
           label="Batch"
-          hint="Show only companies from these searches."
+          hint="Show only companies from these searches. Every search is listed, newest first; type to find an older one."
           options={batchOptions}
           selected={new Set(draft.searchIds)}
           onChange={(next) => setDraft((d) => ({ ...d, searchIds: [...next] }))}
@@ -474,8 +518,10 @@ export type ScoredColKey = (typeof SCORED_COLUMN_DEFS)[number]["key"];
 export type ScoredColVisibility = Record<ScoredColKey, boolean>;
 export const DEFAULT_SCORED_VISIBILITY = Object.fromEntries(SCORED_COLUMN_DEFS.map((c) => [c.key, c.defaultVisible])) as ScoredColVisibility;
 
-export function ScoredOrgsTable({ data, error, loading, stale = false, visible = DEFAULT_SCORED_VISIBILITY, onDecide, onOpenCompany }: {
+export function ScoredOrgsTable({ data, error, loading, stale = false, visible = DEFAULT_SCORED_VISIBILITY, onDecide, onOpenCompany, onShowMore, loadingMore = false }: {
   data: ScoredData | null; error: string | null; loading: boolean; visible?: ScoredColVisibility;
+  /** The list holds the newest companies of the filter; this loads the next ones. */
+  onShowMore?: () => void; loadingMore?: boolean;
   /** The rows on screen are for the previous filter: show loading, never act on them. */
   stale?: boolean;
   onDecide: (ids: string[], a: DecideAction) => Promise<void>; onOpenCompany: (c: ScoredCompany) => void;
@@ -527,7 +573,7 @@ export function ScoredOrgsTable({ data, error, loading, stale = false, visible =
                 <TableCell className={cn(STICKY_CELL, "left-0")}>
                   <div className="flex min-w-0 items-center gap-2">
                     <OrgTile />
-                    <span className="max-w-[160px] truncate font-medium" title={c.name}>{c.name}</span>
+                    <span className="line-clamp-2 max-w-[240px] whitespace-normal break-words font-medium leading-snug" title={c.name}>{c.name}</span>
                   </div>
                 </TableCell>
                 <TableCell><GroupPill group={c.group} status={c.status} /></TableCell>
@@ -542,6 +588,7 @@ export function ScoredOrgsTable({ data, error, loading, stale = false, visible =
           })}
         </TableBody>
       </table>
+      <ShowMore shown={rows.length} total={data?.total_matching} onShowMore={onShowMore} loading={loadingMore} />
       {/* Room under the last row, so its Decide buttons scroll clear of the floating "Ask Kuber AI" button (64px tall with its margin). */}
       <div aria-hidden className="h-24" />
       {/* pr-28 keeps the buttons clear of the floating "Ask Kuber AI" button (bottom-right). */}
@@ -563,6 +610,19 @@ export function ScoredOrgsTable({ data, error, loading, stale = false, visible =
         onClose={() => setConfirmApprove(null)}
         onConfirm={() => { const ids = confirmApprove ?? []; setConfirmApprove(null); void run(ids, "approve"); }}
       />
+    </div>
+  );
+}
+
+/** "Show more" under a scored list that holds only the newest companies of its filter. */
+export function ShowMore({ shown, total, onShowMore, loading }: { shown: number; total?: number; onShowMore?: () => void; loading: boolean }) {
+  if (!onShowMore || total == null || total <= shown) return null;
+  return (
+    <div className="flex items-center justify-center gap-3 py-3 text-[13px] text-muted-foreground">
+      <span className="tabular-nums">Showing the newest {shown.toLocaleString()} of {total.toLocaleString()}</span>
+      <Button type="button" variant="outline" size="sm" disabled={loading} onClick={onShowMore}>
+        {loading && <Loader2 className="size-3.5 animate-spin" />}Show {Math.min(SCORED_PAGE, total - shown).toLocaleString()} more
+      </Button>
     </div>
   );
 }
@@ -652,7 +712,8 @@ export function ScoredOrgsKanban({ data, error, loading, stale = false, groups, 
                     </div>
                   );
                 })}
-                {cards.length > 60 && <p className="text-center text-xs text-muted-foreground">+ {cards.length - 60} more — use the list view or a batch filter</p>}
+                {/* The column's number counts every company; only the newest loaded ones are cards. */}
+                {data.counts[col.id] > Math.min(cards.length, 60) && <p className="text-center text-xs text-muted-foreground">+ {(data.counts[col.id] - Math.min(cards.length, 60)).toLocaleString()} more — use the list view or a batch filter</p>}
                 {cards.length === 0 && <div className="flex items-center justify-center rounded-lg border border-dashed border-border py-6"><p className="text-xs text-muted-foreground">Empty</p></div>}
               </div>
             </div>

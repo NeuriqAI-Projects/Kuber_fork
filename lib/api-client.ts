@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import type { Lead, LeadStatus, LeadScore, LeadSource, EnrichmentStage } from "@/lib/leads";
 import type { Campaign } from "@/components/app/create-campaign-modal";
-import type { CampaignStepInput } from "@/lib/constants";
+import type { CampaignStepInput, IndustryKeywordGroup } from "@/lib/constants";
 import { campaignOutcomes } from "@/lib/campaign-status";
 import { mapDbCampaign as mapDbCampaignFull } from "@/lib/mappers";
 import { queryCache } from "@/lib/query-cache";
@@ -1217,6 +1217,12 @@ export async function fetchSettings(token: string): Promise<Record<string, strin
 
 export async function patchSettings(token: string, body: Record<string, string>): Promise<Record<string, string>> {
   return apiFetch("/api/v1/settings", { method: "PATCH", body: JSON.stringify(body) }, token);
+}
+
+/** Adds ONE keyword to ONE Industry Segments group on the server, safe against a teammate adding at the
+ *  same moment. Refusals (duplicate, group removed) throw with `code` and `details.groups` (the saved list). */
+export async function addIndustryKeyword(token: string, body: { group_id: string; label: string; query: string }): Promise<{ groups: IndustryKeywordGroup[] }> {
+  return apiFetch("/api/v1/settings/industry-keywords", { method: "POST", body: JSON.stringify(body) }, token);
 }
 
 // ─── Per-user settings (personal prompt / signature / sender / theme) ─────────

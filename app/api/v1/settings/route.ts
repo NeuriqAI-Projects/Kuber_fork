@@ -4,6 +4,7 @@ import { requireAuth, type AuthedUser } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { PatchSettingsSchema, SETTINGS_KEYS, KNOWLEDGE_SETTINGS_KEYS } from "@/lib/validators/settings";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { saveGroupsChecked } from "@/lib/services/prospects/keywords";
 
 async function readSettings(db: SupabaseClient) {
   const { data, error } = await db.from("settings").select("key, value").in("key", [...SETTINGS_KEYS]);
@@ -42,6 +43,10 @@ export async function PATCH(req: NextRequest) {
   try { caller = await requireAuth(req); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
+  // The Industry Segments list as the client last loaded it: when sent, the list is saved only if
+  // nobody changed it since (never silently over a teammate's change). Not a setting itself.
+  const base = typeof body?.industry_keyword_groups_base === "string" ? body.industry_keyword_groups_base as string : null;
+  if (body && typeof body === "object") delete body.industry_keyword_groups_base;
   const parsed = PatchSettingsSchema.safeParse(body);
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
 
@@ -57,8 +62,15 @@ export async function PATCH(req: NextRequest) {
 
   const db = dbForUser(caller);
 
+  if (base !== null && parsed.data.industry_keyword_groups !== undefined) {
+    try {
+      const r = await saveGroupsChecked(db, parsed.data.industry_keyword_groups, base);
+      if (!r.ok) return fail(409, "CONFLICT", r.message);
+    } catch (e) { return fail(500, "INTERNAL", (e as Error).message); }
+  }
+
   for (const [key, value] of Object.entries(parsed.data)) {
-    if (value === undefined) continue;
+    if (value === undefined || (key === "industry_keyword_groups" && base !== null)) continue;
     const { error } = await db.from("settings").upsert(
       { key, value },
       { onConflict: "key" },

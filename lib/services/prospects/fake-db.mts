@@ -2,7 +2,7 @@
 // tests. Tables are plain arrays; `fail` makes a write on a table error out.
 type Row = Record<string, unknown>;
 
-export function fakeDb(opts: { fail?: Partial<Record<string, "insert" | "upsert">>; unique?: Record<string, string> } = {}) {
+export function fakeDb(opts: { fail?: Partial<Record<string, "insert" | "upsert">>; unique?: Record<string, string>; touch?: string[] } = {}) {
   // Any table name reads as an (initially empty) array.
   const tables = new Proxy({} as Record<string, Row[]>, { get: (o, k: string) => (o[k] ??= []) });
   let n = 0;
@@ -24,7 +24,8 @@ export function fakeDb(opts: { fail?: Partial<Record<string, "insert" | "upsert"
         return { data: single ? added[0] ?? null : added, error: null };
       }
       const hit = t.filter((r) => filters.every((f) => f(r)));
-      if (op === "update") { hit.forEach((r) => Object.assign(r, val)); return { data: hit, error: null }; }
+      // `touch`: tables whose updated_at a trigger sets on each update (like settings_set_updated_at).
+      if (op === "update") { hit.forEach((r) => Object.assign(r, val, opts.touch?.includes(table) ? { updated_at: `t${++n}` } : {})); return { data: hit, error: null }; }
       if (countHead) return { data: null, count: hit.length, error: null };
       if (single || maybe) return { data: hit[0] ?? null, error: single && !hit[0] ? { message: "no rows" } : null };
       return { data: hit, error: null };

@@ -914,9 +914,12 @@ export default function LeadsPage() {
   // Only the newest 500 leads are loaded until "Show more": say so, never "500 leads" when there are more.
   const partial = !searchResults && leadsTotal != null && leadsTotal > leads.length;
   const countLabel = leadsEntityMode === "orgs"
-    ? scoredView ? (scored.stale || !scored.data ? "…" : `${scored.data.companies.length} companies`)
-      : loadingLeads && !leads.length ? "…" : `${orgRows.length + scoredOnlyRows.length} organizations${partial && !q ? ` (from ${leads.length} of ${leadsTotal} leads)` : ""}`
+    ? scoredView ? (scored.stale || !scored.data ? "…" : `${scored.data.companies.length.toLocaleString()}${(scored.data.total_matching ?? 0) > scored.data.companies.length ? ` of ${scored.data.total_matching!.toLocaleString()}` : ""} compan${scored.data.companies.length === 1 ? "y" : "ies"}`)
+      // A name search is still on its way (leads or scored companies): "…", never a made-up 0.
+      : ((loadingLeads || (leadsTotal ?? 0) > 0) && !leads.length) || (q && (scored.loading || searchLoading)) ? "…" : `${orgRows.length + scoredOnlyRows.length} organization${orgRows.length + scoredOnlyRows.length === 1 ? "" : "s"}`
     : searchLoading ? "…" : partial ? `${displayLeads.length} of ${leadsTotal} leads` : `${displayLeads.length} leads`;
+  // The Organization list's "(from 500 of 3,526 leads)": only on wide screens, always in the hover title.
+  const countExtra = leadsEntityMode === "orgs" && !scoredView && countLabel !== "…" && partial && !q ? ` (from ${leads.length} of ${leadsTotal} leads)` : "";
   const openScoredBatch = (searchId: string, group?: Group) => {
     setLeadsViewMode("list");
     setScoredFilter({ ...EMPTY_SCORED_FILTER, searchIds: [searchId], groups: group ? [group] : [] });
@@ -1089,7 +1092,7 @@ export default function LeadsPage() {
           </>
         )}
         <div className="ml-auto flex min-w-0 items-center gap-3">
-          <Tip text={leadsEntityMode === "orgs" ? "Search by company name." : "Search by lead name, email or company."} className="min-w-0">
+          <Tip text={leadsEntityMode === "orgs" ? "Search by company name." : "Search by lead name, email or company."} className="min-w-28">
             <SearchInput
               value={searchQuery}
               onChange={setSearchQuery}
@@ -1098,7 +1101,9 @@ export default function LeadsPage() {
               wrapperClassName="w-56 min-w-28 max-w-full"
             />
           </Tip>
-          <span className="whitespace-nowrap text-[13px] tabular-nums text-muted-foreground">{countLabel}</span>
+          {/* Out of room (e.g. 1280 px) the search box gets narrower, never the count. Before, the box's wrapper
+              shrank to 0 and the box was drawn over the count. "(from 500 of N leads)" only on wide screens. */}
+          <span className="shrink-0 whitespace-nowrap text-[13px] tabular-nums text-muted-foreground" title={countLabel + countExtra}>{countLabel}{countExtra && <span className="hidden 2xl:inline">{countExtra}</span>}</span>
         </div>
       </Toolbar>
 
@@ -1136,7 +1141,7 @@ export default function LeadsPage() {
             />
           </div>
         ) : scoredView ? (
-          <ScoredOrgsTable data={scored.data} error={scored.error} loading={scored.loading} stale={scored.stale} visible={scoredVisibleCols} onDecide={handleScoredDecide} onOpenCompany={openScoredCompany} />
+          <ScoredOrgsTable data={scored.data} error={scored.error} loading={scored.loading} stale={scored.stale} visible={scoredVisibleCols} onDecide={handleScoredDecide} onOpenCompany={openScoredCompany} onShowMore={scored.showMore} loadingMore={scored.loadingMore} />
         ) : leadsEntityMode === "orgs" ? (
           <>
           <table className={GRID_TABLE}>
@@ -1185,7 +1190,7 @@ export default function LeadsPage() {
                       <TableCell className={cn(STICKY_CELL, "left-0")}>
                         <div className="flex min-w-0 items-center gap-2">
                           <OrgTile />
-                          <span className="max-w-[160px] truncate font-medium" title={org.name || undefined}>{org.name || "—"}</span>
+                          <span className="line-clamp-2 max-w-[240px] whitespace-normal break-words font-medium leading-snug" title={org.name || undefined}>{org.name || "—"}</span>
                         </div>
                       </TableCell>
                       {orgVisibleCols.fit_status && <TableCell>{sc ? <GroupPill group={sc.group} status={sc.status} /> : <Dash />}</TableCell>}
@@ -1211,7 +1216,7 @@ export default function LeadsPage() {
                   <TableCell className={cn(STICKY_CELL, "left-0")}>
                     <div className="flex min-w-0 items-center gap-2">
                       <OrgTile />
-                      <span className="max-w-[160px] truncate font-medium" title={c.name}>{c.name}</span>
+                      <span className="line-clamp-2 max-w-[240px] whitespace-normal break-words font-medium leading-snug" title={c.name}>{c.name}</span>
                     </div>
                   </TableCell>
                   {orgVisibleCols.fit_status && <TableCell><GroupPill group={c.group} status={c.status} /></TableCell>}

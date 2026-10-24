@@ -56,7 +56,16 @@ export function plainCause(raw: string | null | undefined): string {
 }
 
 /** One short line for a card or row: what is happening to this company right now. */
-export function statusLine(r: GroupRow & { contact?: { first_name: string | null; title: string | null; email: string | null } | null }): { text: string; tone: Tone } {
+/** "is titled 'a'", "is titled 'a' or 'b'", "is titled 'a', 'b' or 2 more titles"; no titles = the plain words. */
+export function titledAs(titles: string[] | null | undefined): string {
+  const t = (titles ?? []).map((x) => x.trim()).filter(Boolean).map((x) => `'${x}'`);
+  if (!t.length) return "has the job titles you picked";
+  if (t.length <= 2) return `is titled ${t.join(" or ")}`;
+  return `is titled ${t.slice(0, 2).join(", ")} or ${t.length - 2} more title${t.length === 3 ? "" : "s"}`;
+}
+
+/** `job_titles`: the search's titles, to name them when nobody matched. */
+export function statusLine(r: GroupRow & { contact?: { first_name: string | null; title: string | null; email: string | null } | null; job_titles?: string[] | null }): { text: string; tone: Tone } {
   const retrying = (r.attempts ?? 0) > 0 && isWorking(r);
   if (retrying) return { text: `Retrying (try ${(r.attempts ?? 0) + 1} of 3): ${plainCause(r.last_error)}. Nothing to do, it tries again on its own.`, tone: "amber" };
   switch (r.status) {
@@ -73,7 +82,7 @@ export function statusLine(r: GroupRow & { contact?: { first_name: string | null
       // pipeline.ts writes "Stopped after 3 tries: <raw error>" when a service kept failing.
       if (r.last_error?.startsWith("Stopped after")) return { text: `Could not be checked after 3 tries because ${plainCause(r.last_error)}. Approve or decline it yourself.`, tone: "amber" };
       // Search with job titles, nobody here has one (pipeline.ts): say what Approve does instead.
-      if (r.last_error?.startsWith(NO_TITLE_MATCH)) return { text: "Nobody here has the job titles you picked. Nothing spent. Approve to reveal the best buyer (1 credit).", tone: "amber" };
+      if (r.last_error?.startsWith(NO_TITLE_MATCH)) return { text: `Nobody here ${titledAs(r.job_titles)}. Nothing spent. Approve to reveal the best buyer (1 credit).`, tone: "amber" };
       if (r.last_error?.startsWith(REVEAL_CAP_HIT)) return { text: "Good fit. Not revealed because you already got the leads you asked for. Approve to reveal (1 credit).", tone: "amber" };
       return { text: r.last_error ?? "AI unsure — your call", tone: "amber" };
     case "flagged": return { text: r.last_error ?? "Not enough information to check", tone: "amber" };
@@ -95,10 +104,28 @@ export async function scoredForOrg(db: SupabaseClient, orgId: string, leads: { a
     .eq("organization_id", orgId).order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (!pc) return null;
   const { data: search } = await db.from("prospect_searches").select("filters").eq("id", pc.search_id).maybeSingle();
-  const f = (search?.filters ?? {}) as { batch_name?: string; color?: string };
+  const f = (search?.filters ?? {}) as { batch_name?: string; color?: string; job_titles?: string[] };
   const l = pc.contact_apollo_id ? leads.find((x) => x.apollo_id === pc.contact_apollo_id) : null;
   return {
-    ...pc, group: groupOf(pc), batch_name: f.batch_name ?? "Scored search", batch_color: f.color ?? "green",
+    ...pc, group: groupOf(pc), batch_name: f.batch_name ?? "Scored search", batch_color: f.color ?? "green", job_titles: f.job_titles ?? [],
     contact: l ? { first_name: l.first_name, title: l.title, email: l.email } : null,
   };
+}
+
+const GOODISH = "good,waiting_credits,no_contact,promoted";
+/** Each group as a PostgREST filter, exactly like groupOf (good / approved split on decided_by). */
+const GROUP_FILTER: Record<Group, string> = {
+  checking: "status.in.(queued,read_social,read)", review: "status.in.(review,flagged,site_down)",
+  good: `and(status.in.(${GOODISH}),decided_by.is.null)`, approved: `status.eq.approved,and(status.in.(${GOODISH}),decided_by.not.is.null)`,
+  declined: "status.eq.rejected", hidden: "status.eq.hidden",
+};
+
+/** One `.or()` text for the list query: the picked groups (and "waiting for credits"), AND a name/domain
+ *  search. A search word is matched as a superset here (odd characters become wildcards) and exactly in code. */
+export function companiesFilter(groups: Group[], waiting: boolean, q: string): string | null {
+  const g = [...groups.map((x) => GROUP_FILTER[x]), ...(waiting ? ["status.eq.waiting_credits"] : [])].join(",");
+  const w = q.trim().toLowerCase().replace(/[^\p{L}\p{N} .\-]+/gu, "*");
+  const s = w ? `name.ilike.*${w}*,domain.ilike.*${w}*` : "";
+  if (g && s) return `and(or(${g}),or(${s}))`;
+  return g || s || null;
 }

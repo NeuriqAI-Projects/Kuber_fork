@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useEscClose } from "@/components/ui/use-esc-close";
 import { Check, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +36,9 @@ export function MultiSelectDropdown<T extends string>({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  // Esc closes the open list first (not the Filters dialog around it).
+  const close = useCallback(() => setOpen(false), []);
+  useEscClose(open, close);
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -55,7 +59,9 @@ export function MultiSelectDropdown<T extends string>({
   );
 
   return (
-    <div ref={ref} className="relative">
+    // Focus moving to another field (Tab, a click on another control) closes the list too. A click on a
+    // blank part of the list itself moves focus nowhere (relatedTarget null) and keeps it open.
+    <div ref={ref} className="relative" onBlur={(e) => { if (e.relatedTarget && !ref.current?.contains(e.relatedTarget as Node)) setOpen(false); }}>
       <p className="eyebrow mb-2 flex items-center gap-1">{label}{hint && <InfoTip text={hint} side="right" />}</p>
       <Button
         type="button"

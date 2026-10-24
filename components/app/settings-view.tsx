@@ -287,6 +287,8 @@ export function SettingsView() {
 
   const [productOfferings, setProductOfferings] = useState<ProductOffering[]>([]);
   const [industryKeywordGroups, setIndustryKeywordGroups] = useState<IndustryKeywordGroup[]>([]);
+  // The Industry Segments list as the server last had it (raw JSON): sent with each save so a teammate's change in between is refused, not overwritten.
+  const keywordGroupsBase = useRef("");
   // Each group card renders as plain text by default; its single pencil icon
   // opens the whole card (group name + every keyword + "Add keyword") into
   // edit mode at once, rather than every field being a live text box always.
@@ -408,6 +410,7 @@ export function SettingsView() {
       setReplyDrafterPrompt(s.reply_drafter_prompt ?? "");
       try { setProductOfferings(JSON.parse(s.product_offerings ?? "[]") as ProductOffering[]); } catch { setProductOfferings([]); }
       setIndustryKeywordGroups(parseIndustryKeywordGroups(s.industry_keyword_groups));
+      keywordGroupsBase.current = s.industry_keyword_groups ?? "";
     }
     function applyLogo(l: LogoData) {
       setLogoPath(l.logo_path);
@@ -585,8 +588,14 @@ export function SettingsView() {
   async function saveIndustryKeywordGroups(next: IndustryKeywordGroup[]) {
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token ?? "";
-    await patchSettings(token, { industry_keyword_groups: JSON.stringify(next) });
+    const value = JSON.stringify(next);
+    // Saved only if the list on the server is still the one this page last loaded or saved:
+    // a teammate's change in between is refused (409), never silently overwritten.
+    await patchSettings(token, { industry_keyword_groups: value, industry_keyword_groups_base: keywordGroupsBase.current });
+    keywordGroupsBase.current = value;
   }
+  /** The server's "someone else changed these" message, or null for any other failure. */
+  const keywordSaveError = (e: unknown) => ((e as { code?: string }).code === "CONFLICT" ? (e as Error).message : null);
 
   async function addGroup() {
     const id = crypto.randomUUID();
@@ -597,10 +606,10 @@ export function SettingsView() {
     setSavingGroupIds((prev) => new Set(prev).add(id));
     try {
       await saveIndustryKeywordGroups(next);
-    } catch {
+    } catch (e) {
       setIndustryKeywordGroups(previous);
       setEditingGroupIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
-      toast.error("Couldn't create the group — please try again.");
+      toast.error(keywordSaveError(e) ?? "Couldn't create the group — please try again.");
     } finally {
       setSavingGroupIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
     }
@@ -618,9 +627,9 @@ export function SettingsView() {
     if (removedId) setSavingGroupIds((prev) => new Set(prev).add(removedId));
     try {
       await saveIndustryKeywordGroups(next);
-    } catch {
+    } catch (e) {
       setIndustryKeywordGroups(previous);
-      toast.error("Couldn't delete the group — please try again.");
+      toast.error(keywordSaveError(e) ?? "Couldn't delete the group — please try again.");
     } finally {
       if (removedId) setSavingGroupIds((prev) => { const s = new Set(prev); s.delete(removedId); return s; });
     }
@@ -644,9 +653,9 @@ export function SettingsView() {
     if (groupId) setSavingGroupIds((prev) => new Set(prev).add(groupId));
     try {
       await saveIndustryKeywordGroups(next);
-    } catch {
+    } catch (e) {
       setIndustryKeywordGroups(previous);
-      toast.error("Couldn't add the keyword — please try again.");
+      toast.error(keywordSaveError(e) ?? "Couldn't add the keyword — please try again.");
     } finally {
       if (groupId) setSavingGroupIds((prev) => { const s = new Set(prev); s.delete(groupId); return s; });
     }
@@ -665,8 +674,8 @@ export function SettingsView() {
     try {
       await saveIndustryKeywordGroups(industryKeywordGroups);
       setEditingGroupIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
-    } catch {
-      toast.error("Couldn't save — please try again.");
+    } catch (e) {
+      toast.error(keywordSaveError(e) ?? "Couldn't save — please try again.");
     } finally {
       setSavingGroupIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
     }
@@ -688,9 +697,9 @@ export function SettingsView() {
     if (groupId) setSavingGroupIds((prev) => new Set(prev).add(groupId));
     try {
       await saveIndustryKeywordGroups(next);
-    } catch {
+    } catch (e) {
       setIndustryKeywordGroups(previous);
-      toast.error("Couldn't remove the keyword — please try again.");
+      toast.error(keywordSaveError(e) ?? "Couldn't remove the keyword — please try again.");
     } finally {
       if (groupId) setSavingGroupIds((prev) => { const s = new Set(prev); s.delete(groupId); return s; });
     }

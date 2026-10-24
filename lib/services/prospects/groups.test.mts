@@ -33,3 +33,23 @@ test("reveal-cap review says the leads asked for were reached and what Approve c
   const l = statusLine({ status: "review", last_error: "Good fit, but this search already used all its automatic reveals" });
   assert.equal(l.text, "Good fit. Not revealed because you already got the leads you asked for. Approve to reveal (1 credit).");
 });
+
+test("companiesFilter: groups as exact PostgREST filters, joined with a name search", async () => {
+  const { companiesFilter } = await import("./groups.ts");
+  assert.equal(companiesFilter([], false, ""), null);
+  assert.equal(companiesFilter(["review"], false, ""), "status.in.(review,flagged,site_down)");
+  assert.equal(companiesFilter(["good"], true, ""), "and(status.in.(good,waiting_credits,no_contact,promoted),decided_by.is.null),status.eq.waiting_credits");
+  assert.equal(companiesFilter(["approved"], false, "Acme"), "and(or(status.eq.approved,and(status.in.(good,waiting_credits,no_contact,promoted),decided_by.not.is.null)),or(name.ilike.*acme*,domain.ilike.*acme*))");
+  // Commas/brackets would break the filter text: they become wildcards (the exact match runs in code).
+  assert.equal(companiesFilter([], false, "a,b(c)"), "name.ilike.*a*b*c**,domain.ilike.*a*b*c**");
+});
+
+test("no-title-match review names the titles, a long list shortened", async () => {
+  const { titledAs } = await import("./groups.ts");
+  const l = statusLine({ status: "review", last_error: "No one with your job titles has an email here", job_titles: ["quality inspector"] });
+  assert.equal(l.text, "Nobody here is titled 'quality inspector'. Nothing spent. Approve to reveal the best buyer (1 credit).");
+  assert.equal(titledAs(["a", "b"]), "is titled 'a' or 'b'");
+  assert.equal(titledAs(["a", "b", "c"]), "is titled 'a', 'b' or 1 more title");
+  assert.equal(titledAs(["a", "b", "c", "d"]), "is titled 'a', 'b' or 2 more titles");
+  assert.equal(titledAs([]), "has the job titles you picked");
+});

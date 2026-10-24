@@ -25,7 +25,7 @@ import { LocationsPicker } from "@/components/ui/locations-picker";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ApolloPeopleAdvanced, buildPeopleAdvanced } from "@/components/app/apollo-people-advanced";
 import { ApolloCostNote } from "@/components/app/apollo-cost-note";
-import { apolloPreview, importExcelDirect, createLead, patchLead, patchOrg, fetchUsers, fetchUsage, fetchSettings, patchSettings, type Profile, type PreviewLead, type DuplicateOwner } from "@/lib/api-client";
+import { apolloPreview, importExcelDirect, createLead, patchLead, patchOrg, fetchUsers, fetchUsage, fetchSettings, addIndustryKeyword, type Profile, type PreviewLead, type DuplicateOwner } from "@/lib/api-client";
 import { ensureSplitNames } from "@/lib/utils/person-name";
 import { supabase } from "@/lib/supabase";
 import { BatchConfirmModal } from "@/components/app/batch-confirm-modal";
@@ -399,45 +399,34 @@ export function IndustryKeywordsDropdown({
     setAdding(true);
     try {
       const token = await getToken();
-      // Added to the list as saved NOW, not the copy this form loaded: two windows adding a keyword at
-      // the same time each kept only their own (the last save wrote its whole stale list).
-      // ponytail: re-read then write, a save in the same split second can still race; a DB-side append would close it.
-      const latest = parseIndustryKeywordGroups((await fetchSettings(token)).industry_keyword_groups);
-      const targetGroup = latest.find((g) => g.id === targetGroupId);
-      if (!targetGroup) {
-        onGroupsChange(latest);
-        setTargetGroupId("");
-        toast.error("That group was removed in Settings. Pick another group.");
+      // One keyword into one group on the server, atomically (it re-reads and retries if a teammate saves
+      // at the same moment). Sending the whole list lost one of two adds made at the same time.
+      let saved: IndustryKeywordGroup[];
+      try {
+        saved = (await addIndustryKeyword(token, { group_id: targetGroupId, label, query })).groups;
+      } catch (e) {
+        const err = e as Error & { code?: string; details?: { groups?: IndustryKeywordGroup[] } };
+        if (err.code !== "DUPLICATE" && err.code !== "NO_GROUP") throw e;
+        if (err.details?.groups) onGroupsChange(err.details.groups);
+        if (err.code === "NO_GROUP") setTargetGroupId("");
+        toast.error(err.message);
         return;
       }
-      const same = (k: { label: string }) => k.label.toLowerCase() === label.toLowerCase();
-      if (targetGroup.keywords.some(same)) {
-        onGroupsChange(latest);
-        toast.error(`"${label}" is already in ${targetGroup.label}.`);
-        return;
-      }
-      const other = latest.find((g) => g.id !== targetGroupId && g.keywords.some(same));
-      if (other) {
-        onGroupsChange(latest);
-        toast.error(`"${label}" is already in ${other.label}. Pick it there, or rename or move it in Settings > Industry segments.`);
-        return;
-      }
-      const updatedGroups = latest.map((g) =>
-        g.id === targetGroupId ? { ...g, keywords: [...g.keywords, { id: crypto.randomUUID(), label, query }] } : g,
-      );
-      await patchSettings(token, { industry_keyword_groups: JSON.stringify(updatedGroups) });
-      onGroupsChange(updatedGroups);
+      onGroupsChange(saved);
       onChange([...selected, label]);
+      const groupName = saved.find((g) => g.id === targetGroupId)?.label ?? "the group";
       if (query !== label) {
-        toast.info(`Added "${label}" — searching "${query}"`, {
+        toast.info(`Added "${label}" to ${groupName} — searching "${query}"`, {
           description: `Apollo finds nothing for "${label}", so the closer term is used. You can change it any time in Settings > Industry segments.`,
           duration: 12000,
         });
       } else if (deadTerm) {
-        toast.warning(`Added "${label}", but Apollo finds nothing for it`, {
+        toast.warning(`Added "${label}" to ${groupName}, but Apollo finds nothing for it`, {
           description: `This keyword will return no leads until you change its search word. Set one in Settings > Industry segments.`,
           duration: 12000,
         });
+      } else {
+        toast.success(`Added "${label}" to ${groupName} and picked it.`);
       }
       setCustomInput("");
       customInputRef.current?.focus();

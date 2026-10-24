@@ -31,6 +31,9 @@ export function estimateMarket(people: number): MarketEstimate {
 }
 
 /** The size check says every page of these filters was read before: a search would find nothing new. */
-export function noLeadsLeft(e: { companies: { mid: number }; leads_left?: { high: number }; pages_used?: number } | null): boolean {
-  return !!e && e.companies.mid > 0 && (e.pages_used ?? 0) > 0 && e.leads_left?.high === 0;
+export function noLeadsLeft(e: { companies: { mid: number }; leads_left?: { high: number }; pages_used?: number; total_pages?: number | null } | null): boolean {
+  if (!e || !(e.pages_used ?? 0)) return false;
+  // Page memory knows the last page: every one of them was read (even when the size guess says ~0 companies).
+  if (e.total_pages != null && e.pages_used! >= e.total_pages) return true;
+  return e.companies.mid > 0 && e.leads_left?.high === 0;
 }

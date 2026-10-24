@@ -21,4 +21,7 @@ test("noLeadsLeft: blocks only when the size check says every page was read", as
   assert.equal(noLeadsLeft({ companies: c, pages_used: 0, leads_left: { high: 0 } }), false); // never searched: "almost no leads", not blocked
   assert.equal(noLeadsLeft({ companies: { mid: 0 }, pages_used: 3, leads_left: { high: 0 } }), false);
   assert.equal(noLeadsLeft(null), false); // check failed or still loading: don't block
+  // Page memory knows the last page and all were read: nothing new, even when the size guess says ~0 companies.
+  assert.equal(noLeadsLeft({ companies: { mid: 0 }, pages_used: 2, total_pages: 2, leads_left: { high: 0 } }), true);
+  assert.equal(noLeadsLeft({ companies: { mid: 0 }, pages_used: 1, total_pages: 2, leads_left: { high: 0 } }), false);
 });

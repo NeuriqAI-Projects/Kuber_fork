@@ -2,21 +2,20 @@ import { NextRequest } from "next/server";
 import { requireManager } from "@/lib/auth/api-auth";
 import { fail, ok } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
-import { GROUPS, groupOf, isWorking, type Group } from "@/lib/services/prospects/groups";
+import { companiesFilter, GROUPS, groupOf, isWorking, NO_TITLE_MATCH, type Group } from "@/lib/services/prospects/groups";
 import { liveRunNote } from "@/lib/services/prospects/digging";
 
 // The list's columns (only what the screens read: a row came to ~730 bytes with the rest), plus the
 // org's leads, so the revealed contact comes in the same read (no second round trip).
 const ROW_COLS = "id, search_id, name, domain, website_url, linkedin_url, status, score, reason, text_source, last_error, attempts, decided_by, organization_id, contact_apollo_id, organizations(leads(apollo_id, first_name, title, email, is_deleted))";
-// Light columns for counting every company of the listed searches.
+// Light columns for the progress numbers of the searches shown in detail.
 const LIGHT_COLS = "search_id, name, domain, status, decided_by, text_source, score_confidence";
 const PAGE = 1000;
+/** Searches with full progress numbers (the running bar, the Started screen); older ones are only listed. */
+const DETAILED = 20;
+/** Rows per list answer; "Show more" asks for more (up to MAX_LIMIT). */
+const LIMIT = 300, MAX_LIMIT = 3000;
 const GOODISH = ["good", "waiting_credits", "no_contact", "promoted"];
-/** Statuses a group can hold (good/approved split on decided_by, checked exactly afterwards). */
-const STATUSES: Record<Group, string[]> = {
-  checking: ["queued", "read_social", "read"], review: ["review", "flagged", "site_down"], good: GOODISH,
-  approved: ["approved", ...GOODISH], declined: ["rejected"], hidden: ["hidden"],
-};
 
 type Rows = Record<string, unknown>[];
 type Page = PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>;
@@ -33,17 +32,21 @@ async function readAll(page: (from: number, to: number) => Page): Promise<Rows> 
 
 /**
  * Scored companies for the Organizations tab (list + Kanban + running bar).
- *   ?search_ids=a,b   only these searches (default: the 20 most recent)
+ *   ?search_ids=a,b   only these searches (default: every search of the company)
  *   ?groups=review    only these columns (checking,review,good,approved,declined,hidden)
  *   ?hidden=1         include Hidden when no groups are given
  *   ?waiting=1        also "Waiting for credits" companies (a part of Good fit / Approved), beside any groups
  *   ?q=acme           name/domain contains (Hidden ones too)
  *   ?orgs=1           only companies that already have an organization (all the plain Organization list needs)
- *   ?summary=1        searches + counts only (for the side-menu badge / running bar)
+ *   ?limit=300        the newest N companies of the filter; `total_matching` says how many match
+ *   ?summary=1        searches + review total only (for the side-menu badge / Started screen)
  *
- * Speed (23 Oct 2026): every company of 20 searches (now up to 20 pages each) was read with all
- * columns, then the contacts one batch after another. Now two reads side by side: light columns
- * for the counts, and full rows (with their contact) only for what the filter can return.
+ * Every search counts (24 Oct 2026; it was only the 20 newest, so ~3,000 older review companies were
+ * invisible and the "need review" number went down as searches were added): `all_counts` and
+ * `review_total` are head-only count queries, `batches` lists every search for the Batch filter, and
+ * the list is the newest `limit` rows of the filter. Full progress numbers (`searches`) only for the
+ * 20 newest searches plus any asked for in ?search_ids.
+ * Two round trips: (all searches, the counts, the list) side by side, then the detailed searches' rows.
  * The Server-Timing header shows where the time went.
  */
 export async function GET(req: NextRequest) {
@@ -61,60 +64,88 @@ export async function GET(req: NextRequest) {
   const showHidden = sp.get("hidden") === "1";
   const waiting = sp.get("waiting") === "1";
   const orgsOnly = sp.get("orgs") === "1";
-  const q = (sp.get("q") ?? "").trim().toLowerCase();
-
-  const { data: searchRows, error: sErr } = await db.from("prospect_searches")
-    .select("*") // newer columns (lead target, page memory) appear once their migration has run
-    .order("created_at", { ascending: false }).limit(20);
-  if (sErr) return fail(500, "INTERNAL", sErr.message);
-  mark("searches");
-  const searches = searchRows ?? [];
-  if (!searches.length) return ok({ searches: [], counts: emptyCounts(), companies: [], review_total: 0 });
-
-  const ids = searches.map((s) => s.id as string);
   const summary = sp.get("summary") === "1";
-  const wanted = list("search_ids");
-  const scopeIds = wanted.length ? ids.filter((id) => wanted.includes(id)) : ids;
-  // Narrowed in the database to a superset of what the filter shows; the exact rules run below.
-  const listQuery = (from: number, to: number) => {
-    let qb = db.from("prospect_companies").select(ROW_COLS).in("search_id", scopeIds);
-    if (groups.length || waiting) qb = qb.in("status", [...new Set([...groups.flatMap((g) => STATUSES[g]), ...(waiting ? ["waiting_credits"] : [])])]);
-    else if (!showHidden && !q) qb = qb.neq("status", "hidden");
-    if (orgsOnly && !q) qb = qb.not("organization_id", "is", null);
-    // Only plain words go into the filter text; anything else is matched below only.
-    if (q && /^[\p{L}\p{N} .\-]+$/u.test(q)) qb = qb.or(`name.ilike.*${q}*,domain.ilike.*${q}*`);
-    return qb.order("created_at", { ascending: true }).order("id").range(from, to);
+  const q = (sp.get("q") ?? "").trim().toLowerCase();
+  const wanted = list("search_ids").filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+  const limit = Math.min(MAX_LIMIT, Math.max(1, Math.floor(Number(sp.get("limit"))) || LIMIT));
+
+  // Company-wide numbers per group: head-only counts, no rows are downloaded.
+  const count = async (f: (b: ReturnType<typeof head>) => PromiseLike<{ count: number | null; error: { message: string } | null }>) => {
+    const { count: n, error } = await f(head());
+    if (error) throw new Error(error.message);
+    return n ?? 0;
   };
-  let rows: Rows, listed: Rows;
-  try {
-    [rows, listed] = await Promise.all([
-      readAll((from, to) => db.from("prospect_companies").select(LIGHT_COLS).in("search_id", ids).order("id").range(from, to)),
-      summary || !scopeIds.length ? Promise.resolve([]) : readAll(listQuery),
+  const head = () => db.from("prospect_companies").select("id", { count: "exact", head: true });
+  const REVIEW = ["review", "flagged", "site_down"];
+  const countsP = Promise.all(summary
+    ? [count((b) => b.in("status", REVIEW))]
+    : [
+      count((b) => b.in("status", ["queued", "read_social", "read"])),
+      count((b) => b.in("status", REVIEW)),
+      count((b) => b.in("status", GOODISH).is("decided_by", null)),
+      count((b) => b.in("status", ["approved", ...GOODISH])),
+      count((b) => b.eq("status", "rejected")),
+      count((b) => b.eq("status", "hidden")),
+      count((b) => b.eq("status", "waiting_credits")),
     ]);
+  // The list does not need the searches first, so it runs in the same round trip.
+  const listP = (async () => {
+    if (summary) return { rows: [] as Rows, total: 0 };
+    let qb = db.from("prospect_companies").select(ROW_COLS, { count: "exact" });
+    if (wanted.length) qb = qb.in("search_id", wanted);
+    const or = companiesFilter(groups, waiting, q);
+    if (or) qb = qb.or(or);
+    if (!groups.length && !waiting && !showHidden && !q) qb = qb.neq("status", "hidden");
+    if (orgsOnly && !q) qb = qb.not("organization_id", "is", null);
+    const { data, error, count: total } = await qb.order("created_at", { ascending: false }).order("id").range(0, limit - 1);
+    if (error) throw new Error(error.message);
+    return { rows: (data ?? []) as unknown as Rows, total: total ?? 0 };
+  })();
+  // ponytail: the newest 1,000 searches are listed; page the Batch filter if a company ever has more.
+  const searchesP = db.from("prospect_searches").select("*").order("created_at", { ascending: false }).limit(1000);
+
+  let searches: Rows, c: number[], listed: { rows: Rows; total: number };
+  try {
+    const [s, cs, l] = await Promise.all([searchesP, countsP, listP]);
+    if (s.error) throw new Error(s.error.message);
+    searches = (s.data ?? []) as Rows; c = cs; listed = l;
+  } catch (e) { return fail(500, "INTERNAL", (e as Error).message); }
+  mark("searches+counts+list");
+  const reviewTotal = summary ? c[0] : c[1];
+  const allCounts = summary ? null : {
+    checking: c[0], review: c[1], good: c[2], approved: c[3] - c[2], declined: c[4], hidden: c[5], waiting: c[6],
+  };
+  if (!searches.length) return ok({ searches: [], batches: [], counts: emptyCounts(), all_counts: allCounts, companies: [], review_total: 0, total_matching: 0 });
+
+  const meta = (s: Record<string, unknown>) => (s.filters ?? {}) as { batch_name?: string; color?: string; keyword_labels?: string[]; keywords?: string[]; max_auto_reveals?: number; request_id?: string; job_titles?: string[] };
+  const detailed = searches.filter((s, i) => i < DETAILED || wanted.includes(s.id as string));
+  let rows: Rows;
+  try {
+    rows = await readAll((from, to) => db.from("prospect_companies").select(LIGHT_COLS).in("search_id", detailed.map((s) => s.id as string)).order("id").range(from, to));
   } catch (e) { return fail(500, "INTERNAL", (e as Error).message); }
   mark("rows");
 
   const bySearch = new Map<string, Record<string, unknown>[]>();
   for (const r of rows) (bySearch.get(r.search_id as string) ?? bySearch.set(r.search_id as string, []).get(r.search_id as string)!).push(r);
 
-  const searchesOut = searches.map((s) => {
+  const searchesOut = detailed.map((s) => {
     const rs = bySearch.get(s.id as string) ?? [];
     const g = emptyCounts();
     for (const r of rs) g[groupOf(r as never)]++;
     const n = (...st: string[]) => rs.filter((r) => st.includes(r.status as string)).length;
-    const f = (s.filters ?? {}) as { batch_name?: string; color?: string; keyword_labels?: string[]; keywords?: string[]; max_auto_reveals?: number; request_id?: string };
+    const f = meta(s);
     // Past reading but no text = the website (and socials) could not be read; past scoring with no
     // AI answer = could not be checked. Counted apart, so an outage never shows a full bar.
     const pastRead = rs.filter((r) => !["queued", "read_social"].includes(r.status as string));
     const pastScore = pastRead.filter((r) => r.status !== "read");
     return {
-      id: s.id, batch_name: f.batch_name ?? "Scored search", color: f.color ?? "green", keywords: f.keyword_labels ?? f.keywords ?? [],
+      id: s.id as string, batch_name: f.batch_name ?? "Scored search", color: f.color ?? "green", keywords: f.keyword_labels ?? f.keywords ?? [],
       request_id: f.request_id ?? null,
       status: s.status, error: s.error, credits_spent: s.credits_spent, returned: s.returned, new_companies: s.new_companies,
       mock: s.mock, created_at: s.created_at, max_auto_reveals: f.max_auto_reveals ?? null, auto_reveals_used: s.auto_reveals_used,
       total: rs.length,
       // Apollo credits this batch has really used: the search page + 1 per contact revealed.
-      credits_used: (s.credits_spent ?? 0) + (s.mock ? 0 : n("promoted")),
+      credits_used: ((s.credits_spent as number | null) ?? 0) + (s.mock ? 0 : n("promoted")),
       // The limit chosen on the search screen (search + automatic reveals); approvals add 1 each.
       max_credits: (s.max_credits as number | null) ?? (f.max_auto_reveals != null && !s.target_leads ? f.max_auto_reveals + 1 : null),
       target_leads: (s.target_leads as number | null) ?? null,
@@ -126,7 +157,7 @@ export async function GET(req: NextRequest) {
         note: (s.run_note as string | null) ?? null, leads: n("promoted"), target: (s.target_leads as number | null) ?? null,
         approved: rs.filter((r) => r.status === "promoted" && r.decided_by).length, waiting: n("waiting_credits"),
       }),
-      job_titles: ((s.filters as { job_titles?: string[] } | null)?.job_titles ?? []).filter(Boolean),
+      job_titles: (f.job_titles ?? []).filter(Boolean),
       // A search still reading pages counts as in progress even between pages.
       in_progress: rs.filter((r) => isWorking(r as never)).length + (s.run_status === "running" ? 1 : 0),
       groups: g,
@@ -142,27 +173,34 @@ export async function GET(req: NextRequest) {
       },
     };
   });
-  // Like every count here, only the 20 most recent searches (the ones the page lists).
-  const reviewTotal = searchesOut.reduce((t, s) => t + s.groups.review, 0);
+  // Every search, for the Batch filter; only the detailed ones carry a company count.
+  const sizes = new Map(searchesOut.map((s) => [s.id, s.in_progress > 0 ? "running" : s.total] as const));
+  const batches = searches.map((s) => ({
+    id: s.id as string, batch_name: meta(s).batch_name ?? "Scored search", color: meta(s).color ?? "green",
+    created_at: s.created_at as string, size: sizes.get(s.id as string) ?? null,
+  }));
   mark("counts");
-  if (summary) return timed(ok({ searches: searchesOut, counts: emptyCounts(), companies: [], review_total: reviewTotal }));
+  if (summary) return timed(ok({ searches: searchesOut, batches, counts: emptyCounts(), all_counts: null, companies: [], review_total: reviewTotal, total_matching: 0 }));
 
   const matchesQ = (r: Record<string, unknown>) => !q || String(r.name).toLowerCase().includes(q) || String(r.domain ?? "").toLowerCase().includes(q);
-  // A name search finds a company in every group, Hidden included.
+  const picked = listed.rows.filter(matchesQ);
+  // Column numbers: with a batch filter, those batches' rows (they are detailed); without one, the
+  // whole company from the count queries.
+  // ponytail: a name search without a batch filter counts only the rows listed; it rarely passes the limit.
   const counts = emptyCounts();
-  for (const r of rows) if (scopeIds.includes(r.search_id as string) && matchesQ(r)) counts[groupOf(r as never)]++;
-  const picked = listed.filter(matchesQ).filter((r) => {
-    if (orgsOnly && !q && !r.organization_id) return false;
-    const grp = groupOf(r as never);
-    if (groups.length || waiting) return groups.includes(grp) || (waiting && r.status === "waiting_credits");
-    return grp !== "hidden" || showHidden || !!q;
-  });
+  if (wanted.length) { for (const r of rows) if (wanted.includes(r.search_id as string) && matchesQ(r)) counts[groupOf(r as never)]++; }
+  else if (q) { for (const r of picked) counts[groupOf(r as never)]++; }
+  else if (allCounts) for (const g of GROUPS) counts[g] = allCounts[g];
   mark("list");
-  const meta = new Map(searchesOut.map((s) => [s.id as string, s]));
+  const byId = new Map(batches.map((b) => [b.id, b]));
+  const titles = new Map(searches.map((s) => [s.id as string, (meta(s).job_titles ?? []).filter(Boolean)]));
   return timed(ok({
     searches: searchesOut,
+    batches,
     counts,
+    all_counts: allCounts,
     review_total: reviewTotal,
+    total_matching: listed.total,
     companies: picked.map(({ organizations, ...r }) => {
       // The revealed contact is one of the org's leads.
       const leads = ((organizations as { leads?: Record<string, unknown>[] } | null)?.leads ?? []);
@@ -170,8 +208,10 @@ export async function GET(req: NextRequest) {
       return {
         ...r,
         group: groupOf(r as never),
-        batch_name: meta.get(r.search_id as string)?.batch_name,
-        batch_color: meta.get(r.search_id as string)?.color,
+        batch_name: byId.get(r.search_id as string)?.batch_name,
+        batch_color: byId.get(r.search_id as string)?.color,
+        // Only where nobody had one of them: the status line names them.
+        ...(String(r.last_error ?? "").startsWith(NO_TITLE_MATCH) ? { job_titles: titles.get(r.search_id as string) ?? [] } : {}),
         contact: l ? { apollo_id: l.apollo_id, first_name: l.first_name, title: l.title, email: l.email } : null,
       };
     }),
