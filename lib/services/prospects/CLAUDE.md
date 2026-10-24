@@ -17,7 +17,7 @@ no site → LinkedIn via Tavily) → **Jev** classifier → reveal ONE contact o
 | `digging.ts` | "N leads" rules: when to read the next page or stop (target, credit limit, Firecrawl < 100, dry pages, 20-page cap = 660 leads); page-memory `filterKey` |
 | `estimate.ts` | free size check: People Search count → company and lead range |
 | `keywords.ts` | Industry Segments writes without lost updates: `addKeyword` (one keyword, compare-and-swap on `settings.updated_at`, retries) for `POST /api/v1/settings/industry-keywords`; `saveGroupsChecked` for Settings (409 if changed since loaded) |
-| `progress.ts` | honest words for the Started screen: finished headline (outage ≠ "All checked"), Good-fit line (waiting for credits apart), Time left ("Retrying" after 2 min without progress) |
+| `progress.ts` | honest words for the Started screen: finished headline (outage ≠ "All checked"), Good-fit line (waiting for credits apart), Time left: progress = companies finished checking (not websites read); "Waiting" after 1 min, "Retrying" after 2 min, or after 20 s when `stages.ai_retrying` > 0 (read rows whose AI call already failed) |
 
 - Lead target (19 Oct 2026): `continueRun` in `search.ts`, called by `worker.ts` for `run_status = running` searches, reads the next page; `prospect_page_memory` + `claim_prospect_page` RPC remember pages per filter set.
 

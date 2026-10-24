@@ -256,6 +256,12 @@ export async function fetchLeadsCount(token: string): Promise<number> {
   return data.total;
 }
 
+/** Organizations that have a lead this user sees: the Organization list's "N of M organizations". */
+export async function fetchOrgCount(token: string): Promise<number> {
+  const data = await apiFetch<{ orgs: number }>("/api/v1/leads/count?orgs=1", {}, token);
+  return data.orgs;
+}
+
 /** Per-stage totals straight from the database — what the Kanban column headers
  *  show, so they agree with the Dashboard instead of counting loaded rows. */
 export async function fetchLeadStatusCounts(token: string): Promise<Record<string, number>> {

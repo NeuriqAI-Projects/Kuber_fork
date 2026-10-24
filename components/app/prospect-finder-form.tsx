@@ -194,7 +194,8 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
   const [netError, setNetError] = useState<string | null>(null);
   const kicking = useRef(false);
   // When the numbers last moved: no change for a while means a service is down, not slow (Time left).
-  const progress = useRef({ sig: "", at: Date.now() });
+  // `at` = a company last finished checking (AI answer or given up); `scoredAt` = the AI last really answered.
+  const progress = useRef({ sig: "", at: Date.now(), scored: -1, scoredAt: Date.now() });
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -206,8 +207,12 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
         const mine = d.searches.find((x) => x.id === searchId) ?? null;
         if (!alive) return;
         setS(mine); setLoaded(true); setNetError(null); setNow(Date.now());
-        const sig = mine ? `${mine.stages.read}/${mine.stages.read_failed}/${mine.stages.scored}/${mine.stages.score_failed}/${mine.total}` : "";
-        if (sig !== progress.current.sig) progress.current = { sig, at: Date.now() };
+        // Only finished companies count as progress: websites being read while the AI is down are not
+        // (that kept a made-up "~3 min" on screen for minutes).
+        const sig = mine ? `${mine.stages.scored}/${mine.stages.score_failed}/${mine.total}` : "";
+        const p = progress.current;
+        if (sig !== p.sig) { p.sig = sig; p.at = Date.now(); }
+        if (mine && mine.stages.scored !== p.scored) { p.scored = mine.stages.scored; p.scoredAt = Date.now(); }
         // On a laptop there's no minute pump; nudge the background job while there's work.
         if (mine && mine.in_progress > 0 && !kicking.current) {
           kicking.current = true;
@@ -229,7 +234,9 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
   const none = done && total === 0;
   // Honest once done: "All companies checked" only when the AI really checked every one.
   const head = s && done && !none ? finishedHeadline(s) : null;
-  const time = s ? timeLeft(s, done || gone, now - progress.current.at, COMPANIES_PER_MINUTE) : { value: gone ? "Done" : "…", note: " " };
+  // Companies failing on the AI: giving up on some (after 3 tries) is not progress, only real answers are.
+  const since = s?.stages.ai_retrying ? progress.current.scoredAt : progress.current.at;
+  const time = s ? timeLeft(s, done || gone, now - since, COMPANIES_PER_MINUTE) : { value: gone ? "Done" : "…", note: " " };
   const goodLine = s ? goodFitsLine(s) : null;
   const tile = "flex flex-col gap-1 rounded-lg border border-border bg-card p-4";
 
@@ -283,7 +290,7 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
         </div>
         <div className={tile}>
           <span className="text-xs text-muted-foreground">Time left</span>
-          <span className={cn("text-2xl font-semibold tabular-nums", time.value === "Retrying" && "text-amber-700 dark:text-amber-300")}>{time.value}</span>
+          <span className={cn("text-2xl font-semibold tabular-nums", (time.value === "Retrying" || time.value === "Waiting") && "text-amber-700 dark:text-amber-300")}>{time.value}</span>
           <span className="text-xs text-muted-foreground">{time.note}</span>
         </div>
       </div>

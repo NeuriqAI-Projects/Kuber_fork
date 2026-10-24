@@ -100,8 +100,10 @@ export function MultiSelectDropdown<T extends string>({
         </span>
       </Button>
 
+      {/* In the flow, not floating: an open list pushes the next field down instead of covering it
+          (the Status list hid the Batch field). The Filters body scrolls if it gets tall. */}
       {open && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-lg border border-border bg-popover shadow-lg overflow-hidden">
+        <div className="mt-1 rounded-lg border border-border bg-popover shadow-lg overflow-hidden">
           <div className="px-2 py-1.5 border-b border-border">
             <div className="flex items-center gap-2 px-1">
               <Search className="size-3.5 text-muted-foreground shrink-0" />

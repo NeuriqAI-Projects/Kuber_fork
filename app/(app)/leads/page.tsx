@@ -1,6 +1,6 @@
 "use client";
 
-import { bulkDeleteLeads, bulkAssignLeads, retryAllFailedEnrichment, useCached, cacheKeys, cachedFetchers, prefetchLead, prefetchOrg, DB_LEAD_STATUS, DB_LEAD_SOURCE, type ImportBatch, type Profile, type BulkAssignStrategy, type AssignmentSummary, type LeadListFilters } from "@/lib/api-client";
+import { bulkDeleteLeads, bulkAssignLeads, retryAllFailedEnrichment, useCached, cacheKeys, cachedFetchers, prefetchLead, prefetchOrg, fetchOrgCount, DB_LEAD_STATUS, DB_LEAD_SOURCE, type ImportBatch, type Profile, type BulkAssignStrategy, type AssignmentSummary, type LeadListFilters } from "@/lib/api-client";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -913,10 +913,21 @@ export default function LeadsPage() {
 
   // Only the newest 500 leads are loaded until "Show more": say so, never "500 leads" when there are more.
   const partial = !searchResults && leadsTotal != null && leadsTotal > leads.length;
+  // The Organization list is built from the loaded leads: this is how many organizations there are in all
+  // ("480 of 3,201 organizations"). Asked again whenever the lead total changes.
+  const [orgTotal, setOrgTotal] = useState<number | null>(null);
+  useEffect(() => {
+    if (!session || leadsEntityMode !== "orgs") return;
+    let live = true;
+    fetchOrgCount(session.access_token).then((n) => { if (live) setOrgTotal(n); }, () => {});
+    return () => { live = false; };
+  }, [session, leadsEntityMode, leadsTotal]);
+  // Total not in yet: "500 of … organizations", never a bare "500 organizations" when more exist.
+  const orgsPartial = partial && !q && (orgTotal == null || orgTotal > orgRows.length);
   const countLabel = leadsEntityMode === "orgs"
     ? scoredView ? (scored.stale || !scored.data ? "…" : `${scored.data.companies.length.toLocaleString()}${(scored.data.total_matching ?? 0) > scored.data.companies.length ? ` of ${scored.data.total_matching!.toLocaleString()}` : ""} compan${scored.data.companies.length === 1 ? "y" : "ies"}`)
       // A name search is still on its way (leads or scored companies): "…", never a made-up 0.
-      : ((loadingLeads || (leadsTotal ?? 0) > 0) && !leads.length) || (q && (scored.loading || searchLoading)) ? "…" : `${orgRows.length + scoredOnlyRows.length} organization${orgRows.length + scoredOnlyRows.length === 1 ? "" : "s"}`
+      : ((loadingLeads || (leadsTotal ?? 0) > 0) && !leads.length) || (q && (scored.loading || searchLoading)) ? "…" : orgsPartial ? `${orgRows.length.toLocaleString()} of ${orgTotal?.toLocaleString() ?? "…"} organizations` : `${orgRows.length + scoredOnlyRows.length} organization${orgRows.length + scoredOnlyRows.length === 1 ? "" : "s"}`
     : searchLoading ? "…" : partial ? `${displayLeads.length} of ${leadsTotal} leads` : `${displayLeads.length} leads`;
   // The Organization list's "(from 500 of 3,526 leads)": only on wide screens, always in the hover title.
   const countExtra = leadsEntityMode === "orgs" && !scoredView && countLabel !== "…" && partial && !q ? ` (from ${leads.length} of ${leadsTotal} leads)` : "";
@@ -1115,7 +1126,7 @@ export default function LeadsPage() {
       </div>
       {leadsEntityMode === "orgs" && (
         <div className="px-4 pt-3 empty:hidden">
-          <RunningSearchesBar data={scored.data} onOpen={openScoredBatch} />
+          <RunningSearchesBar data={scored.data} onOpen={openScoredBatch} onShowWaiting={() => { setLeadsViewMode("list"); setScoredFilter({ ...EMPTY_SCORED_FILTER, waiting: true }); }} />
         </div>
       )}
 
@@ -1232,6 +1243,15 @@ export default function LeadsPage() {
               ))}
             </TableBody>
           </table>
+          {/* Older organizations: their leads are not loaded yet. Each click loads the next 500 leads. */}
+          {partial && !q && orgRows.length > 0 && (
+            <div className="flex items-center justify-center gap-3 py-3 text-[13px] text-muted-foreground">
+              <span className="tabular-nums">Showing the newest {orgRows.length.toLocaleString()}{orgTotal != null ? ` of ${orgTotal.toLocaleString()}` : ""} organizations</span>
+              <Button type="button" variant="outline" size="sm" disabled={loadingMoreLeads} onClick={() => session && loadMoreLeads(session.access_token)}>
+                {loadingMoreLeads && <Loader2 className="size-3.5 animate-spin" />}Show more
+              </Button>
+            </div>
+          )}
           {/* Room under the last row, so its Decide buttons scroll clear of the floating "Ask Kuber AI" button (64px tall with its margin). */}
           <div aria-hidden className="h-24" />
           </>

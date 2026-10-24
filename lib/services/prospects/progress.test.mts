@@ -1,7 +1,7 @@
 // npx tsx --test lib/services/prospects/progress.test.mts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { finishedHeadline, goodFitsLine, STALL_MS, timeLeft, type ProgressNumbers } from "./progress.ts";
+import { AI_RETRY_STALL_MS, finishedHeadline, goodFitsLine, SLOW_MS, STALL_MS, timeLeft, type ProgressNumbers } from "./progress.ts";
 
 const n = (o: Partial<ProgressNumbers["stages"]> & { total?: number; leads?: number; good?: number } = {}): ProgressNumbers => ({
   total: o.total ?? 48, leads: o.leads ?? 0, groups: { good: o.good ?? 0 },
@@ -41,4 +41,17 @@ test("time left: a countdown while it moves, 'Retrying' with the cause once it s
   assert.equal(timeLeft(n(), false, STALL_MS, 20).note, "The websites are not answering; Kuber keeps retrying on its own.");
   assert.equal(timeLeft(n(), false, STALL_MS, 20).value, "Retrying");
   assert.equal(timeLeft(n(), true, STALL_MS, 20).value, "Done");
+});
+
+test("AI down: 'Retrying' as soon as companies fail on the AI and nothing finishes, no countdown while stuck", () => {
+  // [jev-down]: websites read, every company already failed once on the AI.
+  const down = n({ read: 48, ai_retrying: 48 });
+  assert.equal(timeLeft(down, false, 0, 20).value, "~3 min"); // just moved: not yet
+  assert.deepEqual(timeLeft(down, false, AI_RETRY_STALL_MS, 20), { value: "Retrying", note: "The AI is not answering; Kuber keeps retrying on its own." });
+  // A flaky AI while companies still finish: the countdown stays.
+  assert.equal(timeLeft(n({ read: 48, scored: 30, ai_retrying: 2 }), false, 5_000, 20).value, "~1 min");
+  // Nothing finished for a minute, no AI errors: no made-up countdown.
+  assert.equal(timeLeft(n(), false, SLOW_MS, 20).value, "Waiting");
+  assert.equal(timeLeft(n(), false, STALL_MS - 1, 20).value, "Waiting");
+  assert.equal(timeLeft(n(), false, STALL_MS, 20).value, "Retrying");
 });

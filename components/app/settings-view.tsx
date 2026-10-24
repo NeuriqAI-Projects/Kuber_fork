@@ -674,6 +674,8 @@ export function SettingsView() {
     try {
       await saveIndustryKeywordGroups(industryKeywordGroups);
       setEditingGroupIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
+      const name = industryKeywordGroups.find((g) => g.id === id)?.label.trim();
+      toast.success(name ? `Saved "${name}".` : "Group saved.");
     } catch (e) {
       toast.error(keywordSaveError(e) ?? "Couldn't save — please try again.");
     } finally {

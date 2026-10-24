@@ -311,7 +311,11 @@ export function IndustryKeywordsDropdown({
   const closeMenu = useCallback(() => setOpen(false), []);
   useEscClose(open, closeMenu); // Esc closes this list only, not the dialog around it
   const [targetGroupId, setTargetGroupId] = useState("");
-  const [adding, setAdding] = useState(false);
+  /** Keywords being saved right now (lower-case). Each Add runs on its own: the field clears at once, a
+   *  toast says "Adding…" and turns into the answer, and the next keyword can be typed meanwhile. */
+  const [adding, setAdding] = useState<Set<string>>(() => new Set());
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
   // The search word used to be editable inline here ("Edit word"). Removed
   // 24 Sep 2026 at the client's request: one place to change it is Settings >
   // Industry segments, which already has a proper field per keyword, so a
@@ -396,44 +400,55 @@ export function IndustryKeywordsDropdown({
     // already knows the working form, so use it.
     const deadTerm = kwCheck !== null && kwCheck.total === 0;
     const query = deadTerm && kwCheck?.suggestion ? kwCheck.suggestion.term : label;
-    setAdding(true);
+    const key = label.toLowerCase();
+    if (adding.has(key)) return;
+    const groupId = targetGroupId;
+    setAdding((a) => new Set(a).add(key));
+    // Cleared now, not after the server answers: the next keyword can be typed while this one saves.
+    setCustomInput("");
+    customInputRef.current?.focus();
+    const t = toast.loading(`Adding "${label}"…`);
     try {
       const token = await getToken();
       // One keyword into one group on the server, atomically (it re-reads and retries if a teammate saves
       // at the same moment). Sending the whole list lost one of two adds made at the same time.
       let saved: IndustryKeywordGroup[];
       try {
-        saved = (await addIndustryKeyword(token, { group_id: targetGroupId, label, query })).groups;
+        saved = (await addIndustryKeyword(token, { group_id: groupId, label, query })).groups;
       } catch (e) {
         const err = e as Error & { code?: string; details?: { groups?: IndustryKeywordGroup[] } };
         if (err.code !== "DUPLICATE" && err.code !== "NO_GROUP") throw e;
         if (err.details?.groups) onGroupsChange(err.details.groups);
-        if (err.code === "NO_GROUP") setTargetGroupId("");
-        toast.error(err.message);
+        if (err.code === "NO_GROUP") setTargetGroupId((g) => (g === groupId ? "" : g));
+        toast.error(err.message, { id: t });
         return;
       }
       onGroupsChange(saved);
-      onChange([...selected, label]);
-      const groupName = saved.find((g) => g.id === targetGroupId)?.label ?? "the group";
+      // The latest picks: other adds may have picked their keyword meanwhile.
+      const cur = selectedRef.current;
+      if (!cur.includes(label)) { selectedRef.current = [...cur, label]; onChange(selectedRef.current); }
+      const groupName = saved.find((g) => g.id === groupId)?.label ?? "the group";
       if (query !== label) {
         toast.info(`Added "${label}" to ${groupName} — searching "${query}"`, {
+          id: t,
           description: `Apollo finds nothing for "${label}", so the closer term is used. You can change it any time in Settings > Industry segments.`,
           duration: 12000,
         });
       } else if (deadTerm) {
         toast.warning(`Added "${label}" to ${groupName}, but Apollo finds nothing for it`, {
+          id: t,
           description: `This keyword will return no leads until you change its search word. Set one in Settings > Industry segments.`,
           duration: 12000,
         });
       } else {
-        toast.success(`Added "${label}" to ${groupName} and picked it.`);
+        toast.success(`Added "${label}" to ${groupName} and picked it.`, { id: t });
       }
-      setCustomInput("");
-      customInputRef.current?.focus();
-    } catch {
-      toast.error("Couldn't save the new keyword — please try again.");
+    } catch (e) {
+      toast.error((e as Error).message || `Couldn't save "${label}" — please try again.`, { id: t });
+      // Give the text back so it can be added again (unless something new was typed meanwhile).
+      setCustomInput((cur) => cur || label);
     } finally {
-      setAdding(false);
+      setAdding((a) => { const n = new Set(a); n.delete(key); return n; });
     }
   }
 
@@ -620,7 +635,7 @@ export function IndustryKeywordsDropdown({
                   type="button"
                   size="sm"
                   onClick={addKeywordToGroup}
-                  disabled={!customInput.trim() || !targetGroupId || adding}
+                  disabled={!customInput.trim() || !targetGroupId || adding.has(customInput.trim().toLowerCase())}
                   className="shrink-0 gap-1 [&_svg]:size-3.5"
                 >
                   <Plus /> Add

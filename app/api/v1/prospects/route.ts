@@ -9,7 +9,7 @@ import { liveRunNote } from "@/lib/services/prospects/digging";
 // org's leads, so the revealed contact comes in the same read (no second round trip).
 const ROW_COLS = "id, search_id, name, domain, website_url, linkedin_url, status, score, reason, text_source, last_error, attempts, decided_by, organization_id, contact_apollo_id, organizations(leads(apollo_id, first_name, title, email, is_deleted))";
 // Light columns for the progress numbers of the searches shown in detail.
-const LIGHT_COLS = "search_id, name, domain, status, decided_by, text_source, score_confidence";
+const LIGHT_COLS = "search_id, name, domain, status, decided_by, text_source, score_confidence, attempts, last_error";
 const PAGE = 1000;
 /** Searches with full progress numbers (the running bar, the Started screen); older ones are only listed. */
 const DETAILED = 20;
@@ -170,6 +170,8 @@ export async function GET(req: NextRequest) {
         to_reveal: n("good", "approved", "waiting_credits", "promoted", "no_contact"),
         revealed: n("promoted", "no_contact"),
         waiting_credits: n("waiting_credits"),
+        // Read, not scored, and the AI already failed on it: the Started screen says "Retrying" at once.
+        ai_retrying: rs.filter((r) => r.status === "read" && ((r.attempts as number | null) ?? 0) > 0 && /JEV/i.test(String(r.last_error ?? ""))).length,
       },
     };
   });

@@ -37,7 +37,7 @@ export interface ScoredSearch {
   max_auto_reveals: number | null; credits_used: number; max_credits: number | null;
   target_leads: number | null; leads: number; pages: number[]; run_status: string; run_note: string | null; job_titles?: string[]; total: number; in_progress: number; groups: Record<Group, number>;
   /** read / scored = really read / really scored by the AI; *_failed = gave up there (site down, AI down). */
-  stages: { found: number; read: number; read_failed: number; scored: number; score_failed: number; to_reveal: number; revealed: number; waiting_credits: number };
+  stages: { found: number; read: number; read_failed: number; scored: number; score_failed: number; to_reveal: number; revealed: number; waiting_credits: number; ai_retrying?: number };
 }
 export interface ScoredCompany {
   id: string; search_id: string; name: string; domain: string | null; website_url: string | null; linkedin_url: string | null;
@@ -419,15 +419,21 @@ export function RunningSearchesPill({ data, onOpen }: { data: ScoredData | null;
 
 /** The bar under the toolbar is only for what needs you: waiting for credits, a problem, or companies to
  *  review. A search that is simply running is the toolbar button's job. Hidden when nothing needs you. */
-export function RunningSearchesBar({ data, onOpen }: { data: ScoredData | null; onOpen: (searchId: string, group?: Group) => void }) {
+export function RunningSearchesBar({ data, onOpen, onShowWaiting }: {
+  data: ScoredData | null; onOpen: (searchId: string, group?: Group) => void;
+  /** Clicking "N waiting for Apollo credits" applies the Status filter "Waiting for credits". */
+  onShowWaiting?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [limit, setLimit] = useState(6);
   const searches = data?.searches ?? [];
   const waiting = searches.filter((s) => s.stages.waiting_credits > 0);
+  // Every search, like the Status filter's "Waiting for credits (N)"; the 20 detailed searches only as a fallback.
+  const waitingTotal = data?.all_counts?.waiting ?? waiting.reduce((t, s) => t + s.stages.waiting_credits, 0);
   const failed = searches.filter((s) => s.status !== "done" && Date.now() - new Date(s.created_at).getTime() < 24 * 3600_000);
   const toReview = searches.filter((s) => s.groups.review > 0);
   // review_total counts every search: older searches' review companies keep the bar up too.
-  if (!waiting.length && !failed.length && !toReview.length && !(data?.review_total ?? 0)) return null;
+  if (!waitingTotal && !failed.length && !toReview.length && !(data?.review_total ?? 0)) return null;
   const needing = searches.filter((s) => s.stages.waiting_credits > 0 || s.groups.review > 0 || failed.includes(s));
   const shown = needing.slice(0, limit);
 
@@ -435,7 +441,9 @@ export function RunningSearchesBar({ data, onOpen }: { data: ScoredData | null; 
     <div className="rounded-lg border border-border bg-card px-3 py-1.5 text-[13px]">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         {(data?.review_total ?? 0) > 0 && <span title="Companies (in all your searches) that wait for your Approve or Decline" className="text-xs font-medium text-amber-600 dark:text-amber-400">{data!.review_total.toLocaleString()} need review</span>}
-        {waiting.length > 0 && <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{waiting.reduce((t, s) => t + s.stages.waiting_credits, 0)} waiting for Apollo credits</span>}
+        {waitingTotal > 0 && (onShowWaiting
+          ? <Tip text="Show only these companies (Status: Waiting for credits)."><Button type="button" variant="link" onClick={onShowWaiting} className="h-auto p-0 text-xs font-medium text-amber-600 dark:text-amber-400">{waitingTotal.toLocaleString()} waiting for Apollo credits</Button></Tip>
+          : <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{waitingTotal.toLocaleString()} waiting for Apollo credits</span>)}
         {failed.length > 0 && <span className="flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400"><AlertTriangle className="size-3.5" />{failed.length} search{failed.length > 1 ? "es" : ""} had a problem</span>}
         <Button type="button" variant="ghost" size="sm" onClick={() => setOpen((o) => !o)} className="ml-auto text-muted-foreground">
           {open ? <>Hide <ChevronUp className="size-3.5" /></> : <>Details <ChevronDown className="size-3.5" /></>}

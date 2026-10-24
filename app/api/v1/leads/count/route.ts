@@ -9,6 +9,16 @@ export async function GET(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireAuth>>;
   try { user = await requireAuth(req); } catch (r) { return r as Response; }
   const db = dbForUser(user);
+  // ?orgs=1: how many organizations have a lead this user sees (the Organization list's "N of M").
+  // One head count over the inner join: no rows come back.
+  if (new URL(req.url).searchParams.get("orgs") === "1") {
+    let oq = db.from("organizations").select("id, leads!inner(id)", { count: "exact", head: true })
+      .eq("leads.is_deleted", false).not("leads.email", "is", null);
+    if (user.role === "employee") oq = oq.eq("leads.assigned_to", user.id);
+    const { count, error } = await oq;
+    if (error) return fail(500, "INTERNAL", error.message);
+    return ok({ orgs: count ?? 0 });
+  }
   // Must apply the same visibility rule as GET /leads, or the header count
   // disagrees with the list under it by exactly the pre-reveal backlog.
   let q = onlyRevealedLeads(

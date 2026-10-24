@@ -7,7 +7,8 @@ export interface ProgressNumbers {
   total: number;
   leads: number;
   groups: { good: number };
-  stages: { read: number; read_failed: number; scored: number; score_failed: number; waiting_credits: number };
+  /** ai_retrying = read, not scored, and the AI already failed on it at least once (it tries again). */
+  stages: { read: number; read_failed: number; scored: number; score_failed: number; waiting_credits: number; ai_retrying?: number };
 }
 
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
@@ -54,16 +55,23 @@ export function goodFitsLine(s: ProgressNumbers): { text: string; side: string }
 
 /** No progress for this long while work is left = something is down, not slow. */
 export const STALL_MS = 2 * 60_000;
+/** Companies already failing on the AI and nothing finished for this long = the AI is down: say so now. */
+export const AI_RETRY_STALL_MS = 20_000;
+/** Nothing finished for this long: no countdown any more (it would be made up), only "Waiting". */
+export const SLOW_MS = 60_000;
 
-/** "Time left": a countdown only while companies really move; a stall says what it is waiting for. */
+/** "Time left": a countdown only while companies really move; a stall says what it is waiting for.
+ *  `stalledForMs` = time since a company last finished checking. */
 export function timeLeft(s: ProgressNumbers, done: boolean, stalledForMs: number, perMinute: number): { value: string; note: string } {
   if (done) return { value: "Done", note: " " };
   const left = Math.max(0, s.total - s.stages.scored - s.stages.score_failed);
-  if (stalledForMs >= STALL_MS) {
+  const aiRetrying = s.stages.ai_retrying ?? 0;
+  if (stalledForMs >= STALL_MS || (aiRetrying > 0 && stalledForMs >= AI_RETRY_STALL_MS)) {
     const { aiFailed } = failures(s);
     // Read but not scored yet (and not given up on) = waiting for the AI.
-    const waitingForAi = s.stages.read - s.stages.scored - aiFailed > 0;
+    const waitingForAi = aiRetrying > 0 || s.stages.read - s.stages.scored - aiFailed > 0;
     return { value: "Retrying", note: waitingForAi ? "The AI is not answering; Kuber keeps retrying on its own." : "The websites are not answering; Kuber keeps retrying on its own." };
   }
+  if (stalledForMs >= SLOW_MS) return { value: "Waiting", note: "No company finished in the last minute" };
   return { value: `~${Math.max(1, Math.ceil(left / perMinute))} min`, note: `about ${perMinute} companies a minute` };
 }
