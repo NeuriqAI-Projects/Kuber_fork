@@ -28,10 +28,21 @@ type Db = ReturnType<typeof createAdminClient>;
  * campaign never saw that campaign even though the detail/API allowed it.
  */
 export async function employeeCampaignIds(db: Db, userId: string): Promise<string[]> {
-  const [{ data: owned }, { data: viaLeads }] = await Promise.all([
+  // Paged: PostgREST returns at most 1000 rows, and an employee easily holds
+  // more campaign_leads than that (deleted campaigns keep theirs), which
+  // silently dropped whole campaigns from their list.
+  const viaLeadsPages = async () => {
+    const rows: { campaign_id: unknown }[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data } = await db.from("campaign_leads").select("campaign_id, leads!lead_id!inner(assigned_to, is_deleted)")
+        .eq("leads.assigned_to", userId).eq("leads.is_deleted", false).order("id").range(from, from + 999);
+      rows.push(...(data ?? []));
+      if ((data?.length ?? 0) < 1000) return rows;
+    }
+  };
+  const [{ data: owned }, viaLeads] = await Promise.all([
     db.from("campaigns").select("id").eq("is_deleted", false).or(`created_by.eq.${userId},assigned_to.eq.${userId}`),
-    db.from("campaign_leads").select("campaign_id, leads!lead_id!inner(assigned_to, is_deleted)")
-      .eq("leads.assigned_to", userId).eq("leads.is_deleted", false),
+    viaLeadsPages(),
   ]);
 
   const ids = new Set<string>();

@@ -4,7 +4,7 @@ import { ok, fail } from "@/lib/api-response";
 import { CreateCampaignSchema } from "@/lib/validators/campaigns";
 import { buildDefaultCampaignSteps } from "@/lib/constants";
 import { getAccessibleCampaignIds, campaignsEditableByEmployee } from "@/lib/auth/scope";
-import { computeCampaignStats } from "@/lib/campaign-status";
+import { computeCampaignStats, type CampaignStatsRow } from "@/lib/campaign-status";
 import { dbForUser } from "@/lib/supabase/scoped";
 
 
@@ -34,11 +34,23 @@ export async function GET(req: NextRequest) {
     // 2 of a campaign's 7 leads was seeing the full 7/7/2/29% campaign-wide
     // stats on their card and Analytics tab). Recompute from campaign_leads
     // scoped to this employee and overlay onto each row before returning.
-    const { data: ownRows } = await db
-      .from("campaign_leads")
-      .select("campaign_id, crm_status, first_sent_at, lead_temperature, email_drafts(status), leads!lead_id!inner(assigned_to)")
-      .in("campaign_id", ids)
-      .eq("leads.assigned_to", user.id);
+    // Only the live campaigns (ids also holds deleted ones), and paged: one
+    // query caps at 1000 rows, which cut an employee's counts to a random few
+    // (live: 342 own leads showed as 0/0/1/5).
+    const liveIds = (data ?? []).map((c) => c.id as string);
+    const ownRows: (CampaignStatsRow & { campaign_id: string })[] = [];
+    for (let from = 0; liveIds.length; from += 1000) {
+      const { data: page, error: pageError } = await db
+        .from("campaign_leads")
+        .select("campaign_id, crm_status, first_sent_at, lead_temperature, email_drafts(status), leads!lead_id!inner(assigned_to)")
+        .in("campaign_id", liveIds)
+        .eq("leads.assigned_to", user.id)
+        .order("id")
+        .range(from, from + 999);
+      if (pageError) return fail(500, "INTERNAL", pageError.message);
+      ownRows.push(...(page ?? []));
+      if ((page?.length ?? 0) < 1000) break;
+    }
 
     const byCampaign = new Map<string, typeof ownRows>();
     for (const row of ownRows ?? []) {
