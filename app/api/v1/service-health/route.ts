@@ -75,6 +75,10 @@ export async function GET(req: NextRequest) {
     // warning row saying the fallback is actively covering it. Sharing one
     // key means the newest-first row ordering's dedup-by-service correctly
     // lets the most recent event win.
+    // Drafting came back (key topped up / fixed). Newer than any outage row
+    // below it, so it claims the LLM slot with no issue; without this the
+    // banner stayed up for the whole 6h lookback after recovery (28 Oct 2026).
+    if (row.event === "DRAFT_LLM_RECOVERED") { seen.add("LLM API key"); continue; }
     if (row.event === "PRIMARY_LLM_LOW_CREDITS_FALLBACK_ACTIVE") {
       add({ service: "LLM API key", kind: "credits", severity: "warning", message: row.error ?? "" });
     } else if (row.event === "SKIPPED_LOW_CREDITS" && (err.includes("no usable llm provider") || err.includes("openrouter") || err.includes("credit"))) {
