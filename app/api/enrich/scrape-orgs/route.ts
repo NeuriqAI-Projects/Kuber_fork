@@ -847,7 +847,9 @@ export async function POST(req: NextRequest) {
   await insertLog(db, {
     source: "system",
     event: "SCRAPE_BATCH_STARTED",
-    payload: { batch_size: orgs.length, org_ids: orgs.map((o) => o.id) },
+    // primary_llm_ok lets /api/v1/service-health clear the company-profiles AI
+    // banner once a batch runs on the main model again.
+    payload: { batch_size: orgs.length, org_ids: orgs.map((o) => o.id), primary_llm_ok: primaryCredits.ok },
   });
 
   // ── Step 3: Process the claimed orgs concurrently ─────────────────────────
