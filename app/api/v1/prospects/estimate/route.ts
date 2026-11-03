@@ -10,7 +10,7 @@ import { filterKey, leadsApolloFits, leadsFirecrawlFits } from "@/lib/services/p
 import { checkApolloCredits, checkFirecrawlCredits } from "@/lib/services/provider-credits";
 
 const Body = z.object({
-  keywords: z.array(z.string().trim().min(1)).min(1).max(50),
+  keywords: z.array(z.string().trim().min(1)).min(1).max(200),
   locations: z.array(z.string()).max(200).optional(),
   employee_ranges: z.array(z.string()).max(20).optional(),
   lookalike_org_ids: z.array(z.string()).max(5).optional(),

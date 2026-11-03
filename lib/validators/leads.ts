@@ -185,7 +185,7 @@ export const CompanySearchSchema = z.object({
 
 /** Company-first scored search. Every page is one paid Apollo credit. */
 export const ProspectSearchSchema = z.object({
-  keywords: z.array(z.string().trim().min(1).max(100)).min(1).max(50),
+  keywords: z.array(z.string().trim().min(1).max(100)).min(1).max(200),
   locations: z.array(z.string().trim().min(1).max(100)).max(200).optional(),
   employee_ranges: z.array(z.string().regex(/^\d+,\d+$/)).max(20).optional(),
   lookalike_org_ids: z.array(z.string().trim().min(1)).max(5).optional(),
