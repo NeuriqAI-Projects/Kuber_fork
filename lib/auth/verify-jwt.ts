@@ -46,12 +46,16 @@ export async function verifyAccessToken(token: string): Promise<VerifiedTokenUse
     }
   }
 
-  const jwks = await getProjectJwks();
-  const { data, error } = await getVerifier().auth.getClaims(
-    token,
-    jwks.keys.length ? { jwks } : {},
-  );
-
-  if (error || !data?.claims) return null;
-  return claimsToUser(data.claims);
+  // A malformed token can make getClaims throw instead of returning an error: that is a 401, not a 500.
+  try {
+    const jwks = await getProjectJwks();
+    const { data, error } = await getVerifier().auth.getClaims(
+      token,
+      jwks.keys.length ? { jwks } : {},
+    );
+    if (error || !data?.claims) return null;
+    return claimsToUser(data.claims);
+  } catch {
+    return null;
+  }
 }
