@@ -84,9 +84,9 @@ export function AddLeadsDrawer({
           </p>
         </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 overflow-hidden bg-background">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background md:flex-row">
           {!singleSection && (
-            <nav className="flex w-64 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border bg-sidebar p-2">
+            <nav className="flex max-h-40 w-full shrink-0 flex-col gap-0.5 overflow-y-auto border-b border-border bg-sidebar p-2 md:max-h-none md:w-64 md:border-b-0 md:border-r">
               {SECTIONS.map((s) => {
                 const Icon = s.icon;
                 const active = section === s.value;

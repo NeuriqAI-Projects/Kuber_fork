@@ -41,7 +41,9 @@ export function Stepper({ steps, current, className }: StepperProps) {
               </span>
               <span
                 className={cn(
+                  // Phone width: only the current step keeps its name, so the row fits.
                   "text-[13px] font-medium whitespace-nowrap",
+                  !active && "hidden sm:inline",
                   active ? "text-foreground" : done ? "text-foreground/80" : "text-muted-foreground",
                 )}
               >

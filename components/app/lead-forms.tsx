@@ -367,7 +367,8 @@ export function IndustryKeywordsDropdown({
     return () => { cancelled = true; clearTimeout(t); setChecking(false); };
   }, [customInput]);
 
-  const allKeywordLabels = groups.flatMap((g) => g.keywords.map((k) => k.label));
+  // A keyword listed in two groups is still one keyword ("Select all" sent duplicates).
+  const allKeywordLabels = [...new Set(groups.flatMap((g) => g.keywords.map((k) => k.label)))];
 
   function toggleKw(label: string) {
     onChange(selected.includes(label) ? selected.filter((s) => s !== label) : [...selected, label]);

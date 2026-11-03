@@ -53,11 +53,13 @@ export function InfoTip({
         tabIndex={0}
         aria-label="More information"
         className={children ? cn("relative z-10 inline-flex max-w-full items-center", triggerClassName) : "relative z-10 inline-flex items-center justify-center size-5 rounded-full text-muted-foreground hover:text-foreground transition-colors"}
-        onMouseEnter={() => { recompute(); setOpen(true); }}
-        onMouseLeave={() => setOpen(false)}
+        // Hover is for mice only: after a tap Chromium sends mouseleave at once, which closed the tip it had just opened.
+        onPointerEnter={(e) => { if (e.pointerType === "mouse") { recompute(); setOpen(true); } }}
+        onPointerLeave={(e) => { if (e.pointerType === "mouse") setOpen(false); }}
         onFocus={() => { recompute(); setOpen(true); }}
         onBlur={() => setOpen(false)}
-        onClick={(e) => { e.stopPropagation(); recompute(); setOpen((v) => !v); }}
+        // Open only: hover or focus has already opened it by the time a click or tap lands, so a toggle closed it again.
+        onClick={(e) => { e.stopPropagation(); recompute(); setOpen(true); }}
       >
         {children ?? <Info className="size-3" />}
       </button>
