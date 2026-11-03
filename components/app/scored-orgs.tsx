@@ -73,9 +73,10 @@ export const scoredFilterCount = (f: ScoredFilter) => (f.groups.length > 0 || f.
 /** An API refusal: the plain message, plus the code and details (e.g. the search_id of a search already started). */
 export type ApiError = Error & { code?: string; details?: { search_id?: string } };
 
-export async function api<T>(url: string, body?: unknown): Promise<T> {
+export async function api<T>(url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const token = await getToken();
   const res = await fetch(url, {
+    signal,
     method: body ? "POST" : "GET",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: body ? JSON.stringify(body) : undefined,

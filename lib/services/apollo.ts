@@ -97,10 +97,10 @@ function mapLocations(values?: string[]): string[] | undefined {
 }
 
 /** Apollo wants `"1,10"` pairs. A comma-split UI can flatten that to
- *  `["1","10","11","50"]` — re-pair any run of numbers so the filter still works. */
+ *  `["1","10","11","50"]`, and people type "11-50" — re-pair any run of numbers so the filter still works. */
 function employeeRanges(values?: string[]): string[] | undefined {
   if (!values?.length) return undefined;
-  const paired = [...values.join(" ").matchAll(/(\d+)\s*,\s*(\d+)/g)].map(
+  const paired = [...values.join(" ").matchAll(/(\d+)\s*[,\-–\s]\s*(\d+)/g)].map(
     (m) => `${m[1]},${m[2]}`,
   );
   return paired.length ? paired : undefined;
@@ -387,6 +387,48 @@ export async function countPeopleAtCompanies(f: { keywordTags: string[]; locatio
   if (!res.ok) throw Object.assign(new Error(`Apollo people count ${res.status}`), { status: res.status });
   const j = await res.json() as { total_entries?: number; pagination?: { total_entries?: number } };
   return j.total_entries ?? j.pagination?.total_entries ?? 0;
+}
+
+/**
+ * FREE (0 credits): the company names behind the buyers (APOLLO_TITLES) Apollo
+ * holds for these filters. People Search has no company id, only the name, so
+ * the caller tells companies apart by normalised name. Reads at most `maxPages`
+ * pages of 100, `conc` at a time (Apollo allows 200 calls a minute), and stops
+ * at the deadline; `complete` says whether every page was read.
+ */
+export async function scanBuyerCompanies(
+  f: { keywordTags: string[]; locations?: string[]; employeeRanges?: string[] },
+  opts: { maxPages: number; conc?: number; deadlineMs: number; signal?: AbortSignal },
+ /** complete = every Apollo page read; full = every page we meant to read (only the page cap stopped it). */
+): Promise<{ names: string[]; people: number; complete: boolean; full: boolean }> {
+  const body: Record<string, unknown> = { per_page: 100, q_organization_keyword_tags: f.keywordTags, person_titles: APOLLO_TITLES };
+  const locs = mapLocations(f.locations);
+  if (locs) body.organization_locations = locs;
+  const sizes = employeeRanges(f.employeeRanges);
+  if (sizes) body.organization_num_employees_ranges = sizes;
+  const page = async (n: number) => {
+    const left = opts.deadlineMs - Date.now();
+    const res = await fetchWithRetry("apollo", `${BASE}/mixed_people/api_search`, { method: "POST", headers: await headers(), body: JSON.stringify({ ...body, page: n }), signal: opts.signal },
+      { timeoutMs: Math.max(2_000, Math.min(10_000, left)), retryDelays: left > 5_000 ? [1000] : [] });
+    if (!res.ok) throw Object.assign(new Error(`Apollo people scan ${res.status}`), { status: res.status });
+    return await res.json() as { total_entries?: number; people?: { organization?: { name?: string } }[] };
+  };
+  const names = new Set<string>();
+  const add = (j: Awaited<ReturnType<typeof page>>) => { for (const p of j.people ?? []) if (p.organization?.name) names.add(p.organization.name); };
+  const first = await page(1);
+  add(first);
+  const people = first.total_entries ?? 0;
+  const last = Math.min(opts.maxPages, Math.ceil(people / 100), 500 /* Apollo's page cap */);
+  let next = 2, stopped = false;
+  // A failed later page or a closed request stops every worker; the pages already read still
+  // count (as "at least"). Only page 1 failing throws, so the caller falls back.
+  await Promise.all(Array.from({ length: opts.conc ?? 6 }, async () => {
+    while (!stopped && !opts.signal?.aborted && next <= last && Date.now() < opts.deadlineMs) {
+      try { add(await page(next++)); } catch { stopped = true; }
+    }
+  }));
+  const full = !stopped && !opts.signal?.aborted && next > last;
+  return { names: [...names], people, complete: full && last >= Math.ceil(people / 100), full };
 }
 
 export const APOLLO_ORG_PER_PAGE = 100;

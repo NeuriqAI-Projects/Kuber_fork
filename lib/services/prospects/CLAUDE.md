@@ -15,7 +15,7 @@ no site → LinkedIn via Tavily) → **Jev** classifier → reveal ONE contact o
 | `groups.ts`, `decisions.ts` | UI groups + approve/decline/retry transitions |
 | `text.ts`, `tavily.ts` | text cleaning, second-page picker, sitemap; Tavily search |
 | `digging.ts` | "N leads" rules: when to read the next page or stop (target, credit limit, Firecrawl < 100, dry pages, 20-page cap = 660 leads); page-memory `filterKey` |
-| `estimate.ts` | free size check: People Search count → company and lead range |
+| `estimate.ts` | free size check. Since 3 Nov 2026 it COUNTS companies: `scanBuyerCompanies` (apollo.ts) reads up to 40 pages of buyer-title people (0 credits), `normCompanyName` dedupes names (legal endings), companies the workspace has are left out, leads = new × `leadShare` (past searches with these keywords, weighted by keyword overlap; 40% default). Falls back to the old people-count maths (`estimateMarket`) when the scan fails. Route caches full scans 7 days in memory. Backtest on 16 client searches: companies 5% error, leads 20% |
 | `keywords.ts` | Industry Segments writes without lost updates: `addKeyword` (one keyword, compare-and-swap on `settings.updated_at`, retries) for `POST /api/v1/settings/industry-keywords`; `saveGroupsChecked` for Settings (409 if changed since loaded) |
 | `progress.ts` | honest words for the Started screen: finished headline (outage ≠ "All checked"), Good-fit line (waiting for credits apart), Time left: progress = companies finished checking (not websites read); "Waiting" after 1 min, "Retrying" after 2 min, or after 20 s when `stages.ai_retrying` > 0 (read rows whose AI call already failed) |
 

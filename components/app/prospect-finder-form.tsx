@@ -44,6 +44,12 @@ interface MarketEstimate {
   leads: { low: number; high: number };
   pages_used?: number; total_pages?: number | null;
   leads_left?: { low: number; high: number };
+  /** Companies were counted by name (not worked out from the people count); at_least = the count stopped early. */
+  counted?: boolean; at_least?: boolean;
+  /** The lead share came from earlier searches with these keywords (false = the 40% default). */
+  from_history?: boolean;
+  /** Lookalikes, excluded websites or advanced filters were set: the count leaves them out. */
+  partial_filters?: boolean;
   /** Most leads the Apollo / Firecrawl balances can pay for (null = unknown). */
   fits?: { apollo_leads: number | null; firecrawl_leads: number | null; apollo_credits?: number | null; firecrawl_credits?: number | null };
 }
@@ -118,8 +124,13 @@ function Bill({ target, maxCredits, firecrawlShort, size, jobTitles }: { target:
 /** What the size check says about finding anything: every page read before, or almost no companies. */
 type SizeVerdict = "none-left" | "almost-none" | null;
 
+/** Counted answers from the last 2 minutes, so Back and Next don't count the same filters again.
+ *  Cleared when a search starts (it adds companies, so the next answer differs). */
+const sizeChecks = new Map<string, { at: number; e: MarketEstimate }>();
+const SIZE_CHECK_TTL = 2 * 60_000;
+
 /** Free size check (Apollo People Search, 0 credits): is there enough for the lead target? */
-function MarketSize({ filters, target, onPick, onFits, onSize }: { filters: Record<string, unknown> & { keywords: string[] }; target: number; onPick: (n: number) => void; onFits: (f: Fits | null | undefined) => void; onSize: (v: SizeVerdict) => void }) {
+function MarketSize({ filters, target, onPick, onFits, onSize, onAvail, pickOffered }: { filters: Record<string, unknown> & { keywords: string[] }; target: number; onPick: (n: number) => void; onFits: (f: Fits | null | undefined) => void; onSize: (v: SizeVerdict) => void; onAvail: (n: number | null) => void; pickOffered?: boolean }) {
   const [est, setEst] = useState<MarketEstimate | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const key = JSON.stringify(filters);
@@ -128,29 +139,38 @@ function MarketSize({ filters, target, onPick, onFits, onSize }: { filters: Reco
     onSize(null);
     if (!filters.keywords.length) { setEst(null); setState("idle"); onFits(null); return; }
     let alive = true;
-    setState("loading"); onFits(undefined);
+    const show = (e: MarketEstimate) => {
+      const left = e.leads_left ?? e.leads;
+      setEst(e); setState("idle"); onFits(e.fits ?? null);
+      onSize(noLeadsLeft(e) ? "none-left" : !e.at_least && (e.companies.mid === 0 || left.high === 0) ? "almost-none" : null);
+    };
+    const seen = sizeChecks.get(key);
+    if (seen && Date.now() - seen.at < SIZE_CHECK_TTL) { show(seen.e); return; }
+    setEst(null); setState("loading"); onFits(undefined);
+    // Filters changed or the step closed: stop the old check so it doesn't keep calling Apollo.
+    const ctl = new AbortController();
     let t: ReturnType<typeof setTimeout>;
     // A busy server or a slow Apollo often answers on the next try: keep "Checking…" for 2 more tries before saying it failed.
     const attempt = (tries: number) => {
-      api<MarketEstimate>("/api/v1/prospects/estimate", filters)
-        .then((e) => {
-          if (!alive) return;
-          const left = e.leads_left ?? e.leads;
-          setEst(e); setState("idle"); onFits(e.fits ?? null);
-          onSize(noLeadsLeft(e) ? "none-left" : e.companies.mid === 0 || left.high === 0 ? "almost-none" : null);
-        })
+      api<MarketEstimate>("/api/v1/prospects/estimate", filters, ctl.signal)
+        .then((e) => { if (!alive) return; if (e.counted) sizeChecks.set(key, { at: Date.now(), e }); show(e); })
         .catch(() => { if (!alive) return; if (tries < 2) t = setTimeout(() => attempt(tries + 1), 2000); else { setState("error"); onFits(null); } });
     };
     t = setTimeout(() => attempt(0), 600);
-    return () => { alive = false; clearTimeout(t); };
+    return () => { alive = false; clearTimeout(t); ctl.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  if (!filters.keywords.length) return null;
   const n = (x: number) => x.toLocaleString();
   const left = est?.leads_left ?? est?.leads;
   const used = est?.pages_used ?? 0;
   // The low end is what the keywords can surely give; the client asks for one number, so we answer with one.
-  const tooFew = !!left && left.low > 0 && target > left.low;
+  // A count that stopped early is only a floor, so it never says "too few". A tiny market still warns (and offers at least 1).
+  const avail = left ? Math.max(left.low, Math.min(1, left.high)) : 0;
+  const tooFew = !!filters.keywords.length && !!left && !est?.at_least && left.high > 0 && target > avail;
+  // The red credit block above offers one number too: it uses the smaller one, so a single click fits both.
+  useEffect(() => { onAvail(tooFew ? avail : null); }, [tooFew, avail, onAvail]);
+  if (!filters.keywords.length) return null;
+  const companiesN = (x: number) => `${n(x)}${est?.at_least ? "+" : ""} compan${x === 1 && !est?.at_least ? "y" : "ies"}`;
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-[13px]">
@@ -162,20 +182,29 @@ function MarketSize({ filters, target, onPick, onFits, onSize }: { filters: Reco
             noLeadsLeft(est)
               ? <span className="font-medium text-amber-700 dark:text-amber-300">No new companies left for these keywords: every page was read in earlier searches.</span>
               : est.companies.mid === 0
-              ? <span className="font-medium text-amber-700 dark:text-amber-300">Almost no companies for these keywords.</span>
+              ? <span className="font-medium text-amber-700 dark:text-amber-300">{est.counted ? "No companies found for these keywords, countries and size." : "Almost no companies for these keywords."}</span>
+              : est.at_least && left!.high === 0
+              ? <span><b className="font-semibold tabular-nums">{companiesN(est.companies.low)}</b> <span className="text-muted-foreground">counted so far are all companies you already have. There are more; the search may still find new ones.</span></span>
               : left!.high === 0
                 ? <span className="font-medium text-amber-700 dark:text-amber-300">{used > 0 ? "No new leads left for these keywords." : "Almost no leads for these keywords."}</span>
-                : <span>Available: <b className="font-semibold tabular-nums">~{leadsN(left!.low)}</b> <span className="text-muted-foreground">(up to {n(left!.high)})</span></span>
+                : est.counted
+                  ? <span><b className="font-semibold tabular-nums">{companiesN(est.companies.mid)}</b> · about <b className="font-semibold tabular-nums">{est.at_least ? `${n(left!.low)}+ leads` : left!.low === left!.high ? leadsN(left!.high) : `${n(left!.low)}–${leadsN(left!.high)}`}</b>{est.at_least && <span className="text-muted-foreground"> (stopped counting: there are more)</span>}</span>
+                  : <span>Available: <b className="font-semibold tabular-nums">~{leadsN(left!.low)}</b> <span className="text-muted-foreground">(up to {n(left!.high)})</span></span>
           )}
         </div>
-        <InfoTip side="left" text={`Free check, no credits used. A rough guess. A lead = a plastic maker with a person we can email (about 1 in 3 companies). Your keywords match about ${est ? n(est.companies.mid) : "…"} companies in Apollo.${used > 0 ? " You searched them before, so companies you already got are skipped." : ""}`} />
+        <InfoTip side="left" text={est?.counted
+          ? `Free check, no credits used. Kuber counted the companies in Apollo by name${est.at_least ? " (it stopped counting once there were plenty)" : ""}. A lead = a plastic maker with a person we can email. ${est.from_history ? "The lead number comes from how your earlier searches with these keywords went" : "These keywords were searched little or never before, so the lead number assumes about 4 in 10 companies"}, and leaves out companies you already have.`
+          : `Free check, no credits used. A rough guess. A lead = a plastic maker with a person we can email (about 1 in 3 companies). Your keywords match about ${est ? n(est.companies.mid) : "…"} companies in Apollo.${used > 0 ? " You searched them before, so companies you already got are skipped." : ""}`} />
       </div>
+      {est?.counted && !noLeadsLeft(est) && (left!.high > 0 || est.partial_filters) && (
+        <p className="px-1 text-xs text-muted-foreground">{left!.high > 0 && "A rough guess, not exact: not every company is a plastic maker. The real number shows after the search. "}{est.partial_filters && "This check uses keywords, countries and size only, not lookalikes, excluded websites or advanced filters."}</p>
+      )}
       {est && est.companies.mid > 0 && tooFew && (
         <div className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
           <CircleAlert className="mt-0.5 size-4 shrink-0" />
           <div className="space-y-1.5">
-            <p>Only about <b className="font-semibold tabular-nums">{leadsN(left!.low)}</b> available. Add keywords or countries in step 1 for more.</p>
-            <Button type="button" size="sm" variant="outline" onClick={() => onPick(left!.low)}>Ask for {leadsN(left!.low)} instead</Button>
+            <p>Only about <b className="font-semibold tabular-nums">{leadsN(avail)}</b> available. Add keywords or countries in step 1 for more.</p>
+            {!pickOffered && <Button type="button" size="sm" variant="outline" onClick={() => onPick(avail)}>Ask for {leadsN(avail)} instead</Button>}
           </div>
         </div>
       )}
@@ -397,6 +426,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   // undefined = the balances are still loading, null = unknown.
   const [fits, setFits] = useState<Fits | null | undefined>(undefined);
   const [size, setSize] = useState<SizeVerdict>(null);
+  const [sizeAvail, setSizeAvail] = useState<number | null>(null);
   const noneLeft = size === "none-left";
   // The credit box cannot go over the Apollo balance when it is known (5,000 otherwise); the field says so.
   const creditCap = fits?.apollo_credits ? Math.min(5000, fits.apollo_credits) : 5000;
@@ -545,6 +575,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
           throw e;
         });
         clearDraft("scored");
+        sizeChecks.clear();
         const started = { searchId: out.search_id, batchName: name, color };
         // Saved here, not by the form, so it is kept even if the form was closed meanwhile.
         ssSet(KEY_RESULT, { kind: "started", started } satisfies StoredResult);
@@ -643,11 +674,11 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
                   <AlertCircle className="mt-0.5 size-4 shrink-0" />
                   <div className="space-y-1.5">
                     <p>{fitBlock.msg}</p>
-                    {fitBlock.fix > 0 && <Button type="button" size="sm" variant="outline" onClick={() => pickTarget(fitBlock.fix)}>Ask for {leadsN(fitBlock.fix)} instead</Button>}
+                    {fitBlock.fix > 0 && (() => { const fix = sizeAvail != null ? Math.min(fitBlock.fix, sizeAvail) : fitBlock.fix; return <Button type="button" size="sm" variant="outline" onClick={() => pickTarget(fix)}>Ask for {leadsN(fix)} instead</Button>; })()}
                   </div>
                 </div>
               )}
-              <MarketSize target={targetMsg ? 0 : target} onPick={pickTarget} onFits={setFits} onSize={setSize} filters={{
+              <MarketSize target={targetMsg ? 0 : target} onPick={pickTarget} onFits={setFits} onSize={setSize} onAvail={setSizeAvail} pickOffered={!!fitBlock?.fix} filters={{
                 keywords, locations: countries.length ? countries : undefined, employee_ranges: sizes.length ? sizes : undefined,
                 lookalike_org_ids: lookalikes.length ? lookalikes : undefined, exclude_websites: exclude.length ? exclude : undefined,
                 advanced: buildAdvanced(advanced),

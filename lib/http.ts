@@ -46,7 +46,8 @@ export async function fetchWithRetry(
     const timer = setTimeout(() => controller.abort(), timeout);
 
     try {
-      const res = await fetch(url, { ...init, signal: controller.signal });
+      // The caller's own signal (e.g. a closed request) cancels too, not only the timeout.
+      const res = await fetch(url, { ...init, signal: init.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal });
       clearTimeout(timer);
 
       if (NON_RETRYABLE.has(res.status)) return res;
@@ -61,7 +62,7 @@ export async function fetchWithRetry(
       await sleep(delay);
     } catch (err) {
       clearTimeout(timer);
-      if (attempt === retryDelays.length) throw err;
+      if (attempt === retryDelays.length || init.signal?.aborted) throw err;
       await sleep(retryDelays[attempt]);
     }
   }
