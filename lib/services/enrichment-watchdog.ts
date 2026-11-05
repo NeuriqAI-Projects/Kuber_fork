@@ -52,7 +52,7 @@ export async function triggerEnrichWatchdog(
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceKey) return;
 
-  const { data: pending } = await db
+  let pending = db
     .from("leads")
     .select("import_id")
     .eq("lead_source", "apollo")
@@ -69,6 +69,10 @@ export async function triggerEnrichWatchdog(
     .lt("enrich_attempts", MAX_ENRICH_ATTEMPTS)
     .is("email", null)
     .not("import_id", "is", null);
+  // Only one import id is needed: ask for one row (oldest pending lead first)
+  // instead of pulling every pending lead's import_id (up to 1,000 rows).
+  if (preferImportIds?.length) pending = pending.in("import_id", preferImportIds);
+  const { data: first } = await pending.order("created_at", { ascending: true }).limit(1);
 
   // ONE import per kick — not five in parallel. Concurrent kicks meant up to
   // five bulk_match streams hitting Apollo at once, which can rate-limit each
@@ -77,8 +81,7 @@ export async function triggerEnrichWatchdog(
   // through the import's batches, and (service-role callers only) chains on to
   // the next pending import once this one is finished. A chain that dies is
   // resumed by tomorrow's pass — this is the safety net, not the fast path.
-  const pendingIds = [...new Set((pending ?? []).map((r) => r.import_id as string))];
-  const importId = preferImportIds?.length ? pendingIds.find((id) => preferImportIds.includes(id)) : pendingIds[0];
+  const importId = first?.[0]?.import_id as string | undefined;
   if (!importId) return;
 
   // OVERLAP GUARD. Safe at 15 minutes, mandatory at 30: this job now runs often

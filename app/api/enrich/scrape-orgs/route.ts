@@ -884,6 +884,7 @@ async function runScrapeBatch(baseUrl: string) {
   // the single biggest throughput bottleneck: 5 orgs sequentially could take
   // 5x as long as running them together, for no correctness benefit.
   const failedOrgIds: Array<{ orgId: string; companyId: string }> = [];
+  let providerFaults = 0;
   const results = await Promise.allSettled(orgs.map(async (org) => {
     // A batch can legitimately mix companies, so every write this org triggers
     // (enrichment_logs, lead updates, lead_events, auto-assignment) goes through
@@ -896,10 +897,13 @@ async function runScrapeBatch(baseUrl: string) {
       // Check if it completed (vs failed inside processOneOrg)
       const { data: updated } = await orgDb
         .from("organizations")
-        .select("enrichment_stage")
+        .select("enrichment_stage, enrichment_status")
         .eq("id", org.id)
         .single();
-      return { orgId: org.id, companyId: org.company_id, ok: updated?.enrichment_stage === "done" };
+      return {
+        orgId: org.id, companyId: org.company_id, ok: updated?.enrichment_stage === "done",
+        providerFault: PROVIDER_FAULT_STATUSES.has(updated?.enrichment_status as string),
+      };
     } catch {
       await markFailed(orgDb, org.id, "SCRAPE_FAILED", "Unexpected error in processOneOrg").catch(() => {});
       return { orgId: org.id, companyId: org.company_id, ok: false };
@@ -917,6 +921,7 @@ async function runScrapeBatch(baseUrl: string) {
       failed++;
       if (result.status === "fulfilled") {
         failedOrgIds.push({ orgId: result.value.orgId, companyId: result.value.companyId });
+        if ("providerFault" in result.value && result.value.providerFault) providerFaults++;
       }
     }
   }
@@ -930,6 +935,20 @@ async function runScrapeBatch(baseUrl: string) {
   }
 
   // ── Step 4: Self-trigger if more queued orgs remain ───────────────────────
+  // Not when every org in this batch failed on OUR provider (no key / no
+  // credits / 429): the next hop would claim the same orgs straight back and
+  // fail them again (the rule generate-drafts already applies). Those orgs are
+  // also skipped by claim_queued_orgs for 10 minutes (2026_11_05_B_scrape_
+  // provider_retry_after.sql); the 10-minute enrichment watchdog restarts the
+  // chain after that.
+  if (succeeded === 0 && failed > 0 && providerFaults === failed) {
+    await insertLog(db, {
+      source: "system",
+      event: "BATCH_COMPLETE",
+      payload: { reason: "provider_faults_only_no_chain", failed },
+    });
+    return Response.json({ processed, succeeded, failed, status: "provider_faults_only" });
+  }
   const { count } = await db
     .from("organizations")
     .select("id", { count: "exact", head: true })
