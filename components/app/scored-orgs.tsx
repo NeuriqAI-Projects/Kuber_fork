@@ -12,7 +12,8 @@ import {
 import { toast } from "sonner";
 import { ApolloCostNote } from "@/components/app/apollo-cost-note";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { getToken } from "@/components/app/lead-forms";
+// Not from lead-forms: that import dragged the xlsx library into /leads.
+import { getAccessToken as getToken } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { FilterModal } from "@/components/ui/filter-modal";
 import { MultiSelectDropdown, type DropdownOption } from "@/components/ui/multi-select-dropdown";

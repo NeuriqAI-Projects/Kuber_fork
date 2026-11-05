@@ -807,13 +807,16 @@ export default function LeadsPage() {
     if (!trimmed && !serverFilters) { setSearchResults(null); setSearchLoading(false); return; }
     if (!session) return;
     setSearchLoading(true);
+    // A newer keystroke / filter aborts this search: it stops paging and its
+    // late answer can no longer overwrite the newer one.
+    const ctrl = new AbortController();
     const handle = setTimeout(() => {
-      searchLeads(session.access_token, trimmed, serverFilters)
-        .then((res) => setSearchResults(res.leads))
-        .catch(() => setSearchResults([]))
-        .finally(() => setSearchLoading(false));
+      searchLeads(session.access_token, trimmed, serverFilters, ctrl.signal)
+        .then((res) => { if (!ctrl.signal.aborted) setSearchResults(res.leads); })
+        .catch(() => { if (!ctrl.signal.aborted) setSearchResults([]); })
+        .finally(() => { if (!ctrl.signal.aborted) setSearchLoading(false); });
     }, 300);
-    return () => clearTimeout(handle);
+    return () => { clearTimeout(handle); ctrl.abort(); setSearchLoading(false); };
   }, [searchQuery, session, searchLeads, serverFilters, leadsEntityMode]);
 
   const matchesFilters = (l: Lead) => {

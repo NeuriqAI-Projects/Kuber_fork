@@ -45,6 +45,7 @@ const AddLeadsDrawer = dynamic(
 
 const SIDEBAR_COLLAPSED_KEY = "kuber_sidebar_collapsed";
 const ASSISTANT_OPEN_KEY = "kuber_assistant_open";
+const NO_LEADS: Lead[] = [];
 const BUG_REPORT_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdzYy8kUC3a9JSyhrWZJjvrmde9V3qBVycKMRSpLLUpQqkWug/viewform";
 
 // Sidebar groups, Attio-style: a top group, "Records", then "Workspace".
@@ -180,6 +181,14 @@ function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (commandOpen && session && leads.length === 0) void loadLeads(session.access_token, { background: true });
   }, [commandOpen, session, leads.length, loadLeads]);
+
+  // Stable while the New-campaign modal is open: a fresh array on every shell
+  // render re-ran the modal's open effect (refetching settings + users and
+  // resetting timezone / owner). Recomputed when it opens or the ticks change.
+  const campaignModalLeads = useMemo(
+    () => (showCreateCampaign ? leadsByIds(checkedIds).filter(isCampaignEligible) : NO_LEADS),
+    [leadsByIds, checkedIds, showCreateCampaign],
+  );
 
   const commandGroups = useMemo<CommandGroup[]>(() => [
     {
@@ -405,7 +414,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
                         <Link
                           key={href}
                           href={href}
-                          prefetch
                           title={sidebarCollapsed ? label : undefined}
                           onClick={(e) => {
                             if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
@@ -583,7 +591,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
           setCheckedIds(new Set());
           router.push(`/campaigns/${c.id}`);
         }}
-        leads={leadsByIds(checkedIds).filter(isCampaignEligible)}
+        leads={campaignModalLeads}
       />
 
       <AddLeadsDrawer

@@ -179,3 +179,25 @@ test("fetch without a registered fetcher rejects", async () => {
   const c = new QueryCache();
   await assert.rejects(c.fetch("nope"));
 });
+
+test("lead / reply / unibox writes only stale the campaigns list; campaign writes refetch it", async () => {
+  const c = new QueryCache();
+  const calls: Record<string, number> = {};
+  const f = (k: string) => async () => { calls[k] = (calls[k] ?? 0) + 1; return calls[k]; };
+  const list = "/api/v1/campaigns";
+  const replies = "/api/v1/campaigns/abc/replies";
+  for (const k of [list, replies]) { await c.fetch(k, f(k)); c.subscribe(k, () => {}); }
+  for (const p of ["/api/v1/leads/x", "/api/v1/reply-drafts/x", "/api/v1/unibox/threads/x/read"]) {
+    c.invalidateForMutation(p);
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  assert.equal(calls[list], 1, "list not refetched by lead/reply/unibox writes");
+  assert.equal(c.isFresh(list, 60_000), false, "but marked stale, so the next visit reloads it");
+  assert.equal(calls[replies], 4, "campaign sub-keys still refetch (1 + 3 writes)");
+  c.invalidateForMutation("/api/v1/campaigns/abc/hold");
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(calls[list], 2, "campaign write refetches the list");
+  c.invalidateForMutation("/api/v1/campaign-leads/abc/attachment");
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(calls[list], 3);
+});

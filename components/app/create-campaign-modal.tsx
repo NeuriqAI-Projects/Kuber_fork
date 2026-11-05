@@ -18,7 +18,7 @@ import { Stepper } from "@/components/ui/stepper";
 import type { Lead } from "@/lib/leads";
 import { isCampaignEligible, CAMPAIGN_ACTION_HELP, getMostCommonCountry } from "@/lib/leads";
 import { COUNTRY_TO_TIMEZONE } from "@/lib/constants";
-import { createCampaign, addLeadsToCampaign, triggerDraftGeneration, checkAiReadiness, applyDefaultDrafts, mapDbCampaign, fetchMySettings, uploadCampaignAttachment, assignCampaign, fetchUsers, type Profile } from "@/lib/api-client";
+import { createCampaign, addLeadsToCampaign, triggerDraftGeneration, checkAiReadiness, applyDefaultDrafts, mapDbCampaign, fetchMySettings, uploadCampaignAttachment, assignCampaign, queryCache, cacheKeys, cachedFetchers, type Profile } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-context";
 import { cumulativeDays, dayLabel, MAX_FOLLOWUP_STEPS } from "@/lib/followup-schedule-preview";
@@ -222,7 +222,8 @@ export function CreateCampaignModal({
         const s = await fetchMySettings(token);
         setSenderName(s.sender_name ?? s.defaults.sender_name ?? "");
         if (role === "manager") {
-          const users = await fetchUsers(token);
+          // Shared users cache (Leads / Campaigns read the same key).
+          const users = await queryCache.fetch<Profile[]>(cacheKeys.users, cachedFetchers.users, { maxAgeMs: 60_000 });
           setEmployees(users.filter((u) => u.role === "employee" && u.is_active));
         }
       } catch { /* use empty default */ }

@@ -145,7 +145,7 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
     });
   }, []);
 
-  const loadOrg = useCallback(async (id: string) => {
+  const loadOrg = useCallback(async (id: string, maxAgeMs = 0) => {
     activeOrgIdRef.current = id;
     // Cached (opened before, or hover-prefetched): show it now, refresh below.
     const cachedOrg = queryCache.getData<OrgData>(cacheKeys.org(id));
@@ -156,9 +156,12 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
     setError("");
     try {
       // The org and its leads are independent — fetch them in parallel.
+      // On open `maxAgeMs` = 15 s reuses a hover prefetch instead of fetching
+      // both again; reloads after a decision pass 0 (that write is a raw fetch
+      // and does not mark these keys stale).
       const [data, linkedLeads] = await Promise.all([
-        queryCache.fetch(cacheKeys.org(id), cachedFetchers.org(id)) as Promise<unknown> as Promise<OrgData>,
-        queryCache.fetch(cacheKeys.orgLeads(id), cachedFetchers.orgLeads(id)),
+        queryCache.fetch(cacheKeys.org(id), cachedFetchers.org(id), { maxAgeMs }) as Promise<unknown> as Promise<OrgData>,
+        queryCache.fetch(cacheKeys.orgLeads(id), cachedFetchers.orgLeads(id), { maxAgeMs }),
       ]);
       if (activeOrgIdRef.current !== id) return;
       applyOrg(data, linkedLeads);
@@ -199,7 +202,7 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
     setTab("overview");
     setEditing(false);
     setError("");
-    void loadOrg(orgId);
+    void loadOrg(orgId, 15_000);
   }, [orgId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

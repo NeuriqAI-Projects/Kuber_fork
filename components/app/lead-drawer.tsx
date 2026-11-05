@@ -627,13 +627,15 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
     return session?.access_token ?? "";
   }
 
-  const fetchFresh = useCallback(async (l: Lead) => {
+  // `maxAgeMs` (drawer open only): reuse a hover prefetch younger than that
+  // instead of fetching the same lead again. Refresh buttons pass nothing.
+  const fetchFresh = useCallback(async (l: Lead, maxAgeMs = 0) => {
     setLoadingLead(true);
     try {
       const tok = await getToken();
       if (!tok) return;
       // Through the cache: joins a hover prefetch already in flight.
-      const updated = await queryCache.fetch(cacheKeys.lead(l.id), () => fetchLead(tok, l.id));
+      const updated = await queryCache.fetch(cacheKeys.lead(l.id), () => fetchLead(tok, l.id), { maxAgeMs });
       if (activeLeadIdRef.current !== l.id) return;
       setFreshLead(updated);
       onLeadUpdated?.(updated);
@@ -657,25 +659,25 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
     } catch { /* non-fatal */ }
   }, []);
 
-  const fetchActivity = useCallback(async (leadId: string) => {
+  const fetchActivity = useCallback(async (leadId: string, maxAgeMs = 0) => {
     // Spinner only when there is nothing cached to show meanwhile.
     setLoadingActivity(queryCache.getData(cacheKeys.leadActivity(leadId)) === undefined);
     try {
       const tok = await getToken();
       if (!tok) return;
-      const events = await queryCache.fetch(cacheKeys.leadActivity(leadId), () => fetchLeadActivity(tok, leadId));
+      const events = await queryCache.fetch(cacheKeys.leadActivity(leadId), () => fetchLeadActivity(tok, leadId), { maxAgeMs });
       if (activeLeadIdRef.current !== leadId) return;
       setActivity(events);
     } catch { /* non-fatal */ }
     finally { if (activeLeadIdRef.current === leadId) setLoadingActivity(false); }
   }, []);
 
-  const loadComments = useCallback(async (leadId: string, quiet = false) => {
+  const loadComments = useCallback(async (leadId: string, quiet = false, maxAgeMs = 0) => {
     if (!quiet) setLoadingComments(true);
     try {
       const tok = await getToken();
       if (!tok) return;
-      const next = await queryCache.fetch(cacheKeys.leadComments(leadId), () => fetchLeadComments(tok, leadId));
+      const next = await queryCache.fetch(cacheKeys.leadComments(leadId), () => fetchLeadComments(tok, leadId), { maxAgeMs });
       if (activeLeadIdRef.current !== leadId) return;
       setComments((current) => {
         if (!quiet) return next;
@@ -798,17 +800,19 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
     setComments(queryCache.getData<LeadComment[]>(cacheKeys.leadComments(lead.id)) ?? []);
     setCommentBody("");
     setRailMode("overview");
-    void fetchFresh(lead);
-    void fetchActivity(lead.id);
+    // 15 s: a row hover just fetched these — don't fetch them again on open.
+    // Writes mark them stale, so a change made a moment ago still reloads.
+    void fetchFresh(lead, 15_000);
+    void fetchActivity(lead.id, 15_000);
     // Quiet prefetch so the Discussion tab / chat icon can show a message
     // count without the user having to open the tab first.
-    void loadComments(lead.id, true);
+    void loadComments(lead.id, true, 15_000);
     if (lead.orgId) void fetchEnrichStatus(lead.orgId);
   }, [lead?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!lead || railMode !== "discussion") return;
-    void loadComments(lead.id);
+    void loadComments(lead.id, false, 15_000);
     return everyWhileVisible(() => void loadComments(lead.id, true), 30_000);
   }, [lead?.id, railMode, loadComments]); // eslint-disable-line react-hooks/exhaustive-deps
 

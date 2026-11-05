@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useEscClose } from "@/components/ui/use-esc-close";
 import { toast } from "sonner";
-import * as XLSX from "xlsx";
 import { AlertCircle, Check, CheckCircle2, FileText, Loader2, Plus, Search, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChoiceCard } from "@/components/ui/choice-card";
@@ -1225,8 +1224,10 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
   function handleFile(file: File) {
     setFileError("");
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
+        // xlsx (~400 kB) loads only when a file is picked, not with /leads.
+        const XLSX = await import("xlsx");
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const wb   = XLSX.read(data, { type: "array" });
         const ws   = wb.Sheets[wb.SheetNames[0]];

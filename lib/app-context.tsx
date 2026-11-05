@@ -37,7 +37,8 @@ type AppContextValue = {
   loadingMoreLeads: boolean;
   loadAllLeads: (token: string) => Promise<void>;
   loadingAllLeads: boolean;
-  searchLeads: (token: string, query: string, filters?: LeadListFilters) => Promise<{ leads: Lead[]; total: number }>;
+  /** `signal`: a newer search aborts this one — it stops before its next page. */
+  searchLeads: (token: string, query: string, filters?: LeadListFilters, signal?: AbortSignal) => Promise<{ leads: Lead[]; total: number }>;
   /** Resolve lead ids to objects across EVERY lead this session has seen —
    *  the loaded pages and any server-filtered result set. Selecting rows in a
    *  filtered view and reading them back out of `leads` silently dropped
@@ -334,18 +335,24 @@ export function AppProvider({
   // Runs the search against the DB (not the client-loaded `leads` subset) so
   // it finds a match anywhere in the table, not just among the leads already
   // paged in. Independent of `leads` state — never touches it.
-  const searchLeads = useCallback(async (token: string, query: string, filters?: LeadListFilters): Promise<{ leads: Lead[]; total: number }> => {
+  // The exact count runs on page 1 only (it re-scanned every match on every
+  // page); later pages ask for `count=none` and keep page 1's total.
+  const searchLeads = useCallback(async (token: string, query: string, filters?: LeadListFilters, signal?: AbortSignal): Promise<{ leads: Lead[]; total: number }> => {
     const seen = new Set<string>();
     const all: Lead[] = [];
     let total = 0;
     for (let page = 1; ; page++) {
-      const res = await fetchLeads(token, { limit: LEADS_PAGE_SIZE, page, q: query || undefined, ...filters });
+      if (signal?.aborted) throw new DOMException("Search superseded", "AbortError");
+      const res = await fetchLeads(token, {
+        limit: LEADS_PAGE_SIZE, page, q: query || undefined, ...filters,
+        ...(page > 1 ? { count: "none" as const } : {}),
+      });
       for (const lead of res.leads) {
         if (seen.has(lead.id)) continue;
         seen.add(lead.id);
         all.push(lead);
       }
-      total = res.total ?? 0;
+      if (page === 1) total = res.total ?? 0;
       rememberLeads(res.leads);
       if (res.leads.length < LEADS_PAGE_SIZE || all.length >= total) break;
     }

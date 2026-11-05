@@ -47,6 +47,16 @@ const RELATED: Record<string, string[]> = {
   "model-lab":      ["model-lab"],
 };
 
+/** The full campaigns list is subscribed app-wide (AppContext), so "refetch
+ *  mounted keys" meant every lead / reply / unibox write reloaded it (194
+ *  list loads a day against ~21 campaign opens). Only campaign writes refetch
+ *  it now — the hold banner on a campaign page relies on that. Other writes
+ *  just mark it stale: the Campaigns and campaign pages reload it on every
+ *  visit, the Dashboard and hover prefetch reload it when stale. Sub-keys
+ *  (`/api/v1/campaigns/<id>/…`) keep the normal rule. */
+const CAMPAIGNS_LIST = "/api/v1/campaigns";
+const REFETCHES_CAMPAIGNS_LIST = new Set(["campaigns", "campaign-leads"]);
+
 /** `/api/v1/campaigns/abc/pause?x=1` → `campaigns`. */
 export function resourceOf(path: string): string {
   const clean = path.split("?")[0];
@@ -206,7 +216,9 @@ export class QueryCache {
   invalidateForMutation(path: string): void {
     const resource = resourceOf(path);
     const related = new Set(RELATED[resource] ?? [resource]);
-    this.invalidate((key) => related.has(resourceOf(key)));
+    const listNow = REFETCHES_CAMPAIGNS_LIST.has(resource);
+    this.invalidate((key) => related.has(resourceOf(key)) && (listNow || key !== CAMPAIGNS_LIST));
+    if (!listNow && related.has("campaigns")) this.invalidate((key) => key === CAMPAIGNS_LIST, { refetch: false });
   }
 }
 
