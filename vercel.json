@@ -1,9 +1,5 @@
 {
-  "regions": ["syd1"],
-  "crons": [
-    {
-      "path": "/api/internal/reconcile-counters",
-      "schedule": "30 2 * * *"
-    }
+  "regions": [
+    "syd1"
   ]
 }
