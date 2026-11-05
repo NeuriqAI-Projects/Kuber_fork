@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { openingSendToRecord } from "@/lib/services/followup-signals";
 import { recountCampaignTemperature } from "@/lib/services/campaign-counters";
 import { createScopedClient } from "@/lib/supabase/scoped";
-import sanitizeHtml from "sanitize-html";
+import type SanitizeHtml from "sanitize-html";
 import { INTEREST_TO_TEMPERATURE } from "@/lib/constants";
 import { emailPreview, stripQuotedText, ueTypeToDirection } from "@/lib/email-display";
 import { pickDraftsForInboundMessage } from "@/lib/reply-draft-pick";
@@ -476,7 +476,9 @@ export async function markThreadUnread(db: Db, threadId: string): Promise<void> 
   }).eq("thread_id", threadId).eq("direction", "received");
 }
 
-function sanitizeBodyHtml(html: string | null): string | null {
+// sanitize-html (+ postcss) is loaded by getThreadMessages on first use, so the
+// routes that only import this module (unread-count, webhook, pumps) skip it.
+function sanitizeBodyHtml(sanitizeHtml: typeof SanitizeHtml, html: string | null): string | null {
   if (!html) return null;
   return sanitizeHtml(html, {
     allowedTags: ["p", "br", "a", "b", "strong", "i", "em", "ul", "ol", "li", "blockquote", "img", "table", "thead", "tbody", "tr", "td", "th", "div", "span"],
@@ -497,51 +499,23 @@ async function loadLeadInterestMap(db: Db, leadEmails: string[]): Promise<Map<st
   const map = new Map<string, { interest_status: number | null; lead_temperature: string | null; campaign_lead_id: string | null }>();
   if (leadEmails.length === 0) return map;
 
-  const { data: leads } = await db.from("leads").select("id, email").in("email", leadEmails);
-  const leadIdByEmail = new Map((leads ?? []).map((l) => [l.email as string, l.id as string]));
-  const leadIds = [...leadIdByEmail.values()];
+  const leads = await inChunks(leadEmails, (c) => db.from("leads").select("id, email").in("email", c));
+  // One lead id per email (last wins, as before), then inverted for the join below.
+  const emailByLeadId = new Map([...new Map(leads.map((l) => [l.email as string, l.id as string]))].map(([e, id]) => [id, e]));
+  const leadIds = [...emailByLeadId.keys()];
   if (leadIds.length === 0) return map;
 
-  const { data: cls } = await db
+  const cls = (await inChunks(leadIds, (c) => db
     .from("campaign_leads")
     .select("id, lead_id, interest_status, lead_temperature, updated_at")
-    .in("lead_id", leadIds)
-    .order("updated_at", { ascending: false });
+    .in("lead_id", c)))
+    // updated_at desc, nulls first (Postgres' DESC default, which the single query used).
+    .sort((a, b) => { const x = (a.updated_at as string | null) ?? "~", y = (b.updated_at as string | null) ?? "~"; return x === y ? 0 : x < y ? 1 : -1; });
 
-  for (const cl of cls ?? []) {
-    const email = [...leadIdByEmail.entries()].find(([, id]) => id === cl.lead_id)?.[0];
+  for (const cl of cls) {
+    const email = emailByLeadId.get(cl.lead_id as string);
     if (!email || map.has(email)) continue;
     map.set(email, {
-      interest_status: cl.interest_status as number | null,
-      lead_temperature: cl.lead_temperature as string | null,
-      campaign_lead_id: cl.id as string,
-    });
-  }
-  return map;
-}
-
-/**
- * A lead can be enrolled in several campaigns at once, each with its own
- * campaign_leads row (and its own interest_status). Unlike loadLeadInterestMap
- * (which merges across campaigns by "most recently touched" and can surface the
- * wrong campaign's status for a given thread), this scopes the lookup to the
- * exact campaign_lead_id each unibox thread already carries — matching how
- * getThreadMessages resolves status for the detail view.
- */
-async function loadCampaignLeadStatusMap(
-  db: Db,
-  campaignLeadIds: string[],
-): Promise<Map<string, { interest_status: number | null; lead_temperature: string | null; campaign_lead_id: string | null }>> {
-  const map = new Map<string, { interest_status: number | null; lead_temperature: string | null; campaign_lead_id: string | null }>();
-  if (campaignLeadIds.length === 0) return map;
-
-  const { data: cls } = await db
-    .from("campaign_leads")
-    .select("id, interest_status, lead_temperature")
-    .in("id", campaignLeadIds);
-
-  for (const cl of cls ?? []) {
-    map.set(cl.id as string, {
       interest_status: cl.interest_status as number | null,
       lead_temperature: cl.lead_temperature as string | null,
       campaign_lead_id: cl.id as string,
@@ -609,6 +583,25 @@ function sanitizeSearch(raw: string): string {
 const THREAD_LIST_COLS =
   "id, thread_id, instantly_email_id, direction, subject, from_email, to_emails, cc_emails, content_preview, eaccount, lead_email, campaign_id, campaign_lead_id, is_unread, is_auto_reply, is_focused, timestamp_email";
 
+/**
+ * List select: the thread's interest rides on the campaign_leads embed (one
+ * embed only — under a scope it is the same !inner join that enforces it), so
+ * there is no id-list lookup that grows with the view.
+ */
+const listSelect = (scope: UniboxScope | undefined) => scope
+  ? `${THREAD_LIST_COLS}, campaign_leads!inner(interest_status, lead_temperature, leads!lead_id!inner(assigned_to, is_deleted))`
+  : `${THREAD_LIST_COLS}, campaign_leads(interest_status, lead_temperature)`;
+
+/** `.in()` lists travel in the URL; past a few hundred values the gateway answers 400. */
+async function inChunks<T = Record<string, unknown>>(
+  values: string[],
+  run: (chunk: string[]) => PromiseLike<{ data: T[] | null }>,
+): Promise<T[]> {
+  const chunks: string[][] = [];
+  for (let i = 0; i < values.length; i += 150) chunks.push(values.slice(i, i + 150));
+  return (await Promise.all(chunks.map((c) => run(c)))).flatMap((r) => r.data ?? []);
+}
+
 export async function getThreads(db: Db, filters: {
   tab?: UniboxTab;
   campaign_id?: string;
@@ -638,7 +631,7 @@ export async function getThreads(db: Db, filters: {
 
   let query = db
     .from("unibox_emails")
-    .select(scopeSelect(THREAD_LIST_COLS, filters.scope))
+    .select(listSelect(filters.scope))
     .not("thread_id", "is", null);
 
   if (filters.scope) {
@@ -690,20 +683,22 @@ export async function getThreads(db: Db, filters: {
 
   // Include threads whose lead email matches a name search even if email row didn't match query filter
   if (nameMatchEmails.size > 0) {
-    let extraQuery = db
-      .from("unibox_emails")
-      .select(scopeSelect(THREAD_LIST_COLS, filters.scope))
-      .not("thread_id", "is", null)
-      .in("lead_email", [...nameMatchEmails]);
-
-    if (filters.scope) {
-      extraQuery = extraQuery
-        .eq("campaign_leads.leads.assigned_to", filters.scope.assigned_to)
-        .eq("campaign_leads.leads.is_deleted", false);
-    }
-
-    const { data: extraRows } = await extraQuery;
-    for (const r of (extraRows ?? []) as UniboxEmailRow[]) {
+    // Chunked: a common name fragment matches hundreds of leads, and one .in()
+    // with all their emails overflowed the URL (400, read as "no extra rows").
+    const extraRows = await inChunks([...nameMatchEmails], (c) => {
+      let extraQuery = db
+        .from("unibox_emails")
+        .select(listSelect(filters.scope))
+        .not("thread_id", "is", null)
+        .in("lead_email", c);
+      if (filters.scope) {
+        extraQuery = extraQuery
+          .eq("campaign_leads.leads.assigned_to", filters.scope.assigned_to)
+          .eq("campaign_leads.leads.is_deleted", false);
+      }
+      return extraQuery;
+    });
+    for (const r of extraRows as UniboxEmailRow[]) {
       if (!r.thread_id) continue;
       if (filters.tab && !matchesTab(filters.tab, { is_focused: r.is_focused, is_auto_reply: r.is_auto_reply })) continue;
       if (!campaignMatches(r.campaign_id, filters)) continue;
@@ -714,40 +709,43 @@ export async function getThreads(db: Db, filters: {
     }
   }
 
-  const threadRows = Array.from(threadMap.values()).flat();
-  const leadEmails = [...new Set([...all, ...threadRows].map((r) => r.lead_email).filter(Boolean))] as string[];
-  const interestMap = await loadLeadInterestMap(db, leadEmails);
-  const campaignLeadIds = [...new Set(threadRows.map((r) => r.campaign_lead_id).filter(Boolean))] as string[];
-  const statusByCampaignLead = await loadCampaignLeadStatusMap(db, campaignLeadIds);
+  // Interest comes from the campaign_leads embed on each row (no id-list in the URL). Only a
+  // thread whose newest message has no campaign_lead falls back to a lookup by
+  // lead email — a handful, not the 2,000-row list that used to overflow the URL.
+  type Interest = { interest_status: number | null; lead_temperature: string | null; campaign_lead_id: string | null };
+  const latestByThread = new Map<string, UniboxEmailRow>();
+  for (const [threadId, msgs] of threadMap) {
+    msgs.sort((a, b) => String(a.timestamp_email).localeCompare(String(b.timestamp_email)));
+    latestByThread.set(threadId, msgs[msgs.length - 1]);
+  }
+  const fallbackEmails = [...new Set([...latestByThread.values()]
+    .filter((r) => !r.campaign_leads && r.lead_email).map((r) => r.lead_email as string))];
+  const interestMap = await loadLeadInterestMap(db, fallbackEmails);
 
-  // Batched up front (instead of one query per thread inside the loop below) —
-  // with ~100+ threads that N+1 pattern was slow enough to open a wide race
-  // window where an older, unfiltered request could resolve after a newer
-  // filtered one and silently overwrite it (see unibox-client.tsx loadThreads).
+  // Names and campaign names are display-only, so they are read for the returned
+  // page alone — except under a search, where the name is part of the match.
   type LeadLookup = { first_name: string | null; last_name: string | null; title: string | null; email: string };
   const leadByEmail = new Map<string, LeadLookup>();
-  if (leadEmails.length > 0) {
-    const { data: leadRows } = await db.from("leads").select("first_name, last_name, title, email").in("email", leadEmails);
-    for (const l of leadRows ?? []) leadByEmail.set(l.email as string, l as unknown as LeadLookup);
-  }
-  const campaignIdsForLookup = [...new Set(threadRows.map((r) => r.campaign_id).filter(Boolean))] as string[];
-  const campaignById = new Map<string, { id: string; name: string }>();
-  if (campaignIdsForLookup.length > 0) {
-    const { data: campaignRows } = await db.from("campaigns").select("id, name").in("id", campaignIdsForLookup);
-    for (const c of campaignRows ?? []) campaignById.set(c.id as string, { id: c.id as string, name: c.name as string });
+  const loadLeads = async (emails: string[]) => {
+    for (const l of await inChunks(emails, (c) => db.from("leads").select("first_name, last_name, title, email").in("email", c))) {
+      leadByEmail.set(l.email as string, l as unknown as LeadLookup);
+    }
+  };
+  if (search || filters.q?.trim()) {
+    await loadLeads([...new Set([...latestByThread.values()].map((r) => r.lead_email).filter(Boolean))] as string[]);
   }
 
   const summaries: UniboxThreadSummary[] = [];
   const latestUnreadAtByThread = new Map<string, string>();
   for (const [threadId, msgs] of threadMap) {
-    msgs.sort((a, b) => String(a.timestamp_email).localeCompare(String(b.timestamp_email)));
-    const latest = msgs[msgs.length - 1];
+    const latest = latestByThread.get(threadId)!;
     const hasReceived = msgs.some((m) => m.direction === "received");
     if (!hasReceived && !filters.include_unreplied) continue;
 
     const leadEmail = latest.lead_email;
-    const interest = (latest.campaign_lead_id ? statusByCampaignLead.get(latest.campaign_lead_id) : undefined)
-      ?? (leadEmail ? interestMap.get(leadEmail) : undefined);
+    const interest: Interest | undefined = latest.campaign_leads
+      ? { interest_status: latest.campaign_leads.interest_status ?? null, lead_temperature: latest.campaign_leads.lead_temperature ?? null, campaign_lead_id: latest.campaign_lead_id }
+      : (leadEmail ? interestMap.get(leadEmail) : undefined);
 
     const lead: UniboxThreadSummary["lead"] = (leadEmail && leadByEmail.get(leadEmail)) || null;
 
@@ -768,8 +766,6 @@ export async function getThreads(db: Db, filters: {
       latestUnreadAtByThread.set(threadId, String(unreadInbound[unreadInbound.length - 1].timestamp_email));
     }
 
-    const campaign: { id: string; name: string } | null = (latest.campaign_id && campaignById.get(latest.campaign_id)) || null;
-
     // Per-person outstanding questions, not "is the last message inbound".
     const outstanding = unansweredInbound(
       msgs as unknown as ParticipantMessage[],
@@ -780,7 +776,7 @@ export async function getThreads(db: Db, filters: {
       thread_id: threadId,
       lead_email: leadEmail,
       lead,
-      campaign,
+      campaign: null, // filled for the returned page below
       eaccount: latest.eaccount,
       subject: latest.subject,
       preview: latest.content_preview,
@@ -841,9 +837,69 @@ export async function getThreads(db: Db, filters: {
     start = idx >= 0 ? idx + 1 : 0;
   }
   const page = visible.slice(start, start + limit);
+
+  // Decorate the page: lead names (unless the search already loaded them) and campaign names.
+  const campaignIdOf = (t: UniboxThreadSummary) => latestByThread.get(t.thread_id)?.campaign_id as string | null | undefined;
+  const pageCampaignIds = [...new Set(page.map(campaignIdOf).filter(Boolean))] as string[];
+  const [campaignRows] = await Promise.all([
+    inChunks(pageCampaignIds, (c) => db.from("campaigns").select("id, name").in("id", c)),
+    !(search || filters.q?.trim())
+      ? loadLeads([...new Set(page.map((t) => t.lead_email).filter(Boolean))] as string[])
+      : null,
+  ]);
+  const campaignById = new Map(campaignRows.map((c) => [c.id as string, { id: c.id as string, name: c.name as string }]));
+  for (const t of page) {
+    if (!t.lead && t.lead_email) t.lead = leadByEmail.get(t.lead_email) ?? null;
+    const cid = campaignIdOf(t);
+    t.campaign = (cid && campaignById.get(cid)) || null;
+  }
+
   const next_cursor = start + limit < visible.length ? page[page.length - 1]?.latest_at ?? null : null;
 
   return { threads: page, next_cursor, counts: { unread_total, total: visible.length } };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function replyTargetOf<M extends Record<string, any>>(msgs: M[]) {
+  const latestReceived = [...msgs].reverse().find((m) => m.direction === "received");
+  // A pure cold-outreach thread the lead has never answered has no
+  // latestReceived — but Reply should still work there (see replyTargetFor):
+  // it resolves to the thread's own newest message, addressed to the lead via
+  // additional_recipients rather than back to us. Without this fallback
+  // reply_to_uuid stayed null forever and the client hid the Reply button.
+  const newestMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null;
+  const defaultReplyTarget = latestReceived
+    ?? (newestMsg ? replyTargetFor(newestMsg as unknown as ParticipantMessage, msgs as unknown as ParticipantMessage[]) : null);
+  return { latestReceived, defaultReplyTarget };
+}
+
+/**
+ * What manual reply and add-lead need from a thread: message headers (no bodies,
+ * no sanitising), campaign ids, the reply target and our mailbox — one query, plus
+ * the lead's org/owner when asked. Same rules as getThreadMessages for
+ * reply_to_uuid, eaccount, campaign_lead_id and lead.
+ */
+export async function getThreadCore(db: Db, threadId: string, opts: { lead?: boolean } = {}) {
+  const { data: rows } = await db
+    .from("unibox_emails")
+    .select("instantly_email_id, direction, subject, from_email, to_emails, cc_emails, timestamp_email, eaccount, lead_email, campaign_id, campaign_lead_id")
+    .eq("thread_id", threadId)
+    .order("timestamp_email", { ascending: true });
+  const msgs = (rows ?? []) as (ParticipantMessage & { subject: string | null; eaccount: string | null; lead_email: string | null; campaign_id: string | null; campaign_lead_id: string | null })[];
+  const { latestReceived, defaultReplyTarget } = replyTargetOf(msgs);
+  const leadEmail = msgs.find((m) => m.lead_email)?.lead_email ?? null;
+  const lead = opts.lead && leadEmail
+    ? ((await db.from("leads").select("email, organization_id, assigned_to").eq("email", leadEmail).maybeSingle()).data as
+      { email: string | null; organization_id: string | null; assigned_to: string | null } | null)
+    : null;
+  return {
+    messages: msgs,
+    campaign_id: msgs.find((m) => m.campaign_id)?.campaign_id ?? null,
+    campaign_lead_id: msgs.find((m) => m.campaign_lead_id)?.campaign_lead_id ?? null,
+    reply_to_uuid: (defaultReplyTarget?.instantly_email_id as string | undefined) ?? null,
+    eaccount: latestReceived?.eaccount ?? msgs.find((m) => m.eaccount)?.eaccount ?? null,
+    lead,
+  };
 }
 
 export async function getThreadMessages(db: Db, threadId: string): Promise<{
@@ -871,15 +927,8 @@ export async function getThreadMessages(db: Db, threadId: string): Promise<{
     .order("timestamp_email", { ascending: true });
 
   const msgs = rows ?? [];
-  const latestReceived = [...msgs].reverse().find((m) => m.direction === "received");
-  // A pure cold-outreach thread the lead has never answered has no
-  // latestReceived — but Reply should still work there (see replyTargetFor):
-  // it resolves to the thread's own newest message, addressed to the lead via
-  // additional_recipients rather than back to us. Without this fallback
-  // reply_to_uuid stayed null forever and the client hid the Reply button.
-  const newestMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null;
-  const defaultReplyTarget = latestReceived
-    ?? (newestMsg ? replyTargetFor(newestMsg as unknown as ParticipantMessage, msgs as unknown as ParticipantMessage[]) : null);
+  const { latestReceived, defaultReplyTarget } = replyTargetOf(msgs);
+  const { default: sanitizeHtml } = await import("sanitize-html");
 
   let reply_drafts: Record<string, unknown>[] = [];
   const campaignLeadId = msgs.find((m) => m.campaign_lead_id)?.campaign_lead_id ?? null;
@@ -970,7 +1019,7 @@ export async function getThreadMessages(db: Db, threadId: string): Promise<{
       from_email: m.from_email,
       to_emails: m.to_emails,
       cc_emails: m.cc_emails,
-      body_html: sanitizeBodyHtml(m.body_html),
+      body_html: sanitizeBodyHtml(sanitizeHtml, m.body_html),
       body_text: m.body_text,
       step: m.step,
       timestamp_email: m.timestamp_email,
@@ -1054,10 +1103,12 @@ export async function hydrateThreadIfStale(db: Db, threadId: string): Promise<vo
 
   const { data: rows } = await db
     .from("unibox_emails")
-    .select("id, body_html, instantly_email_id")
+    .select("id, body_html, body_text, instantly_email_id")
     .eq("thread_id", threadId);
 
-  const missing = (rows ?? []).some((r) => !r.body_html);
+  // Both bodies, not just HTML: a plain-text-only message (Instantly sent no HTML)
+  // never gains body_html, so the old check re-fetched that thread on every open.
+  const missing = (rows ?? []).some((r) => !r.body_html && !r.body_text);
   if (!missing) return;
 
   hydrateCooldown.set(threadId, Date.now());

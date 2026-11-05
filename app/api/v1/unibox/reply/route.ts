@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
-import { getThreadMessages, resolveReplyTarget, sendThreadReply } from "@/lib/services/unibox";
+import { getThreadCore, resolveReplyTarget, sendThreadReply } from "@/lib/services/unibox";
 import { assertThreadAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { parseAddressList } from "@/lib/thread-participants";
@@ -70,10 +70,10 @@ export async function POST(req: NextRequest) {
   }
 
   const db = dbForUser(user);
-  const thread = await getThreadMessages(db, body.thread_id);
+  const thread = await getThreadCore(db, body.thread_id);
   try {
     await assertThreadAccess(db, user, {
-      campaignId: (thread.campaign as { id?: string } | null)?.id ?? null,
+      campaignId: thread.campaign_id,
       campaignLeadId: thread.campaign_lead_id,
     });
   } catch (r) {
@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
     cc: cc.length ? cc : undefined,
     bcc: bcc.length ? bcc : undefined,
     campaignLeadId: thread.campaign_lead_id,
-    campaignId: (thread.campaign as { id?: string } | null)?.id ?? null,
+    campaignId: thread.campaign_id,
     source: "unibox",
     replyDraftId: body.reply_draft_id,
     sentBy: user.id,

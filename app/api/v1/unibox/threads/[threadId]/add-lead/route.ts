@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireManager } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
-import { getThreadMessages } from "@/lib/services/unibox";
+import { getThreadCore } from "@/lib/services/unibox";
 import { assertThreadAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { ourAddresses, threadParticipants } from "@/lib/thread-participants";
@@ -47,10 +47,10 @@ export async function POST(
   if (!firstName) return fail(400, "VALIDATION_ERROR", "First name is required");
 
   const db = dbForUser(user);
-  const thread = await getThreadMessages(db, threadId);
+  const thread = await getThreadCore(db, threadId, { lead: true });
   try {
     await assertThreadAccess(db, user, {
-      campaignId: (thread.campaign as { id?: string } | null)?.id ?? null,
+      campaignId: thread.campaign_id,
       campaignLeadId: thread.campaign_lead_id,
     });
   } catch (r) {
@@ -63,7 +63,7 @@ export async function POST(
   const ourEmails = ourAddresses(thread.messages, [thread.eaccount]);
   const participants = threadParticipants(thread.messages, {
     ourEmails,
-    leadEmail: (thread.lead as { email?: string } | null)?.email ?? null,
+    leadEmail: thread.lead?.email ?? null,
   });
   const participant = participants.find((p) => p.email === email);
   if (!participant) {
@@ -90,7 +90,7 @@ export async function POST(
 
   // Inherit the organisation from the lead whose thread this is — that is the
   // whole point: a colleague CC'd from the same company belongs to that account.
-  const lead = thread.lead as { organization_id?: string | null; assigned_to?: string | null } | null;
+  const lead = thread.lead;
   if (!lead?.organization_id) {
     return fail(
       400,
