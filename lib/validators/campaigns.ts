@@ -11,7 +11,7 @@ export const CreateCampaignSchema = z.object({
   window_to: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
   send_days: z.record(z.string(), z.boolean()).optional(),
   schedule_timezone: z.string().optional(),
-  daily_limit: z.number().int().min(1).max(500).default(30),
+  daily_limit: z.number().int().min(1).max(500).default(100),
   ai_prompt_context: z.string().optional(),
   sender_name: z.string().optional(),
   // Each entry is the wait AFTER the previous email before this follow-up sends

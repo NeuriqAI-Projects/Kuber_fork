@@ -96,9 +96,9 @@ export function actionTools(caller: AssistantCaller) {
         "Returns a confirm card; the campaign is created only after the user confirms. It is created as a draft — nothing is sent.",
       inputSchema: LeadSetSchema.extend({
         name: z.string().min(1).max(120).describe("Campaign name."),
-        daily_limit: z.number().int().min(1).max(500).optional().describe("Emails per day (default 30)."),
+        daily_limit: z.number().int().min(1).max(500).optional().describe("Emails per day (default 100)."),
       }),
-      execute: async ({ name, daily_limit = 30, ...set }) => {
+      execute: async ({ name, daily_limit = 100, ...set }) => {
         const leads = await loadLeadSet(caller, set);
         if ("error" in leads) return { error: leads.error };
         if (leads.truncated) return { error: `That matches more than ${MAX_LEADS} leads. Narrow the filter (e.g. by country or industry) or split it into several campaigns.` };

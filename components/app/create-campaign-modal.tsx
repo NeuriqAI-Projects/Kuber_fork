@@ -125,7 +125,7 @@ export function CreateCampaignModal({
   const { role } = useApp();
   const [name, setName] = useState("");
   const [humanInLoop, setHumanInLoop] = useState(true);
-  const [dailyLimit] = useState(30);
+  const [dailyLimit] = useState(100);
   const [windowFrom, setWindowFrom] = useState("08:00");
   const [windowTo, setWindowTo] = useState("18:00");
   const [timezone, setTimezone] = useState("Asia/Kolkata");
