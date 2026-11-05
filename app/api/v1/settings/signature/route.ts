@@ -3,6 +3,8 @@ import { requireAuth } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 /** GET — returns the calling admin's signature (or empty defaults). */
 export async function GET(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireAuth>>;

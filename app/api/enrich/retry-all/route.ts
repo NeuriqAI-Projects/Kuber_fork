@@ -5,6 +5,8 @@ import { internalAppBaseUrl } from "@/lib/internal-url";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { TERMINAL_STATUS_LIST } from "@/lib/services/enrichment-status";
 
+export const maxDuration = 60;
+
 /** Mirrors MAX_ENRICHMENT_ATTEMPTS in the scrape worker. */
 const MAX_ENRICHMENT_ATTEMPTS = 3;
 

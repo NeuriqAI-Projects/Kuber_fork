@@ -8,6 +8,8 @@ import { assertCampaignAccess } from "@/lib/auth/scope";
 import { logLeadEvent } from "@/lib/services/lead-events";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 // Save for a follow-up: persist + approve + sync to Instantly in one atomic
 // action, entirely separate from /drafts/[id] PATCH (whose "edit" action
 // requires a non-empty subject — follow-ups are always empty so they thread

@@ -11,6 +11,8 @@ import {
 import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 type DraftRow = { status: string } | { status: string }[] | null;
 
 function unwrapDraft(raw: DraftRow): { status: string } | null {

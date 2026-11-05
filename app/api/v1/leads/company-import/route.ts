@@ -1,4 +1,4 @@
-import { NextRequest, after } from "next/server";
+import { after } from "next/server";
 import { requireManager } from "@/lib/auth/api-auth";
 import { fail, ok } from "@/lib/api-response";
 import { CompanyImportSchema } from "@/lib/validators/leads";
@@ -7,6 +7,7 @@ import { normalizeDomain } from "@/lib/utils/domain";
 import { isApolloMockCompany, mockRevealedEmail } from "@/lib/services/apollo-mock";
 import { internalAppBaseUrl } from "@/lib/internal-url";
 import { getServiceSecret } from "@/lib/services/service-keys";
+import { withRouteTiming } from "@/lib/services/route-timing";
 
 export const maxDuration = 60;
 
@@ -26,9 +27,10 @@ export const maxDuration = 60;
  * rescue watchdog filter on it, so any other value would leave these leads
  * permanently un-revealed and un-rescued.
  */
-export async function POST(req: NextRequest) {
+export const POST = withRouteTiming("leads/company-import", async (req, timing) => {
   let user: Awaited<ReturnType<typeof requireManager>>;
   try { user = await requireManager(req); } catch (r) { return r as Response; }
+  timing.companyId = user.companyId;
 
   const mock = isApolloMockCompany(user.companyId);
 
@@ -214,7 +216,7 @@ export async function POST(req: NextRequest) {
     reveal_credits_queued: mock ? 0 : leads.length,
     mock,
   });
-}
+});
 
 function safeDomain(raw: string): string {
   try { return normalizeDomain(raw); } catch { return raw.trim().toLowerCase(); }

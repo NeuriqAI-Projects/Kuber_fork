@@ -6,6 +6,8 @@ import { ok, fail } from "@/lib/api-response";
 import { bulkAssignByStrategy } from "@/lib/services/assignment";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 // skip_already_assigned (spec §4): when true, leads that already have an owner
 // are left untouched — only pool/unassigned leads are processed.
 const BulkAssignSchema = z.discriminatedUnion("strategy", [

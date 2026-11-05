@@ -8,6 +8,8 @@ import { getActiveJob, resolveRegenerationTargets } from "@/lib/services/regener
 import { SERVICE_ROLE_USER_ID } from "@/lib/constants";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 /**
  * Enqueue a bulk draft regeneration for a campaign.
  *

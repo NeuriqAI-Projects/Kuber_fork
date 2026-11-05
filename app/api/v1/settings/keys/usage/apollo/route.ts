@@ -5,6 +5,8 @@ import { checkApolloCredits } from "@/lib/services/provider-credits";
 import { getApiUsageStats, getCreditUsageStats, type ApolloEndpointUsage, type ApolloCreditUsageResponse } from "@/lib/services/apollo";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 // credit_usage_stats gives the real, account-wide balance for the current
 // billing cycle (same numbers as Apollo's own Settings > Usage page) —
 // requires a Master API key, so it's fetched alongside the rate-limit

@@ -5,6 +5,8 @@ import { safeSecretEqual } from "@/lib/auth/secret";
 import { internalAppBaseUrl } from "@/lib/internal-url";
 import { TERMINAL_STATUS_LIST } from "@/lib/services/enrichment-status";
 
+export const maxDuration = 60;
+
 // A website that timed out or errored a few hours ago might just work now —
 // unlike Apollo's "no email" answer (permanent, re-asking wastes a credit for
 // the same non-answer), a site being temporarily down/slow is exactly the

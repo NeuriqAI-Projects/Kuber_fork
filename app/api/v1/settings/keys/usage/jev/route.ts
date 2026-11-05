@@ -5,6 +5,8 @@ import { checkJevCredits } from "@/lib/services/provider-credits";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { jevUsd, loadProspectUsage, windows, LOOKBACK_DAYS } from "@/lib/services/prospects/usage";
 
+export const maxDuration = 60;
+
 // Jev (TypeSafe) has no balance or usage endpoint, only a key check. So "usage" is what this
 // app recorded: every scored company stores the tokens Jev read for it.
 export async function GET(req: NextRequest) {

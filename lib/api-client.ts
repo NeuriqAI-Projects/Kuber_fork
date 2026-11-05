@@ -288,7 +288,8 @@ export type LeadListFilters = {
   created_before?: string;
 };
 
-export async function fetchLeads(token: string, params?: { limit?: number; page?: number; organization_id?: string; q?: string } & LeadListFilters): Promise<{ leads: Lead[]; total: number }> {
+/** `count: "none"` skips the server's exact count; total is then null. */
+export async function fetchLeads(token: string, params?: { limit?: number; page?: number; organization_id?: string; q?: string; count?: "none" } & LeadListFilters): Promise<{ leads: Lead[]; total: number | null }> {
   const qs = new URLSearchParams();
   if (params?.limit) qs.set("limit", String(params.limit));
   if (params?.page) qs.set("page", String(params.page));
@@ -300,7 +301,8 @@ export async function fetchLeads(token: string, params?: { limit?: number; page?
   if (params?.import_ids?.length) qs.set("import_ids", params.import_ids.join(","));
   if (params?.created_after) qs.set("created_after", params.created_after);
   if (params?.created_before) qs.set("created_before", params.created_before);
-  const data = await apiFetch<{ leads: DbLead[]; total: number }>(`/api/v1/leads?${qs}`, {}, token);
+  if (params?.count) qs.set("count", params.count);
+  const data = await apiFetch<{ leads: DbLead[]; total: number | null }>(`/api/v1/leads?${qs}`, {}, token);
   return { leads: data.leads.map(mapDbLead), total: data.total };
 }
 

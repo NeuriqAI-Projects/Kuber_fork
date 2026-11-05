@@ -9,6 +9,8 @@ import {
 } from "@/lib/comment-reactions";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 /** Toggle a reaction on a lead comment. Body: `{ emoji: "👍" }`. */
 export async function POST(
   req: NextRequest,

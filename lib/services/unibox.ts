@@ -592,6 +592,15 @@ function sanitizeSearch(raw: string): string {
   return raw.replace(/[,()"\\]/g, " ").trim();
 }
 
+/**
+ * What getThreads reads per message: the grouping, filter and participant
+ * fields, plus content_preview for the list line. Never the bodies — the list
+ * pulls up to 2,000 messages and body_html/body_text were most of the bytes.
+ * The thread view (getThreadMessages) still reads `*` when a thread opens.
+ */
+const THREAD_LIST_COLS =
+  "id, thread_id, instantly_email_id, direction, subject, from_email, to_emails, cc_emails, content_preview, eaccount, lead_email, campaign_id, campaign_lead_id, is_unread, is_auto_reply, is_focused, timestamp_email";
+
 export async function getThreads(db: Db, filters: {
   tab?: UniboxTab;
   campaign_id?: string;
@@ -621,7 +630,7 @@ export async function getThreads(db: Db, filters: {
 
   let query = db
     .from("unibox_emails")
-    .select(scopeSelect("*", filters.scope))
+    .select(scopeSelect(THREAD_LIST_COLS, filters.scope))
     .not("thread_id", "is", null);
 
   if (filters.scope) {
@@ -675,7 +684,7 @@ export async function getThreads(db: Db, filters: {
   if (nameMatchEmails.size > 0) {
     let extraQuery = db
       .from("unibox_emails")
-      .select(scopeSelect("*", filters.scope))
+      .select(scopeSelect(THREAD_LIST_COLS, filters.scope))
       .not("thread_id", "is", null)
       .in("lead_email", [...nameMatchEmails]);
 

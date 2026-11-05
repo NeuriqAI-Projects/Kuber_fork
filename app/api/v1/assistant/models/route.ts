@@ -10,6 +10,8 @@ import {
   ASSISTANT_MODEL_DEFAULTS, getAssistantModelOverrides, saveAssistantModelOverrides,
 } from "@/lib/services/assistant/models";
 
+export const maxDuration = 60;
+
 const LLM_IDS = Object.keys(ASSISTANT_MODEL_DEFAULTS) as LlmProviderId[];
 
 /** GET /api/v1/assistant/models — which model the assistant uses per provider and mode. */

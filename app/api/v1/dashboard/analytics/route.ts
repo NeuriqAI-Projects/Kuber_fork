@@ -4,6 +4,8 @@ import { ok } from "@/lib/api-response";
 import { getDashboardAnalytics, getEmployeeDashboard } from "@/lib/server/dashboard";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 // Managers see company-wide analytics; employees get the same shape scoped to
 // their own leads and campaigns (planning.md Phase 7 — previously a 403).
 export async function GET(req: NextRequest) {

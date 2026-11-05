@@ -8,6 +8,8 @@ import { logLeadEvent } from "@/lib/services/lead-events";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { getActiveJob } from "@/lib/services/regeneration-jobs";
 
+export const maxDuration = 60;
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   let user: Awaited<ReturnType<typeof requireAuth>>;
   try { user = await requireAuth(req); } catch (r) { return r as Response; }

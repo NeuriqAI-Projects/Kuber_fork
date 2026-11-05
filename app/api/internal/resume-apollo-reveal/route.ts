@@ -4,6 +4,7 @@ import { ok, fail } from "@/lib/api-response";
 import { safeSecretEqual } from "@/lib/auth/secret";
 import { internalAppBaseUrl } from "@/lib/internal-url";
 import { triggerEnrichWatchdog } from "@/lib/services/enrichment-watchdog";
+import { withRouteTiming } from "@/lib/services/route-timing";
 
 export const maxDuration = 60;
 
@@ -27,14 +28,14 @@ export const maxDuration = 60;
  * seconds and never reaches this job at all. This only exists for the case
  * where that chain broke, and a lead that arrives a day later is still a lead.
  */
-export async function POST(req: NextRequest) {
+export const POST = withRouteTiming("internal/resume-apollo-reveal", async (req) => {
   if (!safeSecretEqual(req.headers.get("x-internal-secret"), process.env.INTERNAL_SECRET)) {
     return fail(401, "UNAUTHORIZED", "Internal secret required");
   }
   const db = createAdminClient();
   await triggerEnrichWatchdog(internalAppBaseUrl(req), db);
   return ok({ triggered: true });
-}
+});
 
 /** GET for Vercel Cron (`Authorization: Bearer <CRON_SECRET>`), same pattern as
  *  the enrichment watchdog and reconcile-counters. */

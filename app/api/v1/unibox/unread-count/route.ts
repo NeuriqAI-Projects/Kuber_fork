@@ -5,6 +5,8 @@ import { getUniboxScope } from "@/lib/auth/scope";
 import { getUnreadCount } from "@/lib/services/unibox";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 export async function GET(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireAuth>>;
   try { user = await requireAuth(req); } catch (r) { return r as Response; }

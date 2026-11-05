@@ -1,4 +1,3 @@
-import { NextRequest } from "next/server";
 import { requireManager } from "@/lib/auth/api-auth";
 import { fail, ok } from "@/lib/api-response";
 import { CompanySearchSchema } from "@/lib/validators/leads";
@@ -9,6 +8,7 @@ import { dbForUser } from "@/lib/supabase/scoped";
 import { normalizeDomain } from "@/lib/utils/domain";
 import { isApolloMockCompany, mockApolloDelay, mockSearchOrganizations } from "@/lib/services/apollo-mock";
 import { saveApolloRawRecords } from "@/lib/services/apollo-raw";
+import { withRouteTiming } from "@/lib/services/route-timing";
 
 export const maxDuration = 60;
 
@@ -29,9 +29,10 @@ export const maxDuration = 60;
  * when results actually come back. Every other outcome still gets a `system`
  * row, because a lookup that produced nothing is the one a manager asks about.
  */
-export async function POST(req: NextRequest) {
+export const POST = withRouteTiming("leads/company-search", async (req, timing) => {
   let user: Awaited<ReturnType<typeof requireManager>>;
   try { user = await requireManager(req); } catch (r) { return r as Response; }
+  timing.companyId = user.companyId;
 
   // provider_keys are shared across tenants, so an internal-workspace search
   // would spend the live client's credits. Rather than a flat 403, the dev
@@ -235,7 +236,7 @@ export async function POST(req: NextRequest) {
     // mistake a mock company for a real one.
     mock,
   });
-}
+});
 
 /** normalizeDomain throws on input that isn't a domain (e.g. an email pasted
  *  into the website box). A bad optional filter must not 500 the search. */

@@ -6,6 +6,8 @@ import { ok, fail } from "@/lib/api-response";
 import { logLeadEvents } from "@/lib/services/lead-events";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 const AssignCampaignSchema = z.object({
   assigned_to: dbId.nullable(),   // null = return to the manager pool
   reassign_leads: z.boolean().optional().default(false),

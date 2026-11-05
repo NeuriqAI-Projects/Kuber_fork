@@ -5,6 +5,8 @@ import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { canDraftOpenings, countPendingDrafts } from "@/lib/services/generate-drafts";
 
+export const maxDuration = 60;
+
 type DraftRow = { status: string } | { status: string }[] | null;
 
 function unwrapDraft(raw: DraftRow): { status: string } | null {

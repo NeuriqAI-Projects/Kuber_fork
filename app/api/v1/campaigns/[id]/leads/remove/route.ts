@@ -7,6 +7,8 @@ import { dbForUser } from "@/lib/supabase/scoped";
 import { logLeadEvent } from "@/lib/services/lead-events";
 import { dbId } from "@/lib/validators/id";
 
+export const maxDuration = 60;
+
 const BodySchema = z.object({ campaign_lead_ids: z.array(dbId).min(1).max(1000) });
 
 /** Statuses a lead can be in before anything has gone out to it. */

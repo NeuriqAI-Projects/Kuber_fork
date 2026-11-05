@@ -4,6 +4,8 @@ import { ok } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { issuesFromLogs } from "@/lib/services/service-health";
 
+export const maxDuration = 60;
+
 // Surfaces recent upstream credit/auth failures so the UI can show a clear
 // "top up / fix your API key" banner instead of leaving managers to decode raw
 // HTTP 402 dumps buried in a lead's enrichment log. Scans the last few hours of
@@ -27,6 +29,7 @@ export async function GET(req: NextRequest) {
     .from("enrichment_logs")
     .select("source, event, error, payload, created_at")
     .gte("created_at", since)
+    .neq("event", "ROUTE_TIMING") // timing rows must not push real issues out of the 500
     .order("created_at", { ascending: false })
     .limit(500);
 

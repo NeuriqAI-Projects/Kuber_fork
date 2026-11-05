@@ -10,6 +10,8 @@ import { PROVIDER_META, getLlmTierRoles } from "@/lib/services/providers/registr
 import type { ProviderId } from "@/lib/services/providers/types";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 // Same set Settings > Keys > Credentials manages — the deep-fallback tiers
 // (Gemini/Mistral/Groq) stay out of the UI same as they do there.
 const VISIBLE_LLM_PROVIDERS: ProviderId[] = ["openrouter", "openai", "anthropic"];

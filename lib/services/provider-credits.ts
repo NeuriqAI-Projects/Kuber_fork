@@ -282,6 +282,7 @@ async function fetchInstantlyCredits(secret: string): Promise<CreditCheck> {
     // workspace actually has sending accounts, which campaigns require.
     const res = await fetch("https://api.instantly.ai/api/v2/accounts?limit=1", {
       headers: { Authorization: `Bearer ${secret}` },
+      signal: AbortSignal.timeout(30_000),
     });
     if (res.status === 401 || res.status === 403) {
       return { ok: false, remaining: null, message: "Instantly rejected the API key (401/403) — invalid key" };

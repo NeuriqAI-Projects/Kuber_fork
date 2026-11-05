@@ -4,6 +4,8 @@ import { ok, fail } from "@/lib/api-response";
 import { PatchProviderKeySchema } from "@/lib/validators/provider-keys";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 const KEY_SELECT = "id, provider, label, secret_last4, priority, is_active, status, cooling_off_until, last_used_at, last_checked_at, last_error, last_error_at, created_at";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

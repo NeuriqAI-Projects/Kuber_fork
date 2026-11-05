@@ -4,6 +4,8 @@ import { ok, fail } from "@/lib/api-response";
 import { callerFromRequest } from "@/lib/services/assistant/caller";
 import { overviewTools } from "@/lib/services/assistant/tools/overview";
 
+export const maxDuration = 60;
+
 /**
  * GET /api/v1/assistant/overview — the Home tab's "at a glance" numbers. The same
  * pipeline_overview tool the assistant uses, run directly: no AI call, no cost,

@@ -6,6 +6,8 @@ import { complete, draftingProviders, providerLabel } from "@/lib/services/llm";
 import { isMockCampaign, mockAiAvailable, MOCK_PRIMARY } from "@/lib/services/llm-mock";
 import { isProviderOutage } from "@/lib/services/provider-errors";
 
+export const maxDuration = 60;
+
 /**
  * Can the main AI model write emails right now? Asked when a campaign is
  * created, so "no credits" is said up front instead of discovered halfway.

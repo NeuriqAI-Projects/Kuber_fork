@@ -1,4 +1,4 @@
-import { NextRequest, after } from "next/server";
+import { after } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireManager } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
@@ -8,6 +8,7 @@ import { internalAppBaseUrl } from "@/lib/internal-url";
 import { getServiceSecret } from "@/lib/services/service-keys";
 import { checkApolloCredits } from "@/lib/services/provider-credits";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { withRouteTiming } from "@/lib/services/route-timing";
 
 export const maxDuration = 300;
 
@@ -55,9 +56,10 @@ async function logEnrichFailure(
 // a smaller batch costs nothing but a few more invocations.
 const ENRICH_BATCH_SIZE = 50;
 
-export async function POST(req: NextRequest) {
+export const POST = withRouteTiming("leads/enrich", async (req, timing) => {
   let user: Awaited<ReturnType<typeof requireManager>>;
   try { user = await requireManager(req); } catch (r) { return r as Response; }
+  timing.companyId = user.companyId;
 
   const body = await req.json().catch(() => null);
   const parsed = EnrichSchema.safeParse(body);
@@ -109,6 +111,7 @@ export async function POST(req: NextRequest) {
   // Every lead in a batch comes from one import, so one company — but fall back
   // to the caller's own for the service-role path, where rows are the only hint.
   const companyId = (rows.find((r) => r.company_id)?.company_id as string | undefined) ?? user.companyId ?? null;
+  timing.companyId = companyId;
 
   // Pre-flight the credit balance BEFORE claiming anything. Apollo bills per
   // bulk_match ask and answers 422 "insufficient credits" once the account's
@@ -358,4 +361,4 @@ export async function POST(req: NextRequest) {
     ...(stats.credits_exhausted ? { credits_exhausted: true } : {}),
     ...(stats.rate_limited ? { rate_limited: true } : {}),
   });
-}
+});

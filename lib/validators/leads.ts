@@ -69,6 +69,9 @@ export const LeadListQuerySchema = z.object({
   q: z.string().trim().min(1).max(200).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(2000).default(50),
+  // "none" = skip the exact count (total comes back null). The Leads page's
+  // 30 s background poll uses it: the rows change, the total rarely does.
+  count: z.enum(["exact", "none"]).default("exact"),
 });
 
 // Imports can distribute leads as they land (planning.md Phase 4 / Q5):

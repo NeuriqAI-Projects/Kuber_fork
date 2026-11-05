@@ -4,6 +4,8 @@ import { ok, fail } from "@/lib/api-response";
 import { PatchMyAvailabilitySchema } from "@/lib/validators/users";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 const SERVICE_ROLE_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 // Self-service online/offline toggle (spec §2B). Any signed-in user can mark

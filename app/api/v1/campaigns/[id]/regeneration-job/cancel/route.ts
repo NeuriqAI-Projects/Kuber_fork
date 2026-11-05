@@ -5,6 +5,8 @@ import { assertCampaignAccess } from "@/lib/auth/scope";
 import { getActiveJob } from "@/lib/services/regeneration-jobs";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 /**
  * Cancel the campaign's running regeneration.
  *

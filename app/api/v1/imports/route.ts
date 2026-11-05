@@ -4,6 +4,8 @@ import { ok, fail } from "@/lib/api-response";
 import { getImports } from "@/lib/server/imports";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 export async function GET(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireAuth>>;
   try { user = await requireAuth(req); } catch (r) { return r as Response; }

@@ -9,6 +9,8 @@ import { assertCampaignAccess } from "@/lib/auth/scope";
 import { logLeadEvent } from "@/lib/services/lead-events";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 // Deliberately separate from /drafts/[id]/regenerate (the step-1 draft's
 // regenerate endpoint) and from generateOneDraft entirely. Follow-up
 // regeneration only ever sees the current follow-up text + the user's

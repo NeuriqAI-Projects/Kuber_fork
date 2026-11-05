@@ -7,6 +7,8 @@ import {
 } from "@/lib/services/provider-credits";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 type UsageStatus = "ok" | "low" | "out" | "unknown";
 
 function statusFor(check: CreditCheck): UsageStatus {

@@ -7,6 +7,8 @@ import { dbForUser } from "@/lib/supabase/scoped";
 import { ourAddresses, threadParticipants } from "@/lib/thread-participants";
 import { logLeadEvent } from "@/lib/services/lead-events";
 
+export const maxDuration = 60;
+
 /**
  * Promote a third participant on a thread into a real lead.
  *

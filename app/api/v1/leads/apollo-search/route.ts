@@ -1,4 +1,4 @@
-import { NextRequest, after } from "next/server";
+import { after } from "next/server";
 import { requireManager } from "@/lib/auth/api-auth";
 import { fail, ok } from "@/lib/api-response";
 import { ApolloSearchSchema } from "@/lib/validators/leads";
@@ -14,6 +14,7 @@ import { internalAppBaseUrl } from "@/lib/internal-url";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { DEV_COMPANY_ID } from "@/lib/constants";
 import { checkApolloCredits } from "@/lib/services/provider-credits";
+import { withRouteTiming } from "@/lib/services/route-timing";
 
 export const maxDuration = 300;
 
@@ -79,9 +80,10 @@ const MAX_PAGES_PER_KEYWORD = 50;
  */
 const SEARCH_TIME_BUDGET_MS = 240_000;
 
-export async function POST(req: NextRequest) {
+export const POST = withRouteTiming("leads/apollo-search", async (req, timing) => {
   let user: Awaited<ReturnType<typeof requireManager>>;
   try { user = await requireManager(req); } catch (r) { return r as Response; }
+  timing.companyId = user.companyId;
 
   // provider_keys (Apollo included) are shared across every company — a
   // search here spends real credits from the one pool the live client
@@ -843,4 +845,4 @@ export async function POST(req: NextRequest) {
     rescued_keywords: rescuedKeywords,
     ...(warnings.length > 0 ? { warnings } : {}),
   });
-}
+});

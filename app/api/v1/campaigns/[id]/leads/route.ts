@@ -5,6 +5,8 @@ import { AddLeadsToCampaignSchema, CampaignLeadsQuerySchema, PatchCampaignLeadSc
 import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 const TERMINAL_STATUSES = new Set(["completed", "paused"]);
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

@@ -7,6 +7,8 @@ import { ReplaceBouncedLeadSchema } from "@/lib/validators/campaigns";
 import { logLeadEvent } from "@/lib/services/lead-events";
 import { internalAppBaseUrl } from "@/lib/internal-url";
 
+export const maxDuration = 60;
+
 /**
  * Correct a bounced contact's identity in place — same lead_id, updated
  * name/email/title only.

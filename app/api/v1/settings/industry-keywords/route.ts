@@ -5,6 +5,8 @@ import { fail, ok } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { addKeyword } from "@/lib/services/prospects/keywords";
 
+export const maxDuration = 60;
+
 const Body = z.object({ group_id: z.string().min(1), label: z.string().trim().min(1).max(200), query: z.string().trim().max(200).optional() });
 
 /** POST: add ONE keyword to ONE Industry Segments group, safe against a teammate adding at the same time

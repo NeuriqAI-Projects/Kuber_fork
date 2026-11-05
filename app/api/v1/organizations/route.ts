@@ -5,6 +5,8 @@ import { CreateOrgSchema, OrgListQuerySchema } from "@/lib/validators/organizati
 import { normalizeDomain } from "@/lib/utils/domain";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 // Organizations are enrichment territory — manager-only (planning.md D8).
 // Employees reach org data only through their own leads' drawers
 // (GET /organizations/[id], scoped there).

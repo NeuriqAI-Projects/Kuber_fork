@@ -5,6 +5,8 @@ import { SetProviderModelSchema } from "@/lib/validators/provider-keys";
 import { PROVIDER_META } from "@/lib/services/providers/registry";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 export async function PUT(req: NextRequest) {
   let caller: Awaited<ReturnType<typeof requireManager>>;
   try { caller = await requireManager(req); } catch (r) { return r as Response; }

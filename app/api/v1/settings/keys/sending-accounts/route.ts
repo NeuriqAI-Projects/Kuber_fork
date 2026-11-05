@@ -6,6 +6,8 @@ import { getSendingAccounts, SENDING_ACCOUNTS_SETTING_KEY } from "@/lib/services
 import { listInstantlyAccounts } from "@/lib/services/instantly";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 const BodySchema = z.object({
   email: z.string().trim().email("Select a valid sending account"),
 });

@@ -4,6 +4,8 @@ import { ok, fail } from "@/lib/api-response";
 import { FollowUpStepTemplateRegenerateSchema } from "@/lib/validators/drafts";
 import { regenerateFollowUpTemplateText } from "@/lib/services/followup-regenerate";
 
+export const maxDuration = 60;
+
 // Campaign-level follow-up template rewrite for the Sequences tab — no per-lead
 // draft writes; the client saves via PUT .../steps when the user clicks Save.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

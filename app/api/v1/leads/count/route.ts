@@ -5,6 +5,8 @@ import { onlyRevealedLeads } from "@/lib/server/lead-visibility";
 import { getLeadStatusCounts } from "@/lib/server/leads-count";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 export async function GET(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireAuth>>;
   try { user = await requireAuth(req); } catch (r) { return r as Response; }

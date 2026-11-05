@@ -6,6 +6,8 @@ import { PROVIDER_META } from "@/lib/services/providers/registry";
 import type { ProviderId } from "@/lib/services/providers/types";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 // Live-validates ONE specific stored key right now — bypasses the "currently
 // active key" resolution and the 5-minute cache entirely (the whole point of
 // the Re-check button is to test this exact key immediately).

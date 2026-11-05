@@ -5,6 +5,8 @@ import { checkTavilyCredits } from "@/lib/services/provider-credits";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { loadProspectUsage, tavilyCallsOf, windows, LOOKBACK_DAYS } from "@/lib/services/prospects/usage";
 
+export const maxDuration = 60;
+
 // Live balance comes from Tavily's own /usage. The activity below is what Scored Companies
 // recorded: LinkedIn/social pages read through Tavily (website down) and web searches used when
 // the AI was unsure. A read that came back too thin is not recorded, so this can undercount slightly.

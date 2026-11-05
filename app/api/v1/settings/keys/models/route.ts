@@ -7,6 +7,8 @@ import { listProviderModels, type ProviderModelOption } from "@/lib/services/mod
 import type { ProviderId } from "@/lib/services/providers/types";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 export type { ProviderModelOption };
 
 /** GET /api/v1/settings/keys/models?provider=openrouter — live model catalog

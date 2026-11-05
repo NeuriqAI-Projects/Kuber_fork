@@ -6,6 +6,8 @@ import { normalizeDomain } from "@/lib/utils/domain";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { scoredForOrg } from "@/lib/services/prospects/groups";
 
+export const maxDuration = 60;
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   let user: Awaited<ReturnType<typeof requireAuth>>;
   try { user = await requireAuth(req); } catch (r) { return r as Response; }

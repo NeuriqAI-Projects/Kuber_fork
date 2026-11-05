@@ -8,6 +8,8 @@ import {
 } from "@/lib/comment-reactions";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 type CommentRow = {
   id: string;
   author_id: string;

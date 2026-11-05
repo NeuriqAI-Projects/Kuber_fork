@@ -6,6 +6,8 @@ import { PatchSettingsSchema, SETTINGS_KEYS, KNOWLEDGE_SETTINGS_KEYS } from "@/l
 import { dbForUser } from "@/lib/supabase/scoped";
 import { saveGroupsChecked } from "@/lib/services/prospects/keywords";
 
+export const maxDuration = 60;
+
 async function readSettings(db: SupabaseClient) {
   const { data, error } = await db.from("settings").select("key, value").in("key", [...SETTINGS_KEYS]);
   if (error) throw fail(500, "INTERNAL", error.message);

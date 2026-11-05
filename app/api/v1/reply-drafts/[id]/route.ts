@@ -6,6 +6,8 @@ import { assertReplyDraftAccess } from "@/lib/auth/scope";
 import { z } from "zod";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 const PatchSchema = z.object({
   action: z.enum(["edit", "approve", "reject"]),
   subject: z.string().optional(),

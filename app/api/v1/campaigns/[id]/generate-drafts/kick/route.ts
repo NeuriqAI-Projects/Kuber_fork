@@ -7,6 +7,8 @@ import { internalAppBaseUrl } from "@/lib/internal-url";
 import { canDraftOpenings, isDraftGenerationStalled } from "@/lib/services/generate-drafts";
 import { isMockCampaign } from "@/lib/services/llm-mock";
 
+export const maxDuration = 60;
+
 /**
  * Restart opening-draft generation whose batch chain has died.
  *

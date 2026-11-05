@@ -11,6 +11,8 @@ import { safeSecretEqual } from "@/lib/auth/secret";
 import { findActiveLeadIdByEmail } from "@/lib/services/lead-lookup";
 import { logLeadEvent, type LeadEventType } from "@/lib/services/lead-events";
 
+export const maxDuration = 60;
+
 const CRM_BY_EVENT: Record<string, string | undefined> = {
   reply_received:    "replied",
   email_bounced:     "failed",

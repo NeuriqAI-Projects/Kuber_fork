@@ -5,6 +5,8 @@ import { getUniboxScope } from "@/lib/auth/scope";
 import { getThreads, type UniboxReadState, type UniboxTab } from "@/lib/services/unibox";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 function parseInterest(raw: string | null): number | "lead" | undefined {
   if (!raw) return undefined;
   if (raw === "lead") return "lead";

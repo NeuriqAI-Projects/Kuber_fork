@@ -5,6 +5,8 @@ import { CreateUserSchema } from "@/lib/validators/users";
 import { canonicalCountryList } from "@/lib/territory";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 export async function GET(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireManager>>;
   try { user = await requireManager(req); } catch (r) { return r as Response; }

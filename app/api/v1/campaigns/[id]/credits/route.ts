@@ -5,6 +5,8 @@ import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { jevUsd, tavilyCallsOf, type ProspectUsageRow } from "@/lib/services/prospects/usage";
 
+export const maxDuration = 60;
+
 /**
  * What THIS campaign has used, per service.
  *

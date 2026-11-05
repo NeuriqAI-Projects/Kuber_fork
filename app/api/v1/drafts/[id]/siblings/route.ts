@@ -4,6 +4,8 @@ import { ok, fail } from "@/lib/api-response";
 import { assertDraftAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 // Other sequence steps (e.g. the already-sent step 1) for the same lead in
 // this campaign — shown as read-only context next to a follow-up draft, not
 // mixed into that draft's own version history (see /history).

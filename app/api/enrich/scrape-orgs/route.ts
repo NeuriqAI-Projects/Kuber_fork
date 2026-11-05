@@ -15,6 +15,7 @@ import {
 import { resolveModel } from "@/lib/services/provider-keys";
 import { PROVIDER_META, resolveLlmTierOrder, type LlmProviderId } from "@/lib/services/providers/registry";
 import { safeSecretEqual } from "@/lib/auth/secret";
+import { countsFromBody, writeRouteTiming } from "@/lib/services/route-timing";
 import { TERMINAL_ENRICHMENT_STATUSES, llmFailureStatus, mayConcludeAbandonedQueue, ABANDONED_QUEUE_MS } from "@/lib/services/enrichment-status";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -677,11 +678,19 @@ export async function POST(req: NextRequest) {
   // through it. Every caller fires and forgets; the result goes to the log.
   const baseUrl = internalAppBaseUrl(req);
   after(async () => {
+    const startedAt = Date.now();
+    let counts: Record<string, unknown> = {};
     try {
       const res = await runScrapeBatch(baseUrl);
-      console.log("scrape-orgs batch", JSON.stringify(await res.json()));
+      const out = await res.json();
+      console.log("scrape-orgs batch", JSON.stringify(out));
+      counts = { status: res.status, ...countsFromBody({ data: out }) };
     } catch (e) {
       console.error("scrape-orgs batch failed", e);
+      counts = { threw: true };
+    } finally {
+      // A batch can mix companies, so the row carries none.
+      await writeRouteTiming("enrich/scrape-orgs", Date.now() - startedAt, null, counts);
     }
   });
   return Response.json({ accepted: true }, { status: 202 });

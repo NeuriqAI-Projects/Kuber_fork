@@ -7,6 +7,7 @@ import { getAccessibleCampaignIds, campaignsEditableByEmployee } from "@/lib/aut
 import { computeCampaignStats, type CampaignStatsRow } from "@/lib/campaign-status";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireAuth>>;

@@ -25,6 +25,22 @@ async function authOnly() {
   return { Authorization: `Bearer ${await requireServiceSecret("instantly", "Instantly", "any")}` };
 }
 
+/** Every Instantly call gets a deadline. Without one a hung request held the
+ *  function open until Vercel killed it, billing the whole time limit. A
+ *  timeout throws like a network error, which every caller already handles. */
+const TIMEOUT_MS = 30_000;
+/** Bulk calls on the send/config paths (100 leads per add, whole sequences). */
+const BULK_TIMEOUT_MS = 90_000;
+
+async function ifetch(url: string, init: RequestInit = {}, ms = TIMEOUT_MS): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
+  } catch (e) {
+    if ((e as Error).name === "TimeoutError") throw new Error(`Instantly timed out after ${ms / 1000}s`);
+    throw e;
+  }
+}
+
 async function iJson<T>(res: Response): Promise<T> {
   const data = await res.json().catch(() => ({} as Record<string, unknown>));
   if (!res.ok) {
@@ -118,7 +134,7 @@ export async function createInstantlyCampaign(opts: {
   if (opts.emailList.length === 0) {
     throw new Error("createInstantlyCampaign: emailList is empty — campaign will never send");
   }
-  const res = await fetch(`${BASE}/campaigns`, {
+  const res = await ifetch(`${BASE}/campaigns`, {
     method: "POST",
     headers: await h(),
     body: JSON.stringify({
@@ -144,7 +160,7 @@ export async function createInstantlyCampaign(opts: {
         })),
       }],
     }),
-  });
+  }, BULK_TIMEOUT_MS);
   const data = await iJson<{ id: string }>(res);
   return data.id;
 }
@@ -199,7 +215,7 @@ export async function getInstantlyCampaign(
    *  disagreed for weeks (see lib/services/sequence-drift.ts). */
   sequences?: { steps?: { delay?: number }[] }[];
 }> {
-  const res = await fetch(`${BASE}/campaigns/${instantlyCampaignId}`, { headers: await authOnly() });
+  const res = await ifetch(`${BASE}/campaigns/${instantlyCampaignId}`, { headers: await authOnly() });
   return iJson(res);
 }
 
@@ -253,11 +269,11 @@ export async function patchInstantlyCampaignConfig(
   // Nothing to change — don't spend an API call proving it.
   if (Object.keys(body).length === 0) return;
 
-  const res = await fetch(`${BASE}/campaigns/${instantlyCampaignId}`, {
+  const res = await ifetch(`${BASE}/campaigns/${instantlyCampaignId}`, {
     method: "PATCH",
     headers: await h(),
     body: JSON.stringify(body),
-  });
+  }, BULK_TIMEOUT_MS);
   await iJson<unknown>(res);
 }
 
@@ -265,7 +281,7 @@ export async function patchInstantlySequences(
   instantlyCampaignId: string,
   steps: InstantlyStep[],
 ): Promise<void> {
-  const res = await fetch(`${BASE}/campaigns/${instantlyCampaignId}`, {
+  const res = await ifetch(`${BASE}/campaigns/${instantlyCampaignId}`, {
     method: "PATCH",
     headers: await h(),
     body: JSON.stringify({
@@ -278,12 +294,12 @@ export async function patchInstantlySequences(
         })),
       }],
     }),
-  });
+  }, BULK_TIMEOUT_MS);
   await iJson<unknown>(res);
 }
 
 export async function activateInstantlyCampaign(instantlyCampaignId: string): Promise<void> {
-  const res = await fetch(`${BASE}/campaigns/${instantlyCampaignId}/activate`, {
+  const res = await ifetch(`${BASE}/campaigns/${instantlyCampaignId}/activate`, {
     method: "POST",
     // authOnly(): NO Content-Type — there is no body, and declaring JSON with
     // an empty body 400s
@@ -293,7 +309,7 @@ export async function activateInstantlyCampaign(instantlyCampaignId: string): Pr
 }
 
 export async function pauseInstantlyCampaign(instantlyCampaignId: string): Promise<void> {
-  const res = await fetch(`${BASE}/campaigns/${instantlyCampaignId}/pause`, {
+  const res = await ifetch(`${BASE}/campaigns/${instantlyCampaignId}/pause`, {
     method: "POST",
     // authOnly(): NO Content-Type
     headers: await authOnly(),
@@ -303,7 +319,7 @@ export async function pauseInstantlyCampaign(instantlyCampaignId: string): Promi
 
 /** Permanently delete a campaign from Instantly. 404 = already gone (idempotent). */
 export async function deleteInstantlyCampaign(instantlyCampaignId: string): Promise<void> {
-  const res = await fetch(`${BASE}/campaigns/${instantlyCampaignId}`, {
+  const res = await ifetch(`${BASE}/campaigns/${instantlyCampaignId}`, {
     method: "DELETE",
     headers: await authOnly(),
   });
@@ -319,7 +335,7 @@ export async function addLeadsToInstantly(
   instantlyCampaignId: string,
   leads: InstantlyLeadInput[],
 ): Promise<BulkAddResult> {
-  const res = await fetch(`${BASE}/leads/add`, {   // CORRECT endpoint (NOT /campaign-lead)
+  const res = await ifetch(`${BASE}/leads/add`, {   // CORRECT endpoint (NOT /campaign-lead)
     method: "POST",
     headers: await h(),
     body: JSON.stringify({
@@ -332,7 +348,7 @@ export async function addLeadsToInstantly(
         custom_variables: l.customVariables,   // CORRECT field (NOT variables)
       })),
     }),
-  });
+  }, BULK_TIMEOUT_MS);
   return iJson<BulkAddResult>(res);
 }
 
@@ -342,7 +358,7 @@ export async function addLeadsToInstantly(
  * partially-failed delete is safe.
  */
 export async function deleteInstantlyLead(instantlyLeadId: string): Promise<void> {
-  const res = await fetch(`${BASE}/leads/${instantlyLeadId}`, {
+  const res = await ifetch(`${BASE}/leads/${instantlyLeadId}`, {
     method: "DELETE",
     headers: await authOnly(),
   });
@@ -362,7 +378,7 @@ export async function updateInstantlyLeadVariables(
   instantlyLeadId: string,
   customVariables: Record<string, string>,
 ): Promise<void> {
-  const res = await fetch(`${BASE}/leads/${instantlyLeadId}`, {
+  const res = await ifetch(`${BASE}/leads/${instantlyLeadId}`, {
     method: "PATCH",
     headers: await h(),
     body: JSON.stringify({ custom_variables: customVariables }),
@@ -381,7 +397,7 @@ export type InstantlyAccount = {
 };
 
 export async function listInstantlyAccounts(): Promise<InstantlyAccount[]> {
-  const res = await fetch(`${BASE}/accounts?limit=100`, { headers: await h() });
+  const res = await ifetch(`${BASE}/accounts?limit=100`, { headers: await h() });
   const data = await iJson<{ items?: InstantlyAccount[] }>(res);
   return data.items ?? [];
 }
@@ -403,7 +419,7 @@ export interface InstantlyCampaignAnalyticsOverview {
 /** Aggregate stats across every campaign in the workspace — the summary cards
  *  for Settings > Keys > Usage > Instantly. */
 export async function getCampaignAnalyticsOverview(): Promise<InstantlyCampaignAnalyticsOverview> {
-  const res = await fetch(`${BASE}/campaigns/analytics/overview`, { headers: await h() });
+  const res = await ifetch(`${BASE}/campaigns/analytics/overview`, { headers: await h() });
   return iJson<InstantlyCampaignAnalyticsOverview>(res);
 }
 
@@ -426,7 +442,7 @@ export async function getCampaignAnalyticsDaily(opts: {
   endDate: string;   // YYYY-MM-DD
 }): Promise<InstantlyDailyAnalytics[]> {
   const qs = new URLSearchParams({ start_date: opts.startDate, end_date: opts.endDate });
-  const res = await fetch(`${BASE}/campaigns/analytics/daily?${qs.toString()}`, { headers: await h() });
+  const res = await ifetch(`${BASE}/campaigns/analytics/daily?${qs.toString()}`, { headers: await h() });
   const data = await iJson<InstantlyDailyAnalytics[] | { data?: InstantlyDailyAnalytics[] }>(res);
   return Array.isArray(data) ? data : (data.data ?? []);
 }
@@ -439,7 +455,7 @@ export async function createInstantlyWebhook(opts: {
   campaign?: string;       // optional Instantly campaign UUID filter
   secret?: string;
 }): Promise<string> {
-  const res = await fetch(`${BASE}/webhooks`, {
+  const res = await ifetch(`${BASE}/webhooks`, {
     method: "POST",
     headers: await h(),
     body: JSON.stringify({
@@ -463,7 +479,7 @@ export interface InstantlyWebhook {
 }
 
 export async function listInstantlyWebhooks(): Promise<InstantlyWebhook[]> {
-  const res = await fetch(`${BASE}/webhooks?limit=50`, { headers: await authOnly() });
+  const res = await ifetch(`${BASE}/webhooks?limit=50`, { headers: await authOnly() });
   const data = await iJson<{ items?: InstantlyWebhook[] }>(res);
   return data.items ?? [];
 }
@@ -472,7 +488,7 @@ export async function listInstantlyWebhooks(): Promise<InstantlyWebhook[]> {
  *  status goes back to 1 and the error clears, same id. Re-POSTing /webhooks
  *  with the same URL does NOT do this - it returns the existing dead webhook. */
 export async function resumeInstantlyWebhook(id: string): Promise<void> {
-  const res = await fetch(`${BASE}/webhooks/${id}/resume`, { method: "POST", headers: await h(), body: "{}" });
+  const res = await ifetch(`${BASE}/webhooks/${id}/resume`, { method: "POST", headers: await h(), body: "{}" });
   await iJson(res);
 }
 
@@ -539,7 +555,7 @@ async function throttleListEmails(): Promise<void> {
 
 async function fetchEmailsList(url: string, retries = 2): Promise<ListEmailsResult> {
   await throttleListEmails();
-  const res = await fetch(url, { headers: await h() });
+  const res = await ifetch(url, { headers: await h() });
   if (res.status === 429 && retries > 0) {
     const retryAfter = Number(res.headers.get("Retry-After") ?? "5");
     await new Promise((r) => setTimeout(r, retryAfter * 1000));
@@ -564,7 +580,7 @@ export async function listEmails(params: ListEmailsParams = {}): Promise<ListEma
 }
 
 export async function markInstantlyThreadAsRead(threadId: string): Promise<void> {
-  const res = await fetch(`${BASE}/emails/threads/${encodeURIComponent(threadId)}/mark-as-read`, {
+  const res = await ifetch(`${BASE}/emails/threads/${encodeURIComponent(threadId)}/mark-as-read`, {
     method: "POST",
     headers: await authOnly(),
   });
@@ -576,7 +592,7 @@ export async function markInstantlyThreadAsRead(threadId: string): Promise<void>
 
 export async function countInstantlyUnread(): Promise<number> {
   try {
-    const res = await fetch(`${BASE}/emails/unread/count`, { headers: await h() });
+    const res = await ifetch(`${BASE}/emails/unread/count`, { headers: await h() });
     if (!res.ok) return 0;
     const data = await res.json() as { count?: number; unread_count?: number };
     return data.count ?? data.unread_count ?? 0;
@@ -586,14 +602,14 @@ export async function countInstantlyUnread(): Promise<number> {
 }
 
 export async function getInstantlyEmail(emailId: string): Promise<InstantlyEmail> {
-  const res = await fetch(`${BASE}/emails/${emailId}`, { headers: await h() });
+  const res = await ifetch(`${BASE}/emails/${emailId}`, { headers: await h() });
   return iJson<InstantlyEmail>(res);
 }
 
 // Pull a whole conversation in chronological order (oldest first) for AI context.
 export async function listThreadEmails(threadId: string): Promise<InstantlyEmail[]> {
   const url = `${BASE}/emails?search=${encodeURIComponent(`thread:${threadId}`)}&sort_order=asc&limit=20`;
-  const res = await fetch(url, { headers: await h() });
+  const res = await ifetch(url, { headers: await h() });
   const data = await iJson<{ items?: InstantlyEmail[] }>(res);
   return data.items ?? [];
 }
@@ -610,7 +626,7 @@ export async function listInstantlyCampaignReplies(
     limit: String(limit),
     sort_order: "desc",
   });
-  const res = await fetch(`${BASE}/emails?${params.toString()}`, { headers: await h() });
+  const res = await ifetch(`${BASE}/emails?${params.toString()}`, { headers: await h() });
   const data = await iJson<{ items?: InstantlyEmail[] }>(res);
   return (data.items ?? []).filter((e) => e.ue_type === 2 && !e.is_auto_reply);
 }
@@ -643,7 +659,7 @@ export async function getInstantlyLeadSentStepIndex(
   instantlyLeadId: string,
 ): Promise<number | null> {
   try {
-    const res = await fetch(`${BASE}/leads/${instantlyLeadId}`, { headers: await authOnly() });
+    const res = await ifetch(`${BASE}/leads/${instantlyLeadId}`, { headers: await authOnly() });
     if (!res.ok) return null;
     const data = await res.json().catch(() => null) as {
       status_summary?: { lastStep?: { stepID?: string | null } | null } | null;
@@ -664,7 +680,7 @@ export async function getInstantlyLeadStatus(
   leadEmail: string,
 ): Promise<{ interest_value?: number | null; pl_value?: number | null } | null> {
   try {
-    const res = await fetch(`${BASE}/leads/list`, {
+    const res = await ifetch(`${BASE}/leads/list`, {
       method: "POST",
       headers: await h(),
       body: JSON.stringify({
@@ -714,7 +730,7 @@ export async function replyToInstantlyEmail(opts: {
   cc?: string[];
   bcc?: string[];
 }): Promise<InstantlyEmail> {
-  const res = await fetch(`${BASE}/emails/reply`, {
+  const res = await ifetch(`${BASE}/emails/reply`, {
     method: "POST",
     headers: await h(),
     body: JSON.stringify({
@@ -743,7 +759,7 @@ export async function updateLeadInterestStatus(opts: {
   interestValue: number | null;
   disableAutoInterest?: boolean;
 }): Promise<void> {
-  const res = await fetch(`${BASE}/leads/update-interest-status`, {
+  const res = await ifetch(`${BASE}/leads/update-interest-status`, {
     method: "POST",
     headers: await h(),
     body: JSON.stringify({

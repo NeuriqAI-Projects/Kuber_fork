@@ -5,6 +5,8 @@ import { requireAuth } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 const Schema = z.object({
   id: dbId.optional(),
   name: z.string().trim().min(1).max(80),

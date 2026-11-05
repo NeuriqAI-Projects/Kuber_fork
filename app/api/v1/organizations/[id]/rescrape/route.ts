@@ -4,6 +4,8 @@ import { ok, fail } from "@/lib/api-response";
 import { internalAppBaseUrl } from "@/lib/internal-url";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 // Rescrape spends Firecrawl/LLM credits — managers only. Employees never manage
 // enrichment; they work whatever leads they're assigned (planning.md D8).
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

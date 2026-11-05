@@ -1,8 +1,8 @@
-import { NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ok, fail } from "@/lib/api-response";
 import { safeSecretEqual } from "@/lib/auth/secret";
 import { companiesWithWork, revealPromoted, runProspectWorker, WORKER_BUDGET_MS } from "@/lib/services/prospects/worker";
+import { withRouteTiming } from "@/lib/services/route-timing";
 
 export const maxDuration = 60;
 
@@ -14,7 +14,7 @@ export const maxDuration = 60;
  * runs each one with that company's own keys, rules and scoped writes. The
  * shared time budget is split so one busy company can't starve another.
  */
-export async function POST(req: NextRequest) {
+export const POST = withRouteTiming("internal/score-prospects", async (req) => {
   if (!safeSecretEqual(req.headers.get("x-internal-secret"), process.env.INTERNAL_SECRET)) {
     return fail(401, "UNAUTHORIZED", "Internal secret required");
   }
@@ -34,4 +34,4 @@ export async function POST(req: NextRequest) {
   }
   revealPromoted(req, admin, promoted);
   return ok({ companies: companies.length, results });
-}
+});

@@ -708,11 +708,28 @@ export default function LeadsPage() {
   // function — so a page nobody was touching appeared to reload itself twice a
   // minute. Overlap protection moved into loadLeads with it (it now knows about
   // background loads too; the old ref here only ever saw foreground ones).
+  //
+  // Each tick re-downloads 500 leads with their joins, so it also stands down
+  // when nobody would see the result: the user has not touched mouse or
+  // keyboard for 5 minutes, or the table on screen is not `leads` (search
+  // results, scored companies). The next tick after they come back refreshes.
+  // Ticks skip the exact count too (`poll`); loadLeads keeps the total right.
+  const leadsOnScreen = useRef(true);
+  leadsOnScreen.current = !scoredView && !(leadsEntityMode === "individual" && searchResults !== null);
+  const lastActivity = useRef(Date.now());
+  useEffect(() => {
+    const touch = () => { lastActivity.current = Date.now(); };
+    const events = ["pointermove", "pointerdown", "keydown", "wheel", "touchstart"] as const;
+    for (const e of events) window.addEventListener(e, touch, { passive: true });
+    return () => { for (const e of events) window.removeEventListener(e, touch); };
+  }, []);
   useEffect(() => {
     if (!session) return;
     const interval = setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      void loadLeads(session.access_token, { background: true });
+      if (Date.now() - lastActivity.current > 5 * 60_000) return;
+      if (!leadsOnScreen.current) return;
+      void loadLeads(session.access_token, { background: true, poll: true });
     }, 30_000);
     return () => clearInterval(interval);
   }, [session, loadLeads]);

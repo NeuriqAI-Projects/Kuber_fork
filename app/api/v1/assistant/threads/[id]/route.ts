@@ -6,6 +6,8 @@ import { z } from "zod";
 import type { UIMessage } from "ai";
 import { deleteThread, loadThread, saveThread } from "@/lib/services/assistant/threads";
 
+export const maxDuration = 60;
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   let user: Awaited<ReturnType<typeof requireAuth>>;
   try { user = await requireAuth(req); } catch (r) { return r as Response; }

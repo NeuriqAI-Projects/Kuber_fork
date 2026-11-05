@@ -4,6 +4,8 @@ import { ok, fail } from "@/lib/api-response";
 import { callerFromRequest } from "@/lib/services/assistant/caller";
 import { listThreads } from "@/lib/services/assistant/threads";
 
+export const maxDuration = 60;
+
 /** GET /api/v1/assistant/threads — the caller's saved chats, newest first. `available: false` until the migration is run. */
 export async function GET(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireAuth>>;

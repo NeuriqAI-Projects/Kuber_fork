@@ -5,6 +5,8 @@ import { assertThreadAccessById } from "@/lib/auth/scope";
 import { setLeadInterestStatus } from "@/lib/services/unibox";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ threadId: string }> },

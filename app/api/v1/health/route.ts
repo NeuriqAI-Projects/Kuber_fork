@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { ok, fail } from "@/lib/api-response";
 import { getActiveKey } from "@/lib/services/provider-keys";
 
+export const maxDuration = 60;
+
 export async function GET(_req: NextRequest) {
   const db = createAdminClient();
 

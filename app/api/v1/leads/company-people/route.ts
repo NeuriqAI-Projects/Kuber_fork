@@ -1,4 +1,3 @@
-import { NextRequest } from "next/server";
 import { requireManager } from "@/lib/auth/api-auth";
 import { fail, ok } from "@/lib/api-response";
 import { CompanyPeopleSchema } from "@/lib/validators/leads";
@@ -8,6 +7,7 @@ import { dbForUser } from "@/lib/supabase/scoped";
 import { companyLookupTitleRank } from "@/lib/constants";
 import { isApolloMockCompany, mockApolloDelay, mockSearchPeople } from "@/lib/services/apollo-mock";
 import { saveApolloRawRecords } from "@/lib/services/apollo-raw";
+import { withRouteTiming } from "@/lib/services/route-timing";
 
 export const maxDuration = 60;
 
@@ -25,9 +25,10 @@ export const maxDuration = 60;
  * candidates as leads "just to show them" would buy twenty reveals nobody
  * asked for. A candidate that is never inserted cannot be billed for.
  */
-export async function POST(req: NextRequest) {
+export const POST = withRouteTiming("leads/company-people", async (req, timing) => {
   let user: Awaited<ReturnType<typeof requireManager>>;
   try { user = await requireManager(req); } catch (r) { return r as Response; }
+  timing.companyId = user.companyId;
 
   // Dev workspace runs on fixtures — see apollo-mock.ts for why the switch is
   // the tenant rather than an env flag.
@@ -131,4 +132,4 @@ export async function POST(req: NextRequest) {
     credits_spent: 0,
     mock,
   });
-}
+});

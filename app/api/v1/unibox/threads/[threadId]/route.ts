@@ -5,6 +5,8 @@ import { getThreadMessages, hydrateThreadIfStale } from "@/lib/services/unibox";
 import { assertThreadAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ threadId: string }> },

@@ -27,7 +27,7 @@ type AppContextValue = {
   leads: Lead[];
   setLeads: React.Dispatch<React.SetStateAction<Lead[]>>;
   leadsTotal: number | null;
-  loadLeads: (token: string, opts?: { background?: boolean }) => Promise<void>;
+  loadLeads: (token: string, opts?: { background?: boolean; poll?: boolean }) => Promise<void>;
   loadingLeads: boolean;
   /** True once the first page of leads has been loaded for this user. The
    *  provider outlives page navigations, so the Leads page uses this to render
@@ -251,7 +251,9 @@ export function AppProvider({
    *  background poll run without throwing away anything loadMoreLeads pulled
    *  in — enrichment churns the newest leads, so page 1 is where changes are. */
   const leadsInFlight = useRef(false);
-  const loadLeads = useCallback(async (token: string, opts?: { background?: boolean }) => {
+  const leadsRef = useRef(leads);
+  leadsRef.current = leads;
+  const loadLeads = useCallback(async (token: string, opts?: { background?: boolean; poll?: boolean }) => {
     // `background` = the Leads page's 30s poll. It must NOT flip `loadingLeads`:
     // that flag drives a full-page skeleton there, so every tick blanked the
     // whole table for the length of the fetch (measured at seconds on
@@ -268,14 +270,21 @@ export function AppProvider({
     leadsInFlight.current = true;
     if (!opts?.background) setLoadingLeads(true);
     try {
-      const res = await fetchLeads(token, { limit: LEADS_PAGE_SIZE, page: 1 });
+      // `poll` = the 30 s tick: same rows, no exact count (the count is a
+      // second full scan of the table and the total rarely moves). The total is
+      // kept up to date from the rows instead: a short page IS the whole list;
+      // otherwise add the newest leads we had not seen before.
+      const res = await fetchLeads(token, { limit: LEADS_PAGE_SIZE, page: 1, ...(opts?.poll ? { count: "none" as const } : {}) });
+      const known = new Set(leadsRef.current.map((l) => l.id));
+      const unseen = res.leads.filter((l) => !known.has(l.id)).length;
       rememberLeads(res.leads);
       setLeads((prev) => {
         if (prev.length <= res.leads.length) return res.leads;
         const fresh = new Set(res.leads.map((l) => l.id));
         return [...res.leads, ...prev.filter((l) => !fresh.has(l.id))];
       });
-      setLeadsTotal(res.total);
+      setLeadsTotal((prev) =>
+        res.total ?? (res.leads.length < LEADS_PAGE_SIZE ? res.leads.length : prev === null ? null : prev + unseen));
       setLeadsLoadedFor(session?.user.id ?? null);
     } catch { /* silently ignore */ }
     finally {
@@ -315,7 +324,7 @@ export function AppProvider({
           return [...prev, ...res.leads.filter((l) => !known.has(l.id))];
         });
         setLeadsTotal(res.total);
-        if (res.leads.length < LEADS_PAGE_SIZE || page * LEADS_PAGE_SIZE >= res.total) break;
+        if (res.leads.length < LEADS_PAGE_SIZE || page * LEADS_PAGE_SIZE >= (res.total ?? 0)) break;
         page++;
       }
     } catch { /* silently ignore */ }
@@ -336,7 +345,7 @@ export function AppProvider({
         seen.add(lead.id);
         all.push(lead);
       }
-      total = res.total;
+      total = res.total ?? 0;
       rememberLeads(res.leads);
       if (res.leads.length < LEADS_PAGE_SIZE || all.length >= total) break;
     }

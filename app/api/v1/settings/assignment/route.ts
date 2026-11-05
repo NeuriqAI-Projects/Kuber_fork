@@ -4,6 +4,8 @@ import { requireManager } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 const PatchAssignmentSchema = z.object({
   strategy: z.enum(["manual", "round_robin", "territory"]),
 });

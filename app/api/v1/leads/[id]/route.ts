@@ -6,6 +6,8 @@ import { logLeadEvent } from "@/lib/services/lead-events";
 import { LEAD_STATUS_MAP } from "@/lib/mappers";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   let user: Awaited<ReturnType<typeof requireAuth>>;
   try { user = await requireAuth(_req); } catch (r) { return r as Response; }

@@ -6,6 +6,8 @@ import { assertThreadAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { parseAddressList } from "@/lib/thread-participants";
 
+export const maxDuration = 60;
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function normalizeEmailList(raw: unknown): string[] | null {

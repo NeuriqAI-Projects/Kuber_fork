@@ -7,6 +7,8 @@ import { getLlmTierRoles, PROVIDER_META, resolveLlmTierOrder } from "@/lib/servi
 import { ENV_KEY_VARS } from "@/lib/services/provider-keys";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 type ProviderKeyRow = {
   id: string; provider: string; label: string; secret_last4: string;
   priority: number; is_active: boolean; status: string;

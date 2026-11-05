@@ -5,6 +5,8 @@ import { dbForUser } from "@/lib/supabase/scoped";
 import { companiesFilter, GROUPS, groupOf, isWorking, NO_TITLE_MATCH, type Group } from "@/lib/services/prospects/groups";
 import { liveRunNote } from "@/lib/services/prospects/digging";
 
+export const maxDuration = 60;
+
 // The list's columns (only what the screens read: a row came to ~730 bytes with the rest), plus the
 // org's leads, so the revealed contact comes in the same read (no second round trip).
 const ROW_COLS = "id, search_id, name, domain, website_url, linkedin_url, status, score, reason, text_source, last_error, attempts, decided_by, organization_id, contact_apollo_id, organizations(leads(apollo_id, first_name, title, email, is_deleted))";

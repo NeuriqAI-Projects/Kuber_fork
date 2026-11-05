@@ -5,6 +5,8 @@ import { assertThreadAccessById } from "@/lib/auth/scope";
 import { markThreadUnread } from "@/lib/services/unibox";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ threadId: string }> },

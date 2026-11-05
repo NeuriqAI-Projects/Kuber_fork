@@ -5,6 +5,8 @@ import { SetLlmTierRolesSchema } from "@/lib/validators/provider-keys";
 import { DEFAULT_LLM_TIER_ORDER } from "@/lib/services/providers/registry";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 // Sets which LLM provider complete() tries first ("Primary") and second
 // ("Fallback") — everything else configured still gets tried afterward, in
 // DEFAULT_LLM_TIER_ORDER's relative order (see resolveLlmTierOrder()). This

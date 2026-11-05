@@ -5,6 +5,8 @@ import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { internalAppBaseUrl } from "@/lib/internal-url";
 
+export const maxDuration = 60;
+
 /**
  * Re-kick a bulk regeneration whose batch chain has died.
  *

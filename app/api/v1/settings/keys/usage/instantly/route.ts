@@ -11,6 +11,8 @@ import {
 } from "@/lib/services/instantly";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 const DAILY_CHART_DAYS = 14;
 
 function toDateOnly(d: Date): string {

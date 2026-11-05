@@ -10,6 +10,8 @@ import { getServiceSecret } from "@/lib/services/service-keys";
 import { onlyRevealedLeads } from "@/lib/server/lead-visibility";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 async function upsertOrg(
   db: ReturnType<typeof import("@/lib/supabase/admin").createAdminClient>,
   name: string,
@@ -91,7 +93,7 @@ export async function GET(req: NextRequest) {
   const parsed = LeadListQuerySchema.safeParse(sp);
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid query", parsed.error.flatten());
 
-  const { country, email_status, lead_source, organization_id, email_domain_catchall, import_id, created_after, assigned_to, statuses, sources, import_ids, created_before, q: search, page, limit } = parsed.data;
+  const { country, email_status, lead_source, organization_id, email_domain_catchall, import_id, created_after, assigned_to, statuses, sources, import_ids, created_before, q: search, page, limit, count: countMode } = parsed.data;
   const db = dbForUser(user);
 
   let q = onlyRevealedLeads(
@@ -102,7 +104,7 @@ export async function GET(req: NextRequest) {
         `*, organizations(id, name, domain, domain_source, unsubscribed, has_scraped, enrichment_stage, company_description, sells_to, last_error),
          campaign_leads!lead_id(crm_status, interest_status, created_at, campaigns(id, name)),
          imports(id, label, color)`,
-        { count: "exact" }
+        countMode === "exact" ? { count: "exact" } : undefined
       )
       .eq("is_deleted", false)
   );
@@ -174,7 +176,7 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  return ok({ leads, total: count, page, limit });
+  return ok({ leads, total: countMode === "exact" ? count : null, page, limit });
 }
 
 // Manual lead-add is a manager/super-admin action, same as every other

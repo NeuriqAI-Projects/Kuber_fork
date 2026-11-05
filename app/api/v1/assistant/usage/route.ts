@@ -4,6 +4,8 @@ import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { loadTeam, readAllPages } from "@/lib/services/assistant/tools/shared";
 
+export const maxDuration = 60;
+
 type UsageRow = {
   user_id?: string | null; provider: string; model: string; purpose: string; cost_usd: number | string | null;
   input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number;

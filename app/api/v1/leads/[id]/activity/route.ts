@@ -4,6 +4,8 @@ import { ok, fail } from "@/lib/api-response";
 import { assertLeadAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 type EventMeta = {
   assignee_id?: string;
   to?: string;

@@ -4,6 +4,8 @@ import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { getBenchLeadIds, getLabModels, getScoreboard, setSetting, BENCH_LEADS_KEY, LAB_MODELS_KEY } from "@/lib/services/model-lab";
 
+export const maxDuration = 60;
+
 /** Everything the lab screen needs to open: the bench, the candidates, the
  *  saved prompt sets and the scoreboard. Managers only — the lab spends money
  *  and decides what writes to customers. */

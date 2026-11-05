@@ -13,6 +13,8 @@ import {
 import { listInstantlyAccounts } from "@/lib/services/instantly";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   let caller: Awaited<ReturnType<typeof requireManager>>;
   try { caller = await requireManager(req); } catch (r) { return r as Response; }

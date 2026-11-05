@@ -5,6 +5,8 @@ import { assertCampaignAccess } from "@/lib/auth/scope";
 import { getLatestJob } from "@/lib/services/regeneration-jobs";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 /**
  * The campaign's live regeneration job, or the most recent finished one.
  * Polled by the drawer while a run is in flight; also lets a user who reopens

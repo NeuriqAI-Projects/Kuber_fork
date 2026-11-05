@@ -12,6 +12,8 @@ import {
 } from "@/lib/services/settings";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 const SERVICE_ROLE_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 type Db = SupabaseClient;

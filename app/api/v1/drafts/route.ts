@@ -4,6 +4,7 @@ import { ok, fail } from "@/lib/api-response";
 import { DraftsQuerySchema } from "@/lib/validators/drafts";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireAuth>>;

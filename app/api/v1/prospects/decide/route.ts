@@ -5,6 +5,8 @@ import { dbForUser } from "@/lib/supabase/scoped";
 import { ProspectBulkDecisionSchema } from "@/lib/validators/leads";
 import { decide } from "@/lib/services/prospects/decisions";
 
+export const maxDuration = 60;
+
 /** Approve / Decline / Retry several scored companies at once ("Approve all"). */
 export async function POST(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireManager>>;

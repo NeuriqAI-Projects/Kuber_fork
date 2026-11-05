@@ -4,6 +4,8 @@ import { ok, fail } from "@/lib/api-response";
 import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 // llm_usage started recording on 30 Aug 2026 — see 2026_08_30_llm_usage.sql.
 // A campaign created before that date will show a partial or zero total, not
 // because nothing was spent, but because nothing was recorded yet. The UI

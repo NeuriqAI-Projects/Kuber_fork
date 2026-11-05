@@ -4,6 +4,8 @@ import { ok, fail } from "@/lib/api-response";
 import { ReorderProviderKeysSchema } from "@/lib/validators/provider-keys";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 export async function PUT(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireManager>>;
   try { user = await requireManager(req); } catch (r) { return r as Response; }

@@ -4,6 +4,8 @@ import { ok } from "@/lib/api-response";
 import { checkFirecrawlCredits } from "@/lib/services/provider-credits";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+export const maxDuration = 60;
+
 // Live balance comes from Firecrawl's /v2/team/credit-usage (same numbers as
 // their dashboard). Separately, "activity" below is a ledger WE keep from
 // every org scrape this app runs (enrichment_logs, source=firecrawl) — scrape
