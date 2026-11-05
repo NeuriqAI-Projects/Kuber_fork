@@ -3,6 +3,42 @@ import { pauseInstantlyCampaign, activateInstantlyCampaign, deleteInstantlyCampa
 
 type Db = ReturnType<typeof createAdminClient>;
 
+/** Instantly sub-campaign calls in flight at once (was one at a time, up to 31 subs). */
+export const SUB_CONCURRENCY = 5;
+
+/** Map over `items` at most `limit` at a time; results keep the input order. */
+export async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i]); } };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+/** One retry after 2 s on an Instantly 429, so running calls side by side never
+ *  leaves a sub-campaign unpaused (or unchanged) just because of the rate limit. */
+export async function retry429<T>(call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (e) {
+    if (!/ 429[:]/.test((e as Error).message)) throw e;
+    await new Promise((r) => setTimeout(r, 2000));
+    return call();
+  }
+}
+
+/** Run `fn` on every sub, 5 at a time; errors collected per sub in sub order. */
+async function eachSub(
+  subs: Array<{ id: string; instantly_campaign_id: string }>,
+  fn: (sub: { id: string; instantly_campaign_id: string }) => Promise<void>,
+): Promise<{ done: number; errors: string[] }> {
+  const results = await mapLimited(subs, SUB_CONCURRENCY, async (sub) => {
+    try { await fn(sub); return null; } catch (e) { return `sub ${sub.id}: ${(e as Error).message}`; }
+  });
+  const errors = results.filter((r): r is string => r !== null);
+  return { done: subs.length - errors.length, errors };
+}
+
 async function subCampaigns(db: Db, campaignId: string) {
   const { data } = await db
     .from("instantly_campaigns")
@@ -19,18 +55,11 @@ async function subCampaigns(db: Db, campaignId: string) {
  */
 export async function pauseCampaign(db: Db, campaignId: string): Promise<{ paused: number; errors: string[] }> {
   const subs = await subCampaigns(db, campaignId);
-  const errors: string[] = [];
-  let paused = 0;
   const now = new Date().toISOString();
-  for (const sub of subs) {
-    try {
-      await pauseInstantlyCampaign(sub.instantly_campaign_id);
-      await db.from("instantly_campaigns").update({ status: "paused", updated_at: now }).eq("id", sub.id);
-      paused++;
-    } catch (e) {
-      errors.push(`sub ${sub.id}: ${(e as Error).message}`);
-    }
-  }
+  const { done: paused, errors } = await eachSub(subs, async (sub) => {
+    await retry429(() => pauseInstantlyCampaign(sub.instantly_campaign_id));
+    await db.from("instantly_campaigns").update({ status: "paused", updated_at: now }).eq("id", sub.id);
+  });
   await db.from("campaigns").update({ status: "paused", updated_at: now }).eq("id", campaignId);
   return { paused, errors };
 }
@@ -42,21 +71,14 @@ export async function pauseCampaign(db: Db, campaignId: string): Promise<{ pause
  */
 export async function deleteCampaignInstantly(db: Db, campaignId: string): Promise<{ deleted: number; errors: string[] }> {
   const subs = await subCampaigns(db, campaignId);
-  const errors: string[] = [];
-  let deleted = 0;
   const now = new Date().toISOString();
-  for (const sub of subs) {
-    try {
-      await deleteInstantlyCampaign(sub.instantly_campaign_id);
-      // Mark our mirror row terminal and drop the now-dead Instantly id.
-      await db.from("instantly_campaigns")
-        .update({ status: "completed", instantly_campaign_id: null, updated_at: now })
-        .eq("id", sub.id);
-      deleted++;
-    } catch (e) {
-      errors.push(`sub ${sub.id}: ${(e as Error).message}`);
-    }
-  }
+  const { done: deleted, errors } = await eachSub(subs, async (sub) => {
+    await retry429(() => deleteInstantlyCampaign(sub.instantly_campaign_id));
+    // Mark our mirror row terminal and drop the now-dead Instantly id.
+    await db.from("instantly_campaigns")
+      .update({ status: "completed", instantly_campaign_id: null, updated_at: now })
+      .eq("id", sub.id);
+  });
   return { deleted, errors };
 }
 
@@ -67,18 +89,11 @@ export async function deleteCampaignInstantly(db: Db, campaignId: string): Promi
  *  set would keep showing a "held" banner over a campaign that is sending. */
 export async function resumeCampaign(db: Db, campaignId: string): Promise<{ resumed: number; errors: string[] }> {
   const subs = await subCampaigns(db, campaignId);
-  const errors: string[] = [];
-  let resumed = 0;
   const now = new Date().toISOString();
-  for (const sub of subs) {
-    try {
-      await activateInstantlyCampaign(sub.instantly_campaign_id);
-      await db.from("instantly_campaigns").update({ status: "active", updated_at: now }).eq("id", sub.id);
-      resumed++;
-    } catch (e) {
-      errors.push(`sub ${sub.id}: ${(e as Error).message}`);
-    }
-  }
+  const { done: resumed, errors } = await eachSub(subs, async (sub) => {
+    await retry429(() => activateInstantlyCampaign(sub.instantly_campaign_id));
+    await db.from("instantly_campaigns").update({ status: "active", updated_at: now }).eq("id", sub.id);
+  });
   await db.from("campaigns").update({
     status: "active",
     sending_held_at: null,

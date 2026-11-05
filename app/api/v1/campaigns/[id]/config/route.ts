@@ -5,6 +5,7 @@ import { PatchCampaignSchema } from "@/lib/validators/campaigns";
 import { patchInstantlyCampaignConfig } from "@/lib/services/instantly";
 import { assertCampaignSettingsAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { mapLimited, retry429, SUB_CONCURRENCY } from "@/lib/services/campaign-lifecycle";
 
 // Each sub-campaign now costs a read plus a write instead of a blind write:
 // campaign_schedule is replaced wholesale by Instantly, so the current one has
@@ -66,21 +67,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // fallback used for leads whose country can't be resolved — propagating it
   // here overwrote India/Germany/Australia with the master's zone on every save.
   // See docs/campaign-timezone-rca.md.
-  const syncErrors: string[] = [];
-  for (const sub of subs ?? []) {
-    if (!sub.instantly_campaign_id) continue;
+  // 5 subs at a time (was one by one, up to 31); errors kept in sub order.
+  const syncErrors = (await mapLimited((subs ?? []).filter((s) => s.instantly_campaign_id), SUB_CONCURRENCY, async (sub) => {
     try {
-      await patchInstantlyCampaignConfig(sub.instantly_campaign_id, {
+      await retry429(() => patchInstantlyCampaignConfig(sub.instantly_campaign_id as string, {
         name:       parsed.data.name,
         dailyLimit: parsed.data.daily_limit,
         windowFrom: parsed.data.window_from,
         windowTo:   parsed.data.window_to,
         sendDays:   parsed.data.send_days,
-      });
+      }));
+      return null;
     } catch (e) {
-      syncErrors.push((e as Error).message);
+      return (e as Error).message;
     }
-  }
+  })).filter((m): m is string => m !== null);
 
   return ok({ updated: true, sync_errors: syncErrors });
 }
