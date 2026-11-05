@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { generateOneDraft } from "@/lib/services/generate-drafts";
+import { generateOneDraft, type DraftContext } from "@/lib/services/generate-drafts";
 import { syncApprovedDraftToInstantly } from "@/lib/services/draft-sync";
 import { getInstantlyLeadSentStepIndex } from "@/lib/services/instantly";
 import { resolveStandingFollowupInstruction, mergeInstructions } from "@/lib/services/followup-instruction";
@@ -68,6 +68,8 @@ export async function regenerateOneDraft(
      * The bulk path removes the race by requiring sending to be held instead.
      */
     verifyNotSent?: boolean;
+    /** Per-batch draft context (bulk worker): see generateOneDraft's ctx. */
+    ctx?: DraftContext;
   } = {},
 ): Promise<RegenerateResult> {
   const allowed = opts.allowedStatuses ?? REGENERATABLE_STATUSES;
@@ -267,6 +269,9 @@ export async function regenerateOneDraft(
     opts.customInstruction?.trim()
       ? { subject: oldDraft.subject, body: oldDraft.body }
       : null,
+    null,
+    null,
+    opts.ctx,
   );
 
   if (!result.ok) {

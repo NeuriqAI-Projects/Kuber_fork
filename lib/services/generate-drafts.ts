@@ -724,6 +724,45 @@ async function recordUnattemptedFailure(db: SupabaseClient, target: CampaignLead
   });
 }
 
+/** Per-batch memo for generateOneDraft (see its `ctx`). Keys carry the
+ *  campaign / company / owner they depend on, so one context may span
+ *  campaigns and companies (the follow-up writer's sweep does). */
+export type DraftContext = Map<string, Promise<unknown>>;
+export const newDraftContext = (): DraftContext => new Map();
+
+/** Read once per context. No context = read every time (the old behaviour).
+ *  A failed read is dropped so the next lead asks again, as it did before. */
+export function once<T>(ctx: DraftContext | undefined, key: string, read: () => Promise<T>): Promise<T> {
+  if (!ctx) return read();
+  let p = ctx.get(key) as Promise<T> | undefined;
+  if (!p) {
+    p = read();
+    ctx.set(key, p);
+    p.catch(() => ctx.delete(key));
+  }
+  return p;
+}
+
+/** See the 23505 branch in generateOneDraft. Only fills a NULL draft_id. */
+async function repairOpeningPointer(db: SupabaseClient, campaignLeadId: string, campaignId: string, leadId: string): Promise<void> {
+  const { data: live } = await db
+    .from("email_drafts")
+    .select("id, status")
+    .eq("campaign_id", campaignId)
+    .eq("lead_id", leadId)
+    .eq("step_number", 1)
+    .not("status", "in", "(rejected,failed,generating)")
+    .limit(1)
+    .maybeSingle();
+  if (!live) return;
+  const status = live.status as string;
+  await db.from("campaign_leads").update({
+    draft_id: live.id,
+    crm_status: status === "approved" ? "approved" : status === "sent" ? "sent" : "draft",
+    updated_at: new Date().toISOString(),
+  }).eq("id", campaignLeadId).is("draft_id", null);
+}
+
 /** Generate one draft for a campaign lead. Returns draft id on success. */
 /** Model Lab's per-call overrides. See the `labOverride` parameter below. */
 export type LabOverride = {
@@ -769,6 +808,13 @@ export async function generateOneDraft(
    * as "Default email" and always needs certifying before it can be sent.
    */
   forceDefault?: string | null,
+  /**
+   * One per batch (newDraftContext): the campaign row, signature, settings,
+   * prompt, products and model choice are read once and shared by every lead
+   * instead of re-read for each. Optional; without it every read happens per
+   * call, exactly as before. A settings edit mid-batch applies from the next batch.
+   */
+  ctx?: DraftContext,
 ): Promise<
   | { ok: true; draftId: string; status: string }
   /** `skipped` means another worker already did this one — not a fault, and the
@@ -786,11 +832,11 @@ export async function generateOneDraft(
   }
 
   // --- Fetch full campaign for attachment + owner resolution ---
-  const { data: campaign } = await db
+  const { data: campaign } = await once(ctx, `campaign:${campaignId}`, async () => db
     .from("campaigns")
     .select("id, created_by, signature_override, attachment_name, attachment_path, attachment_url, ai_prompt_context")
     .eq("id", campaignId)
-    .maybeSingle();
+    .maybeSingle());
 
   // Personal voice (signature + system prompt) belongs to whoever actually owns
   // this LEAD, not whoever created the campaign — a campaign is a shared
@@ -801,8 +847,9 @@ export async function generateOneDraft(
   const promptOwnerId = lead.assigned_to ?? campaign?.created_by ?? null;
 
   // Signature: campaign override → lead owner's personal signature → company default.
-  const signatureBlock = await resolveCampaignSignature(db, { ...campaign, created_by: promptOwnerId });
-  const allowHtml = await getAllowHtmlEmails(db);
+  const signatureBlock = await once(ctx, `signature:${campaignId}:${promptOwnerId}`,
+    () => resolveCampaignSignature(db, { ...campaign, created_by: promptOwnerId }));
+  const allowHtml = await once(ctx, `allowHtml:${companyId}`, () => getAllowHtmlEmails(db));
 
   // Per-lead attachment overrides campaign default. Instantly's API cannot send
   // real file attachments, so an "attachment" is delivered as a hosted download
@@ -814,9 +861,9 @@ export async function generateOneDraft(
     (target.attachment_name ? target.attachment_url : campaign?.attachment_url) ?? null;
   if (effectiveAttachmentPath) {
     // Regenerate a long-lived signed URL — the one stored at upload time expires in 7 days.
-    const { data: signed } = await db.storage
+    const { data: signed } = await once(ctx, `signedUrl:${effectiveAttachmentPath}`, () => db.storage
       .from("campaign-attachments")
-      .createSignedUrl(effectiveAttachmentPath, 60 * 60 * 24 * 365);
+      .createSignedUrl(effectiveAttachmentPath, 60 * 60 * 24 * 365));
     if (signed?.signedUrl) effectiveAttachmentUrl = signed.signedUrl;
   }
 
@@ -852,6 +899,12 @@ export async function generateOneDraft(
       // Reported as a skip instead, so the caller neither counts it nor retries
       // work that is already done.
       if (dErr?.code === "23505") {
+        // ...unless the winner is long finished and only its campaign_leads
+        // pointer is missing (an invocation killed between the two writes).
+        // Then the lead is re-selected and skipped here for ever, keeping the
+        // chain and the pump busy. Point the lead at the live opening email.
+        // A 'generating' row is a worker still at it: leave that alone.
+        if (stepNumber === 1) await repairOpeningPointer(db, target.id, campaignId, lead.id);
         return { ok: false, reason: "Another worker is already drafting this lead", skipped: true };
       }
 
@@ -910,7 +963,7 @@ export async function generateOneDraft(
       mainName = MOCK_PRIMARY;
       backupName = MOCK_BACKUP;
     } else {
-      const models = await draftingProviders(companyId);
+      const models = await once(ctx, `providers:${companyId}`, () => draftingProviders(companyId));
       mainName = providerLabel(models.primary);
       backupName = models.backup ? providerLabel(models.backup) : "";
       pinProvider = (attempt <= OPENING_MAIN_TRIES ? models.primary : models.backup) ?? undefined;
@@ -923,7 +976,7 @@ export async function generateOneDraft(
 
   if ((!hasOrgData && !isRevision) || defaultReason) {
     try {
-      const template = await getGenericTemplate(db);
+      const template = await once(ctx, `genericTemplate:${companyId}`, () => getGenericTemplate(db));
       const firstName = lead.first_name?.trim() ?? "";
       const vars = { first_name: firstName, last_name: lead.last_name?.trim() ?? "", company: org?.name?.trim() || "your company" };
 
@@ -938,7 +991,7 @@ export async function generateOneDraft(
       // so plainToHtml at the end restores it — without this the manager's
       // formatting would either break the regexes below or vanish outright.
       const followupFallback = stepNumber > 1
-        ? htmlToPlainText(await resolveFollowupTemplate(db, campaignId, stepNumber))
+        ? htmlToPlainText(await once(ctx, `tpl:${campaignId}:${stepNumber}`, () => resolveFollowupTemplate(db, campaignId, stepNumber)))
         : "";
       const templateBody = htmlToPlainText(template.body);
 
@@ -1020,11 +1073,11 @@ export async function generateOneDraft(
 
   try {
     const [baseSystemPrompt, products, companyContext] = await Promise.all([
-      resolveDraftSystemPrompt(db, promptOwnerId, stepNumber, labOverride
-        ? { template: labOverride.template, prompt: labOverride.prompt }
-        : undefined),
-      getProductOfferings(db),
-      getCompanyContext(db),
+      labOverride
+        ? resolveDraftSystemPrompt(db, promptOwnerId, stepNumber, { template: labOverride.template, prompt: labOverride.prompt })
+        : once(ctx, `prompt:${companyId}:${promptOwnerId}:${stepNumber}`, () => resolveDraftSystemPrompt(db, promptOwnerId, stepNumber, undefined)),
+      once(ctx, `products:${companyId}`, () => getProductOfferings(db)),
+      once(ctx, `companyContext:${companyId}`, () => getCompanyContext(db)),
     ]);
     const earlier = stepNumber > 1 ? await loadEarlierEmails(db, campaignId, lead.id, stepNumber) : [];
     const promptProducts = stepNumber > 1 ? productsForFollowup(products, earlier) : products;
@@ -1334,7 +1387,7 @@ export async function generateOneDraft(
       return generateOneDraft(
         db, target, campaignId, companyId, humanInLoop, campaignName, userId, customInstruction,
         aiPromptContext, undefined, 1, bulkJobId, null, null,
-        `${AI_FAILED}: Tried ${tried}. Last error: ${message}`,
+        `${AI_FAILED}: Tried ${tried}. Last error: ${message}`, ctx,
       );
     }
     return { ok: false, reason: message };
@@ -1510,6 +1563,18 @@ export async function isDraftGenerationStalled(
   campaignId: string,
   quietMs = 60_000,
 ): Promise<boolean> {
+  if (!(await isDraftGenerationQuiet(db, campaignId, quietMs))) return false;
+  return (await countPendingDrafts(db, campaignId)) > 0;
+}
+
+/** The cheap half of isDraftGenerationStalled (two small reads): nothing in
+ *  flight and no step-1 draft for `quietMs`. The pump asks key health between
+ *  this and the pending count, which is the expensive half. */
+export async function isDraftGenerationQuiet(
+  db: SupabaseClient,
+  campaignId: string,
+  quietMs = 60_000,
+): Promise<boolean> {
   const { count: inFlight } = await db
     .from("email_drafts")
     .select("id", { count: "exact", head: true })
@@ -1525,7 +1590,5 @@ export async function isDraftGenerationStalled(
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (last?.created_at && Date.now() - Date.parse(last.created_at as string) < quietMs) return false;
-
-  return (await countPendingDrafts(db, campaignId)) > 0;
+  return !(last?.created_at && Date.now() - Date.parse(last.created_at as string) < quietMs);
 }

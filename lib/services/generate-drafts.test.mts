@@ -1,7 +1,7 @@
 // npx tsx --test lib/services/generate-drafts.test.mts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stripTrailingSignOff, earlierEmailsBlock, tidyName, productsForFollowup } from "./generate-drafts.ts";
+import { stripTrailingSignOff, earlierEmailsBlock, tidyName, productsForFollowup, once, newDraftContext } from "./generate-drafts.ts";
 
 test("a follow-up sees only the products the earlier emails named", () => {
   const lib = [{ name: "White Masterbatch" }, { name: "COLOR MASTERBATCH" }, { name: "Additive Masterbatch" }];
@@ -42,4 +42,17 @@ test("earlier emails are labelled in order and capped (issue 8)", () => {
   assert.match(block, /--- Opening email ---\nOpening/);
   assert.match(block, /--- Follow-up 1 ---/);
   assert.ok(block.length < 2500, "a long email is capped");
+});
+
+test("batch context: one read per key; no context = every call reads; a failed read is retried", async () => {
+  let reads = 0;
+  const read = async () => ++reads;
+  const ctx = newDraftContext();
+  assert.deepEqual(await Promise.all([once(ctx, "k", read), once(ctx, "k", read), once(ctx, "k", read)]), [1, 1, 1]);
+  assert.equal(await once(undefined, "k", read), 2);
+  assert.equal(await once(undefined, "k", read), 3);
+  let fail = true;
+  const flaky = async () => { if (fail) { fail = false; throw new Error("blip"); } return "ok"; };
+  await assert.rejects(once(ctx, "f", flaky));
+  assert.equal(await once(ctx, "f", flaky), "ok");
 });

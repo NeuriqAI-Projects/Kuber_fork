@@ -11,8 +11,9 @@ import {
   logLlmUnavailable,
   logLlmRecovered,
   isProviderOutage,
-  isDraftGenerationStalled,
+  isDraftGenerationQuiet,
   canDraftOpenings,
+  newDraftContext,
 } from "@/lib/services/generate-drafts";
 import { isMockCampaign } from "@/lib/services/llm-mock";
 import { hasUsableLlmKey } from "@/lib/services/provider-keys";
@@ -77,8 +78,14 @@ async function runDraftBatch(
   baseUrl: string,
   budget: BatchBudget,
 ) {
-  // Self-heal: reset any stuck drafts/campaigns before proceeding
-  try { await db.rpc("reset_stuck_draft_generation", { stale_minutes: 5 }); } catch { /* non-fatal */ }
+  // Self-heal: reset THIS campaign's stuck drafts / 'processing' status before
+  // proceeding. The global version (every company, ~46 ms of UPDATEs) ran on
+  // every hop; the 10-minute watchdog still runs it for everything else. Old
+  // database without the per-campaign function: the global one, as before.
+  try {
+    const { error } = await db.rpc("reset_stuck_draft_generation_for_campaign", { p_campaign_id: campaignId, stale_minutes: 5 });
+    if (error) await db.rpc("reset_stuck_draft_generation", { stale_minutes: 5 });
+  } catch { /* non-fatal */ }
 
   const { data: campaign } = await db
     .from("campaigns")
@@ -157,6 +164,9 @@ async function runDraftBatch(
     }).eq("id", campaignId);
   }
 
+  // Settings, prompt, products, signature and model choice: read once for this
+  // batch, not once per lead (generateOneDraft's ctx).
+  const ctx = newDraftContext();
   let succeeded = 0;
   let skipped = 0;
   let failed = 0;
@@ -182,6 +192,11 @@ async function runDraftBatch(
       campaign.ai_prompt_context ?? undefined,
       undefined,
       stepNumber,
+      undefined,
+      null,
+      null,
+      null,
+      ctx,
     ))));
     for (const result of results) {
       if (result.ok) { succeeded++; continue; }
@@ -280,14 +295,28 @@ async function pumpStalledCampaigns(req: NextRequest, db: ReturnType<typeof crea
     .not("leads.email", "is", null);
   const hasWaiting = new Set((waiting ?? []).map((w) => w.campaign_id as string));
 
+  // Key health once per company per pass (a [TEST] campaign's fake AI is per
+  // campaign). Asked after the two cheap "is it quiet?" reads and before the
+  // pending count: during a no-credit outage every waiting campaign looks
+  // stalled each minute, and the full stalled check ran for each one first.
+  const canDraftByCompany = new Map<string, Promise<boolean>>();
+  const canDraft = (c: { id: string; name: string; company_id: string }) => {
+    if (isMockCampaign(c.company_id, c.name)) return canDraftOpenings(db, c);
+    if (!canDraftByCompany.has(c.company_id)) canDraftByCompany.set(c.company_id, canDraftOpenings(db, c));
+    return canDraftByCompany.get(c.company_id)!;
+  };
+
   const kicked: string[] = [];
   for (const c of (candidates ?? []).filter((c) => hasWaiting.has(c.id as string))) {
     if (kicked.length >= 3) break;
-    if (!(await isDraftGenerationStalled(db, c.id as string))) continue;
+    const ref = { id: c.id as string, name: c.name as string, company_id: c.company_id as string };
+    if (!(await isDraftGenerationQuiet(db, ref.id))) continue;
     // A dead key is the watchdog's to report (once per pass); kicking here
     // would write an outage row every minute.
-    if (!(await canDraftOpenings(db, { id: c.id as string, name: c.name as string, company_id: c.company_id as string }))) continue;
-    kicked.push(c.id as string);
+    if (!(await canDraft(ref))) continue;
+    // Same verdict as isDraftGenerationStalled: quiet AND work left.
+    if ((await countPendingDrafts(db, ref.id)) === 0) continue;
+    kicked.push(ref.id);
   }
 
   if (kicked.length > 0) {

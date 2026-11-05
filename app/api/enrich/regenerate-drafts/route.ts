@@ -6,6 +6,7 @@ import { safeSecretEqual } from "@/lib/auth/secret";
 import { regenerateOneDraft } from "@/lib/services/regenerate-draft";
 import { countPendingItems, bulkRegeneratableStatuses } from "@/lib/services/regeneration-jobs";
 import { BatchBudget } from "@/lib/services/batch-budget";
+import { newDraftContext } from "@/lib/services/generate-drafts";
 import { resumeIfHeldForJob } from "@/lib/services/campaign-lifecycle";
 
 export const maxDuration = 55;
@@ -138,23 +139,13 @@ async function runBatch(db: ReturnType<typeof createAdminClient>, jobId: string,
     }).eq("id", jobId);
   }
 
-  const { data: items } = await cdb
-    .from("draft_regeneration_job_items")
-    .select("id, campaign_lead_id, lead_id")
-    .eq("job_id", jobId)
-    .eq("status", "pending")
-    .order("id", { ascending: true })
-    .limit(BATCH_SIZE);
+  const items = await claimItems(db, cdb, jobId, job.company_id as string);
 
-  if (!items || items.length === 0) {
+  if (items.length === 0) {
     await finishJob(cdb, jobId);
     return;
   }
 
-  await cdb
-    .from("draft_regeneration_job_items")
-    .update({ status: "running", updated_at: new Date().toISOString() })
-    .in("id", items.map((i) => i.id));
   // Heartbeat at claim time too, so the once-a-minute pump never sees a batch
   // that is mid-flight as "quiet" and starts a second one on the same job.
   await cdb.from("draft_regeneration_jobs").update({ heartbeat_at: new Date().toISOString() }).eq("id", jobId);
@@ -170,16 +161,19 @@ async function runBatch(db: ReturnType<typeof createAdminClient>, jobId: string,
   // batches or wait for something else to kick it. With AI switched off a
   // lead is ~3s of database round trips, one at a time - four at a time is
   // the same work in a quarter of the wall clock, and 100 leads becomes two
-  // batches. AI runs stay one at a time: the budget's slowest-call logic and
-  // the providers' rate limits both assume it.
+  // batches. AI runs go six at a time, the same as the opening-email worker
+  // (DRAFT_CONCURRENCY in generate-drafts): one at a time fit only 2-3 drafts
+  // in a 55 s call. A group takes as long as its slowest draft, which is what
+  // the budget measures, and items are distinct leads.
   const { data: camp } = await cdb.from("campaigns").select("followups_ai_enabled").eq("id", job.campaign_id as string).maybeSingle();
   const aiOff = stepNumber > 1 && camp?.followups_ai_enabled === false;
-  const concurrency = aiOff ? 4 : 1;
+  const concurrency = aiOff ? 4 : 6;
 
   // BATCH_SIZE alone is not a time guard: five calls at the observed 10.5s
   // worst case is 52s against a 55s ceiling, with nothing left for the
   // self-chain. Claimed items that go unprocessed are released below.
   const budget = new BatchBudget();
+  const ctx = newDraftContext(); // settings/prompt/products read once per batch
   const unprocessed: string[] = [];
   const runOne = async (item: { id: string; campaign_lead_id: string; lead_id: string }) => {
     const draftId = await resolveDraftId(cdb, job.campaign_id as string, item, stepNumber);
@@ -195,6 +189,7 @@ async function runBatch(db: ReturnType<typeof createAdminClient>, jobId: string,
       // while the job was queued must not be overwritten by it. Follow-ups
       // widen this to include 'approved' — see bulkRegeneratableStatuses.
       allowedStatuses: bulkRegeneratableStatuses(stepNumber),
+      ctx,
     }));
     if (result.ok) {
       await markItem(cdb, item.id, "done", null);
@@ -260,6 +255,39 @@ async function runBatch(db: ReturnType<typeof createAdminClient>, jobId: string,
     }).catch(() => { /* the banner's Resume button is the fallback */ });
   }
 
+}
+
+type Item = { id: string; campaign_lead_id: string; lead_id: string };
+
+/**
+ * Take up to BATCH_SIZE pending items and mark them running, in ONE statement
+ * (claim_regeneration_items, FOR UPDATE SKIP LOCKED). It used to be a select and
+ * then an update, so the minute pump and the drawer's kick landing in the same
+ * second could both take the same items and pay for the same draft twice.
+ * Falls back to that old two-step claim if the function is not in the database.
+ */
+async function claimItems(
+  db: ReturnType<typeof createAdminClient>,
+  cdb: ReturnType<typeof createScopedClient>,
+  jobId: string,
+  companyId: string,
+): Promise<Item[]> {
+  const { data, error } = await db.rpc("claim_regeneration_items", { p_job_id: jobId, p_company: companyId, p_limit: BATCH_SIZE });
+  if (!error) return ((data ?? []) as Item[]).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+  const { data: items } = await cdb
+    .from("draft_regeneration_job_items")
+    .select("id, campaign_lead_id, lead_id")
+    .eq("job_id", jobId)
+    .eq("status", "pending")
+    .order("id", { ascending: true })
+    .limit(BATCH_SIZE);
+  if (!items?.length) return [];
+  await cdb
+    .from("draft_regeneration_job_items")
+    .update({ status: "running", updated_at: new Date().toISOString() })
+    .in("id", items.map((i) => i.id));
+  return items as Item[];
 }
 
 async function markItem(

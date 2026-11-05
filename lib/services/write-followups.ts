@@ -3,7 +3,7 @@ import { stepOrderFromInstantly } from "@/lib/services/followup-signals";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createScopedClient } from "@/lib/supabase/scoped";
 import { findFollowupsToWrite, readAll, MAX_TOTAL_ATTEMPTS, type FollowupTarget } from "@/lib/services/followup-schedule";
-import { generateOneDraft, logLlmRecovered } from "@/lib/services/generate-drafts";
+import { generateOneDraft, logLlmRecovered, once, newDraftContext, type DraftContext } from "@/lib/services/generate-drafts";
 import { syncApprovedDraftToInstantly } from "@/lib/services/draft-sync";
 import { renderFollowupFallback } from "@/lib/services/settings";
 import { resolveFollowupTemplate, AI_OFF_REASON } from "@/lib/services/followup-template";
@@ -42,18 +42,6 @@ const ATTEMPTS_BEFORE_TEMPLATE = 2;
 
 /** Re-exported so existing importers of this module are unchanged. */
 export { AI_OFF_REASON };
-
-/** One read per key per run. A failed read is dropped from the memo so the next
- *  lead asks again, exactly as it did before the memo. */
-function memoized<T>(memo: Map<string, Promise<unknown>>, key: string, read: () => Promise<T>): Promise<T> {
-  let p = memo.get(key) as Promise<T> | undefined;
-  if (!p) {
-    p = read();
-    memo.set(key, p);
-    p.catch(() => memo.delete(key));
-  }
-  return p;
-}
 
 
 
@@ -95,7 +83,7 @@ export async function writeDueFollowups(
   const campaignById = new Map((campaigns ?? []).map((c) => [c.id as string, c]));
 
   const budget = opts.budget ?? new BatchBudget();
-  const memo = new Map<string, Promise<unknown>>();
+  const memo = newDraftContext();
   const one = async (target: FollowupTarget) => {
     const campaign = campaignById.get(target.campaignId);
     if (!campaign) { result.failed++; return; }
@@ -149,7 +137,7 @@ async function writeOne(
   },
   /** Per-run memo (one writeDueFollowups call): template, instruction and key
    *  health are the same for every lead of a (campaign, step) / company. */
-  memo: Map<string, Promise<unknown>> = new Map(),
+  memo: DraftContext = newDraftContext(),
 ): Promise<{ pushed: boolean; templated: boolean } | null> {
   // AI follow-ups switched off for this campaign: the step's default text with
   // the name and company filled in, and no model call at all. Checked before the
@@ -183,7 +171,7 @@ async function writeOne(
   // in the same place. attempts is left at 0 deliberately: nothing was actually
   // attempted, so the upgrade pass still owes this lead a real try once credits
   // return.
-  if (!(await memoized(memo, `key:${campaign.company_id}`, () => hasUsableLlmKey(db, campaign.company_id)))) {
+  if (!(await once(memo, `key:${campaign.company_id}`, () => hasUsableLlmKey(db, campaign.company_id)))) {
     const templated = await writeTemplateFallback(
       db, target, "Every configured LLM key is out of credits", 0, undefined, memo,
     );
@@ -204,7 +192,7 @@ async function writeOne(
   // on customInstruction, which the prompt builder already appends AFTER the
   // length and tone contract — so an instruction can add a fact but cannot talk
   // the model out of writing a short, personalised email.
-  const instruction = await memoized(memo, `instr:${target.campaignId}:${target.stepOrder}`,
+  const instruction = await once(memo, `instr:${target.campaignId}:${target.stepOrder}`,
     () => resolveStandingFollowupInstruction(db, target.campaignId, target.stepOrder));
 
   const result = await generateOneDraft(
@@ -224,6 +212,8 @@ async function writeOne(
     campaign.ai_prompt_context ?? undefined,
     undefined,
     target.stepOrder,
+    undefined, null, null, null,
+    memo,
   );
 
   // How many times this (campaign, lead, step) has already been tried. Counted
@@ -281,7 +271,7 @@ async function writeTemplateFallback(
   attempts: number,
   /** Set when the template is the choice, not a failure (AI switched off). */
   reasonMessage?: string,
-  memo: Map<string, Promise<unknown>> = new Map(),
+  memo: DraftContext = newDraftContext(),
 ): Promise<{ pushed: boolean } | null> {
   const reason = classifyFallback(rawError);
 
@@ -294,7 +284,7 @@ async function writeTemplateFallback(
   // Same resolver the no-data path uses, so the two reasons a follow-up cannot
   // be personalised now produce the SAME text — this campaign's own wording for
   // this step, else the Settings default, else the built-in.
-  const template = await memoized(memo, `tpl:${target.campaignId}:${target.stepOrder}`,
+  const template = await once(memo, `tpl:${target.campaignId}:${target.stepOrder}`,
     () => resolveFollowupTemplate(db, target.campaignId, target.stepOrder));
   const body = renderFollowupFallback(
     template,
@@ -447,6 +437,7 @@ export async function upgradeTemplateFollowups(
 
   const campaignById = new Map(liveCampaigns.map((c) => [c.id as string, c]));
   const result = { found: 0, upgraded: 0, failed: 0 };
+  const memo = newDraftContext();
 
   for (const t of templates) {
     // The request's shared clock: room for one more call as slow as the slowest seen.
@@ -486,7 +477,8 @@ export async function upgradeTemplateFollowups(
       const r = target
         ? await generateOneDraft(cdb, target as Parameters<typeof generateOneDraft>[1], t.campaign_id as string,
             campaign.company_id as string, false, campaign.name as string, undefined, instruction,
-            (campaign.ai_prompt_context as string | null) ?? undefined, undefined, t.step_number as number)
+            (campaign.ai_prompt_context as string | null) ?? undefined, undefined, t.step_number as number,
+            undefined, null, null, null, memo)
         : null;
       if (!r?.ok) throw new Error(r && "reason" in r ? r.reason : "lead not found");
       if (cl.instantly_lead_id) await syncApprovedDraftToInstantly(cdb, t.lead_id as string, t.campaign_id as string);
