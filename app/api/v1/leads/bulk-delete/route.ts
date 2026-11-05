@@ -3,7 +3,7 @@ import { z } from "zod";
 import { dbId } from "@/lib/validators/id";
 import { requireManager } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
-import { removeLeadFromOutreach } from "@/lib/services/lead-removal";
+import { removeLeadsFromOutreach } from "@/lib/services/lead-removal";
 import { dbForUser } from "@/lib/supabase/scoped";
 
 export const maxDuration = 120;
@@ -28,18 +28,14 @@ export async function POST(req: NextRequest) {
 
   if (error) return fail(500, "INTERNAL", error.message);
 
-  // Deleting must actually stop outreach (planning.md Phase 5 / Q7).
-  let instantlyRemoved = 0;
-  const instantlyErrors: string[] = [];
-  for (const id of parsed.data.ids) {
-    const removal = await removeLeadFromOutreach(db, id);
-    instantlyRemoved += removal.instantly_removed;
-    instantlyErrors.push(...removal.instantly_errors);
-  }
+  // Deleting must actually stop outreach (planning.md Phase 5 / Q7). All
+  // leads in one set-based pass (was ~6 queries per membership, one lead at a
+  // time, and up to 500 leads could time out).
+  const removal = await removeLeadsFromOutreach(db, parsed.data.ids);
 
   return ok({
     deleted: count ?? parsed.data.ids.length,
-    instantly_removed: instantlyRemoved,
-    instantly_errors: instantlyErrors,
+    instantly_removed: removal.instantly_removed,
+    instantly_errors: removal.instantly_errors,
   });
 }

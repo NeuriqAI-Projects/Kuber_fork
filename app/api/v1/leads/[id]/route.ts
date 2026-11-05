@@ -15,11 +15,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const db = dbForUser(user);
 
-  const { data: lead, error } = await db
-    .from("leads")
-    .select("*, organizations(id, name, domain, unsubscribed, has_scraped, enrichment_stage, company_description, sells_to, last_error), imports(id, label, color)")
-    .eq("id", id)
-    .maybeSingle();
+  // The campaign rows do not need the lead first: both in one round trip
+  // (they are only returned after the lead and the employee check pass).
+  const [{ data: lead, error }, { data: cls }] = await Promise.all([
+    db
+      .from("leads")
+      .select("*, organizations(id, name, domain, unsubscribed, has_scraped, enrichment_stage, company_description, sells_to, last_error), imports(id, label, color)")
+      .eq("id", id)
+      .maybeSingle(),
+    db
+      .from("campaign_leads")
+      .select("crm_status, campaign_id, created_at, campaigns(id, name)")
+      .eq("lead_id", id)
+      .order("created_at", { ascending: false }),
+  ]);
 
   if (error) return fail(500, "INTERNAL", error.message);
   if (!lead) return fail(404, "NOT_FOUND", "Lead not found");
@@ -27,12 +36,6 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (user.role === "employee" && lead.assigned_to !== user.id) {
     return fail(404, "NOT_FOUND", "Lead not found");
   }
-
-  const { data: cls } = await db
-    .from("campaign_leads")
-    .select("crm_status, campaign_id, created_at, campaigns(id, name)")
-    .eq("lead_id", id)
-    .order("created_at", { ascending: false });
 
   const campaignList = (cls ?? []).map((cl) => {
     const camp = Array.isArray(cl.campaigns) ? cl.campaigns[0] : cl.campaigns as { id: string; name: string } | null;
