@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { stepOrderFromInstantly } from "@/lib/services/followup-signals";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createScopedClient } from "@/lib/supabase/scoped";
-import { findFollowupsToWrite, MAX_TOTAL_ATTEMPTS, type FollowupTarget } from "@/lib/services/followup-schedule";
+import { findFollowupsToWrite, readAll, MAX_TOTAL_ATTEMPTS, type FollowupTarget } from "@/lib/services/followup-schedule";
 import { generateOneDraft, logLlmRecovered } from "@/lib/services/generate-drafts";
 import { syncApprovedDraftToInstantly } from "@/lib/services/draft-sync";
 import { renderFollowupFallback } from "@/lib/services/settings";
@@ -27,8 +27,6 @@ import { BatchBudget } from "@/lib/services/batch-budget";
  * follow-up takes a few seconds. See app/api/enrich/generate-drafts/route.ts.
  */
 
-const TIME_BUDGET_MS = 40_000;
-
 /** Follow-ups written at once per run. The client's Claude key allows 10k requests
  *  a minute; 6 in flight is ~25 calls a minute (same figure as opening emails). */
 const FOLLOWUP_CONCURRENCY = 6;
@@ -45,6 +43,18 @@ const ATTEMPTS_BEFORE_TEMPLATE = 2;
 /** Re-exported so existing importers of this module are unchanged. */
 export { AI_OFF_REASON };
 
+/** One read per key per run. A failed read is dropped from the memo so the next
+ *  lead asks again, exactly as it did before the memo. */
+function memoized<T>(memo: Map<string, Promise<unknown>>, key: string, read: () => Promise<T>): Promise<T> {
+  let p = memo.get(key) as Promise<T> | undefined;
+  if (!p) {
+    p = read();
+    memo.set(key, p);
+    p.catch(() => memo.delete(key));
+  }
+  return p;
+}
+
 
 
 export type WriteFollowupsResult = {
@@ -60,10 +70,10 @@ export type WriteFollowupsResult = {
 
 export async function writeDueFollowups(
   rootDb: SupabaseClient | undefined,
-  opts: { limit?: number; now?: Date; companyId?: string } = {},
+  /** budget: the request's shared clock (write-followups route); a fresh one if omitted. */
+  opts: { limit?: number; now?: Date; companyId?: string; budget?: BatchBudget } = {},
 ): Promise<WriteFollowupsResult> {
   const db = rootDb ?? createAdminClient();
-  const startedAt = Date.now();
 
   const targets = await findFollowupsToWrite(db, {
     limit: opts.limit ?? 50,
@@ -84,7 +94,8 @@ export async function writeDueFollowups(
     .in("id", campaignIds);
   const campaignById = new Map((campaigns ?? []).map((c) => [c.id as string, c]));
 
-  const budget = new BatchBudget();
+  const budget = opts.budget ?? new BatchBudget();
+  const memo = new Map<string, Promise<unknown>>();
   const one = async (target: FollowupTarget) => {
     const campaign = campaignById.get(target.campaignId);
     if (!campaign) { result.failed++; return; }
@@ -95,7 +106,7 @@ export async function writeDueFollowups(
     const cdb = createScopedClient(campaign.company_id as string);
 
     try {
-      const written = await budget.run(() => writeOne(cdb, target, campaign));
+      const written = await budget.run(() => writeOne(cdb, target, campaign, memo));
       if (!written) { result.failed++; return; }
       if (written.templated) result.templated++; else result.written++;
       if (written.pushed) result.pushed++;
@@ -136,7 +147,19 @@ async function writeOne(
     followup_instruction?: string | null;
     followups_ai_enabled?: boolean | null;
   },
+  /** Per-run memo (one writeDueFollowups call): template, instruction and key
+   *  health are the same for every lead of a (campaign, step) / company. */
+  memo: Map<string, Promise<unknown>> = new Map(),
 ): Promise<{ pushed: boolean; templated: boolean } | null> {
+  // AI follow-ups switched off for this campaign: the step's default text with
+  // the name and company filled in, and no model call at all. Checked before the
+  // key check so an AI-off campaign never depends on credits, and before the
+  // lead + company join below, which only the AI path reads.
+  if (campaign.followups_ai_enabled === false) {
+    const templated = await writeTemplateFallback(db, target, undefined, 0, AI_OFF_REASON, memo);
+    return templated ? { pushed: templated.pushed, templated: true } : null;
+  }
+
   // The same shape fetchDraftTargets returns, so generateOneDraft needs no
   // special case for scheduled follow-ups versus the ones a user triggers.
   const { data: cl } = await db
@@ -154,23 +177,15 @@ async function writeOne(
 
   if (!cl) return null;
 
-  // AI follow-ups switched off for this campaign: the step's default text with
-  // the name and company filled in, and no model call at all. Checked before the
-  // key check so an AI-off campaign never depends on credits.
-  if (campaign.followups_ai_enabled === false) {
-    const templated = await writeTemplateFallback(db, target, undefined, 0, AI_OFF_REASON);
-    return templated ? { pushed: templated.pushed, templated: true } : null;
-  }
-
   // No key with credit anywhere: skip the model entirely and lay the safety net
   // now. Trying anyway would spend two rejected calls per lead to learn what the
   // key health already says — 800 of them across a backlog this size — and end
   // in the same place. attempts is left at 0 deliberately: nothing was actually
   // attempted, so the upgrade pass still owes this lead a real try once credits
   // return.
-  if (!(await hasUsableLlmKey(db, campaign.company_id))) {
+  if (!(await memoized(memo, `key:${campaign.company_id}`, () => hasUsableLlmKey(db, campaign.company_id)))) {
     const templated = await writeTemplateFallback(
-      db, target, "Every configured LLM key is out of credits", 0,
+      db, target, "Every configured LLM key is out of credits", 0, undefined, memo,
     );
     return templated ? { pushed: templated.pushed, templated: true } : null;
   }
@@ -181,7 +196,7 @@ async function writeOne(
   // further, and still end up with a labelled, upgradeable draft.
   const priorAttempts = target.priorAttempts ?? 0;
   if (priorAttempts >= ATTEMPTS_BEFORE_TEMPLATE) {
-    const templated = await writeTemplateFallback(db, target, undefined, priorAttempts);
+    const templated = await writeTemplateFallback(db, target, undefined, priorAttempts, undefined, memo);
     return templated ? { pushed: templated.pushed, templated: true } : null;
   }
 
@@ -189,7 +204,8 @@ async function writeOne(
   // on customInstruction, which the prompt builder already appends AFTER the
   // length and tone contract — so an instruction can add a fact but cannot talk
   // the model out of writing a short, personalised email.
-  const instruction = await resolveStandingFollowupInstruction(db, target.campaignId, target.stepOrder);
+  const instruction = await memoized(memo, `instr:${target.campaignId}:${target.stepOrder}`,
+    () => resolveStandingFollowupInstruction(db, target.campaignId, target.stepOrder));
 
   const result = await generateOneDraft(
     db,
@@ -225,7 +241,7 @@ async function writeOne(
     // lead empty: if the due date arrives first, Instantly renders whatever is
     // in customBodyN, and an empty variable is a blank email. A recorded,
     // labelled, upgradeable template beats both a blank and a silent one.
-    const templated = await writeTemplateFallback(db, target, result.reason, attempts);
+    const templated = await writeTemplateFallback(db, target, result.reason, attempts, undefined, memo);
     return templated ? { pushed: templated.pushed, templated: true } : null;
   }
 
@@ -265,17 +281,21 @@ async function writeTemplateFallback(
   attempts: number,
   /** Set when the template is the choice, not a failure (AI switched off). */
   reasonMessage?: string,
+  memo: Map<string, Promise<unknown>> = new Map(),
 ): Promise<{ pushed: boolean } | null> {
   const reason = classifyFallback(rawError);
 
   const { data: lead } = await db
     .from("leads").select("first_name, last_name, organizations(name)").eq("id", target.leadId).maybeSingle();
+  // Gone since the sweep: same outcome as the lead+company join finding nothing.
+  if (!lead) return null;
   const org = lead?.organizations as { name?: string | null } | { name?: string | null }[] | null | undefined;
 
   // Same resolver the no-data path uses, so the two reasons a follow-up cannot
   // be personalised now produce the SAME text — this campaign's own wording for
   // this step, else the Settings default, else the built-in.
-  const template = await resolveFollowupTemplate(db, target.campaignId, target.stepOrder);
+  const template = await memoized(memo, `tpl:${target.campaignId}:${target.stepOrder}`,
+    () => resolveFollowupTemplate(db, target.campaignId, target.stepOrder));
   const body = renderFollowupFallback(
     template,
     (lead?.first_name as string | null) ?? "",
@@ -330,10 +350,11 @@ async function writeTemplateFallback(
  */
 export async function upgradeTemplateFollowups(
   rootDb: SupabaseClient | undefined,
-  opts: { limit?: number; companyId?: string } = {},
+  /** budget: the request's shared clock (write-followups route); a fresh one if omitted. */
+  opts: { limit?: number; companyId?: string; budget?: BatchBudget } = {},
 ): Promise<{ found: number; upgraded: number; failed: number }> {
   const db = rootDb ?? createAdminClient();
-  const startedAt = Date.now();
+  const budget = opts.budget ?? new BatchBudget();
 
   let campaignQuery = db
     .from("campaigns")
@@ -380,16 +401,18 @@ export async function upgradeTemplateFollowups(
   if (!templates?.length) return { found: 0, upgraded: 0, failed: 0 };
 
   // Which of those steps Instantly has already delivered — rule 1 above.
-  const { data: delivered } = await db
+  // Paged for the same reason findFollowupsToWrite pages: Supabase clamps a
+  // response to 1000 rows server-side however large the .limit() is, and a
+  // short read here means upgrading a follow-up the customer already has.
+  // (Until 5 Nov 2026 this read only the first page.)
+  const delivered = await readAll<{ instantly_lead_id: string; step: string | null }>((from, to) => db
     .from("unibox_emails")
     .select("instantly_lead_id, step")
     .eq("direction", "sent_campaign")
     .in("campaign_id", campaignIds)
     .not("instantly_lead_id", "is", null)
-    // Paged for the same reason findFollowupsToWrite pages: Supabase clamps a
-    // response to 1000 rows server-side however large the .limit() is, and a
-    // short read here means upgrading a follow-up the customer already has.
-    .range(0, 999);
+    .order("id")
+    .range(from, to));
 
   // Only the leads this batch is actually about. Fetching every lead in the
   // campaign would sit right under Supabase's 1000-row ceiling and start losing
@@ -404,7 +427,7 @@ export async function upgradeTemplateFollowups(
     (cls ?? []).map((c) => [`${c.campaign_id}:${c.lead_id}`, c]),
   );
   const sentSteps = new Set<string>();
-  for (const row of delivered ?? []) {
+  for (const row of delivered) {
     const ix = Number((row.step as string | null)?.split("_")[1]);
     if (Number.isFinite(ix)) sentSteps.add(`${row.instantly_lead_id}:${ix + 1}`);
   }
@@ -426,7 +449,8 @@ export async function upgradeTemplateFollowups(
   const result = { found: 0, upgraded: 0, failed: 0 };
 
   for (const t of templates) {
-    if (Date.now() - startedAt > TIME_BUDGET_MS) break;
+    // The request's shared clock: room for one more call as slow as the slowest seen.
+    if (!budget.hasRoomForAnother()) break;
 
     const cl = clByKey.get(`${t.campaign_id}:${t.lead_id}`);
     if (!cl) continue;
@@ -450,7 +474,7 @@ export async function upgradeTemplateFollowups(
     // was in place. On failure it goes back exactly as it was - a lead must never
     // be left with no follow-up text.
     await cdb.from("email_drafts").update({ status: "rejected", updated_at: now() }).eq("id", t.id);
-    try {
+    try { await budget.run(async () => {
       const instruction = await resolveStandingFollowupInstruction(cdb, t.campaign_id as string, t.step_number as number);
       const { data: target } = await cdb.from("campaign_leads").select(`
           id, lead_id,
@@ -467,7 +491,7 @@ export async function upgradeTemplateFollowups(
       if (!r?.ok) throw new Error(r && "reason" in r ? r.reason : "lead not found");
       if (cl.instantly_lead_id) await syncApprovedDraftToInstantly(cdb, t.lead_id as string, t.campaign_id as string);
       result.upgraded++;
-    } catch {
+    }); } catch {
       await cdb.from("email_drafts")
         .update({ status: t.status, attempts: ((t.attempts as number) ?? 0) + 1, updated_at: now() })
         .eq("id", t.id);

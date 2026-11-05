@@ -29,7 +29,10 @@ export function issuesFromLogs(rows: HealthLogRow[]): ServiceIssue[] {
     // one ran for weeks and stopped every follow-up 2 from being sent.
     // "warning" rather than "critical" — mail is still going out, just on the
     // wrong schedule.
-    if (row.event === "SEQUENCE_DRIFT") {
+    // A failed publish of a saved schedule (sequence-publish.ts) shows the same
+    // banner; a later successful publish (SEQUENCE_PUBLISHED) takes it down.
+    if (row.event === "SEQUENCE_PUBLISHED") { seen.add("Follow-up schedule"); continue; }
+    if (row.event === "SEQUENCE_DRIFT" || row.event === "SEQUENCE_PUBLISH_FAILED") {
       add({
         service: "Follow-up schedule",
         kind: "auth",

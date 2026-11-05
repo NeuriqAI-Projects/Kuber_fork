@@ -4,7 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { ok, fail } from "@/lib/api-response";
 import { safeSecretEqual } from "@/lib/auth/secret";
 import { writeDueFollowups, upgradeTemplateFollowups } from "@/lib/services/write-followups";
-import { publishReadySequences } from "@/lib/services/sequence-publish";
+import { publishReadySequences, publishableNow } from "@/lib/services/sequence-publish";
+import { BatchBudget } from "@/lib/services/batch-budget";
 
 export const maxDuration = 55;
 
@@ -39,15 +40,20 @@ export async function POST(req: NextRequest) {
   // run. A campaign waiting to publish is exactly the work that must not
   // wait, so the pump writes for its company until it goes out. Nothing
   // waiting = one small query and done.
+  //
+  // A campaign whose publish keeps failing is backing off (1/5/15/60 min, then
+  // stops until the user saves again, see sequence-publish.ts), so it does not
+  // count as waiting: the pump used to run the whole writer for it every minute.
   if (body.pump) {
     const pdb = createAdminClient();
     const { data: waiting } = await pdb
       .from("campaigns")
-      .select("company_id")
+      .select("id, company_id, sequence_publish_requested_at")
       .eq("sequence_publish_pending", true)
       .eq("is_deleted", false)
-      .limit(1);
-    const companyId = waiting?.[0]?.company_id as string | undefined;
+      .limit(50);
+    const due = waiting?.length ? await publishableNow(pdb, waiting as { id: string; company_id: string; sequence_publish_requested_at: string | null }[]) : [];
+    const companyId = due[0]?.company_id;
     if (!companyId) return ok({ status: "idle" });
     body.company_id = companyId;
   }
@@ -57,6 +63,12 @@ export async function POST(req: NextRequest) {
 
   const db = createAdminClient();
   const baseUrl = internalAppBaseUrl(req);
+  // ONE CLOCK FOR THE WHOLE REQUEST. Upgrade, write and publish each used to
+  // start their own (40 s + ~49 s + 30 s) inside one 55 s function, so a busy
+  // run was killed mid-way. All three now check this one budget before starting
+  // more work; each phase resumes on the next run. after() work counts toward
+  // the same maxDuration, so it starts here.
+  const budget = new BatchBudget();
 
   // REPLY NOW, WORK AFTER (as generate-drafts and regenerate-drafts do). The
   // chain kick below used to wait for the whole next batch, holding this
@@ -70,24 +82,33 @@ export async function POST(req: NextRequest) {
       const upgraded = await upgradeTemplateFollowups(db, {
         limit: body.limit,
         companyId: body.company_id,
+        budget,
       });
 
       const result = await writeDueFollowups(db, {
         limit: body.limit,
         companyId: body.company_id,
+        budget,
       });
 
       // A campaign waiting to publish goes live the moment its last follow-up
       // lands, rather than waiting for someone to come back and press a button.
-      const publish = await publishReadySequences(db);
+      const publish = await publishReadySequences(db, { budget });
 
-      console.log("write-followups batch", body.company_id ?? "all", JSON.stringify({ ...result, upgraded, publish }));
-      await chainIfMoreWork(baseUrl, result, body.company_id, body.limit);
+      console.log("write-followups batch", body.company_id ?? "all", JSON.stringify({ ...result, upgraded, publish }), budget.stats());
+      await chainIfMoreWork(baseUrl, progressOf(result, upgraded), body.company_id, body.limit);
     } catch (e) {
       console.error("write-followups batch failed", body.company_id ?? "all", e);
     }
   });
   return Response.json({ success: true, data: { accepted: true, company_id: body.company_id ?? null }, error: null }, { status: 202 });
+}
+
+/** Upgrades count as progress for chaining: with one shared clock a long
+ *  upgrade pass can leave the writer no time (written 0, ranOutOfTime), and the
+ *  next batch must still follow while the upgrade pass is getting through. */
+function progressOf(result: Parameters<typeof chainIfMoreWork>[1], upgraded: { upgraded: number }) {
+  return { ...result, written: result.written + upgraded.upgraded };
 }
 
 /**
@@ -156,11 +177,12 @@ export async function GET(req: NextRequest) {
   if (guard) return guard;
 
   const db = createAdminClient();
-  const upgraded = await upgradeTemplateFollowups(db, { companyId });
-  const result = await writeDueFollowups(db, { companyId });
-  const publish = await publishReadySequences(db);
+  const budget = new BatchBudget();
+  const upgraded = await upgradeTemplateFollowups(db, { companyId, budget });
+  const result = await writeDueFollowups(db, { companyId, budget });
+  const publish = await publishReadySequences(db, { budget });
   const baseUrl = internalAppBaseUrl(req);
-  after(() => chainIfMoreWork(baseUrl, result, companyId, undefined));
+  after(() => chainIfMoreWork(baseUrl, progressOf(result, upgraded), companyId, undefined));
   return ok({ ...result, upgraded, publish });
 }
 

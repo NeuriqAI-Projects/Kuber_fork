@@ -228,8 +228,11 @@ const PAGE_SIZE = 1000;
  *
  * Pagination rather than a bigger number, because there is no number that
  * works: the ceiling belongs to the server, not the caller.
+ *
+ * Every caller orders by id: Postgres only keeps LIMIT/OFFSET pages stable
+ * with an ORDER BY, and a row skipped between pages looks unwritten/unsent.
  */
-async function readAll<T>(
+export async function readAll<T>(
   build: (from: number, to: number) => PromiseLike<{ data: T[] | null }>,
 ): Promise<T[]> {
   const out: T[] = [];
@@ -264,7 +267,9 @@ export type FollowupTarget = {
  */
 export async function findFollowupsToWrite(
   db: SupabaseClient,
-  opts: { limit?: number; now?: Date; companyId?: string } = {},
+  /** campaignIds: only these campaigns (a per-campaign question, e.g. "is this
+   *  campaign's text all written?"), instead of sweeping every live campaign. */
+  opts: { limit?: number; now?: Date; companyId?: string; campaignIds?: string[] } = {},
 ): Promise<FollowupTarget[]> {
   const limit = opts.limit ?? 50;
   const now = opts.now ?? new Date();
@@ -287,6 +292,7 @@ export async function findFollowupsToWrite(
     .in("status", ["active", "processing"]);
 
   if (opts.companyId) campaignQuery = campaignQuery.eq("company_id", opts.companyId);
+  if (opts.campaignIds) campaignQuery = campaignQuery.in("id", opts.campaignIds);
 
   const { data: campaigns } = await campaignQuery;
 
@@ -330,6 +336,7 @@ export async function findFollowupsToWrite(
     .in("campaign_id", [...stepsByCampaign.keys()])
     .not("first_sent_at", "is", null)
     .not("crm_status", "in", `(${DEAD_STATUSES.join(",")})`)
+    .order("id")
     .range(from, to));
 
   if (leads.length === 0) return [];
@@ -356,6 +363,7 @@ export async function findFollowupsToWrite(
     // that count is what stops a hopeless lead being retried forever.
     // 'rejected' is a superseded version and is neither.
     .neq("status", "rejected")
+    .order("id")
     .range(from, to));
 
   const written = new Set<string>();
@@ -387,6 +395,7 @@ export async function findFollowupsToWrite(
     .eq("direction", "sent_campaign")
     .in("campaign_id", [...stepsByCampaign.keys()])
     .not("instantly_lead_id", "is", null)
+    .order("id")
     .range(from, to));
 
   const sentSteps = new Set<string>();
@@ -411,6 +420,7 @@ export async function findFollowupsToWrite(
       .select("campaign_lead_id, step")
       .eq("event_type", "email_sent")
       .in("campaign_lead_id", chunk)
+      .order("id")
       .range(from, to));
     for (const e of events) {
       const n = stepOrderFromInstantly(e.step);
