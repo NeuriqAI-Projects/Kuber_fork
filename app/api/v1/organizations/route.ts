@@ -7,6 +7,11 @@ import { dbForUser } from "@/lib/supabase/scoped";
 
 export const maxDuration = 60;
 
+// Every column except scraped_markdown (the raw page text, up to ~100 KB per
+// org): no screen reads it, and select("*") shipped it on every drawer open.
+const ORG_COLUMNS =
+  "id, apollo_org_id, domain, website, name, industry, keywords, employees, city, country, has_scraped, unsubscribed, created_at, updated_at, company_description, sells_to, enrichment_stage, enrichment_status, enrichment_started_at, enrichment_done_at, enrichment_attempts, last_error, domain_source, scraped_at, company_id";
+
 // Organizations are enrichment territory — manager-only (planning.md D8).
 // Employees reach org data only through their own leads' drawers
 // (GET /organizations/[id], scoped there).
@@ -21,7 +26,7 @@ export async function GET(req: NextRequest) {
   const { search, industry, has_scraped, unsubscribed, page, limit } = parsed.data;
   const db = dbForUser(user);
 
-  let q = db.from("organizations").select("*", { count: "exact" });
+  let q = db.from("organizations").select(ORG_COLUMNS, { count: "exact" });
 
   if (search) q = q.or(`name.ilike.%${search}%,domain.ilike.%${search}%`);
   if (industry) q = q.eq("industry", industry);
@@ -69,7 +74,7 @@ export async function POST(req: NextRequest) {
   const { data, error } = await db
     .from("organizations")
     .insert({ name, domain: normalizedDomain, ...rest, created_at: new Date().toISOString() })
-    .select()
+    .select(ORG_COLUMNS)
     .single();
 
   if (error) return fail(500, "INTERNAL", error.message);

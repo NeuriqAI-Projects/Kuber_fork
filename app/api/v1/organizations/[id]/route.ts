@@ -8,6 +8,11 @@ import { scoredForOrg } from "@/lib/services/prospects/groups";
 
 export const maxDuration = 60;
 
+// Every column except scraped_markdown (the raw page text, up to ~100 KB per
+// org): no screen reads it, and select("*") shipped it on every drawer open.
+const ORG_COLUMNS =
+  "id, apollo_org_id, domain, website, name, industry, keywords, employees, city, country, has_scraped, unsubscribed, created_at, updated_at, company_description, sells_to, enrichment_stage, enrichment_status, enrichment_started_at, enrichment_done_at, enrichment_attempts, last_error, domain_source, scraped_at, company_id";
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   let user: Awaited<ReturnType<typeof requireAuth>>;
   try { user = await requireAuth(req); } catch (r) { return r as Response; }
@@ -31,7 +36,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { data: org, error } = await db
     .from("organizations")
-    .select("*")
+    .select(ORG_COLUMNS)
     .eq("id", id)
     .maybeSingle();
 
@@ -75,7 +80,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .from("organizations")
     .update(updates)
     .eq("id", id)
-    .select()
+    .select(ORG_COLUMNS)
     .maybeSingle();
 
   if (error) return fail(500, "INTERNAL", error.message);
