@@ -83,6 +83,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (leadId) q = q.eq("lead_id", leadId);
     return q;
   };
+  // How many opening-email versions each lead has (the "Version history" button
+  // shows at 2+), and which rows already have a reply in the Unibox — so the
+  // drawer neither fetches history per lead click nor shows a replied lead as
+  // a plain row until the replies arrive.
+  const openingVersionsQuery = () => db
+    .from("email_drafts")
+    .select("lead_id")
+    .eq("campaign_id", id)
+    .eq("step_number", 1);
+  const repliedQuery = () => db
+    .from("unibox_emails")
+    .select("campaign_lead_id")
+    .eq("campaign_id", id)
+    .eq("direction", "received")
+    .not("campaign_lead_id", "is", null);
   const eventsQuery = () => db
     .from("reply_events")
     .select("campaign_lead_id, step, event_type, received_at")
@@ -100,12 +115,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   let followupsWithBody: Set<string> | null = null;
   let events: Row[];
   let sends: Row[] = [];
+  let openingVersions: Row[];
+  let replied: Row[];
   // Tab badges, so the drawer need not load the Discussion and the Outbox
   // replies (the heavy one) before those tabs are opened. List view only.
   let commentCount: number | null = null;
   let pendingReplyCount: number | null = null;
   try {
-    const [main, campaignRes, inFlightRes, fu, fuBody, ev, comments, replyDrafts] = await Promise.all([
+    const [main, campaignRes, inFlightRes, fu, fuBody, ev, comments, replyDrafts, versionsRes, repliedRes] = await Promise.all([
       light
         ? allRows((f, t) => mainQuery().range(f, t)).then((rows) => ({ rows, count: rows.length as number | null }))
         : mainQuery().range((page - 1) * limit, page * limit - 1).then(({ data, error, count }) => {
@@ -141,6 +158,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             .eq("campaign_id", id).eq("status", "draft").order("id").range(f, t))
             .then((rows) => new Set(rows.map((r) => r.campaign_lead_id ?? r.id)).size)
         : null,
+      light ? allRows((f, t) => openingVersionsQuery().order("id").range(f, t)) : null,
+      light ? allRows((f, t) => repliedQuery().order("id").range(f, t)) : null,
     ]);
     commentCount = comments;
     pendingReplyCount = replyDrafts;
@@ -153,11 +172,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       followupDrafts = fu!;
       followupsWithBody = new Set(fuBody!.map((d) => d.id as string));
       events = ev!;
+      openingVersions = versionsRes!;
+      replied = repliedRes!;
     } else {
       const rowIds = data.map((cl) => cl.id as string);
+      const rowLeadIds = data.map((cl) => cl.lead_id as string);
       const oneLeadId = oneId ? (data[0]?.lead_id as string | undefined) : undefined;
-      [followupDrafts, events, sends] = rowIds.length === 0
-        ? [[], [], []]
+      [followupDrafts, events, sends, openingVersions, replied] = rowIds.length === 0
+        ? [[], [], [], [], []]
         : await Promise.all([
             allRows((f, t) => followupsQuery("id, lead_id, subject, body, status, created_at, step_number, source, fallback_reason", oneLeadId)
               .order("created_at", { ascending: true }).order("id").range(f, t)),
@@ -170,6 +192,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
               .eq("direction", "sent_campaign")
               .in("campaign_lead_id", rowIds)
               .order("timestamp_email", { ascending: true }).order("id").range(f, t)),
+            allRows((f, t) => openingVersionsQuery().in("lead_id", rowLeadIds).order("id").range(f, t)),
+            allRows((f, t) => repliedQuery().in("campaign_lead_id", rowIds).order("id").range(f, t)),
           ]);
     }
   } catch (e) {
@@ -325,9 +349,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     sequenceByLead.get(clId)!.push(m);
   }
 
+  const openingVersionsByLead = new Map<string, number>();
+  for (const d of openingVersions) openingVersionsByLead.set(d.lead_id as string, (openingVersionsByLead.get(d.lead_id as string) ?? 0) + 1);
+  const repliedRows = new Set(replied.map((r) => r.campaign_lead_id as string));
+
   // Compute resolved attachment per lead
   const items = (data ?? []).map((cl: Record<string, unknown>) => ({
     ...cl,
+    has_versions: (openingVersionsByLead.get(cl.lead_id as string) ?? 0) > 1,
+    has_reply: repliedRows.has(cl.id as string),
     leads: mapLeadRow(cl.leads as Record<string, unknown> | null),
     draft_activity: activityByLead.get(cl.lead_id as string) ?? null,
     last_step_sent: stepByLead.get(cl.id as string) ?? null,

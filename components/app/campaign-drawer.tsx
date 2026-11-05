@@ -336,6 +336,11 @@ type CampaignLead = {
   /** True once this row came from the one-lead call, so the bodies and the
    *  sent thread are here. The list call leaves them out. */
   detail?: boolean;
+  /** The opening email has 2+ versions: show "Version history" (fetched on click). */
+  has_versions?: boolean;
+  /** A reply from this lead is already in the Unibox — the row reads as replied
+   *  before the Outbox replies list has loaded. */
+  has_reply?: boolean;
 };
 
 /** One entry in a draft's version history. Shared by the opening email's panel
@@ -980,7 +985,11 @@ export function CampaignDetail({
   const [leadsDelivery, setLeadsDelivery] = useState<string>("all");
   const [leadsViewMode, setLeadsViewMode] = useState<"list" | "kanban">("list");
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [versions, setVersions] = useState<DraftVersion[]>([]);
+  // Opening-email version history, fetched when "Version history" is pressed
+  // (the list's has_versions decides whether the button shows). Tagged with
+  // its draft id, so another lead's history can never show here.
+  const [history, setHistory] = useState<{ draftId: string; versions: DraftVersion[] } | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [campaignSteps, setCampaignSteps] = useState<CampaignStepInput[]>([]);
   const [previewVersionId, setPreviewVersionId] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
@@ -1254,8 +1263,8 @@ export function CampaignDetail({
    * whole campaigns only. Other steps are days apart, so holding them costs a
    * delay and nothing else.
    *
-   * onRefresh() rather than loadData(): the held flag lives on the campaign row
-   * the parent owns, so only a parent refetch makes the banner appear or clear.
+   * The banner reads local `heldAt` (set below at once); the held flag also
+   * lives on the campaign row the parent owns, so the list is reloaded too.
    */
   async function handleToggleHold(hold: boolean) {
     setHoldBusy(true);
@@ -1270,6 +1279,10 @@ export function CampaignDetail({
         toast.success("Sending resumed");
       }
       setHeldAt(hold ? new Date().toISOString() : null);
+      // Refresh the campaigns list ourselves (status / held flag on other
+      // screens) instead of relying on the cache refetching it after any
+      // campaign write.
+      void loadCampaigns(session.access_token);
       setHoldConfirmOpen(false);
       // Arrived here from a blocked "regenerate every follow-up": now that
       // sending is stopped, carry on into the run the user actually asked for
@@ -1462,6 +1475,10 @@ export function CampaignDetail({
     void loadReplies();
   }, [viewTab, loadReplies]);
 
+  // The report refreshes when the tab opens, when leads are added/removed, on a
+  // send, and when drafting starts or finishes — not on every progress tick
+  // (progress.failed moved on each poll while drafting, re-reading the campaign).
+  const draftingNow = !!progress && (progress.generating + progress.pending) > 0;
   useEffect(() => {
     if (viewTab !== "analytics") return;
     let cancelled = false;
@@ -1481,7 +1498,7 @@ export function CampaignDetail({
       }
     })();
     return () => { cancelled = true; };
-  }, [viewTab, campaign.id, campaignLeads.length, progress?.sent, progress?.failed]);
+  }, [viewTab, campaign.id, campaignLeads.length, progress?.sent, draftingNow]);
 
   useEffect(() => {
     if (viewTab !== "analytics") return;
@@ -1630,18 +1647,27 @@ export function CampaignDetail({
     setBouncedThreadOpen(false);
   }, [selected?.id, selected?.email_drafts?.subject, selected?.email_drafts?.body]);
 
-  useEffect(() => {
-    if (!selected?.email_drafts?.id) { setVersions([]); return; }
-    async function loadHistory() {
+  const versions = history && history.draftId === selected?.email_drafts?.id ? history.versions : [];
+
+  async function toggleHistory() {
+    if (historyOpen) { setHistoryOpen(false); return; }
+    const draftId = selected?.email_drafts?.id;
+    if (!draftId) return;
+    if (history?.draftId !== draftId) {
+      setHistoryLoading(true);
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
-        const { versions: v } = await fetchDraftHistory(session.access_token, selected!.email_drafts!.id);
-        setVersions(v);
-      } catch { setVersions([]); }
+        const { versions: v } = await fetchDraftHistory(session.access_token, draftId);
+        setHistory({ draftId, versions: v });
+      } catch {
+        setHistory({ draftId, versions: [] });
+      } finally {
+        setHistoryLoading(false);
+      }
     }
-    void loadHistory();
-  }, [selected?.email_drafts?.id]);
+    setHistoryOpen(true);
+  }
 
   // Regenerating a few times in one sitting is normal, and a date-only label
   // then renders a row of identical "Aug 3" chips that look like they came from
@@ -4383,8 +4409,10 @@ export function CampaignDetail({
                 const isChecked = checkedIds.has(cl.id);
                 const thread = outboxThreadByLeadId.get(cl.id) ?? null;
 
-                if (thread) {
-                  const latestMsg = thread.messages[thread.messages.length - 1];
+                // has_reply (from the light list) draws a replied lead as replied
+                // while the Outbox replies list is still loading.
+                if (thread || (!repliesFetched && cl.has_reply)) {
+                  const latestMsg = thread?.messages[thread.messages.length - 1];
                   const replyDraftStatus = latestMsg?.reply_drafts[latestMsg.reply_drafts.length - 1]?.status;
                   const statusConfig: Record<string, { label: string; color: PillColor }> = {
                     generating: { label: "Generating", color: "amber" },
@@ -4413,7 +4441,7 @@ export function CampaignDetail({
                           {sc && <span className={pillClass({ color: sc.color, shape: "sm", className: "leading-none" })}>{sc.label}</span>}
                         </div>
                       </div>
-                      {thread.messages.length > 1 && (
+                      {thread && thread.messages.length > 1 && (
                         <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">{thread.messages.length}</span>
                       )}
                     </button>
@@ -4975,13 +5003,14 @@ export function CampaignDetail({
                           <ChevronDown className={cn("size-3.5 transition-transform", regenOpen && "rotate-180")} />
                         </Button>
                       )}
-                      {versions.length > 1 && (
+                      {(selected.has_versions || versions.length > 1) && (
                         <Button
                           variant="outline"
                           className={cn("gap-1.5", historyOpen && "bg-accent hover:bg-accent")}
-                          onClick={() => setHistoryOpen((o) => !o)}
+                          disabled={historyLoading}
+                          onClick={() => void toggleHistory()}
                         >
-                          <History className="size-3.5" />
+                          {historyLoading ? <Loader2 className="size-3.5 animate-spin" /> : <History className="size-3.5" />}
                           Version history
                           <ChevronDown className={cn("size-3.5 transition-transform", historyOpen && "rotate-180")} />
                         </Button>
