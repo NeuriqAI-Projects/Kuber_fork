@@ -24,7 +24,7 @@ import { LocationsPicker } from "@/components/ui/locations-picker";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ApolloPeopleAdvanced, buildPeopleAdvanced } from "@/components/app/apollo-people-advanced";
 import { ApolloCostNote } from "@/components/app/apollo-cost-note";
-import { apolloPreview, importExcelDirect, createLead, patchLead, patchOrg, fetchUsers, fetchUsage, fetchSettings, addIndustryKeyword, type Profile, type PreviewLead, type DuplicateOwner } from "@/lib/api-client";
+import { apolloPreview, importExcelDirect, createLead, patchLead, patchOrg, fetchApolloCredits, fetchSettings, addIndustryKeyword, queryCache, cacheKeys, cachedFetchers, type Profile, type PreviewLead, type DuplicateOwner } from "@/lib/api-client";
 import { ensureSplitNames } from "@/lib/utils/person-name";
 import { supabase } from "@/lib/supabase";
 import { BatchConfirmModal } from "@/components/app/batch-confirm-modal";
@@ -141,7 +141,8 @@ export function useAssignableEmployees(enabled: boolean) {
 
   useEffect(() => {
     if (!enabled) return;
-    getToken().then((token) => fetchUsers(token)).then((users) => {
+    // Shared users cache (60 s): every form open used to fetch the list again.
+    queryCache.fetch<Profile[]>(cacheKeys.users, cachedFetchers.users, { maxAgeMs: 60_000 }).then((users) => {
       setEmployees(users.filter((u) => u.role === "employee" && u.is_active));
     }).catch(() => {});
   }, [enabled]);
@@ -158,7 +159,8 @@ export function useIndustryKeywordGroups() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getToken().then((token) => fetchSettings(token)).then((settings) => {
+    // Cached 60 s under the settings key; a settings write marks it stale.
+    getToken().then((token) => queryCache.fetch("/api/v1/settings", () => fetchSettings(token), { maxAgeMs: 60_000 })).then((settings) => {
       setGroups(parseIndustryKeywordGroups(settings.industry_keyword_groups));
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
@@ -804,9 +806,10 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
     (async () => {
       try {
         const token = await getToken();
-        const { providers } = await fetchUsage(token);
-        const apollo = providers.find((p) => p.id === "apollo");
-        if (apollo?.remaining != null) setApolloRemaining(apollo.remaining);
+        // The saved balance (our DB, the same number as the sidebar) — not
+        // /settings/usage, which live-checked 6 providers for this one number.
+        const { remaining } = await fetchApolloCredits(token);
+        if (remaining != null) setApolloRemaining(remaining);
       } catch {
         // Non-blocking — the server enforces the real cap regardless of
         // whether this pre-flight number loaded.

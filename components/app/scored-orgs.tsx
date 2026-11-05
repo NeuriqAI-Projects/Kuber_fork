@@ -95,7 +95,15 @@ export const checkedDone = (s: Pick<ScoredSearch, "stages">) => s.stages.scored 
  *  refreshes every 4 s and nudges the background job (the minute pump does the same
  *  in production — running both is safe, rows are locked). Network errors are shown,
  *  never thrown away: the last good data stays on screen. */
-export function useScoredOrgs(filter: ScoredFilter, q: string, enabled = true, { orgsOnly = false }: { orgsOnly?: boolean } = {}) {
+export function useScoredOrgs(filter: ScoredFilter, qInput: string, enabled = true, { orgsOnly = false }: { orgsOnly?: boolean } = {}) {
+  // The search box re-ran the heavy /api/v1/prospects read on every keystroke:
+  // wait until typing pauses for 300 ms.
+  const [q, setQ] = useState(qInput);
+  useEffect(() => {
+    if (qInput === q) return;
+    const t = setTimeout(() => setQ(qInput), 300);
+    return () => clearTimeout(t);
+  }, [qInput, q]);
   // `state.key` = the filter the data on screen was loaded for. Until the answer for a new filter
   // arrives, the old rows are `stale`: screens show a loading state and hide bulk actions, so
   // "Approve all" never acts on rows of a filter that is no longer picked.

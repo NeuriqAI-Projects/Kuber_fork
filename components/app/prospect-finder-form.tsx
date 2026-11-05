@@ -514,7 +514,9 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
         let alive = true;
         const look = async () => {
           try {
-            const d = await api<{ searches: ScoredSearch[] }>("/api/v1/prospects?summary=1");
+            // Light lookup (no company rows): the search with this request id.
+            const d = await api<{ searches: Pick<ScoredSearch, "id" | "request_id" | "batch_name" | "created_at">[] }>(
+              `/api/v1/prospects?summary=find${m.requestId ? `&request_id=${encodeURIComponent(m.requestId)}` : ""}`);
             // By the request id (the clocks of this computer and the server may differ); old markers by name and time.
             const mine = d.searches.find((x) => (m.requestId ? x.request_id === m.requestId : x.batch_name === m.batchName && new Date(x.created_at).getTime() >= m.at - 5000));
             if (mine && alive) {
@@ -527,7 +529,8 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
           if (alive && Date.now() - m.at >= START_MAX_AGE_MS) { ssDel(KEY_START); setResuming(null); alive = false; }
         };
         void look();
-        const stop = everyWhileVisible(() => { if (alive) void look(); else stop(); }, 3000);
+        // 10 s, visible tabs only: a resume is rare and this is not urgent.
+        const stop = everyWhileVisible(() => { if (alive) void look(); else stop(); }, 10_000);
         return () => { alive = false; stop(); mountedRef.current = false; };
       } else if (m) ssDel(KEY_START);
     }

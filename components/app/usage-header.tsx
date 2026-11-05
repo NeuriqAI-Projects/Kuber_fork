@@ -97,7 +97,10 @@ export function UsageStatus({ tone, children }: { tone: "ok" | "bad" | "warn" | 
 export function useCachedUsage<T>(key: string, fetcher: (token: string, refresh: boolean) => Promise<T>) {
   const { session } = useApp();
   const token = session?.access_token ?? "";
-  const query = useCached<T>(session ? key : null, () => fetcher(token, false));
+  // 60 s: switching Credits tabs back and forth re-ran routes that call the
+  // providers live (Apollo usage = 2 Apollo calls + 1,000 ledger rows). The
+  // Refresh button and post-action reloads still fetch at once.
+  const query = useCached<T>(session ? key : null, () => fetcher(token, false), { dedupeMs: 60_000 });
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {

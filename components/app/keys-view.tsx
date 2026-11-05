@@ -23,7 +23,7 @@ import { SearchInput } from "@/components/ui/search-input";
 import {
   fetchProviderKeys, createProviderKey, patchProviderKey, deleteProviderKey,
   checkProviderKey, setProviderModel, setLlmTierRoles,
-  reorderProviderKeys, fetchProviderModels, useCached,
+  reorderProviderKeys, fetchProviderModels, useCached, queryCache,
   type ProviderConfig, type ProviderKey, type ProviderModelOption,
 } from "@/lib/api-client";
 
@@ -610,7 +610,14 @@ export function ModelField({ provider, value, onChange }: {
     let cancelled = false;
     if (!session) { setLoading(false); return; }
     setLoading(true);
-    fetchProviderModels(session.access_token, provider.id)
+    // One catalog per provider for the whole page (each picker used to download
+    // it again). Kept 10 min; a key/settings write marks it stale (settings/*).
+    const token = session.access_token;
+    queryCache.fetch(
+      `/api/v1/settings/keys/models?provider=${encodeURIComponent(provider.id)}`,
+      () => fetchProviderModels(token, provider.id),
+      { maxAgeMs: 10 * 60_000 },
+    )
       .then((list) => {
         if (cancelled) return;
         setModels(list);

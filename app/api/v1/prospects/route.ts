@@ -86,6 +86,23 @@ export async function GET(req: NextRequest) {
     try { return ok({ review_total: await count((b) => b.in("status", REVIEW)) }); }
     catch (e) { return fail(500, "INTERNAL", (e as Error).message); }
   }
+  // Add Leads "resume after reload" (prospect-finder-form): is the search this
+  // browser started there yet? Only id / name / request id / time of the match
+  // (or of the newest 20 for old markers without a request id) — the full
+  // summary read was ~4,300 rows (~1.1 MB) per 3 s tick.
+  if (sp.get("summary") === "find") {
+    const requestId = (sp.get("request_id") ?? "").slice(0, 100);
+    let fq = db.from("prospect_searches").select("id, filters, created_at");
+    if (requestId) fq = fq.eq("filters->>request_id", requestId);
+    const { data, error } = await fq.order("created_at", { ascending: false }).limit(requestId ? 5 : 20);
+    if (error) return fail(500, "INTERNAL", error.message);
+    return ok({
+      searches: (data ?? []).map((s) => {
+        const f = (s.filters ?? {}) as { batch_name?: string; request_id?: string };
+        return { id: s.id, batch_name: f.batch_name ?? null, request_id: f.request_id ?? null, created_at: s.created_at };
+      }),
+    });
+  }
   const countsP = Promise.all(summary
     ? [count((b) => b.in("status", REVIEW))]
     : [
