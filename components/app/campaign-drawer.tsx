@@ -238,10 +238,6 @@ type CampaignLead = {
   crm_status: string;
   lead_temperature: string | null;
   created_at: string;
-  /** First time this lead opened one of our emails, from Instantly's
-   *  email_opened webhook. Null if never opened (or tracking is off). */
-  opened_at?: string | null;
-  opened_step?: number | null;
   leads: {
     first_name: string | null;
     last_name: string | null;

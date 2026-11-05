@@ -187,7 +187,7 @@ export function leadTools(caller: AssistantCaller) {
             ? caller.db.from("organizations").select("id, name, domain, website, industry, employees, city, country, company_description, sells_to, unsubscribed, enrichment_stage").eq("id", l.organization_id).maybeSingle()
             : Promise.resolve({ data: null }),
           caller.db.from("campaign_leads")
-            .select("id, crm_status, lead_temperature, interest_status, first_sent_at, opened_at, last_reply_at, last_reply_body, campaigns(id, name, status)")
+            .select("id, crm_status, lead_temperature, interest_status, first_sent_at, last_reply_at, last_reply_body, campaigns(id, name, status)")
             .eq("lead_id", l.id),
           caller.db.from("lead_events").select("event, detail, actor_id, created_at").eq("lead_id", l.id).order("created_at", { ascending: false }).limit(12),
           caller.db.from("lead_comments").select("body, author_id, created_at").eq("lead_id", l.id).order("created_at", { ascending: false }).limit(5),
@@ -234,7 +234,6 @@ export function leadTools(caller: AssistantCaller) {
               temperature: c.lead_temperature,
               interested: c.interest_status === 1,
               first_email_sent: c.first_sent_at,
-              opened: c.opened_at,
               last_reply_at: c.last_reply_at,
               last_reply: clip(c.last_reply_body as string | null, 400),
             };
