@@ -35,7 +35,8 @@ export type ProspectStatus =
   | "promoted"        // one lead created; the reveal job takes it from here
   | "rejected";       // client said no
 
-export const WORKABLE: ProspectStatus[] = ["queued", "read_social", "read", "good", "approved", "waiting_credits"];
+// pg_cron's scoring gate repeats this list (supabase/migrations/2026_11_05_cron_work_gates.sql).
+export const WORKABLE: ProspectStatus[] =["queued", "read_social", "read", "good", "approved", "waiting_credits"];
 
 export interface ProspectRow {
   id: string;

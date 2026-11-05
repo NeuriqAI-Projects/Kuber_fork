@@ -79,6 +79,7 @@ export interface EnrichTarget {
 // time. It lands in `unenrichable_leads` with reason 'apollo_retry_exhausted',
 // where it can be exported and re-imported deliberately -- a human choosing to
 // spend a credit, rather than the system spending it automatically.
+// pg_cron's resume-apollo-reveal gate repeats this (supabase/migrations/2026_11_05_cron_work_gates.sql).
 export const MAX_ENRICH_ATTEMPTS = 2;
 
 /**

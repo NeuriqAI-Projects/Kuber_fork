@@ -96,7 +96,12 @@ export async function runProspectWorker(admin: SupabaseClient, companyId: string
 
 /** Companies that currently have work waiting (for the cron pump). */
 export async function companiesWithWork(admin: SupabaseClient): Promise<string[]> {
-  const { data } = await admin.from("prospect_companies").select("company_id").in("status", WORKABLE).limit(1000);
+  // Same lock rule as claim_prospects: a row still locked can't be claimed, so
+  // it isn't work yet. Without this, rows waiting for credits made their company
+  // "busy" every minute. pg_cron's gate repeats this query
+  // (supabase/migrations/2026_11_05_cron_work_gates.sql).
+  const { data } = await admin.from("prospect_companies").select("company_id").in("status", WORKABLE)
+    .or(`locked_until.is.null,locked_until.lte.${new Date().toISOString()}`).limit(1000);
   // Plus searches waiting to read their next page (nothing in progress, target not reached yet).
   const { data: runs } = await admin.from("prospect_searches").select("company_id").eq("run_status", "running").limit(1000);
   return [...new Set([...(data ?? []), ...(runs ?? [])].map((r) => r.company_id as string))];
