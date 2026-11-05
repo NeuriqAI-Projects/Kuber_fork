@@ -105,6 +105,35 @@ export async function getActiveKey(
   return null;
 }
 
+/**
+ * getActiveKey with a short per-instance memo, for the hot paths (every
+ * Instantly/Apollo HTTP request, every LLM call). Saves the provider_keys read
+ * and the Vault decrypt on repeat calls.
+ *
+ * Keyed by scope + provider, so one company's key is never handed to another.
+ * Only use it where `db` is built FROM `scope` (getServiceSecret, complete()),
+ * so the memo key and the query filter always agree. Only DB keys are memoised
+ * (env keys cost nothing to read). markKeyFailed evicts the key at once on this
+ * instance; any other change in Settings > Keys (new key, deactivated key, new
+ * priority) reaches a warm instance within KEY_MEMO_TTL_MS.
+ */
+const KEY_MEMO_TTL_MS = 30_000;
+const keyMemo = new Map<string, { value: ResolvedKey; expires: number }>();
+
+export async function getActiveKeyMemo(
+  db: Db,
+  provider: ProviderId,
+  scope: KeyScope,
+): Promise<ResolvedKey | null> {
+  const memoKey = `${scope}:${provider}`;
+  const hit = keyMemo.get(memoKey);
+  if (hit && hit.expires > Date.now()) return hit.value;
+  const value = await getActiveKey(db, provider, scope);
+  if (value?.keyId) keyMemo.set(memoKey, { value, expires: Date.now() + KEY_MEMO_TTL_MS });
+  else keyMemo.delete(memoKey);
+  return value;
+}
+
 /** Settings key holding the Anthropic workspace id for a company. Stored in
  *  the shared per-company `settings` table rather than as a new column, because
  *  it is one optional string that only one provider uses. */
@@ -222,10 +251,13 @@ export async function hasUsableLlmKey(db: Db, companyId: string): Promise<boolea
  * Reads the health already recorded on provider_keys rather than asking the
  * provider for a balance: a balance check is itself a billable call, and that
  * habit is what made Apollo's usage impossible to account for.
+ *
+ * Works for any provider (LLM ones too): it answers "would getActiveKey find a
+ * key?" with the same filters but WITHOUT the Vault decrypt.
  */
 export async function hasUsableServiceKey(
   db: Db,
-  provider: ServiceProviderId,
+  provider: ServiceProviderId | ProviderId,
   scope: KeyScope,
 ): Promise<boolean> {
   if ((process.env[ENV_KEY_VARS[provider]] ?? "").trim().length > 0) return true;
@@ -248,6 +280,7 @@ export async function hasUsableServiceKey(
  *  reaches here, retrying the same key again is not going to help. */
 export async function markKeyFailed(db: Db, keyId: string | null, info: KeyFailureInfo): Promise<void> {
   if (!keyId) return;
+  for (const [k, e] of keyMemo) if (e.value.keyId === keyId) keyMemo.delete(k);
   const now = Date.now();
   const updates: Record<string, unknown> = {
     last_error: info.message.slice(0, 500),

@@ -6,13 +6,14 @@
 // .env.local stays the last-resort tier exactly as it does for LLM keys, which
 // means this file is a no-op until someone actually adds a key in the UI.
 //
-// Deliberately uncached, matching lib/services/settings.ts: a module-level
-// cache on serverless produces "I changed the key but it didn't apply" bugs
-// when a stale instance serves the request, and these are single-row indexed
-// reads sitting next to multi-hundred-ms third-party HTTP calls.
+// Memoised for 30 s per instance (getActiveKeyMemo): Instantly and Apollo
+// resolve the key on EVERY HTTP request, and each resolve was a provider_keys
+// read plus a Vault decrypt (~0.45 s at today's DB distance). The memo is keyed
+// by scope + provider, a failed key is evicted at once (markKeyFailed), and any
+// other key change in Settings > Keys applies within 30 s.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getActiveKey, type KeyScope } from "@/lib/services/provider-keys";
+import { getActiveKeyMemo, type KeyScope } from "@/lib/services/provider-keys";
 import { createScopedClient } from "@/lib/supabase/scoped";
 import type { ServiceProviderId } from "@/lib/services/providers/registry";
 
@@ -44,7 +45,7 @@ export async function getServiceSecret(
   scope: KeyScope,
 ): Promise<string | null> {
   const db = scope === "any" ? createAdminClient() : createScopedClient(scope);
-  const resolved = await getActiveKey(db, provider, scope);
+  const resolved = await getActiveKeyMemo(db, provider, scope);
   return resolved?.secret ?? null;
 }
 

@@ -28,6 +28,15 @@ const RETRY_DELAYS_BY_SERVICE: Record<string, number[]> = {
   llm: RETRY_DELAYS,
 };
 
+/** A provider's Retry-After is honoured up to this long. Longer waits outlast
+ *  every route's 55-60 s budget; giving up hands the call to the next key/tier. */
+const MAX_RETRY_AFTER_MS = 5_000;
+
+/** LLM calls start no NEW attempt this long after the first one began, so
+ *  complete() can still fail over inside the route budget. An attempt already
+ *  in flight is never cut short (it may be about to deliver a paid answer). */
+const LLM_RETRY_WINDOW_MS = 40_000;
+
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
 const NON_RETRYABLE = new Set([400, 401, 402, 403, 404, 422]);
 
@@ -35,11 +44,13 @@ export async function fetchWithRetry(
   service: "apollo" | "firecrawl" | "llm",
   url: string,
   init: RequestInit,
-  /** Tighter limits for a caller with its own deadline (e.g. scoring's 60 s run). */
-  opts?: { timeoutMs?: number; retryDelays?: number[] }
+  /** Tighter limits for a caller with its own deadline (e.g. scoring's 60 s run).
+   *  `deadline` (epoch ms): no retry STARTS after it; LLM calls default to 40 s. */
+  opts?: { timeoutMs?: number; retryDelays?: number[]; deadline?: number }
 ): Promise<Response> {
   const timeout = opts?.timeoutMs ?? TIMEOUTS[service];
   const retryDelays = opts?.retryDelays ?? RETRY_DELAYS_BY_SERVICE[service] ?? RETRY_DELAYS;
+  const deadline = opts?.deadline ?? (service === "llm" ? Date.now() + LLM_RETRY_WINDOW_MS : Infinity);
 
   for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
     const controller = new AbortController();
@@ -55,14 +66,16 @@ export async function fetchWithRetry(
 
       if (attempt === retryDelays.length) return res;
 
-      const retryAfter = res.headers.get("Retry-After");
-      const delay = retryAfter
-        ? parseInt(retryAfter) * 1_000
+      const retryAfterSec = parseInt(res.headers.get("Retry-After") ?? "");
+      const delay = Number.isFinite(retryAfterSec)
+        ? Math.min(retryAfterSec * 1_000, MAX_RETRY_AFTER_MS)
         : retryDelays[attempt];
+      if (Date.now() + delay > deadline) return res;
       await sleep(delay);
     } catch (err) {
       clearTimeout(timer);
       if (attempt === retryDelays.length || init.signal?.aborted) throw err;
+      if (Date.now() + retryDelays[attempt] > deadline) throw err;
       await sleep(retryDelays[attempt]);
     }
   }

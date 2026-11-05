@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createScopedClient } from "@/lib/supabase/scoped";
-import { ENV_KEY_VARS, getActiveKey, getProviderCallConfig, markKeyFailed, markKeySucceeded, resolveModel } from "@/lib/services/provider-keys";
+import { ENV_KEY_VARS, getActiveKey, getActiveKeyMemo, getProviderCallConfig, hasUsableServiceKey, markKeyFailed, markKeySucceeded, resolveModel } from "@/lib/services/provider-keys";
 import { costOf, type TokenUsage } from "@/lib/services/llm-pricing";
 import { LLM_CALL_REGISTRY, PROVIDER_META, resolveLlmTierOrder, type LlmProviderId } from "@/lib/services/providers/registry";
 import type { CompletionOpts } from "@/lib/services/providers/types";
@@ -40,7 +40,11 @@ async function tryProvider<T>(db: SupabaseClient, companyId: string, provider: L
   let lastErr: Error | null = null;
 
   for (;;) {
-    const resolved = await getActiveKey(db, provider, companyId, { exclude: tried });
+    // First try uses the 30 s memo (db is scoped to companyId, so the memo key
+    // matches the filter); a retry after a failure always reads fresh.
+    const resolved = tried.size === 0
+      ? await getActiveKeyMemo(db, provider, companyId)
+      : await getActiveKey(db, provider, companyId, { exclude: tried });
     if (!resolved) break;
 
     try {
@@ -228,7 +232,8 @@ export async function draftingProviders(companyId: string): Promise<{
   const configured = order.filter((p) => hasRow.has(p) || !!process.env[ENV_KEY_VARS[p]]?.trim());
 
   const primary = configured[0] ?? null;
-  const usable = async (p: LlmProviderId) => (await getActiveKey(db, p, companyId)) !== null;
+  // Existence check only — no Vault decrypt (same filters as getActiveKey).
+  const usable = (p: LlmProviderId) => hasUsableServiceKey(db, p, companyId);
   const primaryUsable = primary ? await usable(primary) : false;
   let backup: LlmProviderId | null = null;
   for (const p of configured.slice(1)) {

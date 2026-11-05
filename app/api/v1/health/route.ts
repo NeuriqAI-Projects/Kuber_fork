@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ok, fail } from "@/lib/api-response";
-import { getActiveKey } from "@/lib/services/provider-keys";
+import { hasUsableServiceKey } from "@/lib/services/provider-keys";
 
 export const maxDuration = 60;
 
@@ -17,14 +17,15 @@ export async function GET(_req: NextRequest) {
   }
 
   // Provider keys resolve DB-first (Settings > Keys) with .env as the fallback
-  // tier, so report what getActiveKey() would actually return — reading
+  // tier, so report whether getActiveKey() would find a key — reading
   // process.env alone showed every provider as missing on deployments that
-  // configure keys through the UI.
+  // configure keys through the UI. Existence only: no Vault decrypt on this
+  // public route.
   const [apollo, firecrawl, openrouter, openai] = await Promise.all(
     (["apollo", "firecrawl", "openrouter", "openai"] as const).map((p) =>
       // "any": this is an unauthenticated liveness probe asking whether the
       // deployment has any usable key at all, not whose key it is.
-      getActiveKey(db, p, "any").then((k) => !!k).catch(() => false),
+      hasUsableServiceKey(db, p, "any").catch(() => false),
     ),
   );
 
