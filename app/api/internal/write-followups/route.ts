@@ -56,27 +56,38 @@ export async function POST(req: NextRequest) {
   if (guard) return guard;
 
   const db = createAdminClient();
+  const baseUrl = internalAppBaseUrl(req);
 
-  // Upgrade first, write second. A template placeholder is already safe to
-  // send, so replacing it before the due date is the more urgent job — and
-  // running it first means a credit top-up visibly repairs the backlog rather
-  // than being queued behind brand-new work.
-  const upgraded = await upgradeTemplateFollowups(db, {
-    limit: body.limit,
-    companyId: body.company_id,
+  // REPLY NOW, WORK AFTER (as generate-drafts and regenerate-drafts do). The
+  // chain kick below used to wait for the whole next batch, holding this
+  // instance until it timed out. No caller reads the result; it is logged.
+  after(async () => {
+    try {
+      // Upgrade first, write second. A template placeholder is already safe to
+      // send, so replacing it before the due date is the more urgent job — and
+      // running it first means a credit top-up visibly repairs the backlog rather
+      // than being queued behind brand-new work.
+      const upgraded = await upgradeTemplateFollowups(db, {
+        limit: body.limit,
+        companyId: body.company_id,
+      });
+
+      const result = await writeDueFollowups(db, {
+        limit: body.limit,
+        companyId: body.company_id,
+      });
+
+      // A campaign waiting to publish goes live the moment its last follow-up
+      // lands, rather than waiting for someone to come back and press a button.
+      const publish = await publishReadySequences(db);
+
+      console.log("write-followups batch", body.company_id ?? "all", JSON.stringify({ ...result, upgraded, publish }));
+      await chainIfMoreWork(baseUrl, result, body.company_id, body.limit);
+    } catch (e) {
+      console.error("write-followups batch failed", body.company_id ?? "all", e);
+    }
   });
-
-  const result = await writeDueFollowups(db, {
-    limit: body.limit,
-    companyId: body.company_id,
-  });
-
-  // A campaign waiting to publish goes live the moment its last follow-up
-  // lands, rather than waiting for someone to come back and press a button.
-  const publish = await publishReadySequences(db);
-
-  chainIfMoreWork(req, result, body.company_id, body.limit);
-  return ok({ ...result, upgraded, publish });
+  return Response.json({ success: true, data: { accepted: true, company_id: body.company_id ?? null }, error: null }, { status: 202 });
 }
 
 /**
@@ -94,12 +105,11 @@ export async function POST(req: NextRequest) {
  * depended on an unrelated job staying enabled — and when that job was paused,
  * nothing restarted them at all.
  *
- * after() keeps the lambda alive until the next request has actually left the
- * machine, exactly as generate-drafts does, so the chain cannot be cut short by
- * the response being returned first.
+ * Called from inside after(), so awaiting the kick keeps the lambda alive until
+ * the next request has actually left the machine.
  */
-function chainIfMoreWork(
-  req: NextRequest,
+async function chainIfMoreWork(
+  baseUrl: string,
   result: { found: number; written: number; failed: number; ranOutOfTime: boolean },
   companyId: string | undefined,
   limit: number | undefined,
@@ -117,18 +127,16 @@ function chainIfMoreWork(
 
   const secret = process.env.INTERNAL_SECRET;
   if (!secret) return;
-  const baseUrl = internalAppBaseUrl(req);
 
-  after(async () => {
-    await fetch(`${baseUrl}/api/internal/write-followups`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-internal-secret": secret },
-      // company_id is carried through so a scoped run stays scoped for the
-      // whole chain — a chain that silently widened to every tenant is exactly
-      // the incident guardUnscoped exists to prevent.
-      body: JSON.stringify({ ...(companyId ? { company_id: companyId } : {}), ...(limit ? { limit } : {}) }),
-    }).catch(() => {});
-  });
+  // The next batch answers at once (POST replies 202), so this await is short.
+  await fetch(`${baseUrl}/api/internal/write-followups`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-internal-secret": secret },
+    // company_id is carried through so a scoped run stays scoped for the
+    // whole chain — a chain that silently widened to every tenant is exactly
+    // the incident guardUnscoped exists to prevent.
+    body: JSON.stringify({ ...(companyId ? { company_id: companyId } : {}), ...(limit ? { limit } : {}) }),
+  }).catch(() => {});
 }
 
 /** GET for Vercel Cron (`Authorization: Bearer <CRON_SECRET>`), same shape as
@@ -151,7 +159,8 @@ export async function GET(req: NextRequest) {
   const upgraded = await upgradeTemplateFollowups(db, { companyId });
   const result = await writeDueFollowups(db, { companyId });
   const publish = await publishReadySequences(db);
-  chainIfMoreWork(req, result, companyId, undefined);
+  const baseUrl = internalAppBaseUrl(req);
+  after(() => chainIfMoreWork(baseUrl, result, companyId, undefined));
   return ok({ ...result, upgraded, publish });
 }
 

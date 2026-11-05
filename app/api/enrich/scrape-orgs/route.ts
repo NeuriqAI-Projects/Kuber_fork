@@ -672,7 +672,22 @@ export async function POST(req: NextRequest) {
   if (!safeSecretEqual(req.headers.get("x-internal-secret"), process.env.INTERNAL_SECRET)) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // REPLY NOW, WORK AFTER (as the draft routes do). The self-chain kick at the
+  // end used to wait for the whole next batch, keeping this instance alive
+  // through it. Every caller fires and forgets; the result goes to the log.
+  const baseUrl = internalAppBaseUrl(req);
+  after(async () => {
+    try {
+      const res = await runScrapeBatch(baseUrl);
+      console.log("scrape-orgs batch", JSON.stringify(await res.json()));
+    } catch (e) {
+      console.error("scrape-orgs batch failed", e);
+    }
+  });
+  return Response.json({ accepted: true }, { status: 202 });
+}
 
+async function runScrapeBatch(baseUrl: string) {
   const db = createAdminClient();
 
   // ── Credit gate: don't spend a single attempt on a guaranteed failure.
@@ -912,14 +927,12 @@ export async function POST(req: NextRequest) {
     .eq("enrichment_stage", "queued");
 
   if ((count ?? 0) > 0) {
-    const baseUrl = internalAppBaseUrl(req);
     const secret = process.env.INTERNAL_SECRET!;
-    after(() =>
-      fetch(`${baseUrl}/api/enrich/scrape-orgs`, {
-        method: "POST",
-        headers: { "x-internal-secret": secret },
-      }).catch(() => {})
-    );
+    // Already inside after(); the next batch answers 202 at once.
+    await fetch(`${baseUrl}/api/enrich/scrape-orgs`, {
+      method: "POST",
+      headers: { "x-internal-secret": secret },
+    }).catch(() => {});
   }
 
   return Response.json({ processed, succeeded, failed });
