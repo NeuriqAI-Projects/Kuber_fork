@@ -117,7 +117,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }).eq("id", cl.lead_id);
   if (leadErr) return fail(500, "INTERNAL", leadErr.message);
 
-  const { data: campaign } = await db.from("campaigns").select("name").eq("id", cl.campaign_id).maybeSingle();
+  const { data: campaign } = await db.from("campaigns").select("name, status, draft_generation_started_at").eq("id", cl.campaign_id).maybeSingle();
   const campaignName = campaign?.name ?? "this campaign";
 
   // Un-bounce and clear the stale draft so fetchDraftTargets writes a fresh one
@@ -173,7 +173,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Draft the corrected lead. fetchDraftTargets only picks campaign_leads with
   // draft_id IS NULL, so firing the campaign-wide generator writes exactly one
   // draft — everyone else's is untouched.
-  if (process.env.INTERNAL_SECRET) {
+  //
+  // Usually nothing to fire: the minute pg_cron 'draft-generation-pump' starts
+  // generate-drafts for any campaign in draft/processing/active with
+  // draft_generation_started_at set and a lead like this one (draft_id null,
+  // 'enriched', email set) — so the draft arrives within a minute. Only a
+  // campaign outside that gate (paused, or never drafted) still gets the kick.
+  const pumpCovers = ["draft", "processing", "active"].includes(campaign?.status as string)
+    && !!campaign?.draft_generation_started_at;
+  if (!pumpCovers && process.env.INTERNAL_SECRET) {
     const baseUrl = internalAppBaseUrl(req);
     const secret = process.env.INTERNAL_SECRET;
     after(() =>

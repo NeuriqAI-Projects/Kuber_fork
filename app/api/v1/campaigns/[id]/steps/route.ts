@@ -1,9 +1,8 @@
-import { NextRequest, after } from "next/server";
+import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { CampaignStepsSchema } from "@/lib/validators/campaigns";
 import { countMissingText, publishSequenceNow } from "@/lib/services/sequence-publish";
-import { internalAppBaseUrl } from "@/lib/internal-url";
 import { assertCampaignAccess, assertCampaignSettingsAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { pickFollowupTemplate } from "@/lib/services/followup-template";
@@ -135,19 +134,10 @@ export async function PUT(
     updated_at: new Date().toISOString(),
   }).eq("id", id);
 
-  // Start writing now rather than waiting for the next scheduled sweep — the
-  // user is standing there having just asked for this.
-  if (process.env.INTERNAL_SECRET) {
-    const baseUrl = internalAppBaseUrl(req);
-    const secret = process.env.INTERNAL_SECRET;
-    after(() =>
-      fetch(`${baseUrl}/api/internal/write-followups`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-internal-secret": secret },
-        body: JSON.stringify({ limit: 25 }),
-      }).catch(() => {}),
-    );
-  }
+  // No kick here: the minute pg_cron 'followup-pump' starts write-followups for
+  // the company of any campaign with sequence_publish_pending (just set above,
+  // with a fresh requested_at, so no publish back-off applies) — writing starts
+  // within a minute. The old kick was an unscoped sweep of every company.
 
   return ok({ updated: true, published: false, preparing: missing, refreshed });
 }
