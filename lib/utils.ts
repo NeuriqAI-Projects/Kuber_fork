@@ -5,6 +5,18 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** setInterval for browser polls: skips ticks while the tab is hidden and runs at
+ *  once when it is shown again (if a tick was missed). Each tick is a Vercel call,
+ *  and a forgotten background tab used to poll all day. Returns the stop function. */
+export function everyWhileVisible(fn: () => void, ms: number): () => void {
+  let last = Date.now();
+  const run = () => { last = Date.now(); fn(); };
+  const t = setInterval(() => { if (document.visibilityState === "visible") run(); }, ms);
+  const onShow = () => { if (document.visibilityState === "visible" && Date.now() - last >= ms) run(); };
+  document.addEventListener("visibilitychange", onShow);
+  return () => { clearInterval(t); document.removeEventListener("visibilitychange", onShow); };
+}
+
 /** USD, with cents for anything under $1 (AI cost is often a few tenths of a
  *  cent per call) and whole dollars once the amount is large enough that the
  *  cents stop being informative. */

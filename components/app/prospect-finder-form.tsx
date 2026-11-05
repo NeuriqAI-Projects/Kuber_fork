@@ -24,7 +24,7 @@ import { LocationsPicker } from "@/components/ui/locations-picker";
 import { Stepper } from "@/components/ui/stepper";
 import { Pill } from "@/components/ui/pill";
 import type { BatchColorName } from "@/lib/constants";
-import { cn } from "@/lib/utils";
+import { cn, everyWhileVisible } from "@/lib/utils";
 import { FIRECRAWL_PER_PAGE, LEADS_PER_PAGE, MAX_LEADS_PER_SEARCH, MAX_PAGES_PER_SEARCH, minCredits, suggestedMaxCredits } from "@/lib/services/prospects/digging";
 import { noLeadsLeft } from "@/lib/services/prospects/estimate";
 import { finishedHeadline, goodFitsLine, timeLeft } from "@/lib/services/prospects/progress";
@@ -250,8 +250,8 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
       } catch (e) { if (alive) setNetError((e as Error).message); }
     }
     void tick();
-    const t = setInterval(tick, 4000);
-    return () => { alive = false; clearInterval(t); };
+    const stop = everyWhileVisible(tick, 4000);
+    return () => { alive = false; stop(); };
   }, [searchId]);
 
   const total = s?.total ?? 0;
@@ -527,8 +527,8 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
           if (alive && Date.now() - m.at >= START_MAX_AGE_MS) { ssDel(KEY_START); setResuming(null); alive = false; }
         };
         void look();
-        const t = setInterval(() => { if (alive) void look(); else clearInterval(t); }, 3000);
-        return () => { alive = false; clearInterval(t); mountedRef.current = false; };
+        const stop = everyWhileVisible(() => { if (alive) void look(); else stop(); }, 3000);
+        return () => { alive = false; stop(); mountedRef.current = false; };
       } else if (m) ssDel(KEY_START);
     }
     return () => { mountedRef.current = false; };

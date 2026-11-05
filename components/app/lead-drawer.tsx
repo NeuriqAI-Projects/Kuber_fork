@@ -11,7 +11,7 @@ import {
   XCircle, Send, MailCheck, MailOpen, Reply, Sparkles, BellOff, ArrowUp,
   User, LayoutGrid,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, everyWhileVisible } from "@/lib/utils";
 import { formatChatDate, startsNewChatDay } from "@/lib/chat-format";
 import { useApp } from "@/lib/app-context";
 import type { Lead, EnrichmentStage, LeadStatus } from "@/lib/leads";
@@ -809,8 +809,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
   useEffect(() => {
     if (!lead || railMode !== "discussion") return;
     void loadComments(lead.id);
-    const interval = window.setInterval(() => void loadComments(lead.id, true), 10000);
-    return () => window.clearInterval(interval);
+    return everyWhileVisible(() => void loadComments(lead.id, true), 30_000);
   }, [lead?.id, railMode, loadComments]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

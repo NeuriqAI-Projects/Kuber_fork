@@ -5,6 +5,9 @@ import { safeSecretEqual } from "@/lib/auth/secret";
 import { internalAppBaseUrl } from "@/lib/internal-url";
 import { runEnrichmentWatchdog } from "@/lib/services/enrichment-watchdog";
 
+// A pass is a few seconds now; never let a hung provider call bill the 300 s default.
+export const maxDuration = 60;
+
 // Meant to be hit often (every 10 min, pg_cron) — separate from reconcile-counters'
 // daily cron, which was the only safety net before this and left up to a
 // day's gap whenever the enrichment self-chain silently died (confirmed live

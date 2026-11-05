@@ -39,7 +39,8 @@ async function readAll(page: (from: number, to: number) => Page): Promise<Rows> 
  *   ?q=acme           name/domain contains (Hidden ones too)
  *   ?orgs=1           only companies that already have an organization (all the plain Organization list needs)
  *   ?limit=300        the newest N companies of the filter; `total_matching` says how many match
- *   ?summary=1        searches + review total only (for the side-menu badge / Started screen)
+ *   ?summary=1        searches + review total only (for the Started screen)
+ *   ?summary=badge    review total only, one count query (for the side-menu badge)
  *
  * Every search counts (24 Oct 2026; it was only the 20 newest, so ~3,000 older review companies were
  * invisible and the "need review" number went down as searches were added): `all_counts` and
@@ -77,6 +78,12 @@ export async function GET(req: NextRequest) {
   };
   const head = () => db.from("prospect_companies").select("id", { count: "exact", head: true });
   const REVIEW = ["review", "flagged", "site_down"];
+  // Side-menu badge (every manager tab, every minute): the one head-only count and nothing else.
+  // summary=1 still read ~4,300 rows (~1.1 MB) for this number.
+  if (sp.get("summary") === "badge") {
+    try { return ok({ review_total: await count((b) => b.in("status", REVIEW)) }); }
+    catch (e) { return fail(500, "INTERNAL", (e as Error).message); }
+  }
   const countsP = Promise.all(summary
     ? [count((b) => b.in("status", REVIEW))]
     : [

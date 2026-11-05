@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useApp } from "@/lib/app-context";
 import { fetchServiceHealth, type ServiceIssue } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
+import { cn, everyWhileVisible } from "@/lib/utils";
 
 // Red banner for the dashboard — surfaces paid upstream failures (OpenRouter,
 // Firecrawl, Apollo, OpenAI) so dead API keys / empty credit balances show as
@@ -22,8 +22,9 @@ export function ServiceHealthBanner() {
         .catch(() => {});
     };
     load();
-    const interval = setInterval(load, 60_000);
-    return () => { cancelled = true; clearInterval(interval); };
+    // Provider outages don't need minute-by-minute news; this runs on five screens.
+    const stop = everyWhileVisible(load, 5 * 60_000);
+    return () => { cancelled = true; stop(); };
   }, [session]);
 
   if (issues.length === 0) return null;

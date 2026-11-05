@@ -28,7 +28,7 @@ import { prefetchOrg } from "@/lib/api-client";
 import { getBatchColor } from "@/lib/constants";
 import { plainReason } from "@/lib/services/prospects/fit-rules";
 import { GROUP_LABEL, GROUPS, NO_TITLE_MATCH, plainCause, REVIEW_TOTAL_EVENT, statusLine, type Group, type Tone } from "@/lib/services/prospects/groups";
-import { cn } from "@/lib/utils";
+import { cn, everyWhileVisible } from "@/lib/utils";
 
 // ── data ─────────────────────────────────────────────────────────────────────
 export interface ScoredSearch {
@@ -160,19 +160,19 @@ export function useScoredOrgs(filter: ScoredFilter, q: string, enabled = true, {
     load().finally(() => setLoading(false));
   }, [load, enabled]);
 
-  const busy = (data?.searches ?? []).some((s) => s.in_progress > 0 || s.stages.waiting_credits > 0);
-  // Idle pages still look every 15 s: a search started after this page loaded (Add Leads closed
+  // Waiting for credits is not busy: it can last hours, and polled every 4 s that whole time.
+  const busy = (data?.searches ?? []).some((s) => s.in_progress > 0);
+  // Idle pages still look every minute: a search started after this page loaded (Add Leads closed
   // mid-start, another tab, a teammate) must show up without a reload.
   useEffect(() => {
     if (!enabled) return;
-    const t = setInterval(() => {
+    return everyWhileVisible(() => {
       if (busy && !kicking.current && (data?.searches ?? []).some((s) => s.in_progress > 0)) {
         kicking.current = true;
         api("/api/v1/prospects/run", {}).catch(() => {}).finally(() => { kicking.current = false; });
       }
       void load();
-    }, busy ? 4000 : 15000);
-    return () => clearInterval(t);
+    }, busy ? 4000 : 60_000);
   }, [enabled, busy, load, data]);
 
   /** Change companies on screen at once (after a decision), before the reload lands. */

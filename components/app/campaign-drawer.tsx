@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { cn, formatUsd } from "@/lib/utils";
+import { cn, everyWhileVisible, formatUsd } from "@/lib/utils";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -1187,8 +1187,7 @@ export function CampaignDetail({
   useEffect(() => {
     if (viewTab !== "discussion") return;
     void loadComments(campaign.id);
-    const interval = window.setInterval(() => void loadComments(campaign.id, true), 10000);
-    return () => window.clearInterval(interval);
+    return everyWhileVisible(() => void loadComments(campaign.id, true), 30_000);
   }, [campaign.id, viewTab, loadComments]);
 
   useEffect(() => {
@@ -1512,7 +1511,7 @@ export function CampaignDetail({
     if (!progress) return;
     const isGenerating = (progress.generating + progress.pending) > 0;
     if (!isGenerating) return;
-    const interval = setInterval(() => {
+    return everyWhileVisible(() => {
       void loadData();
       // The worker's batch chain dies after ~5 hops; the watchdog takes 10-20
       // minutes to notice. While someone is watching, ask once a minute — the
@@ -1525,7 +1524,6 @@ export function CampaignDetail({
         if (session) void kickDraftGeneration(session.access_token, campaign.id).catch(() => {});
       })();
     }, 3000);
-    return () => clearInterval(interval);
   }, [progress, loadData, campaign.id]);
 
   // A bulk regeneration runs entirely server-side, so the only way to see it
@@ -1535,7 +1533,7 @@ export function CampaignDetail({
   useEffect(() => {
     if (!regenJob?.active) return;
     let lastKick = 0;
-    const interval = setInterval(() => {
+    return everyWhileVisible(() => {
       void (async () => {
         const job = await loadRegenJob();
         await loadData();
@@ -1565,7 +1563,6 @@ export function CampaignDetail({
         }
       })();
     }, 3000);
-    return () => clearInterval(interval);
   }, [regenJob?.active, loadRegenJob, loadData, sendingHeld]);
 
   const selected = campaignLeads.find((cl) => cl.id === selectedId) ?? null;

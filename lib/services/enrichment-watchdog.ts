@@ -9,15 +9,22 @@ import { listInstantlyWebhooks, resumeInstantlyWebhook } from "@/lib/services/in
 
 type Db = SupabaseClient;
 
-/** Nudge the scrape worker so its watchdogs (stuck scraping / stale queued)
- *  run even on an otherwise idle day. */
+/** Nudge the scrape worker so its watchdogs (stuck scraping / stale queued) run.
+ *  Inside after(): a bare `void fetch` is frozen with the instance once the
+ *  route has answered (the Apollo-reveal kick died exactly that way). */
 export function triggerScrapeWatchdog(baseUrl: string) {
   const secret = process.env.INTERNAL_SECRET;
   if (!secret) return;
-  void fetch(`${baseUrl}/api/enrich/scrape-orgs`, {
+  after(() => fetch(`${baseUrl}/api/enrich/scrape-orgs`, {
     method: "POST",
     headers: { "x-internal-secret": secret },
-  }).catch(() => {});
+  }).then(() => {}, () => {}));
+}
+
+/** Any organisation queued or mid-scrape? (indexed; ~2 ms) */
+async function hasScrapeWork(db: Db): Promise<boolean> {
+  const { data } = await db.from("organizations").select("id").in("enrichment_stage", ["queued", "scraping"]).limit(1);
+  return (data ?? []).length > 0;
 }
 
 /** Resume email-reveal (`/api/v1/leads/enrich`) for any Apollo import whose
@@ -197,11 +204,11 @@ export async function triggerRegenerationWatchdog(baseUrl: string, db: Db) {
       .eq("job_id", job.id)
       .eq("status", "running");
 
-    void fetch(`${baseUrl}/api/enrich/regenerate-drafts`, {
+    after(() => fetch(`${baseUrl}/api/enrich/regenerate-drafts`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-internal-secret": secret },
       body: JSON.stringify({ job_id: job.id }),
-    }).catch(() => {});
+    }).then(() => {}, () => {}));
   }
 }
 
@@ -281,9 +288,6 @@ export async function triggerDraftGenerationWatchdog(baseUrl: string, db: Db) {
   // the five slots were filled by finished work and the stalled campaign was
   // never reached. Same trap the enrich watchdog above documents.
   //
-  // ponytail: examines every non-deleted draft/processing campaign, which is
-  // fine at this scale (~50). If that ever runs into thousands, push the
-  // "has pending leads" test into the query instead of filtering here.
   //
   // 'active' is in the list because Send all does not wait for generation: on
   // 24 Sep 2026 it was pressed with 11 of 121 leads still unwritten, the
@@ -301,10 +305,28 @@ export async function triggerDraftGenerationWatchdog(baseUrl: string, db: Db) {
     .lt("draft_generation_started_at", staleBefore)
     .order("draft_generation_started_at", { ascending: false });
 
+  // One read narrows the ~40 candidates to the few with any lead still waiting
+  // (the first half of countPendingDrafts, as the minute pump does), instead of
+  // two queries per campaign that almost always found 0. PostgREST returns at
+  // most 1,000 rows; if it hit that, the list may be cut short, so check them all.
+  const ids = (candidates ?? []).map((c) => c.id as string);
+  const { data: waiting } = ids.length
+    ? await db
+      .from("campaign_leads")
+      .select("campaign_id, leads!lead_id!inner(email)")
+      .in("campaign_id", ids)
+      .is("draft_id", null)
+      .in("crm_status", ["new", "enriched", "draft"])
+      .not("leads.email", "is", null)
+    : { data: [] };
+  const capped = (waiting ?? []).length >= 1000;
+  const hasWaiting = new Set((waiting ?? []).map((w) => w.campaign_id as string));
+
   let kicked = 0;
   for (const campaign of candidates ?? []) {
     if (kicked >= MAX_DRAFT_KICKS_PER_PASS) break;
     const campaignId = campaign.id as string;
+    if (!capped && !hasWaiting.has(campaignId)) continue;
 
     const companyId = campaign.company_id as string;
 
@@ -346,48 +368,12 @@ export async function triggerDraftGenerationWatchdog(baseUrl: string, db: Db) {
     if (lastDraft?.created_at && lastDraft.created_at > staleBefore) continue;
 
     kicked++;
-    void fetch(`${baseUrl}/api/enrich/generate-drafts`, {
+    after(() => fetch(`${baseUrl}/api/enrich/generate-drafts`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-internal-secret": secret },
       body: JSON.stringify({ campaign_id: campaignId }),
-    }).catch(() => {});
+    }).then(() => {}, () => {}));
   }
-}
-
-/** Runs the nudges together — this is the whole job of the frequent watchdog.
- *
- *  Everything here is FREE: scraping is Firecrawl, draft regeneration is the
- *  LLM providers. No Apollo call can originate from this function, which is why
- *  it is safe to run every 10 minutes. The one paid job, triggerEnrichWatchdog,
- *  is deliberately excluded and runs on its own daily schedule. */
-/**
- * Safety net for the daily follow-up writer.
- *
- * The writer is scheduled once a day, so a single missed run would leave that
- * day's follow-ups unwritten and Instantly would send the generic fallback
- * instead — a silent quality regression nobody would notice until a prospect
- * received boilerplate. Calling it from the 10-minute watchdog closes that gap.
- *
- * Cheap to repeat: the sweep skips any (lead, step) that already has a draft, so
- * all but one of the ~144 daily calls find nothing and return immediately.
- *
- * Inside after(), not a bare `void fetch`. The watchdog must not be held open by
- * work that can take 40 seconds, but a bare void was still in flight when the
- * route responded, and a serverless instance is frozen the moment it does - the
- * Apollo-reveal kick above died exactly that way. after() keeps the instance
- * alive until the request has gone, as the writer's own self-chain does.
- */
-function triggerFollowupWriter(baseUrl: string) {
-  after(() =>
-    fetch(`${baseUrl}/api/internal/write-followups`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-internal-secret": process.env.INTERNAL_SECRET ?? "",
-      },
-      body: JSON.stringify({ limit: 25 }),
-    }).then(() => {}, () => {}),
-  );
 }
 
 /**
@@ -461,16 +447,19 @@ export async function triggerScrapeRecoveryWatchdog(baseUrl: string, db: Db) {
  * outage would therefore never raise the service-health banner; the first sign
  * would be mail quietly not arriving.
  *
- * One cheap call per pass, and `fresh` is deliberately NOT set — the 5-minute
- * cache inside checkCredits already collapses repeat passes, so this refreshes
- * roughly every 5 minutes rather than every 10-minute tick.
+ * The balance is read once an hour (the pass that lands in the first 10 minutes
+ * of the hour): a credit warning can wait that long, and every pass used to miss
+ * the 5-minute cache anyway. The webhook check stays on every pass, because
+ * events Instantly drops while it is disabled are never sent again.
  *
  * Scoped "any": Instantly is one workspace shared by every company.
  */
 async function refreshInstantlyHealth(db: Db) {
-  try {
-    await checkInstantlyCredits(db, "any");
-  } catch { /* a health probe must never break the watchdog */ }
+  if (new Date().getUTCMinutes() < 10) {
+    try {
+      await checkInstantlyCredits(db, "any");
+    } catch { /* a health probe must never break the watchdog */ }
+  }
   await ensureInstantlyWebhook(db);
 }
 
@@ -511,11 +500,21 @@ async function ensureInstantlyWebhook(db: Db) {
   }
 }
 
+/** Runs the nudges together — this is the whole job of the frequent watchdog.
+ *
+ *  Everything here is FREE: scraping is Firecrawl, draft regeneration is the
+ *  LLM providers. No Apollo call can originate from this function, which is why
+ *  it is safe to run every 10 minutes. The one paid job, triggerEnrichWatchdog,
+ *  is deliberately excluded and runs on its own schedule.
+ *
+ *  It no longer starts a follow-up sweep (5 Nov 2026): that swept every sent
+ *  lead 144 times a day and almost always found nothing. The hourly
+ *  write-followups job and the minute publish pump cover it, and follow-ups are
+ *  written about a day before they are due. */
 export async function runEnrichmentWatchdog(baseUrl: string, db: Db) {
   await refreshInstantlyHealth(db);
-  triggerScrapeWatchdog(baseUrl);
+  if (await hasScrapeWork(db)) triggerScrapeWatchdog(baseUrl);
   await triggerScrapeRecoveryWatchdog(baseUrl, db);
-  triggerFollowupWriter(baseUrl);
   await triggerRegenerationWatchdog(baseUrl, db);
   await triggerDraftGenerationWatchdog(baseUrl, db);
 }

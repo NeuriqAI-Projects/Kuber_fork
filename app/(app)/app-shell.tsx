@@ -18,7 +18,7 @@ import { ThemeProvider } from "@/lib/theme-context";
 import { APP_LOGO_INITIAL, APP_NAME, BRAND_LOGO_CHANGED } from "@/lib/branding";
 import { isCampaignEligible, type Lead } from "@/lib/leads";
 import { deleteLead, fetchLogo, fetchUniboxUnread, fetchApolloCredits } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
+import { cn, everyWhileVisible } from "@/lib/utils";
 import { REVIEW_TOTAL_EVENT } from "@/lib/services/prospects/groups";
 import { supabase } from "@/lib/supabase";
 
@@ -236,8 +236,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
       fetchUniboxUnread(session.access_token).then((r) => setUniboxUnread(r.unread)).catch(() => {});
     };
     load();
-    const id = setInterval(load, 60_000);
-    return () => clearInterval(id);
+    return everyWhileVisible(load, 60_000);
   }, [session]);
 
   // Scored companies waiting for a manager's Approve / Decline (Leads > Organization).
@@ -245,15 +244,15 @@ function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!session || role !== "manager") return;
     const load = () => {
-      fetch("/api/v1/prospects?summary=1", { headers: { Authorization: `Bearer ${session.access_token}` } })
+      fetch("/api/v1/prospects?summary=badge", { headers: { Authorization: `Bearer ${session.access_token}` } })
         .then((r) => r.json()).then((j) => setScoredToReview(j?.data?.review_total ?? 0)).catch(() => {});
     };
     load();
-    const id = setInterval(load, 60_000);
+    const stop = everyWhileVisible(load, 60_000);
     // The Leads page refreshes every few seconds and passes its number on, so badge and banner match.
     const onTotal = (e: Event) => setScoredToReview(Number((e as CustomEvent<number>).detail) || 0);
     window.addEventListener(REVIEW_TOTAL_EVENT, onTotal);
-    return () => { clearInterval(id); window.removeEventListener(REVIEW_TOTAL_EVENT, onTotal); };
+    return () => { stop(); window.removeEventListener(REVIEW_TOTAL_EVENT, onTotal); };
   }, [session, role]);
 
   useEffect(() => {
@@ -265,8 +264,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
     };
     load();
     // Cached server-side for 5 minutes — refresh a bit more often than that.
-    const id = setInterval(load, 3 * 60_000);
-    return () => clearInterval(id);
+    return everyWhileVisible(load, 3 * 60_000);
   }, [session]);
 
   if (loadingSession) {
