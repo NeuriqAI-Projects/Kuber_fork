@@ -226,7 +226,7 @@ export function CampaignsClient() {
                     tabIndex={0}
                     onClick={open}
                     onKeyDown={(e) => { if (e.key === "Enter") open(); }}
-                    onMouseEnter={() => { prefetchCampaign(c.id); router.prefetch(`/campaigns/${c.id}`); }}
+                    onMouseEnter={() => prefetchCampaign(c.id, () => router.prefetch(`/campaigns/${c.id}`))}
                     className="group/row cursor-pointer"
                   >
                     <TableCell>

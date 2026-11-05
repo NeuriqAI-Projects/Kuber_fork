@@ -1994,7 +1994,10 @@ export function useCached<T>(
     () => undefined,
   );
 
-  const dedupeMs = opts.dedupeMs ?? 2_000;
+  // 30 s: a screen revisited within that window reuses the cached value. Every
+  // write through apiFetch marks the related keys stale (query-cache RELATED),
+  // and a stale entry is refetched whatever its age, so this never hides a change.
+  const dedupeMs = opts.dedupeMs ?? 30_000;
   useEffect(() => {
     if (!key) return;
     const run = () => fetcherRef.current();
@@ -2094,7 +2097,7 @@ export const cachedFetchers = {
 // Hover intent: sweeping the mouse down a table must not fire requests for
 // every row it crosses. Each call replaces the pending one, so only the row the
 // pointer rests on (≥ HOVER_INTENT_MS) is fetched.
-const HOVER_INTENT_MS = 120;
+const HOVER_INTENT_MS = 300;
 let hoverTimer: ReturnType<typeof setTimeout> | null = null;
 function onHoverIntent(run: () => void) {
   if (typeof window === "undefined") return;
@@ -2103,12 +2106,12 @@ function onHoverIntent(run: () => void) {
 }
 
 /** Hover-prefetch for a lead row (`onMouseEnter={() => prefetchLead(lead.id)}`):
- *  the lead drawer then opens with its details, activity and comments. */
+ *  the lead drawer then opens with its details at once. Activity and comments
+ *  load when it opens — most hovers never become an open, so warming all three
+ *  tripled the requests for nothing. */
 export function prefetchLead(id: string): void {
   onHoverIntent(() => {
     prefetch(cacheKeys.lead(id), cachedFetchers.lead(id));
-    prefetch(cacheKeys.leadActivity(id), cachedFetchers.leadActivity(id));
-    prefetch(cacheKeys.leadComments(id), cachedFetchers.leadComments(id));
   });
 }
 
@@ -2121,9 +2124,12 @@ export function prefetchOrg(id: string): void {
 }
 
 /** Hover-prefetch for a campaign card: the list row (header) is already in the
- *  campaigns cache; warm the leads table, which is the slow part. */
-export function prefetchCampaign(id: string): void {
+ *  campaigns cache; warm the leads table, which is the slow part. `also` runs
+ *  after the same hover delay (the campaigns list passes its route prefetch,
+ *  which used to fire on every row the mouse crossed). */
+export function prefetchCampaign(id: string, also?: () => void): void {
   onHoverIntent(() => {
+    also?.();
     prefetch(cacheKeys.campaigns, cachedFetchers.campaigns, { maxAgeMs: 30_000 });
     prefetch(cacheKeys.campaignLeads(id), async () => fetchCampaignLeads(await getToken(), id));
   });
