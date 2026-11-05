@@ -226,9 +226,13 @@ export function UniboxClient() {
     return qsStr ? `${pathname}?${qsStr}` : pathname;
   }, [campaignIds, eaccount, readState, interest, debouncedSearch, pathname]);
 
+  // Native history (Next syncs useSearchParams with it) instead of router
+  // navigation: the URL is only state here, and every router.replace/push was
+  // an extra RSC request to the server for nothing.
   useEffect(() => {
-    router.replace(buildUrl(selectedId), { scroll: false });
-  }, [buildUrl, selectedId, router]);
+    const url = buildUrl(selectedId);
+    if (url !== window.location.pathname + window.location.search) window.history.replaceState(null, "", url);
+  }, [buildUrl, selectedId]);
 
   const eaccounts = useMemo(
     () => [...new Set(threads.map((t) => t.eaccount).filter(Boolean))] as string[],
@@ -290,12 +294,17 @@ export function UniboxClient() {
     if (!token) return;
     // A thread opened before renders from cache right away; the fetch below
     // still refreshes it (and marks it read) as before.
-    const cachedDetail = queryCache.getData<Awaited<ReturnType<typeof fetchUniboxThread>>>(cacheKeys.uniboxThread(threadId));
+    const key = cacheKeys.uniboxThread(threadId);
+    const cachedDetail = queryCache.getData<Awaited<ReturnType<typeof fetchUniboxThread>>>(key);
     if (cachedDetail) setThreadDetail(cachedDetail);
+    // A hover prefetch under 15 s old is reused as is. Hydrating only matters
+    // for a message with no body at all, so that case still fetches.
+    const reuse = !opts?.silent && !!cachedDetail && queryCache.isFresh(key, 15_000)
+      && cachedDetail.messages.every((m) => m.body_html || m.body_text);
     if (!opts?.silent && !cachedDetail) setDetailLoading(true);
     try {
-      const detail = await fetchUniboxThread(token, threadId, true);
-      queryCache.set(cacheKeys.uniboxThread(threadId), detail);
+      const detail = reuse ? cachedDetail : await fetchUniboxThread(token, threadId, true);
+      if (!reuse) queryCache.set(key, detail);
       setThreadDetail(detail);
       if (readTimer.current) clearTimeout(readTimer.current);
       // Nothing unread, nothing to mark: skip the extra request.
@@ -322,18 +331,18 @@ export function UniboxClient() {
     if (mode === "push") {
       listScrollTop.current = listWrapRef.current?.querySelector<HTMLElement>("[data-thread-scroll]")?.scrollTop ?? 0;
       pushedThread.current = true;
-      router.push(buildUrl(id), { scroll: false });
+      window.history.pushState(null, "", buildUrl(id));
     } else {
-      router.replace(buildUrl(id), { scroll: false });
+      window.history.replaceState(null, "", buildUrl(id));
     }
-  }, [threads, router, buildUrl]);
+  }, [threads, buildUrl]);
 
   const closeThread = useCallback(() => {
     if (pushedThread.current) {
       pushedThread.current = false;
       router.back();
     } else {
-      router.push(buildUrl(null), { scroll: false });
+      window.history.pushState(null, "", buildUrl(null));
     }
   }, [router, buildUrl]);
 
