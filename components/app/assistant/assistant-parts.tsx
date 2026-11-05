@@ -188,7 +188,7 @@ export function ActionCard({
               : <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-destructive" />}
             <span className={cn("min-w-0", !executed.ok && "text-destructive")}>{executed.message}</span>
             {executed.link && (
-              <Link href={executed.link} className="ml-auto inline-flex shrink-0 items-center gap-0.5 text-primary hover:underline">
+              <Link href={executed.link} prefetch={false} className="ml-auto inline-flex shrink-0 items-center gap-0.5 text-primary hover:underline">
                 Open <ArrowUpRight className="size-3" />
               </Link>
             )}

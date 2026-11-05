@@ -30,7 +30,7 @@ function renderInline(text: string, key = ""): ReactNode[] {
       const label = lm?.[1] ?? tok;
       const href = lm?.[2] ?? "#";
       if (href.startsWith("/")) {
-        out.push(<Link key={k} href={href} className="text-primary hover:underline underline-offset-2">{label}</Link>);
+        out.push(<Link key={k} href={href} prefetch={false} className="text-primary hover:underline underline-offset-2">{label}</Link>);
       } else if (/^https?:\/\//.test(href)) {
         out.push(<a key={k} href={href} target="_blank" rel="noreferrer noopener" className="text-primary hover:underline underline-offset-2">{label}</a>);
       } else {
