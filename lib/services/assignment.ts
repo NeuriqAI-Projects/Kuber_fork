@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { logLeadEvent } from "@/lib/services/lead-events";
+import { logLeadEvent, logLeadEvents } from "@/lib/services/lead-events";
 import { canonicalCountryList } from "@/lib/territory";
 import { allocateByTerritory, type Coverage } from "@/lib/services/territory-allocator";
 
@@ -291,6 +291,30 @@ export async function bulkAssignByStrategy(
   return summary;
 }
 
+type ImportLeadRow = { id: string; country: string | null; assigned_to: string | null };
+
+/**
+ * Per-call memo for autoAssignEnrichedLeads. One org's leads usually share one
+ * import, so the workspace default, a manual target's status, coverage, the
+ * eligible employees and the import's lead rows are read ONCE per call instead
+ * of once per lead. The import rows are kept current in memory as leads are
+ * assigned (autoAssignEnrichedLeads updates them), which is exactly what the
+ * per-lead re-read used to see. Lives for one call only (seconds).
+ */
+type AssignMemo = {
+  defaultStrategy?: Promise<AssignmentStrategy>;
+  targetActive: Map<string, Promise<boolean>>;
+  coverage?: Promise<Coverage[]>;
+  eligible?: Promise<string[]>;
+  importLeads: Map<string, Promise<ImportLeadRow[] | null>>;
+};
+
+function memoGet<K, V>(map: Map<K, Promise<V>>, key: K, load: () => Promise<V>): Promise<V> {
+  let p = map.get(key);
+  if (!p) { p = load(); map.set(key, p); }
+  return p;
+}
+
 /**
  * Resolves who a ready lead should auto-assign to, or null to leave it in the
  * Manager's pool. Strategy comes from `strategyOverride` when supplied (the
@@ -305,28 +329,36 @@ export async function resolveAssignee(
   manualTarget?: string | null,
   /** Territory routing balances across the whole import, so it needs to know which lead this is. */
   lead?: { id: string; importId: string | null },
+  memo?: AssignMemo,
 ): Promise<string | null> {
   let strategy = strategyOverride;
   if (!strategy) {
-    const { data: settings } = await db
-      .from("assignment_settings")
-      .select("strategy")
-      .limit(1)
-      .maybeSingle();
-    strategy = (settings?.strategy as AssignmentStrategy) ?? "manual";
+    const load = async () => {
+      const { data: settings } = await db
+        .from("assignment_settings")
+        .select("strategy")
+        .limit(1)
+        .maybeSingle();
+      return (settings?.strategy as AssignmentStrategy) ?? "manual";
+    };
+    strategy = await (memo ? (memo.defaultStrategy ??= load()) : load());
   }
 
   if (strategy === "manual") {
     // Global manual = leave in pool. Import-time manual = the chosen employee
     // (validated active; a since-deactivated target falls back to the pool).
     if (!manualTarget) return null;
-    const { data: target } = await db
-      .from("profiles").select("id, is_active").eq("id", manualTarget).maybeSingle();
-    return target?.is_active ? manualTarget : null;
+    const load = async () => {
+      const { data: target } = await db
+        .from("profiles").select("id, is_active").eq("id", manualTarget).maybeSingle();
+      return !!target?.is_active;
+    };
+    const active = await (memo ? memoGet(memo.targetActive, manualTarget, load) : load());
+    return active ? manualTarget : null;
   }
 
   if (strategy === "territory") {
-    const coverage = await getCoverage(db);
+    const coverage = await (memo ? (memo.coverage ??= getCoverage(db)) : getCoverage(db));
     if (coverage.length === 0) return null;
 
     // Leads assign one at a time as enrichment finishes, so there is no batch
@@ -336,15 +368,21 @@ export async function resolveAssignee(
     // answer. That is what lets a lead in a contested region wait for someone
     // who is not already buried under a region only they can serve.
     //
-    // Recomputed per lead rather than cached: it is one extra query on a path
-    // that fires seconds apart, and it self-corrects when leads are archived
-    // or countries edited. A stored plan would go stale invisibly.
+    // Recomputed per lead rather than stored: it self-corrects when leads are
+    // archived or countries edited. A stored plan would go stale invisibly.
+    // Within one autoAssignEnrichedLeads call the import's rows are read once
+    // and kept current in memory (see AssignMemo).
     if (lead?.importId) {
-      const { data: importLeads } = await db
-        .from("leads")
-        .select("id, country, assigned_to")
-        .eq("import_id", lead.importId)
-        .eq("is_deleted", false);
+      const importId = lead.importId;
+      const load = async () => {
+        const { data } = await db
+          .from("leads")
+          .select("id, country, assigned_to")
+          .eq("import_id", importId)
+          .eq("is_deleted", false);
+        return (data as ImportLeadRow[] | null) ?? null;
+      };
+      const importLeads = await (memo ? memoGet(memo.importLeads, importId, load) : load());
 
       if (importLeads && importLeads.length > 0) {
         // Leads already handed out from THIS IMPORT — never anyone's lifetime
@@ -371,7 +409,7 @@ export async function resolveAssignee(
     return assignments.get(lead?.id ?? "one") ?? null;
   }
 
-  const candidates = await getEligibleEmployees(db);
+  const candidates = await (memo ? (memo.eligible ??= getEligibleEmployees(db)) : getEligibleEmployees(db));
   const [assigneeId] = await pickRoundRobin(db, "global", candidates, 1);
   return assigneeId ?? null;
 }
@@ -414,23 +452,48 @@ export async function autoAssignEnrichedLeads(db: Db, orgId: string): Promise<vo
     .eq("is_deleted", false)
     .in("status", ["enriched", "input_required"])
     .is("assigned_to", null);
+  if (!leads?.length) return;
 
-  for (const lead of leads ?? []) {
-    const choice = await importChoiceFor(db, lead.import_id as string | null);
-    const assigneeId = await resolveAssignee(
-      db,
-      lead.country as string | null,
-      choice?.strategy,
-      choice?.target,
-      { id: lead.id as string, importId: (lead.import_id as string | null) ?? null },
-    );
-    if (!assigneeId) continue;
-    await db
-      .from("leads")
-      .update({ assigned_to: assigneeId, assigned_at: new Date().toISOString() })
-      .eq("id", lead.id);
-    await logLeadEvent(db, lead.id as string, "assigned", "Assigned to an employee", {
-      metadata: { assignee_id: assigneeId, via: choice ? `import_${choice.strategy}` : "auto" },
-    });
+  // Decide every lead first (same order, same rules as one-by-one), then write
+  // one UPDATE per assignee and one lead_events insert. The memo replaces the
+  // per-lead reads; the in-memory import rows stand in for the re-read that
+  // used to see the previous lead's assignment.
+  const memo: AssignMemo = { targetActive: new Map(), importLeads: new Map() };
+  const choices = new Map<string, Promise<Awaited<ReturnType<typeof importChoiceFor>>>>();
+  const byAssignee = new Map<string, string[]>();
+  const events: Parameters<typeof logLeadEvents>[1] = [];
+
+  try {
+    for (const lead of leads) {
+      const importId = (lead.import_id as string | null) ?? null;
+      const choice = await (importId ? memoGet(choices, importId, () => importChoiceFor(db, importId)) : null);
+      const assigneeId = await resolveAssignee(
+        db,
+        lead.country as string | null,
+        choice?.strategy,
+        choice?.target,
+        { id: lead.id as string, importId },
+        memo,
+      );
+      if (!assigneeId) continue;
+      const ids = byAssignee.get(assigneeId);
+      if (ids) ids.push(lead.id as string); else byAssignee.set(assigneeId, [lead.id as string]);
+      events.push({
+        leadId: lead.id as string, event: "assigned", detail: "Assigned to an employee",
+        metadata: { assignee_id: assigneeId, via: choice ? `import_${choice.strategy}` : "auto" },
+      });
+      if (importId) {
+        const row = (await memo.importLeads.get(importId))?.find((r) => r.id === lead.id);
+        if (row) row.assigned_to = assigneeId;
+      }
+    }
+  } finally {
+    // Written even when a later lead threw (e.g. a round-robin cursor error),
+    // so leads already decided are not lost — as when each was written in turn.
+    const now = new Date().toISOString();
+    for (const [assigneeId, ids] of byAssignee) {
+      await db.from("leads").update({ assigned_to: assigneeId, assigned_at: now }).in("id", ids);
+    }
+    await logLeadEvents(db, events);
   }
 }
