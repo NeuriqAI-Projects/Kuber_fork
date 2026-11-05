@@ -11,60 +11,36 @@ export async function GET(req: NextRequest) {
 
   const db = dbForUser(user);
 
-  const [{ data: campaigns, error: campaignsError }, { data: profiles }, { data: memberships }] = await Promise.all([
+  // Per-employee counts come from one GROUP BY (team_oversight_counts,
+  // supabase/migrations/2026_11_05_C_stats_rpcs.sql). The old way downloaded
+  // every campaign_leads row — capped at 1,000 by PostgREST, so campaign counts
+  // were too low — plus one head-count per employee.
+  const [{ data: campaigns, error: campaignsError }, { data: profiles }, rpc] = await Promise.all([
     db
       .from("campaigns")
       .select("id, name, status, created_by, total_leads, sent_count, opened_count, replied_count, hot_count, created_at")
       .eq("is_deleted", false)
       .order("created_at", { ascending: false }),
     db.from("profiles").select("id, email, full_name, role, territory_countries, is_active, availability_status, is_super_admin"),
-    // campaign_leads joined to their lead's owner — the basis for BOTH the
-    // lead→campaign fan-out and the "campaigns containing this employee's
-    // leads" count (spec §6).
-    db.from("campaign_leads").select("campaign_id, leads!lead_id!inner(assigned_to, is_deleted)").eq("leads.is_deleted", false),
+    user.companyId
+      ? db.rpc("team_oversight_counts", { p_company: user.companyId })
+      : Promise.resolve({ data: null, error: { message: "no company" } }),
   ]);
 
   if (campaignsError) return fail(500, "INTERNAL", campaignsError.message);
 
   const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
-
-  // Leads: N = live leads assigned to the employee, counted BY THE DATABASE.
-  //
-  // This used to fetch every assigned lead row and tally them in JS. PostgREST
-  // caps a response at 1,000 rows and reports no error when it truncates, so
-  // the tally silently became "the first 1,000 assignments" — with 1,946
-  // assigned leads across two employees the page showed 999 and 1. A count is
-  // the database's job; one head-count per employee is indexed and cheap, and
-  // it cannot be truncated.
-  const employeeIds = (profiles ?? []).filter((p) => p.role === "employee").map((p) => p.id as string);
-  const counted = await Promise.all(
-    employeeIds.map(async (id) => {
-      const { count } = await db
-        .from("leads")
-        .select("id", { count: "exact", head: true })
-        .eq("assigned_to", id)
-        .eq("is_deleted", false);
-      return [id, count ?? 0] as const;
-    }),
-  );
-  const assignedLeadCounts = new Map<string, number>(counted);
-
-  // Only LIVE campaigns count — the `campaigns` query above is already filtered
-  // to is_deleted=false, so any membership whose campaign isn't in this set is
-  // a deleted campaign and must be excluded (previously it wasn't, so deleting
-  // a campaign left it inflating an employee's count forever).
-  const liveCampaignIds = new Set((campaigns ?? []).map((c) => c.id as string));
-
-  // Campaigns: M = number of DISTINCT LIVE campaigns that contain at least one
-  // lead assigned to the employee (spec §6) — matches what the employee's own
-  // campaigns list now shows (employeeCampaignIds). An employee with leads but
-  // none in any live campaign correctly reports 0.
-  const campaignsByEmployee = new Map<string, Set<string>>();
-  for (const m of memberships ?? []) {
-    const owner = (m.leads as { assigned_to?: string | null } | null)?.assigned_to;
-    if (!owner || !m.campaign_id || !liveCampaignIds.has(m.campaign_id as string)) continue;
-    if (!campaignsByEmployee.has(owner)) campaignsByEmployee.set(owner, new Set());
-    campaignsByEmployee.get(owner)!.add(m.campaign_id as string);
+  const assignedLeadCounts = new Map<string, number>();
+  const campaignCounts = new Map<string, number>();
+  if (!rpc.error && rpc.data) {
+    for (const r of rpc.data as Array<{ user_id: string; assigned_lead_count: number; campaign_count: number }>) {
+      assignedLeadCounts.set(r.user_id, Number(r.assigned_lead_count));
+      campaignCounts.set(r.user_id, Number(r.campaign_count));
+    }
+  } else {
+    // Function missing (migration not run): the old per-employee counts.
+    console.warn("[oversight] team_oversight_counts unavailable, using the old queries:", rpc.error?.message);
+    await legacyCounts(db, profiles ?? [], new Set((campaigns ?? []).map((c) => c.id as string)), assignedLeadCounts, campaignCounts);
   }
 
   const campaignsWithOwner = (campaigns ?? []).map((c) => ({
@@ -77,8 +53,36 @@ export async function GET(req: NextRequest) {
     .map((p) => ({
       ...p,
       assigned_lead_count: assignedLeadCounts.get(p.id) ?? 0,
-      campaign_count: campaignsByEmployee.get(p.id)?.size ?? 0,
+      campaign_count: campaignCounts.get(p.id) ?? 0,
     }));
 
   return ok({ campaigns: campaignsWithOwner, employees });
+}
+
+/** The pre-RPC counting, kept as the fallback. Its campaign count reads the
+ *  campaign_leads rows, which PostgREST caps at 1,000. */
+async function legacyCounts(
+  db: ReturnType<typeof dbForUser>,
+  profiles: Array<{ id: string; role: string }>,
+  liveCampaignIds: Set<string>,
+  assignedLeadCounts: Map<string, number>,
+  campaignCounts: Map<string, number>,
+) {
+  const employeeIds = profiles.filter((p) => p.role === "employee").map((p) => p.id);
+  const [{ data: memberships }, counted] = await Promise.all([
+    db.from("campaign_leads").select("campaign_id, leads!lead_id!inner(assigned_to, is_deleted)").eq("leads.is_deleted", false),
+    Promise.all(employeeIds.map(async (id) => {
+      const { count } = await db.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", id).eq("is_deleted", false);
+      return [id, count ?? 0] as const;
+    })),
+  ]);
+  for (const [id, n] of counted) assignedLeadCounts.set(id, n);
+  const byEmployee = new Map<string, Set<string>>();
+  for (const m of memberships ?? []) {
+    const owner = (m.leads as { assigned_to?: string | null } | null)?.assigned_to;
+    if (!owner || !m.campaign_id || !liveCampaignIds.has(m.campaign_id as string)) continue;
+    if (!byEmployee.has(owner)) byEmployee.set(owner, new Set());
+    byEmployee.get(owner)!.add(m.campaign_id as string);
+  }
+  for (const [id, set] of byEmployee) campaignCounts.set(id, set.size);
 }

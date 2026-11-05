@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   try { user = await requireAuth(req); } catch (r) { return r as Response; }
   const db = dbForUser(user);
   const analytics = user.role === "manager"
-    ? await getDashboardAnalytics(db)
-    : await getEmployeeDashboard(db, user.id);
+    ? await getDashboardAnalytics(db, user.companyId)
+    : await getEmployeeDashboard(db, user.id, user.companyId);
   return ok(analytics);
 }

@@ -12,6 +12,12 @@ type UsageRow = {
   error: string | null; created_at: string;
 };
 
+/** One llm_usage_summary row; `tokens` = input + cache read + cache write + output. */
+type UsageGroup = {
+  purpose: string | null; provider: string; model: string; user_id: string | null; day: string;
+  calls: number; cost_usd: number | string; tokens: number; failed: number; unpriced: number; last_used: string;
+};
+
 /**
  * GET /api/v1/assistant/usage?days=30 — AI spend for the AI tab: who used the
  * assistant and how much, plus every purpose (drafts, follow-ups, replies…).
@@ -25,9 +31,20 @@ export async function GET(req: NextRequest) {
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
   const db = dbForUser(user);
 
+  // Pre-summed in SQL per (purpose, model, person, UTC day): a few hundred
+  // groups instead of every llm_usage row in the window (up to 100,000).
+  // supabase/migrations/2026_11_05_C_stats_rpcs.sql; the row read below is the
+  // fallback when that function is missing.
+  const summary = await db.rpc("llm_usage_summary", { p_company: user.companyId, p_since: since });
   let perPerson = true;
-  let rows: UsageRow[];
-  try {
+  let rows: UsageRow[] = [];
+  type SqlGroup = Omit<UsageGroup, "tokens"> & { input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number };
+  let groups: UsageGroup[] | null = summary.error ? null : (summary.data as SqlGroup[]).map((g) => ({
+    ...g,
+    tokens: Number(g.input_tokens) + Number(g.cache_read_tokens) + Number(g.cache_write_tokens) + Number(g.output_tokens),
+  }));
+  if (summary.error) console.warn("[assistant/usage] llm_usage_summary unavailable, using the old read:", summary.error.message);
+  if (!groups) try {
     rows = (await readAllPages<UsageRow>((from, to) =>
       db.from("llm_usage")
         .select("user_id, provider, model, purpose, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, error, created_at")
@@ -49,19 +66,27 @@ export async function GET(req: NextRequest) {
 
   type Agg = { calls: number; cost_usd: number; tokens: number; failed: number; unpriced: number; last_used: string | null };
   const blank = (): Agg => ({ calls: 0, cost_usd: 0, tokens: 0, failed: 0, unpriced: 0, last_used: null });
-  const add = (a: Agg, r: UsageRow) => {
-    a.calls++; a.cost_usd += cost(r); a.tokens += tokens(r);
-    if (r.error) a.failed++;
-    if (!r.error && r.cost_usd == null) a.unpriced++;
-    if (!a.last_used || r.created_at > a.last_used) a.last_used = r.created_at;
+
+  // The fallback's raw rows become one-call groups, so one loop serves both.
+  groups ??= rows.map((r) => ({
+    purpose: r.purpose, provider: r.provider, model: r.model, user_id: r.user_id ?? null,
+    day: r.created_at.slice(0, 10), calls: 1, cost_usd: cost(r), tokens: tokens(r),
+    failed: r.error ? 1 : 0, unpriced: !r.error && r.cost_usd == null ? 1 : 0, last_used: r.created_at,
+  }));
+  const add = (a: Agg, g: Pick<UsageGroup, "calls" | "cost_usd" | "tokens" | "failed" | "unpriced" | "last_used">) => {
+    a.calls += Number(g.calls); a.cost_usd += Number(g.cost_usd ?? 0); a.tokens += Number(g.tokens);
+    a.failed += Number(g.failed); a.unpriced += Number(g.unpriced);
+    if (!a.last_used || g.last_used > a.last_used) a.last_used = g.last_used;
   };
+  // Newest first: Maps below then keep the old (first seen) order for ties.
+  groups.sort((a, b) => String(b.last_used).localeCompare(String(a.last_used)));
 
   const total = blank();
   const byPurpose = new Map<string, Agg>();
   const byPerson = new Map<string, Agg>();
   const byModel = new Map<string, Agg>();
   const daily = new Map<string, { assistant: number; other: number }>();
-  for (const r of rows) {
+  for (const r of groups) {
     add(total, r);
     const purpose = r.purpose ?? "other";
     if (!byPurpose.has(purpose)) byPurpose.set(purpose, blank());
@@ -74,10 +99,9 @@ export async function GET(req: NextRequest) {
       if (!byPerson.has(who)) byPerson.set(who, blank());
       add(byPerson.get(who)!, r);
     }
-    const day = r.created_at.slice(0, 10);
-    const d = daily.get(day) ?? { assistant: 0, other: 0 };
-    if (purpose === "assistant") d.assistant += cost(r); else d.other += cost(r);
-    daily.set(day, d);
+    const d = daily.get(r.day) ?? { assistant: 0, other: 0 };
+    if (purpose === "assistant") d.assistant += Number(r.cost_usd ?? 0); else d.other += Number(r.cost_usd ?? 0);
+    daily.set(r.day, d);
   }
   const finish = (a: Agg) => ({ ...a, cost_usd: round(a.cost_usd) });
 
