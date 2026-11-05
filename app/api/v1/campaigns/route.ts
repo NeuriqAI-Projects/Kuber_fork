@@ -19,6 +19,41 @@ export async function GET(req: NextRequest) {
   // (spec §5). An employee sees any campaign that contains at least one lead
   // assigned to them (getAccessibleCampaignIds resolves that).
   if (user.role === "employee") {
+    // One SQL call: visible campaigns + this employee's own counts + the edit
+    // flag (employee_campaign_stats, 2026_11_05_D_campaign_rpcs.sql). Same rules
+    // as the fallback below, which runs only if that function is missing.
+    const { data: stats, error: rpcError } = user.companyId
+      ? await db.rpc("employee_campaign_stats", { p_company: user.companyId, p_user: user.id })
+      : { data: null, error: "no company" };
+    if (!rpcError) {
+      type Row = { campaign_id: string; total_leads: number; delivered_count: number; replied_count: number; bounced_count: number; hot_count: number; cold_count: number; can_edit_settings: boolean };
+      const byId = new Map(((stats ?? []) as Row[]).map((r) => [r.campaign_id, r]));
+      if (byId.size === 0) return ok({ campaigns: [] });
+      const { data, error } = await db
+        .from("campaigns")
+        .select("*")
+        .eq("is_deleted", false)
+        .in("id", [...byId.keys()])
+        .order("created_at", { ascending: false });
+      if (error) return fail(500, "INTERNAL", error.message);
+      return ok({
+        campaigns: (data ?? []).map((c) => {
+          const s = byId.get(c.id as string)!;
+          return {
+            ...c,
+            total_leads: s.total_leads,
+            // DELIVERED — the client mapper subtracts replied/bounced off it.
+            sent_count: s.delivered_count,
+            replied_count: s.replied_count,
+            bounced_count: s.bounced_count,
+            hot_count: s.hot_count,
+            cold_count: s.cold_count,
+            can_edit_settings: s.can_edit_settings,
+          };
+        }),
+      });
+    }
+
     const ids = await getAccessibleCampaignIds(db, user);
     if (ids.length === 0) return ok({ campaigns: [] });
     const { data, error } = await db

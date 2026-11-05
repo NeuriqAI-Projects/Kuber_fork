@@ -15,6 +15,7 @@ import { toInstantlyTimezone } from "@/lib/instantly-timezones";
 import { getSendingAccounts } from "@/lib/services/service-keys";
 import { renderFollowupFallback } from "@/lib/services/settings";
 import { resolveFollowupTemplate } from "@/lib/services/followup-template";
+import { mapLimited, retry429, SUB_CONCURRENCY } from "@/lib/services/campaign-lifecycle";
 
 // Instantly's own limit on POST /api/v2/leads/add is maxItems: 1000 per call —
 // 100 was our own extra-cautious choice, not anything the API requires. 500
@@ -85,6 +86,13 @@ function pickTimezone(
 /** Supabase caps a response at 1000 rows server-side; a larger `.limit()` is
  *  silently clamped, so paging is the only way past it. */
 const FANOUT_PAGE_SIZE = 1000;
+
+/** Ids per `.in()` write: the list travels in the URL (~37 bytes an id). */
+function idChunks(ids: string[], size = 100): string[][] {
+  const out: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size));
+  return out;
+}
 
 export async function sendCampaign(
   campaignId: string,
@@ -260,6 +268,8 @@ export async function sendCampaign(
 
   let totalSent = 0;
   const bucketErrors: string[] = [];
+  /** Sub-campaigns this send pushed into (or created) — they need activating. */
+  const touchedSubs = new Set<string>();
   const eligibleCount = cls.length;
 
   // 5) Push NEW leads (only when there are any) ───────────────────────────────
@@ -368,6 +378,8 @@ export async function sendCampaign(
           sub = created;
         }
 
+        touchedSubs.add(sub!.id);
+
         // Create the Instantly campaign if not yet created (TEST-MODE-aware schedule)
         let instId = sub!.instantly_campaign_id;
         if (!instId) {
@@ -461,16 +473,29 @@ export async function sendCampaign(
           const rejectedSlice = slice.filter((p) => !byEmail.has(p.email.toLowerCase()));
 
           // Accepted → mark sent + capture Instantly lead id + link sub-campaign.
-          await Promise.all(
-            sentSlice.map((p) =>
-              db.from("campaign_leads").update({
-                instantly_campaign_id: sub!.id,
-                instantly_lead_id: byEmail.get(p.email.toLowerCase()) ?? null,
-                crm_status: "sent",
-                updated_at: now,
-              }).eq("id", p.campaignLeadId),
-            ),
-          );
+          // One statement (fanout_mark_sent); per-row updates only if the
+          // function is missing, as before.
+          if (sentSlice.length > 0) {
+            const { error: markErr } = await db.rpc("fanout_mark_sent", {
+              p_company: campaign.company_id,
+              p_sub_id: sub!.id,
+              p_ids: sentSlice.map((p) => p.campaignLeadId),
+              p_instantly_lead_ids: sentSlice.map((p) => byEmail.get(p.email.toLowerCase()) ?? null),
+              p_now: now,
+            });
+            if (markErr) {
+              await Promise.all(
+                sentSlice.map((p) =>
+                  db.from("campaign_leads").update({
+                    instantly_campaign_id: sub!.id,
+                    instantly_lead_id: byEmail.get(p.email.toLowerCase()) ?? null,
+                    crm_status: "sent",
+                    updated_at: now,
+                  }).eq("id", p.campaignLeadId),
+                ),
+              );
+            }
+          }
 
           // Clean per-lead activity line for the send. This is the hand-off to
           // Instantly, NOT proof of delivery — Instantly schedules the actual
@@ -487,22 +512,21 @@ export async function sendCampaign(
 
           // Rejected → mark failed and still link the sub, so they are visible as
           // needing attention and are NOT silently re-picked as "eligible" forever.
-          await Promise.all(
-            rejectedSlice.map((p) =>
-              db.from("campaign_leads").update({
-                instantly_campaign_id: sub!.id,
-                crm_status: "failed",
-                updated_at: now,
-              }).eq("id", p.campaignLeadId),
-            ),
-          );
+          for (const ids of idChunks(rejectedSlice.map((p) => p.campaignLeadId))) {
+            await db.from("campaign_leads").update({
+              instantly_campaign_id: sub!.id,
+              crm_status: "failed",
+              updated_at: now,
+            }).in("id", ids);
+          }
 
-          // Mark ONLY the accepted leads' drafts as sent.
-          if (sentSlice.length > 0) {
+          // Mark ONLY the accepted leads' drafts as sent. Chunked: 500 lead ids
+          // in one .in() is ~18 KB of URL, past the gateway limit.
+          for (const ids of idChunks(sentSlice.map((p) => p.leadId))) {
             await db.from("email_drafts")
               .update({ status: "sent", updated_at: now })
               .eq("campaign_id", campaignId)
-              .in("lead_id", sentSlice.map((p) => p.leadId))
+              .in("lead_id", ids)
               .eq("status", "approved");
           }
 
@@ -545,28 +569,30 @@ export async function sendCampaign(
     }
   }
 
-  // 6) ACTIVATE every sub-campaign of this master (idempotent) ─────────────────
-  // THIS is what actually makes Instantly send. Runs whether or not new leads were
-  // pushed, so a previously-stuck campaign also gets activated on re-send.
+  // 6) ACTIVATE the sub-campaigns that need it (idempotent) ──────────────────
+  // THIS is what actually makes Instantly send. Every sub this send touched,
+  // plus every sub not already 'active' (stuck, failed or paused), so a re-send
+  // still activates a previously-stuck campaign. An 'active' sub nobody pushed
+  // into is already sending; activating it again was one Instantly call per
+  // country on every send. 5 at a time.
   const { data: subs } = await db
     .from("instantly_campaigns")
-    .select("id,instantly_campaign_id")
+    .select("id,instantly_campaign_id,status")
     .eq("campaign_id", campaignId)
     .not("instantly_campaign_id", "is", null);
 
-  const activationErrors: string[] = [];
-  for (const sub of subs ?? []) {
-    if (!sub.instantly_campaign_id) continue;
+  const toActivate = (subs ?? []).filter((s) => s.instantly_campaign_id && (touchedSubs.has(s.id) || s.status !== "active"));
+  const activationErrors = (await mapLimited(toActivate, SUB_CONCURRENCY, async (sub) => {
     try {
-      await activateInstantlyCampaign(sub.instantly_campaign_id);
+      await retry429(() => activateInstantlyCampaign(sub.instantly_campaign_id as string));
       await db.from("instantly_campaigns").update({
         status: "active",
         activated_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }).eq("id", sub.id);
+      return null;
     } catch (e) {
       const message = (e as Error).message;
-      activationErrors.push(`sub ${sub.id}: ${message}`);
       await db.from("instantly_campaigns").update({
         status: "failed",
         last_error: message,
@@ -574,8 +600,9 @@ export async function sendCampaign(
       }).eq("id", sub.id);
       // Do NOT throw here — keep activating the remaining sub-campaigns so one
       // bad bucket can't strand the others (and the master rollup below still runs).
+      return `sub ${sub.id}: ${message}`;
     }
-  }
+  })).filter((m): m is string => m !== null);
 
   // 7) Roll up master campaign status + counter. sent_count is RECONCILED from the
   //    actual data rather than a racy read-modify-write on a value read minutes ago.
