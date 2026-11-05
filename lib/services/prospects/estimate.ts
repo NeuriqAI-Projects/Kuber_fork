@@ -65,6 +65,19 @@ const LEGAL = new Set(("sa sab sac saa sas sadecv sabdecv sderl sderldecv sapi s
 /** One key per company: lowercase, no accents or punctuation, no legal endings ("Sp. z o.o.", "S.A. de C.V.", "Ltd"). */
 export function normCompanyName(name: string | null | undefined): string {
   if (!name) return "";
+  // The size check re-normalises every known name (~13K for the client) on each
+  // cache miss; the answer for a given name never changes, so keep it.
+  // ponytail: per-instance memo; a stored normalised column + SQL check if reads become the cost.
+  const hit = NORM_MEMO.get(name);
+  if (hit !== undefined) return hit;
+  if (NORM_MEMO.size >= 50_000) NORM_MEMO.clear();
+  const norm = normUncached(name);
+  NORM_MEMO.set(name, norm);
+  return norm;
+}
+const NORM_MEMO = new Map<string, string>();
+
+function normUncached(name: string): string {
   const words = name.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/["'“”„«»]/g, "")
     .replace(/[().,&/\-–]/g, " ").split(/\s+/).filter(Boolean);
   // Drop legal forms from the END only, repeatedly ("GmbH & Co. KG", "Pvt. Ltd."): "A S Plastics" and
