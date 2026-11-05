@@ -25,26 +25,24 @@ async function serializeComments(
   const authorIds = [...new Set(rows.map((row) => row.author_id))];
   const authorNames = new Map<string, string>();
 
-  if (authorIds.length > 0) {
-    const { data: profiles } = await db
-      .from("profiles")
-      .select("id, full_name, email")
-      .in("id", authorIds);
-
-    for (const profile of profiles ?? []) {
-      authorNames.set(
-        profile.id as string,
-        (profile.full_name || profile.email || "Team member") as string,
-      );
-    }
+  // Author names and reactions are independent: one round trip, not two.
+  const [{ data: profiles }, reactionsByComment] = await Promise.all([
+    authorIds.length > 0
+      ? db.from("profiles").select("id, full_name, email").in("id", authorIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; full_name: string | null; email: string | null }> }),
+    loadCommentReactionGroups(
+      db,
+      "lead_comment_reactions",
+      rows.map((row) => row.id),
+      currentUserId,
+    ),
+  ]);
+  for (const profile of profiles ?? []) {
+    authorNames.set(
+      profile.id as string,
+      (profile.full_name || profile.email || "Team member") as string,
+    );
   }
-
-  const reactionsByComment = await loadCommentReactionGroups(
-    db,
-    "lead_comment_reactions",
-    rows.map((row) => row.id),
-    currentUserId,
-  );
 
   return rows.map((row) => ({
     id: row.id,
@@ -65,14 +63,18 @@ export async function GET(
 
   const { id } = await params;
   const db = dbForUser(user);
-  try { await assertLeadAccess(db, user, id); } catch (response) { return response as Response; }
-
-  const { data, error } = await db
-    .from("lead_comments")
-    .select("id, author_id, body, created_at")
-    .eq("lead_id", id)
-    .order("created_at", { ascending: true })
-    .limit(200);
+  // The access check and the comments read run together (the Discussion tab
+  // polls this); the comments are only returned once the check has passed.
+  const [access, { data, error }] = await Promise.all([
+    assertLeadAccess(db, user, id).then(() => null, (response) => response as Response),
+    db
+      .from("lead_comments")
+      .select("id, author_id, body, created_at")
+      .eq("lead_id", id)
+      .order("created_at", { ascending: true })
+      .limit(200),
+  ]);
+  if (access) return access;
 
   if (error) return fail(500, "INTERNAL", error.message);
   return ok({ comments: await serializeComments(db, (data ?? []) as CommentRow[], user.id) });
