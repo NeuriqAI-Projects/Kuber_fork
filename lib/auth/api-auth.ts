@@ -49,9 +49,33 @@ function forbidden(message: string) {
   );
 }
 
+type ProfileRow = { role: string; is_active: boolean; is_super_admin: boolean; company_id: string | null };
+
+/** Profile rows cached per server instance for at most PROFILE_TTL_MS. */
+const PROFILE_TTL_MS = 30_000;
+const profileCache = new Map<string, { profile: ProfileRow; expires: number }>();
+
+async function loadProfile(userId: string): Promise<ProfileRow | null> {
+  const hit = profileCache.get(userId);
+  if (hit && hit.expires > Date.now()) return hit.profile;
+  const { data } = await createAdminClient()
+    .from("profiles")
+    .select("role, is_active, is_super_admin, company_id")
+    .eq("id", userId)
+    .maybeSingle();
+  // Misses are not cached, so a just-provisioned user works on the next call.
+  if (data) {
+    if (profileCache.size > 1000) profileCache.clear();
+    profileCache.set(userId, { profile: data as ProfileRow, expires: Date.now() + PROFILE_TTL_MS });
+  }
+  return (data as ProfileRow | null) ?? null;
+}
+
 /**
  * Verifies the Bearer JWT and resolves the caller's role from `profiles` (not the JWT claim) so a
- * role change takes effect immediately, without waiting on token refresh. Returns the user or throws a Response.
+ * role change does not wait on token refresh. The profile row is cached per server instance for
+ * 30 s, so a role change or deactivation reaches API calls within 30 s (not instantly).
+ * Returns the user or throws a Response.
  */
 export async function requireAuth(request: NextRequest): Promise<AuthedUser> {
   const header = request.headers.get("authorization") ?? "";
@@ -81,12 +105,7 @@ export async function requireAuth(request: NextRequest): Promise<AuthedUser> {
     throw tooManyRequests(limited.retryAfterSeconds, limited.limit);
   }
 
-  const db = createAdminClient();
-  const { data: profile } = await db
-    .from("profiles")
-    .select("role, is_active, is_super_admin, company_id")
-    .eq("id", verified.id)
-    .maybeSingle();
+  const profile = await loadProfile(verified.id);
 
   if (!profile || !profile.is_active) {
     throw unauthorized("Account is inactive or not provisioned");

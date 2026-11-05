@@ -30,7 +30,12 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
+  // getClaims, not getUser: it still refreshes an expired session (the only job
+  // here — middleware.ts uses just the response cookies) but verifies the JWT
+  // locally against the project's ES256 JWKS instead of calling Supabase Auth
+  // over the network on every page, RSC request and prefetch. Real access
+  // checks stay in requireAuth (API) and lib/server/session.ts (pages).
+  const { data } = await supabase.auth.getClaims();
 
-  return { response, user };
+  return { response, claims: data?.claims ?? null };
 }
