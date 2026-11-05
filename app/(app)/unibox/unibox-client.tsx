@@ -298,9 +298,12 @@ export function UniboxClient() {
       queryCache.set(cacheKeys.uniboxThread(threadId), detail);
       setThreadDetail(detail);
       if (readTimer.current) clearTimeout(readTimer.current);
-      readTimer.current = setTimeout(() => {
-        void markThreadRead(token, threadId).catch(() => {});
-      }, 1000);
+      // Nothing unread, nothing to mark: skip the extra request.
+      if (detail.messages.some((m) => m.direction === "received" && m.is_unread)) {
+        readTimer.current = setTimeout(() => {
+          void markThreadRead(token, threadId).catch(() => {});
+        }, 1000);
+      }
     } catch (e) {
       toast.error((e as Error).message);
     } finally {

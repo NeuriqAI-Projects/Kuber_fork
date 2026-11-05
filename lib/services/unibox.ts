@@ -252,6 +252,9 @@ export async function ingestInstantlyEmail(
     campaignLeadId?: string | null;
     sentBy?: string | null;
     inReplyToEmailId?: string | null;
+    /** The caller already knows campaign_leads.first_sent_at is set (the
+     *  email_sent webhook just read or wrote it), so the backfill is a no-op. */
+    firstSentKnown?: boolean;
   },
 ): Promise<void> {
   const masterId = opts?.masterCampaignId ?? await resolveMasterCampaignId(db, email.campaign_id);
@@ -293,7 +296,9 @@ export async function ingestInstantlyEmail(
   }
 
   await backfillInterestFromEmail(db, campaignLeadId, row.direction, email.ai_interest_value ?? null);
-  await backfillFirstSentFromEmail(db, campaignLeadId, row.direction, row.step, row.timestamp_email);
+  if (!opts?.firstSentKnown) {
+    await backfillFirstSentFromEmail(db, campaignLeadId, row.direction, row.step, row.timestamp_email);
+  }
 }
 
 export async function sendThreadReply(
@@ -454,11 +459,14 @@ export async function setLeadInterestStatus(
 }
 
 export async function markThreadRead(db: Db, threadId: string): Promise<void> {
-  await db.from("unibox_emails").update({
+  // Only rows still unread: no rewrite of the whole thread, and no Instantly
+  // call when nothing changed. If Instantly still has it unread, the inbox
+  // sync brings that back and the next open marks it again.
+  const { data: changed } = await db.from("unibox_emails").update({
     is_unread: false,
     updated_at: new Date().toISOString(),
-  }).eq("thread_id", threadId);
-  markInstantlyThreadAsRead(threadId).catch(() => {});
+  }).eq("thread_id", threadId).eq("is_unread", true).select("id");
+  if (changed?.length) markInstantlyThreadAsRead(threadId).catch(() => {});
 }
 
 export async function markThreadUnread(db: Db, threadId: string): Promise<void> {
@@ -1102,20 +1110,122 @@ async function saveSyncState(db: Db, state: SyncState): Promise<void> {
   }, { onConflict: "key" });
 }
 
+/** What the sync needs to know about one page of Instantly mail, read in two
+ *  queries instead of ~7 per email. */
+export type SyncPageContext = {
+  /** Instantly sub-campaign id → owning company. Missing = unknown to us. */
+  companyByCampaign: Map<string, string>;
+  /** Rows we already mirror, by Instantly email id. */
+  known: Map<string, KnownEmailRow>;
+};
+
+/** The stored columns a resync may change on an email we already have. */
+export type KnownEmailRow = {
+  id: string;
+  company_id: string;
+  campaign_id: string | null;
+  campaign_lead_id: string | null;
+  thread_id: string | null;
+  is_unread: boolean | null;
+  is_auto_reply: boolean | null;
+  is_focused: boolean | null;
+  i_status: number | null;
+  ai_interest_value: number | null;
+  has_body_text: boolean;
+};
+
+const KNOWN_FLAGS = ["thread_id", "is_unread", "is_auto_reply", "is_focused", "i_status"] as const;
+
 /**
- * The company that owns an Instantly sub-campaign. Null when the id is unknown
- * to us — an Instantly campaign created outside the app, or one whose row was
- * deleted. Takes the UNSCOPED client on purpose: the sync runs cross-company
- * and this lookup is what decides which company it is.
+ * What a resync must write for an email we already store, or null when it is
+ * unchanged. Same fields the old full re-ingest rewrote (minus campaign links,
+ * which only change on a full ingest), but only the ones that differ:
+ * read state, focus, Instantly status, thread. ai_interest_value is written
+ * when Instantly classifies the reply after we stored it, which is also the
+ * cue to backfill the lead's interest. Bodies only when we have no text yet
+ * and Instantly now has some.
  */
-async function resolveCompanyIdForEmail(db: Db, instantlyCampaignId: string | null | undefined): Promise<string | null> {
-  if (!instantlyCampaignId) return null;
-  const { data } = await db
-    .from("instantly_campaigns")
-    .select("company_id")
-    .eq("instantly_campaign_id", instantlyCampaignId)
-    .maybeSingle();
-  return (data?.company_id as string | undefined) ?? null;
+export function knownEmailPatch(
+  stored: KnownEmailRow,
+  row: Pick<ReturnType<typeof emailToRow>, (typeof KNOWN_FLAGS)[number] | "ai_interest_value" | "body_text" | "body_html" | "content_preview">,
+): Record<string, unknown> | null {
+  const patch: Record<string, unknown> = {};
+  for (const k of KNOWN_FLAGS) if (row[k] !== stored[k]) patch[k] = row[k];
+  if (row.ai_interest_value != null && Number(row.ai_interest_value) !== Number(stored.ai_interest_value ?? NaN)) {
+    patch.ai_interest_value = row.ai_interest_value;
+  }
+  if (!stored.has_body_text && row.body_text) {
+    patch.body_text = row.body_text;
+    patch.body_html = row.body_html;
+    patch.content_preview = row.content_preview;
+  }
+  return Object.keys(patch).length > 0 ? patch : null;
+}
+
+/** Takes the UNSCOPED client on purpose: a page can mix companies, and this
+ *  lookup is what decides which company each email belongs to. */
+export async function loadSyncPage(db: Db, items: InstantlyEmail[]): Promise<SyncPageContext> {
+  const campaignIds = [...new Set(items.map((e) => e.campaign_id).filter((v): v is string => !!v))];
+  const emailIds = items.map((e) => e.id);
+  const [camps, rows] = await Promise.all([
+    campaignIds.length
+      ? db.from("instantly_campaigns").select("instantly_campaign_id, company_id").in("instantly_campaign_id", campaignIds)
+      : Promise.resolve({ data: [], error: null }),
+    emailIds.length
+      ? db.from("unibox_emails")
+        .select("id, instantly_email_id, company_id, campaign_id, campaign_lead_id, thread_id, is_unread, is_auto_reply, is_focused, i_status, ai_interest_value, has_body_text:body_text")
+        .in("instantly_email_id", emailIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  // A failed lookup must not look like "unknown campaign" (skipped for good)
+  // or "new email" (re-ingested): fail the page, the cursor stays put.
+  if (camps.error) throw new Error(`instantly_campaigns lookup failed: ${camps.error.message}`);
+  if (rows.error) throw new Error(`unibox_emails lookup failed: ${rows.error.message}`);
+  const companyByCampaign = new Map<string, string>();
+  for (const c of camps.data ?? []) companyByCampaign.set(c.instantly_campaign_id as string, c.company_id as string);
+  const known = new Map<string, KnownEmailRow>();
+  for (const r of (rows.data ?? []) as Array<Record<string, unknown>>) {
+    known.set(r.instantly_email_id as string, { ...(r as unknown as KnownEmailRow), has_body_text: !!r.has_body_text });
+  }
+  return { companyByCampaign, known };
+}
+
+/**
+ * One email of a sync page. Mail we already store (the webhook got there
+ * first, the common case) is diffed against the page context and costs 0 trips
+ * when unchanged, 1 when a flag moved; everything else takes the full ingest.
+ */
+export async function syncOneEmail(
+  db: Db,
+  ctx: SyncPageContext,
+  email: InstantlyEmail,
+): Promise<"unmapped" | "unchanged" | "updated" | "ingested"> {
+  // Both tenants share one Instantly workspace, so a page of results can mix
+  // companies. The sub-campaign identifies the owner; ingest through a client
+  // scoped to it so each message lands in the right tenant and cannot be read
+  // by the other. An email we cannot attribute to any campaign belongs to no
+  // tenant and would be invisible to every scoped read anyway, so it is
+  // skipped rather than stored orphaned.
+  const companyId = email.campaign_id ? ctx.companyByCampaign.get(email.campaign_id) : undefined;
+  if (!companyId) return "unmapped";
+  const scoped = createScopedClient(companyId);
+  const stored = ctx.known.get(email.id);
+  // Rows missing a campaign link go through the full ingest, which re-resolves it.
+  if (!stored || stored.company_id !== companyId || !stored.campaign_id || !stored.campaign_lead_id) {
+    await ingestInstantlyEmail(scoped, email);
+    return "ingested";
+  }
+  const row = emailToRow(email, { masterCampaignId: stored.campaign_id, campaignLeadId: stored.campaign_lead_id });
+  const patch = knownEmailPatch(stored, row);
+  if (!patch) return "unchanged";
+  const { error } = await scoped.from("unibox_emails")
+    .update({ ...patch, synced_at: row.synced_at, updated_at: row.updated_at })
+    .eq("id", stored.id);
+  if (error) throw new Error(error.message);
+  if ("ai_interest_value" in patch) {
+    await backfillInterestFromEmail(scoped, stored.campaign_lead_id, row.direction, row.ai_interest_value);
+  }
+  return "updated";
 }
 
 /** How long one sync run may walk the mailbox before it stops and saves.
@@ -1134,13 +1244,14 @@ const SYNC_TIME_BUDGET_MS = 40_000;
  *  a run's progress. */
 const SYNC_CHECKPOINT_EVERY = 10;
 
-export async function runUniboxSync(db: Db, maxPages = 8): Promise<{ ingested: number; pages: number; failed: number; skippedUnmapped: number }> {
+export async function runUniboxSync(db: Db, maxPages = 8): Promise<{ ingested: number; unchanged: number; pages: number; failed: number; skippedUnmapped: number }> {
   const state = await getSyncState(db);
   const cursor = state.last_timestamp_created;
   let startingAfter: string | undefined;
   let ingested = 0;
   let failed = 0;
   let skippedUnmapped = 0;
+  let unchanged = 0;
   let pages = 0;
   let maxTs = cursor;
   // Oldest message we could not ingest this run. The cursor is never advanced
@@ -1167,18 +1278,13 @@ export async function runUniboxSync(db: Db, maxPages = 8): Promise<{ ingested: n
         ...(startingAfter ? { starting_after: startingAfter } : {}),
       });
       pages++;
+      const ctx = await loadSyncPage(db, result.items);
       for (const email of result.items) {
         if (Date.now() - startedAt > SYNC_TIME_BUDGET_MS) { outOfTime = true; break; }
         try {
-          // Both tenants share one Instantly workspace, so a page of results can
-          // mix companies. The sub-campaign identifies the owner; ingest through
-          // a client scoped to it so each message lands in the right tenant and
-          // cannot be read by the other. An email we cannot attribute to any
-          // campaign belongs to no tenant and would be invisible to every
-          // scoped read anyway, so it is skipped rather than stored orphaned.
-          const companyId = await resolveCompanyIdForEmail(db, email.campaign_id);
-          if (!companyId) { skippedUnmapped++; continue; }
-          await ingestInstantlyEmail(createScopedClient(companyId), email);
+          const outcome = await syncOneEmail(db, ctx, email);
+          if (outcome === "unmapped") { skippedUnmapped++; continue; }
+          if (outcome === "unchanged") unchanged++;
           ingested++;
         } catch (e) {
           // Skip it and keep going: one unusable message must not hold back
@@ -1212,7 +1318,7 @@ export async function runUniboxSync(db: Db, maxPages = 8): Promise<{ ingested: n
     });
   }
 
-  return { ingested, pages, failed, skippedUnmapped };
+  return { ingested, unchanged, pages, failed, skippedUnmapped };
 }
 
 /** Build campaign replies thread shape from unibox data (Phase 2). */

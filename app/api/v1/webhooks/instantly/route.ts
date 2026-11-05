@@ -8,7 +8,7 @@ import { INTEREST_TO_TEMPERATURE } from "@/lib/constants";
 import { getInstantlyEmail } from "@/lib/services/instantly";
 import { ingestInstantlyEmail } from "@/lib/services/unibox";
 import { safeSecretEqual } from "@/lib/auth/secret";
-import { findActiveLeadIdByEmail } from "@/lib/services/lead-lookup";
+import { findActiveLeadsByEmail } from "@/lib/services/lead-lookup";
 import { logLeadEvent, type LeadEventType } from "@/lib/services/lead-events";
 
 export const maxDuration = 60;
@@ -106,19 +106,28 @@ export async function POST(req: NextRequest) {
     .update(`${receivedAt}|${p.lead_email ?? ""}|${p.event_type}|${p.email_id ?? ""}`)
     .digest("hex");
 
+  // The Unibox mirror needs Instantly's copy of the mail. That GET depends on
+  // nothing below, so it starts now and runs alongside the DB work (it used to
+  // be the last ~1-2 s of the request). Failure stays non-fatal, as before.
+  const mirrorEmail = (p.event_type === "reply_received" || p.event_type === "email_sent") && p.email_id
+    ? getInstantlyEmail(p.email_id).then((email) => ({ email }), (error: Error) => ({ error }))
+    : null;
+
   // 3) Resolve Instantly campaign UUID → our sub + master
   //    p.campaign_id here is Instantly's UUID (instantly_campaigns.instantly_campaign_id)
+  //    In parallel: the lead, looked up across companies and narrowed to the
+  //    campaign's company below, so the two lookups need not wait on each other.
   let subId: string | null = null;
   let masterId: string | null = null;
   let companyId: string | null = null;
-  if (p.campaign_id) {
-    const { data: sub } = await db
-      .from("instantly_campaigns")
-      .select("id,campaign_id,company_id")
-      .eq("instantly_campaign_id", p.campaign_id)
-      .maybeSingle();
-    if (sub) { subId = sub.id; masterId = sub.campaign_id; companyId = sub.company_id; }
-  }
+  const [subRes, leadMatches] = await Promise.all([
+    p.campaign_id
+      ? db.from("instantly_campaigns").select("id,campaign_id,company_id").eq("instantly_campaign_id", p.campaign_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    findActiveLeadsByEmail(db, p.lead_email),
+  ]);
+  const sub = subRes.data;
+  if (sub) { subId = sub.id; masterId = sub.campaign_id; companyId = sub.company_id; }
 
   // Both tenants share one Instantly workspace, so Instantly posts every
   // company's replies to this single URL — the handler itself must be
@@ -131,19 +140,35 @@ export async function POST(req: NextRequest) {
 
   // Resolved once and reused below: which lead this event is about. Steps 4/6/7
   // and the activity log all need it, and it cannot change mid-request.
-  const leadId = p.lead_email ? await findActiveLeadIdByEmail(cdb, p.lead_email) : null;
+  // Same pick a lookup through cdb makes: the oldest active lead of the
+  // campaign's company, or the oldest anywhere for an unattributed event.
+  const leadId = (companyId ? leadMatches.find((l) => l.company_id === companyId) : leadMatches[0])?.id ?? null;
 
-  // 4) Resolve campaign_lead via master + lead
+  const interest = INTEREST_BY_EVENT[p.event_type];
+
+  // 4) Resolve campaign_lead via master + lead. Its current state comes with
+  //    it (read BEFORE patching, for the guards in step 6), and an interest
+  //    event's sibling check runs alongside.
   let campaignLeadId: string | null = null;
+  type BeforeState = { crm_status: string | null; last_reply_at: string | null; first_sent_at: string | null };
+  let beforeState: BeforeState | null = null;
+  let siblings: Array<{ id: string; last_reply_at: string | null }> | null = null;
   if (masterId && leadId) {
-    const { data: cl } = await cdb
-      .from("campaign_leads")
-      .select("id")
-      .eq("campaign_id", masterId)
-      .eq("lead_id", leadId)
-      .maybeSingle();
+    const [{ data: cl }, sibRes] = await Promise.all([
+      cdb
+        .from("campaign_leads")
+        .select("id, crm_status, last_reply_at, first_sent_at")
+        .eq("campaign_id", masterId)
+        .eq("lead_id", leadId)
+        .maybeSingle(),
+      interest !== undefined
+        ? cdb.from("campaign_leads").select("id, last_reply_at").eq("lead_id", leadId)
+        : Promise.resolve({ data: null }),
+    ]);
+    siblings = sibRes.data;
     if (cl) {
       campaignLeadId = cl.id;
+      beforeState = cl as BeforeState;
     } else if (p.event_type === "reply_received") {
       // We resolved the exact master campaign AND the lead, but they're no
       // longer linked in campaign_leads — the lead was removed from this
@@ -192,21 +217,19 @@ export async function POST(req: NextRequest) {
 
   // 6) Update campaign_leads state (with lead_temperature for interest events)
   let interestApplied = false;
+  // Steps after the campaign_leads patch only read what it wrote, or touch
+  // other rows, so they run concurrently and are awaited together at the end.
+  const sideEffects: Array<PromiseLike<unknown>> = [];
+  let firstSentKnown = false;
   if (campaignLeadId) {
-    // Fetch current state BEFORE patching — needed for the guards below:
+    // beforeState (step 4) drives the guards below:
     // (1) only count a lead's FIRST reply toward replied_count (a lead replying twice
     //     must not push the reply rate above 100%), and
     // (2) the cross-campaign echo check below.
-    const { data: beforeState } = await cdb
-      .from("campaign_leads")
-      .select("crm_status, interest_status, last_reply_at, first_sent_at")
-      .eq("id", campaignLeadId)
-      .maybeSingle();
     const wasAlreadyReplied = beforeState?.crm_status === "replied";
 
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (CRM_BY_EVENT[p.event_type])                    patch.crm_status = CRM_BY_EVENT[p.event_type];
-    const interest = INTEREST_BY_EVENT[p.event_type];
     if (interest !== undefined) {
       // Instantly classifies "interest" per LEAD, not per campaign thread — when
       // a lead replies in one campaign, it re-broadcasts the SAME classification
@@ -218,17 +241,11 @@ export async function POST(req: NextRequest) {
       // older campaign threads keep whatever status they already had. For a
       // lead in just one campaign (the common case) this is always true.
       let isFreshestThread = true;
-      if (leadId) {
-        const { data: siblings } = await cdb
-          .from("campaign_leads")
-          .select("id, last_reply_at")
-          .eq("lead_id", leadId);
-        if (siblings && siblings.length > 1) {
-          const currentTime = beforeState?.last_reply_at ? new Date(beforeState.last_reply_at).getTime() : -Infinity;
-          isFreshestThread = !siblings.some(
-            (s) => s.id !== campaignLeadId && s.last_reply_at && new Date(s.last_reply_at).getTime() > currentTime,
-          );
-        }
+      if (siblings && siblings.length > 1) {
+        const currentTime = beforeState?.last_reply_at ? new Date(beforeState.last_reply_at).getTime() : -Infinity;
+        isFreshestThread = !siblings.some(
+          (s) => s.id !== campaignLeadId && s.last_reply_at && new Date(s.last_reply_at).getTime() > currentTime,
+        );
       }
       if (isFreshestThread) {
         interestApplied = true;
@@ -260,42 +277,39 @@ export async function POST(req: NextRequest) {
     if (Object.keys(patch).length > 1) {
       await cdb.from("campaign_leads").update(patch).eq("id", campaignLeadId);
     }
+    // After this the lead has an opening send time either way, so the mirror's
+    // first_sent_at backfill below would only re-read it.
+    firstSentKnown = !!(beforeState?.first_sent_at || patch.first_sent_at);
 
     // sent_count is the number every card / analytics tile / reply rate reads,
     // and it now means DELIVERED — so it moves here, on the webhook, not at
     // hand-off time. Guarded the same way replied_count is: only the first
     // delivery for this lead counts.
     if (p.event_type === "email_sent" && masterId && isFirstDelivery && !beforeState?.first_sent_at && isOpeningSignal(p.step)) {
-      try {
-        await cdb.rpc("increment_campaign_counter", {
-          p_campaign_id: masterId,
-          p_column: "sent_count",
-        });
-      } catch { /* non-fatal — reconcile-counters is the backstop */ }
+      sideEffects.push(cdb.rpc("increment_campaign_counter", {
+        p_campaign_id: masterId,
+        p_column: "sent_count",
+      }).then(undefined, () => { /* non-fatal — reconcile-counters is the backstop */ }));
     }
 
     // A bounce leaves the SENT tile and joins the BOUNCED one — the tiles are
     // mutually exclusive outcomes of the same delivered mail, so sent_count is
     // NOT decremented here; the display subtracts bounced_count off it.
     if (p.event_type === "email_bounced" && masterId && isFirstDelivery && beforeState?.crm_status !== "failed") {
-      try {
-        await cdb.rpc("increment_campaign_counter", {
-          p_campaign_id: masterId,
-          p_column: "bounced_count",
-        });
-      } catch { /* non-fatal — reconcile-counters is the backstop */ }
+      sideEffects.push(cdb.rpc("increment_campaign_counter", {
+        p_campaign_id: masterId,
+        p_column: "bounced_count",
+      }).then(undefined, () => { /* non-fatal — reconcile-counters is the backstop */ }));
     }
 
     // Increment campaign-level replied_count ONLY the first time this lead replies.
     // Without this guard, a lead who replies twice inflates replied_count past sent_count,
     // producing reply rates above 100% — confirmed bug in test campaigns.
     if (p.event_type === "reply_received" && masterId && !wasAlreadyReplied) {
-      try {
-        await cdb.rpc("increment_campaign_counter", {
-          p_campaign_id: masterId,
-          p_column: "replied_count",
-        });
-      } catch { /* non-fatal — stat is cosmetic */ }
+      sideEffects.push(cdb.rpc("increment_campaign_counter", {
+        p_campaign_id: masterId,
+        p_column: "replied_count",
+      }).then(undefined, () => { /* non-fatal — stat is cosmetic */ }));
     }
 
     // hot_count / cold_count are recounted, not incremented. Only this path used
@@ -304,7 +318,7 @@ export async function POST(req: NextRequest) {
     // A recount is right whichever path sets the temperature first, and on any
     // number of duplicate deliveries.
     if (masterId && patch.lead_temperature !== undefined) {
-      await recountCampaignTemperature(cdb, masterId);
+      sideEffects.push(recountCampaignTemperature(cdb, masterId));
     }
   }
 
@@ -314,52 +328,66 @@ export async function POST(req: NextRequest) {
   // send call, because this is the point at which the outcome is actually known.
   if (leadId && isFirstDelivery) {
     const mapped = LEAD_EVENT_BY_INSTANTLY_EVENT[p.event_type];
-    if (mapped) {
-      await logLeadEvent(cdb, leadId, mapped.event, mapped.detail(p.step ?? null), {
-        metadata: { campaign_id: masterId, step: p.step ?? null, variant: p.variant ?? null },
-      });
-    }
     // Suppressed cross-campaign echoes (see the isFreshestThread check above)
     // don't get a timeline entry for THIS campaign either — logging "Marked not
     // interested" here when it never actually applied would just reproduce the
     // exact confusion this guard exists to prevent.
     const interestDetail = interestApplied ? INTEREST_DETAIL_BY_EVENT[p.event_type] : undefined;
-    if (interestDetail) {
-      await logLeadEvent(cdb, leadId, "interest_changed", interestDetail, {
-        metadata: { campaign_id: masterId, interest_status: INTEREST_BY_EVENT[p.event_type] ?? null },
-      });
-    }
+    // One after the other, so the two timeline lines keep their order.
+    sideEffects.push((async () => {
+      if (mapped) {
+        await logLeadEvent(cdb, leadId, mapped.event, mapped.detail(p.step ?? null), {
+          metadata: { campaign_id: masterId, step: p.step ?? null, variant: p.variant ?? null },
+        });
+      }
+      if (interestDetail) {
+        await logLeadEvent(cdb, leadId, "interest_changed", interestDetail, {
+          metadata: { campaign_id: masterId, interest_status: interest ?? null },
+        });
+      }
+    })());
   }
 
   // 7) Org-level hard opt-out: unsubscribe blocks the whole org
   if (p.event_type === "lead_unsubscribed" && leadId) {
-    const { data: lead } = await cdb
-      .from("leads")
-      .select("organization_id")
-      .eq("id", leadId)
-      .maybeSingle();
-    if (lead?.organization_id) {
-      await cdb
-        .from("organizations")
-        .update({ unsubscribed: true })
-        .eq("id", lead.organization_id);
-    }
+    sideEffects.push((async () => {
+      const { data: lead } = await cdb
+        .from("leads")
+        .select("organization_id")
+        .eq("id", leadId)
+        .maybeSingle();
+      if (lead?.organization_id) {
+        await cdb
+          .from("organizations")
+          .update({ unsubscribed: true })
+          .eq("id", lead.organization_id);
+      }
+    })());
   }
 
   // Unibox mirror ingest (non-fatal)
-  if ((p.event_type === "reply_received" || p.event_type === "email_sent") && p.email_id) {
-    try {
-      const email = await getInstantlyEmail(p.email_id);
-      const { data: ev } = await cdb.from("reply_events").select("id").eq("event_uid", eventUid).maybeSingle();
-      await ingestInstantlyEmail(cdb, email, {
-        replyEventId: ev?.id,
-        masterCampaignId: masterId,
-        campaignLeadId: campaignLeadId ?? undefined,
-      });
-    } catch (e) {
-      console.error("Unibox ingest failed:", (e as Error).message);
-    }
+  if (mirrorEmail) {
+    sideEffects.push((async () => {
+      try {
+        const got = await mirrorEmail;
+        if ("error" in got) throw got.error;
+        // The upsert above returned the event's id on first delivery; only a
+        // re-delivery (nothing returned) still has to look it up.
+        const evId = (insertedEvents?.[0]?.id as string | undefined)
+          ?? (await cdb.from("reply_events").select("id").eq("event_uid", eventUid).maybeSingle()).data?.id;
+        await ingestInstantlyEmail(cdb, got.email, {
+          replyEventId: evId,
+          masterCampaignId: masterId,
+          campaignLeadId: campaignLeadId ?? undefined,
+          firstSentKnown: !!campaignLeadId && firstSentKnown,
+        });
+      } catch (e) {
+        console.error("Unibox ingest failed:", (e as Error).message);
+      }
+    })());
   }
+
+  await Promise.all(sideEffects);
 
   // NOTE: an inbound reply deliberately does NOT start an AI draft any more.
   // Drafting is human-triggered only, via the "AI draft" button in Unibox /
