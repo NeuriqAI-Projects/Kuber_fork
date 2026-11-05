@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { logLeadEvent, logLeadEvents } from "@/lib/services/lead-events";
+import { logLeadEvents } from "@/lib/services/lead-events";
 import { canonicalCountryList } from "@/lib/territory";
 import { allocateByTerritory, type Coverage } from "@/lib/services/territory-allocator";
 
@@ -126,6 +126,9 @@ export async function pickRoundRobin(db: Db, lane: Lane, candidateIds: string[],
   return (data as string[] | null) ?? [];
 }
 
+/** Ids per PostgREST .in() filter: ~400+ uuids make the URL too long for the gateway. */
+const ID_CHUNK = 200;
+
 /** Rich result summary for a bulk assignment (spec §3/§4). */
 export type AssignmentSummary = {
   total: number;                    // leads processed
@@ -179,8 +182,15 @@ export async function bulkAssignByStrategy(
 ): Promise<AssignmentSummary> {
   const now = new Date().toISOString();
 
-  const { data: leads } = await db.from("leads").select("id, country, assigned_to, email, status").in("id", leadIds);
-  const rows = leads ?? [];
+  // Read in chunks: one .in() of ~400+ uuids is rejected by the gateway (the
+  // URL gets too long), which used to make a big selection silently assign
+  // nothing. The route caps the request at 1,000 ids.
+  const rows: Array<{ id: string; country: string | null; assigned_to: string | null; email: string | null; status: string | null }> = [];
+  for (let i = 0; i < leadIds.length; i += ID_CHUNK) {
+    const { data: leads, error } = await db.from("leads").select("id, country, assigned_to, email, status").in("id", leadIds.slice(i, i + ID_CHUNK));
+    if (error) throw new Error(error.message);
+    rows.push(...((leads ?? []) as typeof rows));
+  }
   const exclusions = await getExclusionCounts(db);
 
   const summary: AssignmentSummary = {
@@ -205,18 +215,31 @@ export async function bulkAssignByStrategy(
     return true;
   }
 
-  // Records one lead move and updates the summary tallies.
-  async function applyAssignment(leadId: string, prior: string | null, next: string | null) {
-    await db.from("leads").update({ assigned_to: next, assigned_at: next ? now : null }).eq("id", leadId);
+  // Records one lead move and updates the summary tallies. Nothing is written
+  // here: moves are grouped by new owner and written by flush() — one UPDATE
+  // per owner (chunked) and one lead_events insert — instead of 2 trips per lead.
+  const moves = new Map<string | null, string[]>();
+  const events: Parameters<typeof logLeadEvents>[1] = [];
+  function applyAssignment(leadId: string, prior: string | null, next: string | null) {
+    const ids = moves.get(next);
+    if (ids) ids.push(leadId); else moves.set(next, [leadId]);
     if (next && !prior) {
       summary.newly_assigned++;
-      await logLeadEvent(db, leadId, "assigned", "Assigned to an employee", { metadata: { assignee_id: next } });
+      events.push({ leadId, event: "assigned", detail: "Assigned to an employee", metadata: { assignee_id: next } });
     } else if (next && prior && prior !== next) {
       summary.reassigned++;
-      await logLeadEvent(db, leadId, "reassigned", "Reassigned to a different employee", { metadata: { from: prior, to: next } });
+      events.push({ leadId, event: "reassigned", detail: "Reassigned to a different employee", metadata: { from: prior, to: next } });
     } else if (!next && prior) {
-      await logLeadEvent(db, leadId, "unassigned", "Returned to the pool", { metadata: { from: prior } });
+      events.push({ leadId, event: "unassigned", detail: "Returned to the pool", metadata: { from: prior } });
     }
+  }
+  async function flush() {
+    for (const [next, ids] of moves) {
+      for (let i = 0; i < ids.length; i += ID_CHUNK) {
+        await db.from("leads").update({ assigned_to: next, assigned_at: next ? now : null }).in("id", ids.slice(i, i + ID_CHUNK));
+      }
+    }
+    await logLeadEvents(db, events);
   }
 
   if (strategy === "manual") {
@@ -235,8 +258,9 @@ export async function bulkAssignByStrategy(
       if (skipAlreadyAssigned && prior) { summary.skipped_already_assigned++; continue; }
       if (prior === assignedTo) { summary.skipped_already_assigned++; continue; } // already theirs
       if (blockedNotReady(lead, assignedTo)) continue;
-      await applyAssignment(lead.id, prior, assignedTo);
+      applyAssignment(lead.id, prior, assignedTo);
     }
+    await flush();
     return summary;
   }
 
@@ -273,8 +297,9 @@ export async function bulkAssignByStrategy(
     for (const target of eligibleForRotation) {
       const assigneeId = assignments.get(target.id);
       if (!assigneeId) continue; // already tallied in unmatched
-      await applyAssignment(target.id, target.prior, assigneeId);
+      applyAssignment(target.id, target.prior, assigneeId);
     }
+    await flush();
     return summary;
   }
 
@@ -286,8 +311,9 @@ export async function bulkAssignByStrategy(
   for (const [i, target] of eligibleForRotation.entries()) {
     const assigneeId = picks[i];
     if (!assigneeId) { summary.unmatched++; continue; }
-    await applyAssignment(target.id, target.prior, assigneeId);
+    applyAssignment(target.id, target.prior, assigneeId);
   }
+  await flush();
   return summary;
 }
 

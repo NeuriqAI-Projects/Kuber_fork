@@ -8,12 +8,13 @@ import { dbForUser } from "@/lib/supabase/scoped";
 
 export const maxDuration = 60;
 
+// At most 1,000 ids per request (the Leads page selection; the assistant sends ≤ 500).
 // skip_already_assigned (spec §4): when true, leads that already have an owner
 // are left untouched — only pool/unassigned leads are processed.
 const BulkAssignSchema = z.discriminatedUnion("strategy", [
-  z.object({ strategy: z.literal("manual"), ids: z.array(dbId).min(1), assigned_to: dbId.nullable(), skip_already_assigned: z.boolean().optional() }),
-  z.object({ strategy: z.literal("round_robin"), ids: z.array(dbId).min(1), skip_already_assigned: z.boolean().optional() }),
-  z.object({ strategy: z.literal("territory"), ids: z.array(dbId).min(1), skip_already_assigned: z.boolean().optional() }),
+  z.object({ strategy: z.literal("manual"), ids: z.array(dbId).min(1).max(1000), assigned_to: dbId.nullable(), skip_already_assigned: z.boolean().optional() }),
+  z.object({ strategy: z.literal("round_robin"), ids: z.array(dbId).min(1).max(1000), skip_already_assigned: z.boolean().optional() }),
+  z.object({ strategy: z.literal("territory"), ids: z.array(dbId).min(1).max(1000), skip_already_assigned: z.boolean().optional() }),
 ]);
 
 export async function POST(req: NextRequest) {
