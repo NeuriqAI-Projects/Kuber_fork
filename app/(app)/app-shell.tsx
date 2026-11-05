@@ -263,8 +263,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
         .catch(() => setApolloCredits(null));
     };
     load();
-    // Cached server-side for 5 minutes — refresh a bit more often than that.
-    return everyWhileVisible(load, 3 * 60_000);
+    // The route only reads the saved balance (our DB, never Apollo), refreshed
+    // whenever the app spends Apollo credits.
+    return everyWhileVisible(load, 10 * 60_000);
   }, [session]);
 
   if (loadingSession) {

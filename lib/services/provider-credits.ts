@@ -41,11 +41,11 @@ function cacheKeyFor(settingsKey: string, scope: KeyScope): string {
   return scope === "any" ? settingsKey : `${settingsKey}:${scope}`;
 }
 
-async function getCached(db: Db, key: string): Promise<CreditCheck | null> {
+async function getCached(db: Db, key: string, maxAgeMs = CACHE_TTL_MS): Promise<CreditCheck | null> {
   const { data } = await db.from("system_state").select("value, updated_at").eq("key", key).maybeSingle();
   if (!data) return null;
   const age = Date.now() - new Date(data.updated_at).getTime();
-  if (age > CACHE_TTL_MS) return null;
+  if (age > maxAgeMs) return null;
   try { return JSON.parse(data.value) as CreditCheck; } catch { return null; }
 }
 
@@ -346,7 +346,13 @@ const FETCHERS: Record<ProviderId, (secret: string) => Promise<CreditCheck>> = {
  *  admin sees a live balance rather than a stale pre-flight snapshot.
  *  Automated callers (watchdogs, self-chains) should leave it off; they
  *  retry anyway. */
-export interface CreditCheckOptions { fresh?: boolean }
+export interface CreditCheckOptions {
+  fresh?: boolean;
+  /** Return the last saved balance whatever its age; only a missing row reads
+   *  the provider. For display-only polls (the sidebar Apollo readout), so a
+   *  timer never calls the provider; real spends keep it fresh. */
+  savedOnly?: boolean;
+}
 
 async function checkCredits(
   db: Db,
@@ -356,7 +362,7 @@ async function checkCredits(
   opts?: CreditCheckOptions,
 ): Promise<CreditCheck> {
   const cacheKey = cacheKeyFor(settingsKey, scope);
-  const cached = opts?.fresh ? null : await getCached(db, cacheKey);
+  const cached = opts?.fresh ? null : await getCached(db, cacheKey, opts?.savedOnly ? Infinity : CACHE_TTL_MS);
   if (cached) return cached;
 
   // "any": this reports a balance for the service-health banner and caches
@@ -371,7 +377,7 @@ async function checkCredits(
   }
 
   const fresh = await FETCHERS[provider](resolved.secret);
-  await setCached(db, settingsKey, fresh);
+  await setCached(db, cacheKey, fresh);
   return fresh;
 }
 

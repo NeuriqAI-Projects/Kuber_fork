@@ -447,15 +447,16 @@ export async function triggerScrapeRecoveryWatchdog(baseUrl: string, db: Db) {
  * outage would therefore never raise the service-health banner; the first sign
  * would be mail quietly not arriving.
  *
- * The balance is read once an hour (the pass that lands in the first 10 minutes
- * of the hour): a credit warning can wait that long, and every pass used to miss
+ * The balance is read once every 3 hours (the pass in the first 10 minutes of
+ * 00:00, 03:00, ... UTC): a credit warning can wait that long, and every pass used to miss
  * the 5-minute cache anyway. The webhook check stays on every pass, because
  * events Instantly drops while it is disabled are never sent again.
  *
  * Scoped "any": Instantly is one workspace shared by every company.
  */
 async function refreshInstantlyHealth(db: Db) {
-  if (new Date().getUTCMinutes() < 10) {
+  const now = new Date();
+  if (now.getUTCHours() % 3 === 0 && now.getUTCMinutes() < 10) {
     try {
       await checkInstantlyCredits(db, "any");
     } catch { /* a health probe must never break the watchdog */ }

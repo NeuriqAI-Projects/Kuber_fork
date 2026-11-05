@@ -223,6 +223,9 @@ export async function POST(req: NextRequest) {
   // run (the common case) left no trace of what it cost, which is exactly the
   // number Settings > Keys > Usage > Apollo needs to show "credits used, when."
   if (stats.credits_consumed > 0) {
+    // Save the balance after the spend: the sidebar readout only shows the
+    // saved number and never calls Apollo itself. One cheap GET per batch.
+    after(() => checkApolloCredits(db, "any" /* one shared Apollo account */, { fresh: true }).then(() => {}, () => {}));
     await db.from("enrichment_logs").insert({
       source: "apollo",
       event: "CREDITS_CONSUMED",

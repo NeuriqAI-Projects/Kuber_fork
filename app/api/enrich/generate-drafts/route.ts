@@ -49,6 +49,34 @@ export async function POST(req: NextRequest) {
   // drafts is left alone (isDraftGenerationStalled).
   if (!campaignId) return pumpStalledCampaigns(req, db);
 
+  // REPLY NOW, WORK AFTER (as regenerate-drafts does). The batch used to run
+  // inside the request, and the previous batch kicked it with an awaited fetch
+  // in after() — so every hop stayed alive until the NEXT batch finished and was
+  // cut at maxDuration (~100 draft-hop timeouts a month, Nov 2026 cost review
+  // cron-watchdogs-06). Now the kick returns in well under a second. No caller
+  // reads the batch result; it goes to the log instead. The budget starts here,
+  // at request start: after() work counts toward the same maxDuration.
+  const budget = new BatchBudget();
+  const baseUrl = internalAppBaseUrl(req);
+  after(async () => {
+    try {
+      const res = await runDraftBatch(db, campaignId, stepNumber, baseUrl, budget);
+      console.log("generate-drafts batch", campaignId, JSON.stringify(await res.json()), budget.stats());
+    } catch (e) {
+      console.error("generate-drafts batch failed", campaignId, e);
+    }
+  });
+  return Response.json({ accepted: true, campaign_id: campaignId }, { status: 202 });
+}
+
+/** One batch of one campaign, then the kick for the next. Runs after the response. */
+async function runDraftBatch(
+  db: ReturnType<typeof createAdminClient>,
+  campaignId: string,
+  stepNumber: number,
+  baseUrl: string,
+  budget: BatchBudget,
+) {
   // Self-heal: reset any stuck drafts/campaigns before proceeding
   try { await db.rpc("reset_stuck_draft_generation", { stale_minutes: 5 }); } catch { /* non-fatal */ }
 
@@ -132,11 +160,9 @@ export async function POST(req: NextRequest) {
   let succeeded = 0;
   let skipped = 0;
   let failed = 0;
-  const startedAt = Date.now();
   let ranOutOfTime = false;
   let llmOutage = false;
 
-  const budget = new BatchBudget();
   for (let i = 0; i < targets.length && !llmOutage; i += DRAFT_CONCURRENCY) {
     // Measured, not assumed: stop when there is no room for another call as
     // slow as the slowest one this invocation has already seen. A flat 40s
@@ -199,20 +225,17 @@ export async function POST(req: NextRequest) {
   if (succeeded > 0) await logLlmRecovered(cdb, campaign.company_id as string);
 
   if (remaining > 0 || ranOutOfTime) {
-    const baseUrl = internalAppBaseUrl(req);
     const secret = process.env.INTERNAL_SECRET!;
-    // after() keeps the lambda alive until the next batch kickoff actually leaves
-    // the machine, so generation doesn't silently stop mid-campaign. (§1.2)
-    after(async () => {
-      await fetch(`${baseUrl}/api/enrich/generate-drafts`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-internal-secret": secret,
-        },
-        body: JSON.stringify({ campaign_id: campaignId, step_number: stepNumber }),
-      }).catch(() => {});
-    });
+    // Already inside after(), so awaiting is what keeps the lambda alive until
+    // the kick leaves; the next batch answers 202 at once, so this is quick.
+    await fetch(`${baseUrl}/api/enrich/generate-drafts`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-internal-secret": secret,
+      },
+      body: JSON.stringify({ campaign_id: campaignId, step_number: stepNumber }),
+    }).catch(() => {});
   } else if (drivesStatus && ["draft", "processing"].includes(campaign.status)) {
     // Only a campaign that was still pre-send drops back to 'draft' when the
     // queue empties. A LIVE campaign must not: drafting one late-added lead
