@@ -35,6 +35,7 @@ import { LEAD_TEMPLATE_VARS } from "@/components/ui/template-var-textarea";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import {
   fetchCampaignLeads,
+  fetchCampaignLeadDetail,
   fetchDraftProgress,
   approveDraft,
   bulkApproveDrafts,
@@ -254,7 +255,12 @@ type CampaignLead = {
     replaces_lead_id?: string | null;
   } | null;
   email_drafts: {
-    id: string; subject: string | null; body: string | null; status: string;
+    id: string; subject: string | null;
+    /** Absent in the list until this lead is opened (see `detail`). */
+    body?: string | null;
+    /** Written or not — sent with the list in place of the body (follow-ups). */
+    has_body?: boolean;
+    status: string;
     step_number?: number | null; created_at?: string;
     /** 'ai' = the model wrote it. 'template' = the safety net went in because
      *  generation failed; fallback_reason says why, in the client's words. */
@@ -327,6 +333,9 @@ type CampaignLead = {
    *  opening email — campaign_leads.draft_id is a one-to-one key. */
   followup_drafts?: EmailDraftRow[];
   attachment?: AttachmentInfo;
+  /** True once this row came from the one-lead call, so the bodies and the
+   *  sent thread are here. The list call leaves them out. */
+  detail?: boolean;
 };
 
 /** One entry in a draft's version history. Shared by the opening email's panel
@@ -418,6 +427,11 @@ function getLeadDrafts(cl: CampaignLead): EmailDraftRow[] {
 
 function getLeadDraftForStep(cl: CampaignLead, stepNumber: number): EmailDraftRow | null {
   return getLeadDrafts(cl).find((d) => (d.step_number ?? 1) === stepNumber) ?? null;
+}
+
+/** Is this draft written? The list sends `has_body` instead of the text. */
+function hasBody(d: EmailDraftRow | null | undefined): d is EmailDraftRow {
+  return !!(d?.body || d?.has_body);
 }
 
 
@@ -883,6 +897,27 @@ function mapCampaignLeadRows(leadsRes: CampaignLeadsResponse): CampaignLead[] {
   });
 }
 
+/** Full rows (bodies + sent thread) for the given campaign leads, one call each. */
+async function fetchLeadDetails(token: string, campaignId: string, ids: string[]): Promise<CampaignLead[]> {
+  const res = await Promise.all(
+    ids.map((id) => fetchCampaignLeadDetail(token, campaignId, id).catch(() => null)),
+  );
+  return res.flatMap((r) =>
+    r ? mapCampaignLeadRows(r as CampaignLeadsResponse).map((cl) => ({ ...cl, detail: true })) : [],
+  );
+}
+
+/** Lay full rows over the light list. An open row missing from `fresh` (it
+ *  was opened while the refresh ran) keeps the full row it already had,
+ *  rather than dropping back to no body under the reader. */
+function withDetails(
+  list: CampaignLead[], fresh: CampaignLead[], prev: CampaignLead[], openIds: string[],
+): CampaignLead[] {
+  const byId = new Map(fresh.map((cl) => [cl.id, cl]));
+  for (const p of prev) if (p.detail && openIds.includes(p.id) && !byId.has(p.id)) byId.set(p.id, p);
+  return byId.size ? list.map((cl) => byId.get(cl.id) ?? cl) : list;
+}
+
 export function CampaignDetail({
   campaign,
   onBack,
@@ -1086,6 +1121,14 @@ export function CampaignDetail({
     () => queryCache.getData<CampaignComment[]>(drawerKeys.comments(campaign.id)) ?? [],
   );
   const [commentBody, setCommentBody] = useState("");
+  /** Tab badges from the leads list, used until the Discussion / Outbox tab
+   *  itself is opened and loads the real thing. */
+  const [listCounts, setListCounts] = useState<{ comments: number | null; pendingReplies: number | null }>(() => ({
+    comments: cachedLeadsRes?.comment_count ?? null,
+    pendingReplies: cachedLeadsRes?.pending_reply_count ?? null,
+  }));
+  const [commentsFetched, setCommentsFetched] = useState(false);
+  const [repliesFetched, setRepliesFetched] = useState(false);
   const [loadingComments, setLoadingComments] = useState(false);
   const [sendingComment, setSendingComment] = useState(false);
   const commentsEndRef = useRef<HTMLDivElement | null>(null);
@@ -1123,6 +1166,7 @@ export function CampaignDetail({
       const token = appSession.access_token;
       const next = await queryCache.fetch(drawerKeys.comments(campaignId), () => fetchCampaignComments(token, campaignId));
       if (activeCampaignIdRef.current !== campaignId) return;
+      setCommentsFetched(true);
       setComments((current) => {
         if (!quiet) return next;
         const byId = new Map(current.map((comment) => [comment.id, comment]));
@@ -1177,8 +1221,10 @@ export function CampaignDetail({
     activeCampaignIdRef.current = campaign.id;
     setComments(queryCache.getData<CampaignComment[]>(drawerKeys.comments(campaign.id)) ?? []);
     setCommentBody("");
-    void loadComments(campaign.id, true);
-  }, [campaign.id, loadComments]);
+    setCommentsFetched(false);
+    // Loaded when the Discussion tab opens (below), not on every drawer open;
+    // the tab badge reads the count the leads list carries until then.
+  }, [campaign.id]);
 
   useEffect(() => {
     if (viewTab !== "discussion") return;
@@ -1267,18 +1313,26 @@ export function CampaignDetail({
     }
   }
 
+  /** The rows whose emails are on screen (open Outbox lead, open Sequences
+   *  lead). A ref, so the pollers' loadData always reads the current ones. */
+  const openLeadIdsRef = useRef<string[]>([]);
+
   const loadData = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     const token = session.access_token;
+    const openIds = openLeadIdsRef.current;
     // Through the cache: joins a hover prefetch already in flight and leaves
-    // the result for the next visit.
-    const [leadsRes, prog] = await Promise.all([
+    // the result for the next visit. The list has no email bodies; the open
+    // lead's come in alongside, so a refresh never blanks the open email.
+    const [leadsRes, prog, details] = await Promise.all([
       queryCache.fetch(drawerKeys.leads(campaign.id), () => fetchCampaignLeads(token, campaign.id)),
       queryCache.fetch(drawerKeys.progress(campaign.id), () => fetchDraftProgress(token, campaign.id)),
+      fetchLeadDetails(token, campaign.id, openIds),
     ]);
     const leads = mapCampaignLeadRows(leadsRes);
-    setCampaignLeads(leads);
+    setCampaignLeads((prev) => withDetails(leads, details, prev, openLeadIdsRef.current));
+    setListCounts({ comments: leadsRes.comment_count ?? null, pendingReplies: leadsRes.pending_reply_count ?? null });
     setProgress(prog);
     return leads;
   }, [campaign.id]);
@@ -1302,6 +1356,7 @@ export function CampaignDetail({
     const token = session.access_token;
     const { threads: t } = await queryCache.fetch(drawerKeys.replies(campaign.id), () => fetchCampaignReplies(token, campaign.id));
     setThreads(t);
+    setRepliesFetched(true);
   }, [campaign.id]);
 
   const runSyncReplies = useCallback(async (opts?: { silent?: boolean }) => {
@@ -1334,14 +1389,6 @@ export function CampaignDetail({
       setSyncingReplies(false);
     }
   }, [campaign.id, loadData, loadReplies]);
-
-  // Pull missed Instantly replies when opening Outbox — webhooks often miss in local/ngrok.
-  useEffect(() => {
-    if (viewTab !== "outbox") return;
-    void runSyncReplies({ silent: true });
-    // intentionally only when switching into Outbox
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewTab, campaign.id]);
 
   useEffect(() => {
     setOutboxReplyOpen(false);
@@ -1392,7 +1439,7 @@ export function CampaignDetail({
     // Skeleton only when nothing is cached for this campaign yet; otherwise the
     // cached rows stay up while this refreshes them.
     setLoading(queryCache.getData(drawerKeys.leads(campaign.id)) === undefined);
-    void loadReplies();
+    // Replies (the heavy Outbox call) load when the Outbox tab opens, below.
     void loadRegenJob();
     loadData()
       .then((leads) => {
@@ -1405,8 +1452,11 @@ export function CampaignDetail({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- campaign.id is inside loadData
   }, [loadData, loadRegenJob]);
 
-  // Refresh reply threads when opening Outbox so Unibox Generate/Save shows up
-  // without remounting the campaign drawer.
+  // Reply threads load when the Outbox opens (and refresh on each visit, so
+  // Unibox Generate/Save shows up without remounting the drawer). Pulling
+  // missed replies from Instantly is the Sync button's job: the webhook and
+  // the unibox sync already cover it, and running it on every visit cost
+  // 20-80 s of Instantly calls nobody asked for.
   useEffect(() => {
     if (viewTab !== "outbox") return;
     void loadReplies();
@@ -1601,23 +1651,6 @@ export function CampaignDetail({
     versions.length > 0 &&
     new Set(versions.map((v) => new Date(v.created_at).toDateString())).size === 1;
 
-  useEffect(() => {
-    async function loadCampaignSteps() {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
-        const { steps } = await fetchCampaignSteps(session.access_token, campaign.id);
-        // Same as the loader above: keep the per-step instruction and default text.
-        setCampaignSteps(steps.map((s) => ({
-          step_order: s.step_order, subject: s.subject, body: s.body,
-          delay: s.delay, delay_unit: s.delay_unit,
-          ai_instruction: s.ai_instruction ?? null, fallback_body: s.fallback_body ?? null,
-        })));
-      } catch { setCampaignSteps([]); }
-    }
-    void loadCampaignSteps();
-  }, [campaign.id]);
-
   // Sort days in calendar order (Mon–Sun) before display.
   // Object.entries() returns JSON key insertion order which is arbitrary.
   const DAY_ORDER = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
@@ -1709,7 +1742,7 @@ export function CampaignDetail({
   }
 
   async function handleSaveEdit() {
-    if (!selected?.email_drafts?.id) return;
+    if (!selected?.email_drafts?.id || selectedBodyPending) return;
     setSaving(true);
     setError("");
     try {
@@ -1775,6 +1808,10 @@ export function CampaignDetail({
     !!systemPromptUpdatedAt &&
     !!selected.email_drafts.created_at &&
     new Date(systemPromptUpdatedAt).getTime() > new Date(selected.email_drafts.created_at).getTime();
+
+  /** The open lead's row is still the list's (no body yet). The editor waits
+   *  for the body, so nothing can save an empty one over the real text. */
+  const selectedBodyPending = !!selected?.email_drafts && selected.email_drafts.body === undefined;
 
   /** The open draft has edits in the editor that "Save edits" has not stored. */
   const hasUnsavedEdits = !!selected?.email_drafts
@@ -2829,10 +2866,16 @@ export function CampaignDetail({
     0
   );
 
-  const outboxActionableCount = draftReadyLeads.length + threads.filter((t) => {
-    const latestMsg = t.messages[t.messages.length - 1];
-    return latestMsg?.reply_drafts[latestMsg.reply_drafts.length - 1]?.status === "draft";
-  }).length;
+  // Until the Outbox has loaded its threads, the list's count of threads with
+  // a reply draft waiting stands in for them.
+  const outboxActionableCount = draftReadyLeads.length + (
+    !repliesFetched && listCounts.pendingReplies !== null
+      ? listCounts.pendingReplies
+      : threads.filter((t) => {
+          const latestMsg = t.messages[t.messages.length - 1];
+          return latestMsg?.reply_drafts[latestMsg.reply_drafts.length - 1]?.status === "draft";
+        }).length
+  );
 
   const outboxThreadByLeadId = new Map(threads.filter((t) => t.campaign_lead_id).map((t) => [t.campaign_lead_id as string, t]));
 
@@ -3042,7 +3085,7 @@ export function CampaignDetail({
     { value: "sequences" as const, label: "Sequences", icon: Layers },
     ...(role === "manager" ? [{ value: "credits" as const, label: "Credits", icon: Coins }] : []),
     { value: "options" as const,   label: "Options",   icon: Gauge },
-    { value: "discussion" as const, label: "Discussion", icon: MessageSquare, count: comments.length },
+    { value: "discussion" as const, label: "Discussion", icon: MessageSquare, count: commentsFetched ? comments.length : (listCounts.comments ?? comments.length) },
   ];
 
   // Computed for sequences tab (follow-up steps only)
@@ -3093,7 +3136,7 @@ export function CampaignDetail({
         cl, draft, finished,
         // Nothing is due or outstanding for a lead whose sequence has ended.
         sent, due: due && !finished,
-        written: !!draft?.body,
+        written: hasBody(draft),
         isTemplate: draft?.source === "template",
         sentCount, totalSteps: followupSteps.length, anyTemplateSent,
       };
@@ -3177,7 +3220,7 @@ export function CampaignDetail({
     const reasons = new Map<string, number>();
     for (const cl of seqLive) {
       const d = (cl.all_drafts ?? []).find((x) => x.step_number === seqStepOrder);
-      if (!d?.body) continue;
+      if (!hasBody(d)) continue;
       if (d.source === "manual") {
         // Edited by hand for this one lead — no longer following the
         // campaign default, so it belongs in its own bucket rather than
@@ -3194,6 +3237,32 @@ export function CampaignDetail({
 
   const seqActiveLeadRow =
     seqLeadRows.find((r) => r.cl.id === seqLeadId) ?? seqLeadRows[0] ?? null;
+
+  // The list has no email bodies. Load them for the lead that is open: the
+  // Outbox's selected lead and the Sequences tab's open lead. loadData then
+  // keeps those rows full on every refresh (openLeadIdsRef).
+  const openLeadIds = [
+    viewTab === "outbox" ? selectedId : null,
+    viewTab === "sequences" && seqPane === "lead" ? seqActiveLeadRow?.cl.id ?? null : null,
+  ].filter((x): x is string => !!x);
+  const openLeadIdsKey = openLeadIds.join(",");
+  const missingDetailKey = openLeadIds
+    .filter((cid) => campaignLeads.some((cl) => cl.id === cid && !cl.detail))
+    .join(",");
+  useEffect(() => {
+    openLeadIdsRef.current = openLeadIdsKey ? openLeadIdsKey.split(",") : [];
+  }, [openLeadIdsKey]);
+  useEffect(() => {
+    if (!missingDetailKey) return;
+    let cancelled = false;
+    void (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || cancelled) return;
+      const fresh = await fetchLeadDetails(session.access_token, campaign.id, missingDetailKey.split(","));
+      if (!cancelled && fresh.length > 0) setCampaignLeads((prev) => withDetails(prev, fresh, [], []));
+    })();
+    return () => { cancelled = true; };
+  }, [missingDetailKey, campaign.id]);
 
   /**
    * Every follow-up for the selected lead, one row per step.
@@ -3247,7 +3316,7 @@ export function CampaignDetail({
         const writesAt = dueAt ? writeByAt(dueAt) : null;
         return {
           step: st, draft, sent, dueAt, writesAt, daysFromOpening,
-          written: !!draft?.body && !isInstantlyPlaceholder(draft.body),
+          written: hasBody(draft) && !isInstantlyPlaceholder(draft?.body),
           isTemplate: draft?.source === "template",
         };
       });
@@ -4788,7 +4857,7 @@ export function CampaignDetail({
                       <Input
                         value={editSubject}
                         onChange={(e) => setEditSubject(e.target.value)}
-                        disabled={isPreviewingHistory || selected.email_drafts.status === "approved"}
+                        disabled={isPreviewingHistory || selectedBodyPending || selected.email_drafts.status === "approved"}
                         className="font-medium"
                       />
                     </div>
@@ -4797,7 +4866,7 @@ export function CampaignDetail({
                       <RichTextEditor
                         value={editBody}
                         onChange={setEditBody}
-                        disabled={isPreviewingHistory || selected.email_drafts.status === "approved"}
+                        disabled={isPreviewingHistory || selectedBodyPending || selected.email_drafts.status === "approved"}
                         templateVars={LEAD_TEMPLATE_VARS}
                         minHeight={360}
                       />
@@ -4986,6 +5055,13 @@ export function CampaignDetail({
                       </div>
                     )}
                   </div>
+                ) : !selected.detail ? (
+                  // The list carries no email bodies; this lead's thread is on its way.
+                  <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+                    <Skeleton className="h-3 w-40" />
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-3 w-3/4" />
+                  </div>
                 ) : outboxMessageItems.length > 0 ? (
                   <div className="rounded-lg border border-border bg-card overflow-hidden">
                     <AddParticipantLeadDialog
@@ -5059,7 +5135,7 @@ export function CampaignDetail({
                     lead: getCampaignReplyThreads deliberately skips those, see
                     its own comment) as long as we at least have a thread id to
                     reply into, from this lead's own sequence sends. */}
-                {(selectedThread || outboxFallbackThreadId) && (() => {
+                {selected.detail && (selectedThread || outboxFallbackThreadId) && (() => {
                   const outboxThreadId = selectedThread?.thread_key ?? outboxFallbackThreadId!;
                   // No inbound message at all (a pure cold-outreach thread) is
                   // fine — there is simply no AI reply draft to prefill, and the
@@ -5567,6 +5643,7 @@ export function CampaignDetail({
                                 type="button"
                                 size="sm"
                                 variant="outline"
+                                disabled={row.draft?.body === undefined}
                                 onClick={() => { setSeqEditingDraftId(row.draft!.id); setSeqEditBody(row.draft!.body ?? ""); }}
                                 className="h-7 gap-1.5 px-3 text-xs [&_svg]:size-3"
                               >
@@ -5837,7 +5914,7 @@ export function CampaignDetail({
                         const stepOrder = idx + 2;
                         const stillToWrite = seqLive.filter((cl) =>
                           !hasReceivedFollowupStep(cl, stepOrder)
-                          && !(cl.all_drafts ?? []).some((d) => d.step_number === stepOrder && d.body),
+                          && !(cl.all_drafts ?? []).some((d) => d.step_number === stepOrder && hasBody(d)),
                         ).length;
                         const alreadySent = campaignLeads.filter((cl) => hasReceivedFollowupStep(cl, stepOrder)).length;
 
@@ -5940,11 +6017,11 @@ export function CampaignDetail({
                         // and did another.
                         const n = seqLive.filter((cl) => {
                           const d = (cl.all_drafts ?? []).find((x) => x.step_number === st.step_order);
-                          return !!d?.body && d.source !== "manual" && !hasReceivedFollowupStep(cl, st.step_order);
+                          return hasBody(d) && d.source !== "manual" && !hasReceivedFollowupStep(cl, st.step_order);
                         }).length;
                         const customized = seqLive.filter((cl) => {
                           const d = (cl.all_drafts ?? []).find((x) => x.step_number === st.step_order);
-                          return !!d?.body && d.source === "manual" && !hasReceivedFollowupStep(cl, st.step_order);
+                          return hasBody(d) && d.source === "manual" && !hasReceivedFollowupStep(cl, st.step_order);
                         }).length;
                         if (n === 0) return null;
                         return (

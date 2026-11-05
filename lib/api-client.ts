@@ -1533,11 +1533,23 @@ export async function fetchCampaignLeads(token: string, campaignId: string): Pro
   campaign_leads: {
     id: string; lead_id: string; crm_status: string; created_at: string;
     leads: { first_name: string | null; last_name: string | null; email: string | null; title: string | null; country: string | null } | null;
-    email_drafts: { id: string; subject: string | null; body: string | null; status: string; step_number?: number | null } | null;
+    /** `body` is absent in the list (`?view=list`); fetchCampaignLeadDetail has it. */
+    email_drafts: { id: string; subject: string | null; body?: string | null; status: string; step_number?: number | null } | null;
   }[];
   total: number;
+  /** Tab badges (list view only). */
+  comment_count?: number;
+  pending_reply_count?: number;
 }> {
-  return apiFetch(`/api/v1/campaigns/${campaignId}/leads?limit=200`, {}, token);
+  return apiFetch(`/api/v1/campaigns/${campaignId}/leads?view=list`, {}, token);
+}
+
+/** One campaign lead with everything the list leaves out: the draft and
+ *  follow-up bodies and the sent thread. Fetched when that lead is opened. */
+export async function fetchCampaignLeadDetail(token: string, campaignId: string, campaignLeadId: string): Promise<{
+  campaign_leads: Awaited<ReturnType<typeof fetchCampaignLeads>>["campaign_leads"];
+}> {
+  return apiFetch(`/api/v1/campaigns/${campaignId}/leads?campaign_lead_id=${encodeURIComponent(campaignLeadId)}`, {}, token);
 }
 
 export async function addLeadsToCampaign(token: string, campaignId: string, leadIds: string[]): Promise<{
@@ -2040,7 +2052,7 @@ export const cacheKeys = {
   leadComments:       (id: string) => `/api/v1/leads/${id}/comments`,
   org:                (id: string) => `/api/v1/organizations/${id}`,
   orgLeads:           (id: string) => `/api/v1/leads?organization_id=${id}&limit=200`,
-  campaignLeads:      (id: string) => `/api/v1/campaigns/${id}/leads?limit=200`,
+  campaignLeads:      (id: string) => `/api/v1/campaigns/${id}/leads?view=list`,
   campaignComments:   (id: string) => `/api/v1/campaigns/${id}/comments`,
   campaignReport:     (id: string) => `/api/v1/campaigns/${id}/report`,
   campaignLlmCost:    (id: string) => `/api/v1/campaigns/${id}/llm-cost`,

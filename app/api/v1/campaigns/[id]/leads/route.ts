@@ -9,6 +9,33 @@ export const maxDuration = 60;
 
 const TERMINAL_STATUSES = new Set(["completed", "paused"]);
 
+type Row = Record<string, unknown>;
+type Page = PromiseLike<{ data: Row[] | null; error: { message: string } | null }>;
+
+/** Every row of a query, past PostgREST's 1,000-row cap (which cuts silently).
+ *  The query needs a stable order so the pages do not overlap. */
+async function allRows(page: (from: number, to: number) => Page): Promise<Row[]> {
+  const out: Row[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await page(from, from + 999);
+    if (error) throw new Error(error.message);
+    out.push(...(data ?? []));
+    if (!data || data.length < 1000) return out;
+  }
+}
+
+const DB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Three shapes, one route:
+ * - `?view=list` — the campaign screen's table: EVERY row, no email bodies. A
+ *   follow-up says `has_body` instead of carrying its text, and the sent-mail
+ *   thread (`sequence_messages`) is left out. This used to ship every body of
+ *   every lead (up to ~4 MB) on each open, poll tick and hover.
+ * - `?campaign_lead_id=…` — one row with everything: draft bodies, follow-up
+ *   bodies, the sent thread. Fetched when that lead is opened.
+ * - neither — the old paged full shape (`page`/`limit`), kept for scripts.
+ */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   let user: Awaited<ReturnType<typeof requireAuth>>;
   try { user = await requireAuth(req); } catch (r) { return r as Response; }
@@ -22,33 +49,136 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid query", parsed.error.flatten());
 
   const { crm_status, page, limit } = parsed.data;
+  const oneId = sp.campaign_lead_id ?? null;
+  if (oneId !== null && !DB_ID.test(oneId)) return fail(400, "VALIDATION_ERROR", "Invalid campaign_lead_id");
+  const light = sp.view === "list" && !oneId;
 
-  // Fetch campaign default attachment (once)
-  const { data: campaign } = await db
-    .from("campaigns")
-    .select("attachment_name, attachment_size, attachment_mime, attachment_url")
-    .eq("id", id).maybeSingle();
+  const mainQuery = () => {
+    let q = db
+      .from("campaign_leads")
+      .select(
+        `*,
+         replaced_by_user:profiles!replaced_by_user_id(id, full_name),
+         email_drafts(id, subject, ${light ? "" : "body, "}status, created_at, step_number, source, fallback_reason),
+         leads!lead_id!inner(first_name, last_name, email, title, country, assigned_to, organization_id, replaces_lead_id, organizations(id, name, domain, country, city, website))`,
+        light ? undefined : { count: "exact" },
+      )
+      .eq("campaign_id", id);
+    // A campaign is a container spanning multiple employees (spec §5) — an
+    // employee sees ONLY their own leads within it, never a co-worker's.
+    if (user.role === "employee") q = q.eq("leads.assigned_to", user.id);
+    if (crm_status) q = q.eq("crm_status", crm_status);
+    if (oneId) q = q.eq("id", oneId);
+    return q.order("created_at", { ascending: false }).order("id");
+  };
 
-  let q = db
-    .from("campaign_leads")
-    .select(
-      `*, attachment_path, attachment_name, attachment_mime, attachment_size, attachment_url,
-       replaced_by_user:profiles!replaced_by_user_id(id, full_name),
-       email_drafts(id, subject, body, status, created_at, step_number, source, fallback_reason),
-       leads!lead_id!inner(first_name, last_name, email, title, country, assigned_to, organization_id, replaces_lead_id, organizations(id, name, domain, country, city, website))`,
-      { count: "exact" }
-    )
-    .eq("campaign_id", id);
+  // Follow-up drafts, by (campaign, lead) — see FOLLOW-UP DRAFTS below.
+  const followupsQuery = (cols: string, leadId?: string) => {
+    let q = db
+      .from("email_drafts")
+      .select<string, Row>(cols)
+      .eq("campaign_id", id)
+      .gt("step_number", 1)
+      .in("status", ["approved", "sent", "draft"]);
+    if (leadId) q = q.eq("lead_id", leadId);
+    return q;
+  };
+  const eventsQuery = () => db
+    .from("reply_events")
+    .select("campaign_lead_id, step, event_type, received_at")
+    .eq("campaign_id", id)
+    .in("event_type", ["email_sent", "email_bounced"]);
 
-  // A campaign is a container spanning multiple employees (spec §5) — an
-  // employee sees ONLY their own leads within it, never a co-worker's.
-  if (user.role === "employee") q = q.eq("leads.assigned_to", user.id);
+  // Everything that does not depend on which rows came back runs at once. The
+  // list view reads follow-ups and webhook events campaign-wide (it has every
+  // row anyway); the other two shapes need the row ids first.
+  let data: Row[];
+  let count: number | null;
+  let campaign: Row | null;
+  let inFlight: Row[];
+  let followupDrafts: Row[];
+  let followupsWithBody: Set<string> | null = null;
+  let events: Row[];
+  let sends: Row[] = [];
+  // Tab badges, so the drawer need not load the Discussion and the Outbox
+  // replies (the heavy one) before those tabs are opened. List view only.
+  let commentCount: number | null = null;
+  let pendingReplyCount: number | null = null;
+  try {
+    const [main, campaignRes, inFlightRes, fu, fuBody, ev, comments, replyDrafts] = await Promise.all([
+      light
+        ? allRows((f, t) => mainQuery().range(f, t)).then((rows) => ({ rows, count: rows.length as number | null }))
+        : mainQuery().range((page - 1) * limit, page * limit - 1).then(({ data, error, count }) => {
+            if (error) throw new Error(error.message);
+            return { rows: (data ?? []) as Row[], count };
+          }),
+      db.from("campaigns")
+        .select("attachment_name, attachment_size, attachment_mime, attachment_url")
+        .eq("id", id).maybeSingle(),
+      db.from("email_drafts")
+        .select("lead_id, version, parent_draft_id, step_number")
+        .eq("campaign_id", id)
+        .eq("status", "generating")
+        .then(({ data }) => (data ?? []) as Row[]),
+      light
+        ? allRows((f, t) => followupsQuery("id, lead_id, subject, status, created_at, step_number, source, fallback_reason")
+            .order("created_at", { ascending: true }).order("id").range(f, t))
+        : null,
+      // The list leaves bodies out but still has to say which follow-ups are
+      // written — ids only, so no body leaves the database for this.
+      light
+        ? allRows((f, t) => followupsQuery("id").not("body", "is", null).neq("body", "").order("id").range(f, t))
+        : null,
+      light ? allRows((f, t) => eventsQuery().order("id").range(f, t)) : null,
+      light
+        ? db.from("campaign_comments").select("id", { count: "exact", head: true }).eq("campaign_id", id)
+            .then(({ count }) => count ?? 0)
+        : null,
+      // Threads with a reply draft waiting — the Outbox badge's second half.
+      // Campaign-wide, like the replies list it stands in for.
+      light
+        ? allRows((f, t) => db.from("reply_drafts").select("id, campaign_lead_id")
+            .eq("campaign_id", id).eq("status", "draft").order("id").range(f, t))
+            .then((rows) => new Set(rows.map((r) => r.campaign_lead_id ?? r.id)).size)
+        : null,
+    ]);
+    commentCount = comments;
+    pendingReplyCount = replyDrafts;
+    data = main.rows;
+    count = main.count;
+    campaign = (campaignRes.data ?? null) as Row | null;
+    inFlight = inFlightRes;
 
-  if (crm_status) q = q.eq("crm_status", crm_status);
-  q = q.order("created_at", { ascending: false }).range((page - 1) * limit, page * limit - 1);
-
-  const { data, error, count } = await q;
-  if (error) return fail(500, "INTERNAL", error.message);
+    if (light) {
+      followupDrafts = fu!;
+      followupsWithBody = new Set(fuBody!.map((d) => d.id as string));
+      events = ev!;
+    } else {
+      const rowIds = data.map((cl) => cl.id as string);
+      const oneLeadId = oneId ? (data[0]?.lead_id as string | undefined) : undefined;
+      [followupDrafts, events, sends] = rowIds.length === 0
+        ? [[], [], []]
+        : await Promise.all([
+            allRows((f, t) => followupsQuery("id, lead_id, subject, body, status, created_at, step_number, source, fallback_reason", oneLeadId)
+              .order("created_at", { ascending: true }).order("id").range(f, t)),
+            allRows((f, t) => eventsQuery().in("campaign_lead_id", rowIds).order("id").range(f, t)),
+            // Our own sequence sends, mirrored back by Instantly (see below).
+            allRows((f, t) => db
+              .from("unibox_emails")
+              .select("id, campaign_lead_id, step, subject, body_html, body_text, timestamp_email, to_emails, cc_emails, from_email, instantly_email_id, eaccount, thread_id")
+              .eq("campaign_id", id)
+              .eq("direction", "sent_campaign")
+              .in("campaign_lead_id", rowIds)
+              .order("timestamp_email", { ascending: true }).order("id").range(f, t)),
+          ]);
+    }
+  } catch (e) {
+    return fail(500, "INTERNAL", (e as Error).message);
+  }
+  // `has_body` on every follow-up, in every shape, so the client asks one thing.
+  for (const d of followupDrafts) {
+    d.has_body = followupsWithBody ? followupsWithBody.has(d.id as string) : !!d.body;
+  }
 
   // A draft that is mid-generation is invisible through the embed above.
   // campaign_leads.draft_id is only repointed once generation SUCCEEDS, so:
@@ -59,18 +189,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // Both render as "No draft" in the outbox until the LLM returns, which reads
   // as "the draft was deleted" rather than "we're working on it". Surface the
   // in-flight row separately so the UI can say Generating / Regenerating.
-  const { data: inFlight } = await db
-    .from("email_drafts")
-    .select("lead_id, version, parent_draft_id, step_number")
-    .eq("campaign_id", id)
-    .eq("status", "generating");
-
+  //
   // version > 1 / a parent row is what distinguishes "make me a new draft" from
   // "replace the one you already showed me".
   const activityByLead = new Map<string, "generating" | "regenerating">();
-  for (const d of inFlight ?? []) {
-    if ((d.step_number ?? 1) !== 1) continue;
-    const isRegen = !!d.parent_draft_id || (d.version ?? 1) > 1;
+  for (const d of inFlight) {
+    if (((d.step_number as number | null) ?? 1) !== 1) continue;
+    const isRegen = !!d.parent_draft_id || ((d.version as number | null) ?? 1) > 1;
     activityByLead.set(d.lead_id as string, isRegen ? "regenerating" : "generating");
   }
 
@@ -85,13 +210,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   //
   // Fetched by (campaign, lead) instead, which is how follow-ups are actually
   // keyed. Only steps past 1 — step 1 is what the embed already covers.
-  const { data: followupDrafts } = await db
-    .from("email_drafts")
-    .select("id, lead_id, subject, body, status, created_at, step_number, source, fallback_reason")
-    .eq("campaign_id", id)
-    .gt("step_number", 1)
-    .in("status", ["approved", "sent", "draft"])
-    .order("created_at", { ascending: true });
+  // (Read in the Promise.all above.)
 
   // One draft per (lead, step): the LIVE one. A lead accumulates rows per step —
   // superseded versions from regenerating, failed attempts — and picking
@@ -99,7 +218,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // a failed row. Rejected and failed are excluded above; the last write wins
   // among what remains, which is the newest live version.
   const followupsByLead = new Map<string, Map<number, Record<string, unknown>>>();
-  for (const d of followupDrafts ?? []) {
+  for (const d of followupDrafts) {
     const leadId = d.lead_id as string;
     if (!followupsByLead.has(leadId)) followupsByLead.set(leadId, new Map());
     followupsByLead.get(leadId)!.set(d.step_number as number, d);
@@ -151,7 +270,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // both event types together keeps this to one round-trip; the step filter
   // that used to run in SQL now runs on the rows, since it only applies to
   // email_sent.
-  const pageLeadIds = (data ?? []).map((cl) => cl.id as string);
   const stepByLead = new Map<string, number>();
   const bouncedAtByLead = new Map<string, string>();
   // Which mail the address rejected. A lead can bounce on the OPENING email (we
@@ -165,37 +283,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // the due-date estimate below needs). Real data, not a guess: the
   // email_sent webhook is Instantly confirming delivery, not us inferring it.
   const lastStepAtByLead = new Map<string, { step: number; at: string }>();
-  if (pageLeadIds.length > 0) {
-    const { data: events } = await db
-      .from("reply_events")
-      .select("campaign_lead_id, step, event_type, received_at")
-      .eq("campaign_id", id)
-      .in("event_type", ["email_sent", "email_bounced"])
-      .in("campaign_lead_id", pageLeadIds)
-      .limit(5000); // one page of leads × every step; well clear of PostgREST's default 1000
-    for (const ev of events ?? []) {
-      const clId = ev.campaign_lead_id as string | null;
-      if (!clId) continue;
-      if (ev.event_type === "email_bounced") {
-        // Earliest bounce is the one that ended this address.
-        const at = ev.received_at as string | null;
-        const seen = bouncedAtByLead.get(clId);
-        if (at && (!seen || at < seen)) {
-          bouncedAtByLead.set(clId, at);
-          const bStep = ev.step as number | null;
-          if (bStep) bouncedStepByLead.set(clId, bStep);
-        }
-        continue;
-      }
-      const step = ev.step as number | null;
+  for (const ev of events) {
+    const clId = ev.campaign_lead_id as string | null;
+    if (!clId) continue;
+    if (ev.event_type === "email_bounced") {
+      // Earliest bounce is the one that ended this address.
       const at = ev.received_at as string | null;
-      if (step && at) {
-        const current = lastStepAtByLead.get(clId);
-        if (!current || step > current.step) lastStepAtByLead.set(clId, { step, at });
+      const seen = bouncedAtByLead.get(clId);
+      if (at && (!seen || at < seen)) {
+        bouncedAtByLead.set(clId, at);
+        const bStep = ev.step as number | null;
+        if (bStep) bouncedStepByLead.set(clId, bStep);
       }
-      if (!step || step <= 1) continue; // step 1 is what first_sent_at already covers
-      if (step > (stepByLead.get(clId) ?? 0)) stepByLead.set(clId, step);
+      continue;
     }
+    const step = ev.step as number | null;
+    const at = ev.received_at as string | null;
+    if (step && at) {
+      const current = lastStepAtByLead.get(clId);
+      if (!current || step > current.step) lastStepAtByLead.set(clId, { step, at });
+    }
+    if (!step || step <= 1) continue; // step 1 is what first_sent_at already covers
+    if (step > (stepByLead.get(clId) ?? 0)) stepByLead.set(clId, step);
   }
 
   // Our own sequence sends, mirrored back by Instantly. The Outbox thread used
@@ -209,21 +318,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // who REPLIED — which is precisely the wrong set: a lead who never answered is
   // the one whose follow-ups you most need to see. One query for the page.
   const sequenceByLead = new Map<string, Array<Record<string, unknown>>>();
-  if (pageLeadIds.length > 0) {
-    const { data: sends } = await db
-      .from("unibox_emails")
-      .select("id, campaign_lead_id, step, subject, body_html, body_text, timestamp_email, to_emails, cc_emails, from_email, instantly_email_id, eaccount, thread_id")
-      .eq("campaign_id", id)
-      .eq("direction", "sent_campaign")
-      .in("campaign_lead_id", pageLeadIds)
-      .order("timestamp_email", { ascending: true })
-      .limit(5000);
-    for (const m of sends ?? []) {
-      const clId = m.campaign_lead_id as string | null;
-      if (!clId) continue;
-      if (!sequenceByLead.has(clId)) sequenceByLead.set(clId, []);
-      sequenceByLead.get(clId)!.push(m);
-    }
+  for (const m of sends) {
+    const clId = m.campaign_lead_id as string | null;
+    if (!clId) continue;
+    if (!sequenceByLead.has(clId)) sequenceByLead.set(clId, []);
+    sequenceByLead.get(clId)!.push(m);
   }
 
   // Compute resolved attachment per lead
@@ -239,7 +338,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // reply_events can lag or miss a step-1 row for older leads, but
     // first_sent_at is written unconditionally on the opening send.
     last_step_sent_at: lastStepAtByLead.get(cl.id as string)?.at ?? (cl.first_sent_at as string | null) ?? null,
-    sequence_messages: sequenceByLead.get(cl.id as string) ?? [],
+    // Not in the list view: the sent thread is read when the lead is opened.
+    sequence_messages: light ? undefined : sequenceByLead.get(cl.id as string) ?? [],
+    // Unused by the screen, and can be a whole email.
+    last_reply_body: light ? undefined : cl.last_reply_body,
     // Every follow-up this lead has, keyed by step. The Sequences tab reads
     // `source` off each one individually — a lead can have follow-up 1 written
     // by the model and follow-up 3 fall back to the template, so the badge
@@ -269,7 +371,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     },
   }));
 
-  return ok({ campaign_leads: items, total: count, page, limit });
+  return ok({
+    campaign_leads: items, total: count, page, limit,
+    ...(light ? { comment_count: commentCount, pending_reply_count: pendingReplyCount } : {}),
+  });
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
