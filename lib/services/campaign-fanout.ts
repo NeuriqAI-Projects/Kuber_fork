@@ -268,8 +268,6 @@ export async function sendCampaign(
 
   let totalSent = 0;
   const bucketErrors: string[] = [];
-  /** Sub-campaigns this send pushed into (or created) — they need activating. */
-  const touchedSubs = new Set<string>();
   const eligibleCount = cls.length;
 
   // 5) Push NEW leads (only when there are any) ───────────────────────────────
@@ -377,8 +375,6 @@ export async function sendCampaign(
           if (error) throw new Error(`instantly_campaigns insert: ${error.message}`);
           sub = created;
         }
-
-        touchedSubs.add(sub!.id);
 
         // Create the Instantly campaign if not yet created (TEST-MODE-aware schedule)
         let instId = sub!.instantly_campaign_id;
@@ -569,19 +565,18 @@ export async function sendCampaign(
     }
   }
 
-  // 6) ACTIVATE the sub-campaigns that need it (idempotent) ──────────────────
-  // THIS is what actually makes Instantly send. Every sub this send touched,
-  // plus every sub not already 'active' (stuck, failed or paused), so a re-send
-  // still activates a previously-stuck campaign. An 'active' sub nobody pushed
-  // into is already sending; activating it again was one Instantly call per
-  // country on every send. 5 at a time.
+  // 6) ACTIVATE every sub-campaign of this master (idempotent) ─────────────────
+  // THIS is what actually makes Instantly send. Runs whether or not new leads were
+  // pushed, so a previously-stuck campaign also gets activated on re-send. Every
+  // sub, even ones our DB calls 'active': Instantly can pause a sub on its own
+  // without telling us, and Send is what wakes it. 5 at a time.
   const { data: subs } = await db
     .from("instantly_campaigns")
-    .select("id,instantly_campaign_id,status")
+    .select("id,instantly_campaign_id")
     .eq("campaign_id", campaignId)
     .not("instantly_campaign_id", "is", null);
 
-  const toActivate = (subs ?? []).filter((s) => s.instantly_campaign_id && (touchedSubs.has(s.id) || s.status !== "active"));
+  const toActivate = (subs ?? []).filter((s) => s.instantly_campaign_id);
   const activationErrors = (await mapLimited(toActivate, SUB_CONCURRENCY, async (sub) => {
     try {
       await retry429(() => activateInstantlyCampaign(sub.instantly_campaign_id as string));
