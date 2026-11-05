@@ -4,9 +4,16 @@ import { ok, fail } from "@/lib/api-response";
 import { BulkApproveSchema } from "@/lib/validators/drafts";
 import { syncApprovedDraftToInstantly } from "@/lib/services/draft-sync";
 import { assertCampaignAccess } from "@/lib/auth/scope";
-import { logLeadEvent } from "@/lib/services/lead-events";
+import { logLeadEvents } from "@/lib/services/lead-events";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { getActiveJob } from "@/lib/services/regeneration-jobs";
+
+/** Ids per `.in()` (they travel in the URL). */
+function chunks(ids: string[], size = 100): string[][] {
+  const out: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size));
+  return out;
+}
 
 export async function POST(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireAuth>>;
@@ -36,28 +43,38 @@ export async function POST(req: NextRequest) {
     return running;
   }
 
-  for (const draftId of parsed.data.draft_ids) {
-    const { data: draft } = await db
-      .from("email_drafts")
-      .select("id, status, lead_id, campaign_id, step_number")
-      .eq("id", draftId)
-      .maybeSingle();
+  // Set-based (was ~7 trips per draft, one draft at a time): one read, the same
+  // per-campaign checks, then each write once for all eligible drafts.
+  const uniqueIds = [...new Set(parsed.data.draft_ids)];
+  skipped += parsed.data.draft_ids.length - uniqueIds.length; // a repeat id found its draft already approved
+  type Draft = { id: string; status: string; lead_id: string; campaign_id: string; step_number: number | null };
+  const drafts: Draft[] = [];
+  for (const ids of chunks(uniqueIds)) {
+    const { data } = await db.from("email_drafts").select("id, status, lead_id, campaign_id, step_number").in("id", ids);
+    drafts.push(...((data ?? []) as Draft[]));
+  }
+  const byId = new Map(drafts.map((d) => [d.id, d]));
 
-    if (!draft || draft.status !== "draft") {
-      skipped++;
-      continue;
+  const accessByCampaign = new Map<string, boolean>();
+  const eligible: Draft[] = [];
+  for (const draftId of uniqueIds) {
+    const draft = byId.get(draftId);
+    if (!draft || draft.status !== "draft") { skipped++; continue; }
+    if (!accessByCampaign.has(draft.campaign_id)) {
+      accessByCampaign.set(draft.campaign_id, await assertCampaignAccess(db, user, draft.campaign_id).then(() => true, () => false));
     }
-
-    try { await assertCampaignAccess(db, user, draft.campaign_id); } catch { skipped++; continue; }
-
+    if (!accessByCampaign.get(draft.campaign_id)) { skipped++; continue; }
     if (await regenerationRunning(draft.campaign_id, draft.step_number ?? 1)) { skipped++; continue; }
+    eligible.push(draft);
+  }
 
+  for (const ids of chunks(eligible.map((d) => d.id))) {
     await db.from("email_drafts").update({
       status: "approved",
       approved_at: now,
       reviewed_by: user.id,
       updated_at: now,
-    }).eq("id", draftId);
+    }).in("id", ids);
 
     // Never downgrade a lead already handed to Instantly — see the same guard in
     // drafts/[id] approve. A regeneration finishing after the send would otherwise
@@ -65,17 +82,26 @@ export async function POST(req: NextRequest) {
     await db.from("campaign_leads").update({
       crm_status: "approved",
       updated_at: now,
-    }).eq("draft_id", draftId).is("instantly_campaign_id", null);
-
-    await syncApprovedDraftToInstantly(db, draft.lead_id, draft.campaign_id);
-
-    await logLeadEvent(db, draft.lead_id, "draft_approved", "Email draft approved", {
-      actorId: user.id,
-      metadata: { campaign_id: draft.campaign_id, draft_id: draftId, bulk: true },
-    });
-
-    approved++;
+    }).in("draft_id", ids).is("instantly_campaign_id", null);
   }
+
+  // Once per lead+campaign, after every draft is approved: the sync pushes all
+  // approved steps, so this ends where the old per-draft syncs ended. It is a
+  // no-op for leads not yet in Instantly (the usual case).
+  const key = (d: { lead_id: string; campaign_id: string }) => `${d.lead_id}:${d.campaign_id}`;
+  const inInstantly = new Set<string>();
+  for (const ids of chunks([...new Set(eligible.map((d) => d.lead_id))])) {
+    const { data } = await db.from("campaign_leads").select("lead_id, campaign_id").in("lead_id", ids).not("instantly_lead_id", "is", null);
+    for (const r of data ?? []) inInstantly.add(key(r as { lead_id: string; campaign_id: string }));
+  }
+  const pairs = [...new Map(eligible.map((d) => [key(d), d])).values()].filter((d) => inInstantly.has(key(d)));
+  for (const d of pairs) await syncApprovedDraftToInstantly(db, d.lead_id, d.campaign_id);
+
+  await logLeadEvents(db, eligible.map((d) => ({
+    leadId: d.lead_id, event: "draft_approved" as const, detail: "Email draft approved", actorId: user.id,
+    metadata: { campaign_id: d.campaign_id, draft_id: d.id, bulk: true },
+  })));
+  approved = eligible.length;
 
   return ok({ approved, skipped });
 }
