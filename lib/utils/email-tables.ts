@@ -1,4 +1,4 @@
-import sanitizeHtml from "sanitize-html";
+import type SanitizeHtml from "sanitize-html";
 import { plainToHtml, convertResidualMarkdownInHtml, collapseTableWhitespace } from "@/lib/utils/email-html";
 
 /**
@@ -11,6 +11,16 @@ import { plainToHtml, convertResidualMarkdownInHtml, collapseTableWhitespace } f
  * and spliced in between — never inside a <p>, which is invalid HTML.
  */
 const TABLE_BLOCK = /<table\b[\s\S]*?<\/table>/gi;
+
+// Loaded on first use, not at import: generate-drafts.ts (and so every pump and
+// draft-progress route) imports this file, but only HTML drafts with a table need
+// sanitize-html + postcss. Sync require keeps plainToHtmlWithTables synchronous.
+let sanitizer: typeof SanitizeHtml | null = null;
+function sanitizeHtml(...args: Parameters<typeof SanitizeHtml>): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  sanitizer ??= require("sanitize-html") as typeof SanitizeHtml;
+  return sanitizer(...args);
+}
 
 function cleanTable(raw: string): string {
   const clean = sanitizeHtml(raw, {
