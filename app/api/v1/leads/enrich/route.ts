@@ -63,6 +63,9 @@ export const POST = withRouteTiming("leads/enrich", async (req, timing) => {
 
   const body = await req.json().catch(() => null);
   const parsed = EnrichSchema.safeParse(body);
+  // Set only by this route's own self-chain (next batch of the same import).
+  // Read off the raw body: EnrichSchema strips unknown keys.
+  const chained = (body as { chained?: unknown } | null)?.chained === true;
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
 
   // DB-first key resolution (Settings > Keys), matching bulkMatch()'s own path
@@ -124,7 +127,10 @@ export const POST = withRouteTiming("leads/enrich", async (req, timing) => {
   // A logged-in manager gets an uncached reading: the likeliest reason someone
   // is hitting Enrich by hand is that they just topped up, and a stale
   // five-minute "out of credits" answer would look like the top-up failed.
-  const credits = await checkApolloCredits(db, "any" /* one shared Apollo account */, { fresh: user.companyId !== null });
+  // A CHAINED pass (same import, next batch) reads the saved balance instead:
+  // the previous pass saved the post-spend balance before it kicked this one
+  // (see balanceSaved below), so the cached number is already current.
+  const credits = await checkApolloCredits(db, "any" /* one shared Apollo account */, { fresh: user.companyId !== null && !chained });
   if (!credits.ok) {
     await logEnrichFailure(db, companyId, "CREDITS_EXHAUSTED", credits.message, {
       warning: credits.message,
@@ -165,12 +171,17 @@ export const POST = withRouteTiming("leads/enrich", async (req, timing) => {
   // leads and both pay Apollo to look up the same people. FOR UPDATE SKIP
   // LOCKED (inside the RPC) means only one caller ever actually gets a given
   // lead back; the other silently gets a smaller set instead of a duplicate.
+  // Only id + enrich_attempts come back (the RPC returns whole lead rows).
+  // enrich_attempts as of the claim, under our lock, is what enrichLeads would
+  // otherwise re-read straight after — so it skips that read.
   const { data: claimed, error: claimError } = await db.rpc("claim_unenriched_leads", {
     p_ids: affordable.map((r) => r.id),
-  });
+  }).select("id, enrich_attempts");
   if (claimError) return fail(500, "INTERNAL", claimError.message);
 
-  const claimedIds = new Set((claimed as Array<{ id: string }> ?? []).map((r) => r.id));
+  const claimedRows = (claimed ?? []) as Array<{ id: string; enrich_attempts: number | null }>;
+  const claimedIds = new Set(claimedRows.map((r) => r.id));
+  const attemptsAtClaim = new Map(claimedRows.map((r) => [r.id, r.enrich_attempts ?? 0]));
   const targets: EnrichTarget[] = affordable
     .filter((t) => claimedIds.has(t.id))
     .map((t) => {
@@ -187,7 +198,7 @@ export const POST = withRouteTiming("leads/enrich", async (req, timing) => {
 
   if (targets.length === 0) return ok({ requested: 0, matched: 0, archived: 0, missing_apollo_ids: [], credits_consumed: 0, verified: 0, unverified: 0, remaining: 0 });
 
-  const stats = await enrichLeads(db, targets, 10);
+  const stats = await enrichLeads(db, targets, 10, undefined, attemptsAtClaim);
 
   const baseUrl = internalAppBaseUrl(req);
   const secret = process.env.INTERNAL_SECRET;
@@ -225,10 +236,17 @@ export const POST = withRouteTiming("leads/enrich", async (req, timing) => {
   // warning branch above, which only fires on failure. Without this a clean
   // run (the common case) left no trace of what it cost, which is exactly the
   // number Settings > Keys > Usage > Apollo needs to show "credits used, when."
+  // Save the balance after the spend: the sidebar readout only shows the
+  // saved number and never calls Apollo itself. One cheap GET per batch.
+  // Started now (not inside after()) so the self-chain below can wait for it:
+  // the next pass of this import reads this saved balance instead of asking
+  // Apollo again. true = saved (or nothing was spent, so the saved one stands).
+  const balanceSaved: Promise<boolean> = stats.credits_consumed > 0
+    ? checkApolloCredits(db, "any" /* one shared Apollo account */, { fresh: true }).then(() => true, () => false)
+    : Promise.resolve(true);
+  after(() => balanceSaved);
+
   if (stats.credits_consumed > 0) {
-    // Save the balance after the spend: the sidebar readout only shows the
-    // saved number and never calls Apollo itself. One cheap GET per batch.
-    after(() => checkApolloCredits(db, "any" /* one shared Apollo account */, { fresh: true }).then(() => {}, () => {}));
     await db.from("enrichment_logs").insert({
       source: "apollo",
       event: "CREDITS_CONSUMED",
@@ -254,14 +272,20 @@ export const POST = withRouteTiming("leads/enrich", async (req, timing) => {
   }
 
   // Trigger org scraping AFTER enrichment — domains are now populated on orgs.
-  if (stats.enriched_org_ids.length > 0 && secret && (await getServiceSecret("firecrawl", companyId ?? "any"))) {
-    after(() =>
-      fetch(`${baseUrl}/api/enrich/scrape-orgs`, {
-        method: "POST",
-        headers: { "x-internal-secret": secret },
-      }).catch(() => {})
-    );
-  }
+  // Once per import, on its LAST pass: every pass used to kick it, and each
+  // kick became its own parallel scrape chain (claim_queued_orgs skips locked
+  // rows), each ending in an extra no-work pass. A chained pass kicks even when
+  // it enriched no org itself, because earlier passes of the import did. The
+  // 10-minute enrichment watchdog also starts scrape-orgs whenever orgs are
+  // queued, so a missed kick costs minutes, never the scrape.
+  const kickScrape = async () => {
+    if (!secret || !(await getServiceSecret("firecrawl", companyId ?? "any"))) return;
+    await fetch(`${baseUrl}/api/enrich/scrape-orgs`, {
+      method: "POST",
+      headers: { "x-internal-secret": secret },
+    }).then(() => {}, () => {});
+  };
+  let selfChained = false;
 
   // This batch was capped at ENRICH_BATCH_SIZE — if the import still has more
   // unrevealed leads, self-trigger another pass. Mirrors scrape-orgs' own
@@ -280,6 +304,7 @@ export const POST = withRouteTiming("leads/enrich", async (req, timing) => {
   // every failure path, so this covers timeouts, 5xx and anything unforeseen.
   // A stopped import is resumed by the once-a-day job, which is free and slow
   // enough that a bad day shows up in the usage log before it can repeat.
+  let remaining: number | null = null;
   if ("import_id" in parsed.data && secret && !stats.warning) {
     const importId = parsed.data.import_id;
     const { count: importRemaining } = await db
@@ -287,7 +312,9 @@ export const POST = withRouteTiming("leads/enrich", async (req, timing) => {
       .eq("import_id", importId)
       .eq("lead_source", "apollo").eq("has_email", true)
       .eq("is_deleted", false).is("email", null);
+    remaining = importRemaining ?? 0;
     if ((importRemaining ?? 0) > 0) {
+      selfChained = true;
       const authHeader = req.headers.get("authorization") ?? "";
       // A dropped hop here is why 200 of a 400-lead import sat unrevealed on
       // 4 Sep 2026 with nothing in any log to say so: the batch finished, the
@@ -295,19 +322,24 @@ export const POST = withRouteTiming("leads/enrich", async (req, timing) => {
       // The kick still must not throw (the response has already been sent) but
       // the failure is now recorded, so a half-finished import is visible
       // instead of looking exactly like a completed one.
-      after(() =>
-        fetch(`${baseUrl}/api/v1/leads/enrich`, {
+      after(async () => {
+        // chained only when the post-spend balance is saved; otherwise the
+        // next pass reads Apollo fresh, exactly as before.
+        const saved = await balanceSaved;
+        await fetch(`${baseUrl}/api/v1/leads/enrich`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": authHeader },
-          body: JSON.stringify({ import_id: importId }),
+          body: JSON.stringify({ import_id: importId, ...(saved ? { chained: true } : {}) }),
         }).catch(async (e) => {
           console.error("enrich self-chain failed", importId, e);
           await logEnrichFailure(db, companyId, "ENRICH_CHAIN_DROPPED",
             `Next batch never started: ${(e as Error)?.message ?? String(e)}`,
             { import_id: importId, stage: "self_chain" },
           ).catch(() => {});
-        })
-      );
+          // The chain stopped here, so this is the import's last pass after all.
+          await kickScrape();
+        });
+      });
     } else if (user.companyId === null) {
       // Import finished, and the caller is the service role — i.e. the daily
       // resume job. That job kicks only ONE import per pass (parallel kicks
@@ -343,10 +375,18 @@ export const POST = withRouteTiming("leads/enrich", async (req, timing) => {
     }
   }
 
-  const { count: remaining } = await db
-    .from("leads").select("id", { count: "exact", head: true })
-    .eq("lead_source", "apollo").eq("has_email", true)
-    .eq("is_deleted", false).is("email", null);
+  if (!selfChained && (stats.enriched_org_ids.length > 0 || chained)) after(kickScrape);
+
+  // The global pending count is only for direct callers (lead_ids /
+  // campaign_id). Import passes are fire-and-forget hops nobody reads, so
+  // they report the import's own remaining count (when computed) instead.
+  if (!("import_id" in parsed.data)) {
+    const { count } = await db
+      .from("leads").select("id", { count: "exact", head: true })
+      .eq("lead_source", "apollo").eq("has_email", true)
+      .eq("is_deleted", false).is("email", null);
+    remaining = count ?? 0;
+  }
 
   return ok({
     requested: targets.length,

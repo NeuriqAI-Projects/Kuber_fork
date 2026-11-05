@@ -162,6 +162,10 @@ export async function enrichLeads(
   targets: EnrichTarget[],
   chunkSize = 10,
   onProgress?: (processed: number, total: number) => void,
+  /** enrich_attempts per lead as returned by claim_unenriched_leads (read
+   *  under the claim lock). When it covers every target, the re-read below is
+   *  skipped; otherwise it runs as before. */
+  attemptsAtClaim?: Map<string, number>,
 ): Promise<EnrichLeadsResult> {
   let matched = 0;
   let verified = 0;
@@ -204,7 +208,9 @@ export async function enrichLeads(
   // Apollo refused wholesale (credits gone, rate limit) are reverted in the
   // catch block, preserving the "not the lead's fault" release policy.
   const preAttempts = new Map<string, number>();
-  {
+  if (attemptsAtClaim && targets.every((t) => attemptsAtClaim.has(t.id))) {
+    for (const t of targets) preAttempts.set(t.id, attemptsAtClaim.get(t.id)!);
+  } else {
     const { data } = await db
       .from("leads")
       .select("id, enrich_attempts")
