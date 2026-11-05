@@ -324,11 +324,12 @@ async function promoteStage(row: ProspectRow, deps: Deps, store: Store, cfg: Fit
  *  it, and if the platform kills us there the lock expires and that stage
  *  repeats (safe, see the header). Paid-call concurrency (Firecrawl) is capped
  *  inside deps, not here. */
-export async function runBatch(deps: Deps, store: Store, cfg: FitScoring, opts: { budgetMs: number; lanes: number; paidStartMs?: number }) {
+export async function runBatch(deps: Deps, store: Store, cfg: FitScoring, opts: { budgetMs: number; lanes: number; paidStartMs?: number; paidStartBy?: number }) {
   const start = deps.now();
   const timeLeft = () => deps.now() - start < opts.budgetMs;
   // Latest moment a paid read may START (it can take ~15 s and must finish before the function is stopped).
-  const startBy = start + (opts.paidStartMs ?? opts.budgetMs);
+  // paidStartBy is the request-wide cap (worker.ts): whichever comes first.
+  const startBy = Math.min(start + (opts.paidStartMs ?? opts.budgetMs), opts.paidStartBy ?? Infinity);
   let advanced = 0;
   async function lane() {
     while (timeLeft()) {

@@ -450,3 +450,19 @@ test("32. the search's job titles decide who is revealed; nobody matching goes t
   await drain(store, deps, clock);
   assert.equal(store.get("b").status, "promoted", "an approval still reveals the best person");
 });
+
+test("34. request-wide paid deadline: a later company's run never starts a paid read past paidStartBy", async () => {
+  // Company 2 starts 25 s into the request with its own 15 s share: before, its
+  // paid reads could start until 25 + 15 + 5 = 45 s. paidStartBy caps them at 35 s.
+  const clock = { t: 25_000 }; const store = new MemStore(clock);
+  const seen: number[] = [];
+  const { deps } = makeDeps(clock, { readHome: async (_u: string, startBy: number) => { seen.push(startBy); clock.t += 1_000; return { kind: "ok", markdown: RICH }; } });
+  store.add({ id: "a", website_url: "https://a.com" });
+  await runBatch(deps, store, CFG, { budgetMs: 15_000, lanes: 1, paidStartMs: 20_000, paidStartBy: 35_000 });
+  assert.deepEqual(seen, [35_000]);
+  // Without the request cap the old per-run limit applies unchanged.
+  const store2 = new MemStore(clock); store2.add({ id: "b", website_url: "https://b.com" }); seen.length = 0;
+  const t = clock.t;
+  await runBatch(deps, store2, CFG, { budgetMs: 15_000, lanes: 1, paidStartMs: 20_000 });
+  assert.deepEqual(seen, [t + 20_000]);
+});

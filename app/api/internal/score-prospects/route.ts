@@ -18,6 +18,8 @@ export const POST = withRouteTiming("internal/score-prospects", async (req) => {
   if (!safeSecretEqual(req.headers.get("x-internal-secret"), process.env.INTERNAL_SECRET)) {
     return fail(401, "UNAUTHORIZED", "Internal secret required");
   }
+  // One clock for the whole request: each company's run measures from here.
+  const requestStart = Date.now();
   const admin = createAdminClient();
   const companies = await companiesWithWork(admin);
   const results: Record<string, number | string> = {};
@@ -25,7 +27,7 @@ export const POST = withRouteTiming("internal/score-prospects", async (req) => {
   const share = companies.length ? Math.max(5_000, Math.floor(WORKER_BUDGET_MS / companies.length)) : 0;
   for (const companyId of companies) {
     try {
-      const r = await runProspectWorker(admin, companyId, share);
+      const r = await runProspectWorker(admin, companyId, share, requestStart);
       results[companyId] = r.advanced;
       promoted.push(...r.promotedImports);
     } catch (err) {

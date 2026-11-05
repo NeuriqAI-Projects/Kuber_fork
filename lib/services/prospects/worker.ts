@@ -16,6 +16,9 @@ import { continueRun } from "./search";
  *  read may START after 35 s (a slow read takes ~15 s). Runs end well inside 60 s. */
 export const WORKER_BUDGET_MS = 30_000;
 export const WORKER_PAID_START_MS = 35_000;
+/** Latest moment (from request start) a lead-target search may read its next
+ *  Apollo page: that call alone may take 30 s (lib/http.ts default), plus saves. */
+export const WORKER_CONTINUE_BY_MS = 15_000;
 /** Companies worked on at once. Firecrawl is separately capped at 4 (deps.ts); Jev allows 40 requests/s. */
 export const WORKER_LANES = 8;
 
@@ -53,7 +56,10 @@ function batchFor(companyId: string) {
   };
 }
 
-export async function runProspectWorker(admin: SupabaseClient, companyId: string, budgetMs = WORKER_BUDGET_MS) {
+/** `requestStart`: when the HTTP request began. Every limit below is measured
+ *  from it (one clock per request), so a second company, or a slow page read
+ *  before the batch, can never push a paid website read past ~35 s. */
+export async function runProspectWorker(admin: SupabaseClient, companyId: string, budgetMs = WORKER_BUDGET_MS, requestStart = Date.now()) {
   const scoped = createScopedClient(companyId);
   const { data: setting } = await scoped.from("settings").select("value").eq("key", "fit_scoring").maybeSingle();
   const cfg = parseFitScoring(setting?.value ?? null);
@@ -87,10 +93,18 @@ export async function runProspectWorker(admin: SupabaseClient, companyId: string
   // Searches with a lead target: read their next Apollo page when it's time (search.ts continueRun).
   const { data: runs } = await scoped.from("prospect_searches").select("id").eq("run_status", "running");
   for (const r of runs ?? []) {
+    // Too late in the request for a paid page read to finish: the next minute's run reads it.
+    if (Date.now() - requestStart > WORKER_CONTINUE_BY_MS) break;
     try { await continueRun(scoped, companyId, r.id as string); }
     catch (e) { console.error("continueRun failed", r.id, (e as Error).message); }
   }
-  const res = await runBatch(deps, supabaseStore(admin, companyId), cfg, { budgetMs, lanes: WORKER_LANES, paidStartMs: budgetMs + (WORKER_PAID_START_MS - WORKER_BUDGET_MS) });
+  const left = requestStart + WORKER_BUDGET_MS - Date.now();
+  const res = await runBatch(deps, supabaseStore(admin, companyId), cfg, {
+    budgetMs: Math.max(0, Math.min(budgetMs, left)),
+    lanes: WORKER_LANES,
+    paidStartMs: budgetMs + (WORKER_PAID_START_MS - WORKER_BUDGET_MS),
+    paidStartBy: requestStart + WORKER_PAID_START_MS,
+  });
   return { ...res, promotedImports: [...promotedImports] };
 }
 

@@ -195,7 +195,11 @@ export function realDeps(admin: SupabaseClient, companyId: string, batchFor: Bat
 const hashOf = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 const MOCK_PLASTIC = [0.92, 0.85, 0.8, 0.9, 0.5, 0.55, 0.12, 0.2, 0.05, 0.88];
 const mockText = (name: string) => `${name} (mock page text, no real website was read). `.repeat(6);
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// On the deployed site the fake waits are cut to 1/20: they are wall time on a
+// live instance, so a QA day of [TEST] searches billed like real scoring
+// (22-23 Oct 2026, ~6K mock companies). Local runs keep real-time waits.
+const MOCK_WAIT_SCALE = process.env.NODE_ENV === "production" ? 1 / 20 : 1;
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms * MOCK_WAIT_SCALE));
 
 function mockVerdict(row: ProspectRow, text: string): JevVerdict {
   const h = hashOf(row.name);
