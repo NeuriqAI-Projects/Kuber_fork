@@ -820,7 +820,8 @@ export default function LeadsPage() {
     const handle = setTimeout(() => {
       searchLeads(session.access_token, trimmed, serverFilters, ctrl.signal)
         .then((res) => { if (!ctrl.signal.aborted) setSearchResults(res.leads); })
-        .catch(() => { if (!ctrl.signal.aborted) setSearchResults([]); })
+        // A failed search (e.g. a DB timeout) must not pass for "No matches".
+        .catch((e) => { if (!ctrl.signal.aborted) { setSearchResults([]); toast.error(`Search failed, try again (${(e as Error).message})`); } })
         .finally(() => { if (!ctrl.signal.aborted) setSearchLoading(false); });
     }, 300);
     return () => { clearTimeout(handle); ctrl.abort(); setSearchLoading(false); };
