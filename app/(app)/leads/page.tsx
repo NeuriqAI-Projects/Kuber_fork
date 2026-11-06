@@ -808,17 +808,18 @@ export default function LeadsPage() {
   }, [session, leads.length, revalidateStatusCounts]);
 
   useEffect(() => {
-    // Org tab filters client-side; don't burn lead-search requests while there.
-    if (leadsEntityMode !== "individual") return;
+    // The Organization tab searches too (its rows are built from leads, and only the
+    // newest 500 are loaded), but lead filters stay Individual-only.
     const trimmed = searchQuery.trim();
-    if (!trimmed && !serverFilters) { setSearchResults(null); setSearchLoading(false); return; }
+    const filtersHere = leadsEntityMode === "individual" ? serverFilters : undefined;
+    if (!trimmed && !filtersHere) { setSearchResults(null); setSearchLoading(false); return; }
     if (!session) return;
     setSearchLoading(true);
     // A newer keystroke / filter aborts this search: it stops paging and its
     // late answer can no longer overwrite the newer one.
     const ctrl = new AbortController();
     const handle = setTimeout(() => {
-      searchLeads(session.access_token, trimmed, serverFilters, ctrl.signal)
+      searchLeads(session.access_token, trimmed, filtersHere, ctrl.signal)
         .then((res) => { if (!ctrl.signal.aborted) setSearchResults(res.leads); })
         // A failed search (e.g. a DB timeout) must not pass for "No matches".
         .catch((e) => { if (!ctrl.signal.aborted) { setSearchResults([]); toast.error(`Search failed, try again (${(e as Error).message})`); } })
@@ -859,10 +860,11 @@ export default function LeadsPage() {
   const displayLeads = sortLeads((searchResults ?? leads).filter(matchesFilters), leadsSort);
 
   // Org view is built from loaded leads, then searched/sorted as organizations.
-  // Lead filters stay Individual-only — they don't apply here.
+  // A name search uses the server's matches instead, so a company whose leads are
+  // older than the loaded page is found too. Lead filters stay Individual-only.
   const orgRows = (() => {
     const orgMap = new Map<string, OrgRow>();
-    for (const lead of leads) {
+    for (const lead of (q && searchResults) || leads) {
       if (!lead.orgId) continue;
       if (!orgMap.has(lead.orgId)) {
         orgMap.set(lead.orgId, {
