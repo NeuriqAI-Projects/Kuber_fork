@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
   try {
     const imports = await getImports(db, {
       assignedTo: user.role === "employee" ? user.id : undefined,
+      companyId: user.companyId,
     });
     return ok({ imports });
   } catch (e) {

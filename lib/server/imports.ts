@@ -23,7 +23,7 @@ export type ImportRow = {
  */
 export async function getImports(
   db: SupabaseClient,
-  opts?: { assignedTo?: string },
+  opts?: { assignedTo?: string; companyId?: string | null },
 ): Promise<ImportRow[]> {
   const { data, error } = await db
     .from("imports")
@@ -34,7 +34,16 @@ export async function getImports(
   if (error) throw new Error(error.message);
 
   const imports = (data ?? []) as ImportRow[];
-  if (!opts?.assignedTo) return imports;
+  if (!opts?.assignedTo) {
+    // Managers see every batch, with its real lead count: the stored lead_count is
+    // written once at import time (0 for scored searches, whose leads come later).
+    if (!opts?.companyId) return imports;
+    const { data: counts, error: countsError } = await db.rpc("company_import_lead_counts", { p_company: opts.companyId });
+    if (countsError) return imports;
+    const byImport = new Map(((counts ?? []) as Array<{ import_id: string; lead_count: number }>)
+      .map((r) => [r.import_id, Number(r.lead_count)]));
+    return imports.map((imp) => ({ ...imp, lead_count: byImport.get(imp.id) ?? 0 }));
+  }
 
   // One grouped count (same predicate as below) instead of one count per import.
   // Falls back to the per-import loop if the function is missing.
