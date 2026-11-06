@@ -401,10 +401,17 @@ function FiltersModal({
           {safeImports.length > 0 && (
             <MultiSelectDropdown
               label="Batch"
-              options={safeImports.map((b) => ({
-                value: b.label,
-                label: `${b.label} (${b.lead_count})`,
-                dot: getBatchColor(b.color).bg,
+              // The filter matches by label (every batch with that label), so
+              // batches sharing a label are one option with their counts added.
+              options={[...safeImports.reduce((m, b) => {
+                const o = m.get(b.label);
+                if (o) o.count += b.lead_count ?? 0;
+                else m.set(b.label, { color: b.color, count: b.lead_count ?? 0 });
+                return m;
+              }, new Map<string, { color: typeof safeImports[number]["color"]; count: number }>())].map(([label, o]) => ({
+                value: label,
+                label: `${label} (${o.count})`,
+                dot: getBatchColor(o.color).bg,
               }))}
               selected={draft.batchLabels}
               onChange={(s) => setDraft((d) => ({ ...d, batchLabels: s }))}

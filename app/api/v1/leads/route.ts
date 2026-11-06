@@ -96,9 +96,11 @@ export async function GET(req: NextRequest) {
   const { country, email_status, lead_source, organization_id, email_domain_catchall, import_id, created_after, assigned_to, statuses, sources, import_ids, created_before, q: search, page, limit, count: countMode } = parsed.data;
   const db = dbForUser(user);
 
+  // A search reads leads_search (leads + org_name) so the company-name match is a
+  // column filter, not an id list in the URL — see 2026_11_06_leads_search_view.sql.
   let q = onlyRevealedLeads(
     db
-      .from("leads")
+      .from(search ? "leads_search" : "leads")
       .select(
         // !lead_id: campaign_leads also FKs to leads via replaced_by_lead_id.
         `*, organizations(id, name, domain, domain_source, unsubscribed, has_scraped, enrichment_stage, company_description, sells_to, last_error),
@@ -146,8 +148,6 @@ export async function GET(req: NextRequest) {
     // name), but match person fields word-by-word so "Richard Wise" finds
     // first_name=Richard/last_name=Wise even though neither column holds
     // the full string on its own.
-    const { data: matchingOrgs } = await db.from("organizations").select("id").ilike("name", `%${escaped}%`);
-    const orgIds = (matchingOrgs ?? []).map((o) => o.id as string);
     const words = escaped.split(/\s+/).filter(Boolean).slice(0, 5);
     for (const word of words) {
       const orParts = [
@@ -155,8 +155,8 @@ export async function GET(req: NextRequest) {
         `last_name.ilike.%${word}%`,
         `email.ilike.%${word}%`,
         `title.ilike.%${word}%`,
+        `org_name.ilike.%${escaped}%`,
       ];
-      if (orgIds.length) orParts.push(`organization_id.in.(${orgIds.join(",")})`);
       q = q.or(orParts.join(","));
     }
   }
