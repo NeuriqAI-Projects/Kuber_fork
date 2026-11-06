@@ -161,7 +161,9 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  q = q.order("created_at", { ascending: false }).range((page - 1) * limit, page * limit - 1);
+  // id breaks created_at ties (an import inserts up to 100 leads with one timestamp):
+  // without it, offset pages overlap and some leads never come back.
+  q = q.order("created_at", { ascending: false }).order("id", { ascending: false }).range((page - 1) * limit, page * limit - 1);
 
   const { data, error, count } = await q;
   if (error) return fail(500, "INTERNAL", error.message);
