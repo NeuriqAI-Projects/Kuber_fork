@@ -9,6 +9,7 @@ import { logLeadEvent } from "@/lib/services/lead-events";
 import { getServiceSecret } from "@/lib/services/service-keys";
 import { onlyRevealedLeads } from "@/lib/server/lead-visibility";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { dbId } from "@/lib/validators/id";
 
 export const maxDuration = 60;
 
@@ -117,10 +118,14 @@ export async function GET(req: NextRequest) {
     // employee surface is consistently lead-assignment based — no seeing a
     // co-worker's leads just because they share a campaign.
     q = q.eq("assigned_to", user.id);
-  } else if (assigned_to === "unassigned") {
-    q = q.is("assigned_to", null);
   } else if (assigned_to) {
-    q = q.eq("assigned_to", assigned_to);
+    // One value or a comma list (the Leads filter can pick several people and/or
+    // "unassigned"); ids are checked so nothing else reaches the .or() filter.
+    const want = assigned_to.split(",");
+    const ids = want.filter((v) => dbId.safeParse(v).success);
+    q = want.includes("unassigned")
+      ? q.or(["assigned_to.is.null", ...(ids.length ? [`assigned_to.in.(${ids.join(",")})`] : [])].join(","))
+      : q.in("assigned_to", ids);
   }
 
   if (country) q = q.eq("country", country);

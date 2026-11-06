@@ -768,7 +768,7 @@ export default function LeadsPage() {
   // can share a label, so map the label to every id that carries it.
   const serverFilters: LeadListFilters | undefined = useMemo(() => {
     const f: LeadListFilters = {};
-    if (filters.assignees.size === 1) f.assigned_to = [...filters.assignees][0];
+    if (filters.assignees.size > 0) f.assigned_to = [...filters.assignees].join(",");
     if (filters.statuses.size > 0) f.statuses = [...filters.statuses].map((s) => DB_LEAD_STATUS[s] ?? s);
     if (filters.sources.size > 0) f.sources = [...filters.sources].map((s) => DB_LEAD_SOURCE[s] ?? s);
     if (filters.batchLabels.size > 0) {
