@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
     const pagesUsed = (mem?.last_page as number | undefined) ?? 0;
     // Every page already read: the search would refuse to start (NO_MORE_PAGES), so counting is wasted calls.
     const allRead = mem?.total_pages != null && pagesUsed >= (mem.total_pages as number);
-    let est: ReturnType<typeof estimateMarket> & { counted?: boolean; at_least?: boolean; from_history?: boolean };
+    let est: ReturnType<typeof estimateMarket> & { counted?: boolean; at_least?: boolean; from_history?: boolean; new_companies?: number };
     try {
       if (allRead) throw new Error("every page was read before");
       const [scan, k] = await Promise.all([

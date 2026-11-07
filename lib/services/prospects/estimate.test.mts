@@ -84,6 +84,9 @@ test("estimateFromCount: counted buyers → companies and a ±25% lead range", a
   assert.ok(e.companies.low <= 377 && 377 <= e.companies.high, JSON.stringify(e.companies));
   assert.ok(e.leads.low < 215 && 215 < e.leads.high * 1.1, JSON.stringify(e.leads)); // real: 215 available
   assert.equal(e.at_least, false);
+  // 7 Nov 2026: E. Europe again, after the client had searched it: 1,000 companies but only ~2% new.
+  const had = estimateFromCount({ buyerCompanies: 840, newBuyerCompanies: 17, complete: true, share: 0.4, people: 5000 });
+  assert.deepEqual([had.companies.mid, had.new_companies], [1000, 20]);
   assert.equal(estimateFromCount({ buyerCompanies: 900, newBuyerCompanies: 900, complete: false, share: 0.4, people: 60211 }).at_least, true);
   const none = estimateFromCount({ buyerCompanies: 0, newBuyerCompanies: 0, complete: true, share: 0.4, people: 0 });
   assert.deepEqual([none.companies.mid, none.leads.high], [0, 0]);

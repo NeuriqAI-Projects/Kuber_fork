@@ -113,12 +113,13 @@ export function leadShare(history: SearchHistory[], keywords: string[]): { share
 }
 
 /** Counted companies → the same ranges estimateMarket gives, plus `at_least` when the scan stopped early. */
-export function estimateFromCount(c: { buyerCompanies: number; newBuyerCompanies: number; complete: boolean; share: number; people: number }): MarketEstimate & { at_least: boolean; counted: true } {
+export function estimateFromCount(c: { buyerCompanies: number; newBuyerCompanies: number; complete: boolean; share: number; people: number }): MarketEstimate & { at_least: boolean; counted: true; new_companies: number } {
   const mid = Math.round(c.buyerCompanies / BUYER_SHARE);
   const fresh = c.newBuyerCompanies / BUYER_SHARE;
   const leads = fresh * c.share;
   return {
-    people: c.people, counted: true, at_least: !c.complete,
+    // new_companies: the screen shows "you already have mid − new_companies" so a big count with few leads makes sense.
+    people: c.people, counted: true, at_least: !c.complete, new_companies: Math.min(mid, Math.round(fresh)),
     companies: { low: c.buyerCompanies, mid, high: Math.round(c.buyerCompanies / 0.62) },
     leads: { low: round(leads * 0.75), high: round(leads * 1.25) },
   };

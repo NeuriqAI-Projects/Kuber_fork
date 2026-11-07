@@ -46,6 +46,8 @@ interface MarketEstimate {
   leads_left?: { low: number; high: number };
   /** Companies were counted by name (not worked out from the people count); at_least = the count stopped early. */
   counted?: boolean; at_least?: boolean;
+  /** Counted companies this workspace does not have yet (the rest came from earlier searches). */
+  new_companies?: number;
   /** The lead share came from earlier searches with these keywords (false = the 40% default). */
   from_history?: boolean;
   /** Lookalikes, excluded websites or advanced filters were set: the count leaves them out. */
@@ -171,6 +173,9 @@ function MarketSize({ filters, target, onPick, onFits, onSize, onAvail, pickOffe
   useEffect(() => { onAvail(tooFew ? avail : null); }, [tooFew, avail, onAvail]);
   if (!filters.keywords.length) return null;
   const companiesN = (x: number) => `${n(x)}${est?.at_least ? "+" : ""} compan${x === 1 && !est?.at_least ? "y" : "ies"}`;
+  // Companies already in the account: without this, "1,000 companies · about 9 leads" looked broken (7 Nov 2026).
+  const had = est?.counted && est.new_companies != null ? est.companies.mid - est.new_companies : 0;
+  const mostlyHad = had > 0 && had >= est!.companies.mid / 2;
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-[13px]">
@@ -188,7 +193,7 @@ function MarketSize({ filters, target, onPick, onFits, onSize, onAvail, pickOffe
               : left!.high === 0
                 ? <span className="font-medium text-amber-700 dark:text-amber-300">{used > 0 ? "No new leads left for these keywords." : "Almost no leads for these keywords."}</span>
                 : est.counted
-                  ? <span><b className="font-semibold tabular-nums">{companiesN(est.companies.mid)}</b> · about <b className="font-semibold tabular-nums">{est.at_least ? `${n(left!.low)}+ leads` : left!.low === left!.high ? leadsN(left!.high) : `${n(left!.low)}–${leadsN(left!.high)}`}</b>{est.at_least && <span className="text-muted-foreground"> (stopped counting: there are more)</span>}</span>
+                  ? <span><b className="font-semibold tabular-nums">{companiesN(est.companies.mid)}</b>{had > 0 && <span className="text-muted-foreground"> · you already have {n(had)}{est.at_least ? "+" : ""}</span>} · about <b className="font-semibold tabular-nums">{est.at_least ? `${n(left!.low)}+` : left!.low === left!.high ? n(left!.high) : `${n(left!.low)}–${n(left!.high)}`} {had > 0 ? "new " : ""}lead{!est.at_least && left!.high === 1 ? "" : "s"}</b>{est.at_least && <span className="text-muted-foreground"> (stopped counting: there are more)</span>}</span>
                   : <span>Available: <b className="font-semibold tabular-nums">~{leadsN(left!.low)}</b> <span className="text-muted-foreground">(up to {n(left!.high)})</span></span>
           )}
         </div>
@@ -203,7 +208,9 @@ function MarketSize({ filters, target, onPick, onFits, onSize, onAvail, pickOffe
         <div className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
           <CircleAlert className="mt-0.5 size-4 shrink-0" />
           <div className="space-y-1.5">
-            <p>Only about <b className="font-semibold tabular-nums">{leadsN(avail)}</b> available. Add keywords or countries in step 1 for more.</p>
+            <p>{mostlyHad
+              ? <>Only about <b className="font-semibold tabular-nums">{leadsN(avail)}</b> new. Most of these companies are already in your account from earlier searches. Try new countries or keywords in step 1 for more.</>
+              : <>Only about <b className="font-semibold tabular-nums">{leadsN(avail)}</b> available. Add keywords or countries in step 1 for more.</>}</p>
             {!pickOffered && <Button type="button" size="sm" variant="outline" onClick={() => onPick(avail)}>Ask for {leadsN(avail)} instead</Button>}
           </div>
         </div>
