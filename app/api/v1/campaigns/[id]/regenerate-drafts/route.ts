@@ -38,6 +38,9 @@ export async function POST(
 
   const stepNumber = parsed.data.step_number;
 
+  // Preview by POST: a big selection's ids are too long for a GET query string.
+  if (parsed.data.preview) return previewResponse(db, user, id, parsed.data.campaign_lead_ids, stepNumber);
+
   const existing = await getActiveJob(db, id, stepNumber);
   if (existing) {
     return fail(409, "CONFLICT", "A regeneration is already running for this campaign.");
@@ -166,6 +169,16 @@ export async function GET(
   // Sequences pane passes the follow-up step it is showing.
   const stepNumber = Number(url.searchParams.get("step_number") ?? 1) || 1;
 
+  return previewResponse(db, user, id, campaignLeadIds, stepNumber);
+}
+
+async function previewResponse(
+  db: ReturnType<typeof dbForUser>,
+  user: Awaited<ReturnType<typeof requireAuth>>,
+  id: string,
+  campaignLeadIds: string[] | undefined,
+  stepNumber: number,
+) {
   const { eligible, skipped } = await resolveRegenerationTargets(db, user, id, { campaignLeadIds, stepNumber });
 
   return ok({

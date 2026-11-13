@@ -209,7 +209,13 @@ export function useScoredOrgs(filter: ScoredFilter, qInput: string, enabled = tr
 
 /** After a Decline the toast offers Undo (the button's tip promises it); `onUndone` runs once it is undone. */
 export async function decideScored(ids: string[], action: DecideAction, onUndone?: () => void) {
-  const r = await api<{ changed: number; skipped: number }>("/api/v1/prospects/decide", { ids, action });
+  // The route takes max 500 ids per call, so send in chunks.
+  const r = { changed: 0, skipped: 0 };
+  for (let i = 0; i < ids.length; i += 500) {
+    const part = await api<{ changed: number; skipped: number }>("/api/v1/prospects/decide", { ids: ids.slice(i, i + 500), action });
+    r.changed += part.changed;
+    r.skipped += part.skipped;
+  }
   const verb = action === "approve" ? "Approved" : action === "reject" ? "Declined" : action === "undo" ? "Restored" : "Retrying";
   const undo = action === "reject" && r.changed > 0
     ? { duration: 8000, action: { label: "Undo", onClick: () => { decideScored(ids, "undo").then(() => onUndone?.(), (e) => toast.error((e as Error).message)); } } }

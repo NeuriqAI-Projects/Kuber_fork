@@ -2,7 +2,7 @@
 // (bulk-approve: 200, bulk-delete: 500). A 402-draft certify used to fail outright.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bulkApproveDrafts, bulkDeleteLeads } from "./api-client.ts";
+import { bulkApproveDrafts, bulkDeleteLeads, removeCampaignLeads } from "./api-client.ts";
 
 function fakeServer(cap: number, key: string, reply: (n: number) => unknown) {
   const sizes: number[] = [];
@@ -30,4 +30,11 @@ test("delete 1200 leads -> 500 + 500 + 200, counts summed", async () => {
   const r = await bulkDeleteLeads("tok", ids(1200));
   assert.deepEqual(sizes, [500, 500, 200]);
   assert.deepEqual(r, { deleted: 1200 });
+});
+
+test("remove 2100 campaign leads -> 1000 + 1000 + 100, counts summed", async () => {
+  const sizes = fakeServer(1000, "campaign_lead_ids", (n) => ({ removed: n, skipped: 0 }));
+  const r = await removeCampaignLeads("tok", "camp", ids(2100));
+  assert.deepEqual(sizes, [1000, 1000, 100]);
+  assert.deepEqual(r, { removed: 2100, skipped: 0 });
 });

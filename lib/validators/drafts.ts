@@ -34,9 +34,11 @@ export const RegenerateDraftSchema = z.object({
 // this campaign" — the server resolves the target list either way, so the ids
 // here only ever narrow it (see lib/services/regeneration-jobs.ts).
 export const BulkRegenerateSchema = z.object({
-  campaign_lead_ids: z.array(dbId).min(1).max(500).optional(),
+  campaign_lead_ids: z.array(dbId).min(1).max(5000).optional(),
   custom_instruction: z.string().max(4000).optional(),
   step_number: z.number().int().min(1).default(1),
+  /** true = only count what a run would touch (the confirm modal), start nothing. */
+  preview: z.boolean().optional(),
 });
 
 export const ManualDraftSchema = z.object({

@@ -981,9 +981,16 @@ export async function applyDefaultDrafts(token: string, campaignId: string): Pro
 
 /** Take leads out of this campaign. Leads already sent to are skipped by the server. */
 export async function removeCampaignLeads(token: string, campaignId: string, campaignLeadIds: string[]): Promise<{ removed: number; skipped: number }> {
-  return apiFetch(`/api/v1/campaigns/${campaignId}/leads/remove`, {
-    method: "POST", body: JSON.stringify({ campaign_lead_ids: campaignLeadIds }),
-  }, token);
+  // The route takes max 1000 ids per call, so send in chunks.
+  const total = { removed: 0, skipped: 0 };
+  for (let i = 0; i < campaignLeadIds.length; i += 1000) {
+    const r = await apiFetch<{ removed: number; skipped: number }>(`/api/v1/campaigns/${campaignId}/leads/remove`, {
+      method: "POST", body: JSON.stringify({ campaign_lead_ids: campaignLeadIds.slice(i, i + 1000) }),
+    }, token);
+    total.removed += r.removed;
+    total.skipped += r.skipped;
+  }
+  return total;
 }
 
 /** Can the main AI model write emails right now? Asked before creating a campaign. */
@@ -1056,11 +1063,15 @@ export async function previewRegeneration(
   campaignLeadIds?: string[],
   stepNumber?: number,
 ): Promise<{ eligible: number; by_status: { draft: number; failed: number; approved: number }; skipped: RegenerationSkipped }> {
-  const qs = new URLSearchParams();
-  if (campaignLeadIds?.length) qs.set("campaign_lead_ids", campaignLeadIds.join(","));
-  if (stepNumber && stepNumber > 1) qs.set("step_number", String(stepNumber));
-  const suffix = qs.size ? `?${qs}` : "";
-  return apiFetch(`/api/v1/campaigns/${campaignId}/regenerate-drafts${suffix}`, {}, token);
+  // POST, not GET: ~350+ selected ids no longer fit in a URL.
+  return apiFetch(`/api/v1/campaigns/${campaignId}/regenerate-drafts`, {
+    method: "POST",
+    body: JSON.stringify({
+      preview: true,
+      ...(campaignLeadIds?.length ? { campaign_lead_ids: campaignLeadIds } : {}),
+      ...(stepNumber && stepNumber > 1 ? { step_number: stepNumber } : {}),
+    }),
+  }, token);
 }
 
 /** Queue a background bulk regeneration. Omit ids to cover every eligible lead. */
