@@ -221,6 +221,24 @@ const DRAFT_STALE_MINUTES = 5;
 /** How many stalled campaigns one watchdog pass will restart. */
 const MAX_DRAFT_KICKS_PER_PASS = 5;
 
+/** Under the banner's 6-hour lookback (app/api/v1/service-health LOOKBACK_HOURS). */
+const OUTAGE_REFRESH_HOURS = 5;
+
+/** Is this company's newest drafts-health row in the last OUTAGE_REFRESH_HOURS
+ *  already "unavailable"? Then the banner is up and nothing changed. */
+async function outageAlreadyLogged(db: Db, companyId: string): Promise<boolean> {
+  const { data } = await db
+    .from("enrichment_logs")
+    .select("event")
+    .eq("company_id", companyId)
+    .in("event", ["DRAFT_LLM_UNAVAILABLE", "DRAFT_LLM_RECOVERED"])
+    .gte("created_at", new Date(Date.now() - OUTAGE_REFRESH_HOURS * 60 * 60 * 1000).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data?.event === "DRAFT_LLM_UNAVAILABLE";
+}
+
 /** Revive INITIAL draft generation whose self-chain died mid-run.
  *
  *  triggerRegenerationWatchdog above covers bulk *re*generation; first-pass
@@ -272,9 +290,9 @@ export async function triggerDraftGenerationWatchdog(baseUrl: string, db: Db) {
 
   // One banner row per company per pass. While an outage lasts this job is the
   // only writer left — generation correctly never starts, so nothing else
-  // reports it — and service-health only looks back 6 hours. Firing every 10
-  // minutes keeps the red banner up for the whole outage and lets it clear on
-  // its own once a key works again.
+  // reports it — and service-health only looks back 6 hours. A fresh row every
+  // OUTAGE_REFRESH_HOURS (see outageAlreadyLogged) keeps the red banner up for
+  // the whole outage, and it clears on its own once a key works again.
   const loggedOutage = new Set<string>();
 
   // Deliberately NOT filtered on status = 'processing'. The reset call above
@@ -348,7 +366,11 @@ export async function triggerDraftGenerationWatchdog(baseUrl: string, db: Db) {
         loggedOutage.add(companyId);
         // db is unscoped here, so company_id has to be passed explicitly or
         // the banner's scoped read will never see this row.
-        await logLlmUnavailable(
+        // Write only when the outage is new or its last row is getting old:
+        // the banner reads 6 hours back, so one row per OUTAGE_REFRESH_HOURS
+        // keeps it up. Every pass used to add one (144 a day in the 6-12 Nov
+        // outage) saying the same thing.
+        if (!(await outageAlreadyLogged(db, companyId))) await logLlmUnavailable(
           db,
           companyId,
           "Every configured LLM key is out of credits or rejected — draft generation is paused.",
