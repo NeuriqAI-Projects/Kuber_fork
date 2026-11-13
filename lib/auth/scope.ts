@@ -60,16 +60,20 @@ export async function getAccessibleCampaignIds(db: Db, user: AuthedUser): Promis
   return employeeCampaignIds(db, user.id);
 }
 
-/** Throws a 404 unless the campaign exists and (for employees) is accessible per the model above. */
-export async function assertCampaignAccess(db: Db, user: AuthedUser, campaignId: string): Promise<void> {
+/** Throws a 404 unless the campaign exists and (for employees) is accessible per the model above.
+ *  Returns the campaign row; `cols` adds columns to it, so a route that needs
+ *  the row anyway does not read it a second time. */
+export async function assertCampaignAccess(
+  db: Db, user: AuthedUser, campaignId: string, cols?: string,
+): Promise<Record<string, unknown>> {
   const { data } = await db
     .from("campaigns")
-    .select("created_by, assigned_to")
+    .select(cols ? `created_by, assigned_to, ${cols}` : "created_by, assigned_to")
     .eq("id", campaignId)
-    .maybeSingle();
+    .maybeSingle<Record<string, unknown>>();
   if (!data) throw fail(404, "NOT_FOUND", "Campaign not found");
-  if (user.role !== "employee") return;
-  if (data.created_by === user.id || data.assigned_to === user.id) return;
+  if (user.role !== "employee") return data;
+  if (data.created_by === user.id || data.assigned_to === user.id) return data;
 
   // Otherwise: accessible only if it holds at least one lead assigned to them.
   const { data: cl } = await db
@@ -80,7 +84,7 @@ export async function assertCampaignAccess(db: Db, user: AuthedUser, campaignId:
     .eq("leads.is_deleted", false)
     .limit(1)
     .maybeSingle();
-  if (cl) return;
+  if (cl) return data;
 
   throw fail(404, "NOT_FOUND", "Campaign not found");
 }

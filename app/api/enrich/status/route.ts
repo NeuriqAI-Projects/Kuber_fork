@@ -22,13 +22,6 @@ export async function GET(req: NextRequest) {
 
   if (error || !org) return fail(404, "NOT_FOUND", "Organization not found");
 
-  // Never send payload to client — internal only
-  const { data: logs } = await db
-    .from("enrichment_logs")
-    .select("event, source, duration_ms, error, created_at")
-    .eq("org_id", orgId)
-    .order("created_at", { ascending: true });
-
   return ok({
     enrichment_stage: org.enrichment_stage,
     enrichment_status: org.enrichment_status,
@@ -36,12 +29,9 @@ export async function GET(req: NextRequest) {
     company_description: org.company_description,
     sells_to: org.sells_to,
     last_error: org.last_error,
-    logs: (logs ?? []).map((l) => ({
-      event: l.event,
-      source: l.source,
-      duration_ms: l.duration_ms,
-      error: l.error,
-      created_at: l.created_at,
-    })),
+    // The org's whole enrichment_logs trail used to ride along (unbounded, read
+    // on every lead open); no screen shows it. Kept as an empty list so the
+    // response shape does not change. The trail is in the DB when needed.
+    logs: [],
   });
 }

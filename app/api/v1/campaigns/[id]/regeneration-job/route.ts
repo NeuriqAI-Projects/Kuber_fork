@@ -21,7 +21,9 @@ export async function GET(
 
   const { id } = await params;
   const db = dbForUser(user);
-  try { await assertCampaignAccess(db, user, id); } catch (r) { return r as Response; }
+  // sending_held_at rides on the access check (this is polled every 3 s during a run).
+  let c: Record<string, unknown>;
+  try { c = await assertCampaignAccess(db, user, id, "sending_held_at"); } catch (r) { return r as Response; }
 
   const url = new URL(req.url);
   const stepNumber = Number(url.searchParams.get("step_number") ?? 1) || 1;
@@ -32,13 +34,12 @@ export async function GET(
   const processed = job.succeeded + job.failed;
   // A finished run may have released the hold it needed (resumeIfHeldForJob).
   // The drawer polls this, so it is where the banner learns that.
-  const { data: c } = await db.from("campaigns").select("sending_held_at").eq("id", id).maybeSingle();
   return ok({
     job: {
       ...job,
       processed,
       active: job.status === "queued" || job.status === "running",
-      sending_held: !!c?.sending_held_at,
+      sending_held: !!c.sending_held_at,
     },
   });
 }

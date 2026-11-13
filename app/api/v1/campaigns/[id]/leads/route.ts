@@ -42,7 +42,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params;
   const db = dbForUser(user);
-  try { await assertCampaignAccess(db, user, id); } catch (r) { return r as Response; }
+  // The campaign's attachment rides on the access check (this is polled every 3 s while drafting).
+  let campaignRow: Row;
+  try { campaignRow = await assertCampaignAccess(db, user, id, "attachment_name, attachment_size, attachment_mime, attachment_url"); } catch (r) { return r as Response; }
 
   const sp = Object.fromEntries(req.nextUrl.searchParams.entries());
   const parsed = CampaignLeadsQuerySchema.safeParse(sp);
@@ -129,9 +131,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             if (error) throw new Error(error.message);
             return { rows: (data ?? []) as Row[], count };
           }),
-      db.from("campaigns")
-        .select("attachment_name, attachment_size, attachment_mime, attachment_url")
-        .eq("id", id).maybeSingle(),
+      { data: campaignRow },
       db.from("email_drafts")
         .select("lead_id, version, parent_draft_id, step_number")
         .eq("campaign_id", id)

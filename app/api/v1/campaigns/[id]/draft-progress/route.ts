@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth/api-auth";
-import { ok, fail } from "@/lib/api-response";
+import { ok } from "@/lib/api-response";
 import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { canDraftOpenings, countPendingDrafts } from "@/lib/services/generate-drafts";
@@ -23,31 +23,26 @@ export async function GET(
 
   const { id } = await params;
   const db = dbForUser(user);
-  try { await assertCampaignAccess(db, user, id); } catch (r) { return r as Response; }
-
-  const { data: campaign } = await db
-    .from("campaigns")
-    .select("id, name, company_id")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (!campaign) return fail(404, "NOT_FOUND", "Campaign not found");
-
-  const { data: rows } = await db
-    .from("campaign_leads")
-    .select("id, lead_id, email_drafts(status)")
-    .eq("campaign_id", id);
+  // The access check returns the row this route needs (polled every 3 s while
+  // drafting: it used to read the campaign twice and run 6 queries one by one).
+  let campaign: Record<string, unknown>;
+  try { campaign = await assertCampaignAccess(db, user, id, "name, company_id"); } catch (r) { return r as Response; }
 
   // The embed resolves through campaign_leads.draft_id, which is only repointed
   // once generation succeeds — so an in-flight draft shows up here as either no
   // row (first generation) or the previous row demoted to 'rejected'
   // (regeneration). Neither counts as work-in-progress, which stopped the
   // client's 3s poll mid-regeneration. Read the live rows directly instead.
-  const { data: inFlight } = await db
-    .from("email_drafts")
-    .select("lead_id")
-    .eq("campaign_id", id)
-    .eq("status", "generating");
+  const [{ data: rows }, { data: inFlight }, pendingTotal] = await Promise.all([
+    db.from("campaign_leads")
+      .select("id, lead_id, email_drafts(status)")
+      .eq("campaign_id", id),
+    db.from("email_drafts")
+      .select("lead_id")
+      .eq("campaign_id", id)
+      .eq("status", "generating"),
+    countPendingDrafts(db, id),
+  ]);
   const generatingLeadIds = new Set((inFlight ?? []).map((d) => d.lead_id as string));
 
   const statusCounts: Record<string, number> = {
@@ -76,7 +71,7 @@ export async function GET(
     if (s in statusCounts) statusCounts[s as keyof typeof statusCounts]++;
   }
 
-  const realPending = Math.min(pending, Math.max(0, (await countPendingDrafts(db, id)) - statusCounts.generating));
+  const realPending = Math.min(pending, Math.max(0, pendingTotal - statusCounts.generating));
 
   return ok({
     total: rows?.length ?? 0,
