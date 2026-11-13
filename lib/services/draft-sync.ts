@@ -13,18 +13,25 @@ export async function syncApprovedDraftToInstantly(
   db: SupabaseClient,
   leadId: string,
   campaignId: string,
+  /** What the caller already read (the follow-up writer has both for every
+   *  lead of a run), so they are not read again per lead. */
+  known?: { instantlyLeadId?: string | null; senderName?: string | null },
 ): Promise<InstantlySyncResult> {
-  const { data: cl } = await db
-    .from("campaign_leads")
-    .select("instantly_lead_id")
-    .eq("campaign_id", campaignId)
-    .eq("lead_id", leadId)
-    .maybeSingle();
+  const instantlyLeadId = known?.instantlyLeadId !== undefined
+    ? known.instantlyLeadId
+    : (await db
+      .from("campaign_leads")
+      .select("instantly_lead_id")
+      .eq("campaign_id", campaignId)
+      .eq("lead_id", leadId)
+      .maybeSingle()).data?.instantly_lead_id as string | null | undefined;
 
-  if (!cl?.instantly_lead_id) return { attempted: false, synced: false }; // not sent yet — initial push will carry current drafts
+  if (!instantlyLeadId) return { attempted: false, synced: false }; // not sent yet — initial push will carry current drafts
 
-  const [{ data: campaign }, { data: drafts }] = await Promise.all([
-    db.from("campaigns").select("sender_name").eq("id", campaignId).maybeSingle(),
+  const [senderName, { data: drafts }] = await Promise.all([
+    known?.senderName !== undefined
+      ? known.senderName
+      : db.from("campaigns").select("sender_name").eq("id", campaignId).maybeSingle().then(({ data }) => data?.sender_name as string | null | undefined),
     db.from("email_drafts")
       .select("step_number, subject, body, version")
       .eq("campaign_id", campaignId)
@@ -44,9 +51,9 @@ export async function syncApprovedDraftToInstantly(
     }
   }
 
-  const customVariables = buildCustomVariables([...activeByStep.values()], campaign?.sender_name);
+  const customVariables = buildCustomVariables([...activeByStep.values()], senderName);
   try {
-    await updateInstantlyLeadVariables(cl.instantly_lead_id, customVariables);
+    await updateInstantlyLeadVariables(instantlyLeadId, customVariables);
     return { attempted: true, synced: true };
   } catch (e) {
     console.error("updateInstantlyLeadVariables failed:", e);

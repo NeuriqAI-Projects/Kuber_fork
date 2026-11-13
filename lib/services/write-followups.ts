@@ -78,12 +78,15 @@ export async function writeDueFollowups(
   const campaignIds = [...new Set(targets.map((t) => t.campaignId))];
   const { data: campaigns } = await db
     .from("campaigns")
-    .select("id, name, human_in_loop, ai_prompt_context, company_id, followup_instruction, followups_ai_enabled")
+    .select("id, name, human_in_loop, ai_prompt_context, company_id, followup_instruction, followups_ai_enabled, sender_name")
     .in("id", campaignIds);
   const campaignById = new Map((campaigns ?? []).map((c) => [c.id as string, c]));
 
   const budget = opts.budget ?? new BatchBudget();
   const memo = newDraftContext();
+  // The Instantly push needs the sender name; it is already here, so it is not
+  // read again per lead (13 Nov 2026: one campaigns read per follow-up written).
+  for (const c of campaigns ?? []) memo.set(`sender:${c.id}`, Promise.resolve((c.sender_name as string | null) ?? null));
   const one = async (target: FollowupTarget) => {
     const campaign = campaignById.get(target.campaignId);
     if (!campaign) { result.failed++; return; }
@@ -242,12 +245,7 @@ async function writeOne(
   // syncApprovedDraftToInstantly rebuilds the WHOLE custom-variable set from
   // every approved/sent draft for this lead, so pushing after writing step 2
   // carries step 1 along unchanged rather than clobbering it.
-  let pushed = false;
-  if (target.instantlyLeadId) {
-    const sync = await syncApprovedDraftToInstantly(db, target.leadId, target.campaignId);
-    pushed = sync.synced;
-  }
-
+  const pushed = await pushToInstantly(db, target, memo);
   return { pushed, templated: false };
 }
 
@@ -310,12 +308,18 @@ async function writeTemplateFallback(
   });
   if (error) return null;
 
-  let pushed = false;
-  if (target.instantlyLeadId) {
-    const sync = await syncApprovedDraftToInstantly(db, target.leadId, target.campaignId);
-    pushed = sync.synced;
-  }
-  return { pushed };
+  return { pushed: await pushToInstantly(db, target, memo) };
+}
+
+/** Push this lead's follow-ups to Instantly with what the run already knows:
+ *  the Instantly lead id from the sweep and the sender name read once per
+ *  campaign. No Instantly lead yet = nothing to push (fan-out carries the text). */
+async function pushToInstantly(db: SupabaseClient, target: FollowupTarget, memo: DraftContext): Promise<boolean> {
+  if (!target.instantlyLeadId) return false;
+  const senderName = await once(memo, `sender:${target.campaignId}`, async () =>
+    ((await db.from("campaigns").select("sender_name").eq("id", target.campaignId).maybeSingle()).data?.sender_name as string | null) ?? null);
+  const sync = await syncApprovedDraftToInstantly(db, target.leadId, target.campaignId, { instantlyLeadId: target.instantlyLeadId, senderName });
+  return sync.synced;
 }
 
 /**
@@ -348,7 +352,7 @@ export async function upgradeTemplateFollowups(
 
   let campaignQuery = db
     .from("campaigns")
-    .select("id, name, human_in_loop, ai_prompt_context, company_id, followup_instruction")
+    .select("id, name, human_in_loop, ai_prompt_context, company_id, followup_instruction, sender_name")
     .eq("is_deleted", false)
     // A template in an AI-off campaign is the choice, not a placeholder to replace.
     // Switching AI back on makes its unsent templates upgradeable again.
@@ -481,7 +485,10 @@ export async function upgradeTemplateFollowups(
             undefined, null, null, null, memo)
         : null;
       if (!r?.ok) throw new Error(r && "reason" in r ? r.reason : "lead not found");
-      if (cl.instantly_lead_id) await syncApprovedDraftToInstantly(cdb, t.lead_id as string, t.campaign_id as string);
+      if (cl.instantly_lead_id) {
+        await syncApprovedDraftToInstantly(cdb, t.lead_id as string, t.campaign_id as string,
+          { instantlyLeadId: cl.instantly_lead_id as string, senderName: (campaign.sender_name as string | null) ?? null });
+      }
       result.upgraded++;
     }); } catch {
       await cdb.from("email_drafts")
