@@ -394,6 +394,7 @@ export type InstantlyAccount = {
   daily_limit?: number | null;
   first_name?: string | null;
   last_name?: string | null;
+  status_message?: { code?: string; e_message?: string } | null;
 };
 
 export async function listInstantlyAccounts(): Promise<InstantlyAccount[]> {

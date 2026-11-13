@@ -132,3 +132,28 @@ export function issuesFromLogs(rows: HealthLogRow[]): ServiceIssue[] {
 
   return issues;
 }
+
+// Instantly mailbox states below 0 are errors: -1 connection, -2 soft bounce,
+// -3 sending. Ankit's mailbox sat at -1 (EAUTH, Google login lost) for days in
+// Nov 2026 with nothing in this app saying so — mail just stopped.
+export type MailboxStatus = { email: string; status: number; status_message?: { code?: string; e_message?: string } | null };
+
+export function mailboxReason(a: MailboxStatus): string {
+  const raw = `${a.status_message?.code ?? ""} ${a.status_message?.e_message ?? ""}`.toLowerCase();
+  if (raw.includes("eauth") || raw.includes("access token")) return "Instantly lost its login for this mailbox (the Google/Microsoft login expired or was revoked).";
+  if (a.status === -2) return "Instantly stopped this mailbox after too many bounces.";
+  if (a.status === -3) return "Instantly stopped this mailbox after sending errors.";
+  return "Instantly has disconnected this mailbox.";
+}
+
+/** One red issue per broken mailbox that a live campaign sends from (inUse = lower-cased emails). */
+export function issuesFromMailboxes(accounts: MailboxStatus[], inUse: Set<string>): ServiceIssue[] {
+  return accounts
+    .filter((a) => a.status < 0 && inUse.has(a.email.toLowerCase()))
+    .map((a) => ({
+      service: `Mailbox ${a.email}`,
+      kind: "auth",
+      severity: "critical",
+      message: `${mailboxReason(a)} No emails are going out from it. Reconnect it in Instantly → Email Accounts.`,
+    }));
+}

@@ -4,7 +4,7 @@
  *   npx tsx lib/services/service-health.test.ts
  */
 import { strict as assert } from "assert";
-import { issuesFromLogs, type HealthLogRow } from "./service-health";
+import { issuesFromLogs, issuesFromMailboxes, mailboxReason, type HealthLogRow } from "./service-health";
 
 const row = (source: string, event: string, error: string | null = null, payload?: unknown): HealthLogRow => ({ source, event, error, payload });
 const names = (rows: HealthLogRow[]) => issuesFromLogs(rows).map((i) => `${i.service}:${i.severity}`).sort();
@@ -40,5 +40,17 @@ assert.deepEqual(names([apolloDown, row("apollo", "CREDITS_CONSUMED")]), ["Apoll
 
 // Drafts and profiles are separate: a newer amber profiles warning no longer hides red drafts.
 assert.deepEqual(names([profilesLow, draftsDown]), ["Company profiles AI:warning", "LLM API key:critical"]);
+
+// Mailboxes: only a broken one that a live campaign uses shows, with the right reason.
+const ankit = { email: "Ankit.Singh@kuberpolyplast.com", status: -1, status_message: { code: "EAUTH", e_message: "error: can't create new access token for user" } };
+const pushkar = { email: "pushkar.garg@kuberpolyplast.com", status: -1 };
+const ashish = { email: "ashish.sharma@kuberpolyplast.com", status: 1 };
+const inUse = new Set(["ankit.singh@kuberpolyplast.com", "ashish.sharma@kuberpolyplast.com"]);
+const boxes = issuesFromMailboxes([ankit, pushkar, ashish], inUse);
+assert.deepEqual(boxes.map((i) => `${i.service}:${i.severity}`), ["Mailbox Ankit.Singh@kuberpolyplast.com:critical"]);
+assert.match(boxes[0].message, /lost its login/);
+assert.deepEqual(issuesFromMailboxes([{ ...ankit, status: 1 }], inUse), []); // reconnected → banner gone
+assert.match(mailboxReason({ email: "x", status: -2 }), /bounces/);
+assert.match(mailboxReason(pushkar), /disconnected/);
 
 console.log("service-health: all checks pass");

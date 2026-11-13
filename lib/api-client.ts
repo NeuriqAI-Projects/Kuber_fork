@@ -493,6 +493,7 @@ export type InstantlyUsageAccount = {
   daily_limit: number | null;
   first_name: string | null;
   last_name: string | null;
+  reason: string | null;
 };
 
 export type InstantlyUsageData = {

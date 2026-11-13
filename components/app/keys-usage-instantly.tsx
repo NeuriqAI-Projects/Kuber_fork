@@ -10,10 +10,13 @@ import { UsageBarChart, CHART_COLORS } from "@/components/app/usage-bar-chart";
 import { UsageHeaderSkeleton, StatTileGridSkeleton, ChartCardSkeleton, RowsCardSkeleton } from "@/components/app/usage-skeletons";
 import { fetchInstantlyUsage, type InstantlyUsageData } from "@/lib/api-client";
 
-const ACCOUNT_STATUS_LABEL: Record<number, { label: string; tone: "ok" | "warn" | "muted" }> = {
+const ACCOUNT_STATUS_LABEL: Record<number, { label: string; tone: "ok" | "bad" | "warn" | "muted" }> = {
   1: { label: "Active", tone: "ok" },
   2: { label: "Paused", tone: "warn" },
   0: { label: "Inactive", tone: "muted" },
+  [-1]: { label: "Disconnected", tone: "bad" },
+  [-2]: { label: "Stopped (bounces)", tone: "bad" },
+  [-3]: { label: "Stopped (sending errors)", tone: "bad" },
 };
 
 export function InstantlyUsageView() {
@@ -104,7 +107,10 @@ export function InstantlyUsageView() {
                   return (
                     <TableRow key={a.email}>
                       <TableCell>{a.email}</TableCell>
-                      <TableCell><UsageStatus tone={s.tone}>{s.label}</UsageStatus></TableCell>
+                      <TableCell>
+                        <UsageStatus tone={s.tone}>{s.label}</UsageStatus>
+                        {a.reason && <div className="text-xs text-muted-foreground">{a.reason}</div>}
+                      </TableCell>
                       <TableCell className="text-right tabular-nums">{a.daily_limit ?? "—"}</TableCell>
                     </TableRow>
                   );

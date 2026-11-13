@@ -10,6 +10,7 @@ import {
   type InstantlyDailyAnalytics,
 } from "@/lib/services/instantly";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { mailboxReason } from "@/lib/services/service-health";
 
 export const maxDuration = 60;
 
@@ -61,6 +62,7 @@ export async function GET(req: NextRequest) {
         daily_limit: a.daily_limit ?? null,
         first_name: a.first_name ?? null,
         last_name: a.last_name ?? null,
+        reason: a.status < 0 ? mailboxReason(a) : null,
       })) : null,
       error: accountsRes.error,
       totalDailyCapacity: accounts.reduce((sum, a) => sum + (a.daily_limit ?? 0), 0),
