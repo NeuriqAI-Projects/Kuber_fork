@@ -5,7 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * Real run times of the credit-spending routes, so their time limits can be set
  * from data instead of guesses. One enrichment_logs row per run, event
  * ROUTE_TIMING, payload { route, ms, status, ...counts }. Never throws: a
- * logging failure must not touch the route.
+ * logging failure must not touch the route. Runs that did nothing are not
+ * written (see isNoOpRun).
  */
 export async function writeRouteTiming(
   route: string,
@@ -13,6 +14,7 @@ export async function writeRouteTiming(
   companyId: string | null | undefined,
   counts: Record<string, unknown> = {},
 ): Promise<void> {
+  if (isNoOpRun(counts)) return;
   try {
     await createAdminClient().from("enrichment_logs").insert({
       source: "system",
@@ -22,6 +24,21 @@ export async function writeRouteTiming(
       payload: { route, ms, ...counts },
     });
   } catch { /* timing is best-effort */ }
+}
+
+/**
+ * A 2xx run whose every count is 0 ("processed 0", "matched 0", "advanced 0"):
+ * nothing happened, so its timing says nothing. These were ~1,000 rows a day
+ * (13 Nov 2026), mostly cron passes with no work. `remaining` is a backlog
+ * size, not work done. Errors, throws and bodies with no counts are kept.
+ */
+export function isNoOpRun(counts: Record<string, unknown>): boolean {
+  const status = counts.status;
+  if (typeof status !== "number" || status < 200 || status >= 300) return false;
+  if (counts.threw || counts.error_code) return false;
+  const work = Object.entries(counts)
+    .filter(([k, v]) => typeof v === "number" && k !== "status" && k !== "remaining");
+  return work.length > 0 && work.every(([, v]) => v === 0);
 }
 
 /** Numbers and flags from an ok()/fail() body: the cheap "what did this run do" counts. */
