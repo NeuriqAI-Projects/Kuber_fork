@@ -27,6 +27,27 @@ export interface LlmCallMeta {
   draftId?: string | null;
 }
 
+/**
+ * Per-company LLM settings (tier order, selected model, Anthropic workspace),
+ * memoised for 30 s per instance like the key memo: they were 2-3 reads on
+ * every call. The promise is stored, so parallel drafts share one read. A
+ * change in Settings applies at once on the instance that saved it
+ * (forgetLlmConfigMemo) and within 30 s elsewhere.
+ */
+const CONFIG_MEMO_MS = 30_000;
+const configMemo = new Map<string, { at: number; value: Promise<unknown> }>();
+function memo30<T>(key: string, load: () => Promise<T>): Promise<T> {
+  const hit = configMemo.get(key);
+  if (hit && Date.now() - hit.at < CONFIG_MEMO_MS) return hit.value as Promise<T>;
+  const value = load();
+  configMemo.set(key, { at: Date.now(), value });
+  value.catch(() => configMemo.delete(key));
+  return value;
+}
+export function forgetLlmConfigMemo(): void {
+  configMemo.clear();
+}
+
 /** Exhausts every configured key for one provider (priority order, via
  *  provider-keys.ts) before giving up on that provider entirely. Only
  *  returns null when the provider has no usable key at all (no DB row and
@@ -50,8 +71,8 @@ async function tryProvider<T>(db: SupabaseClient, companyId: string, provider: L
     try {
       // opts.model is the Model Lab naming one model explicitly; everyone
        // else gets the company's configured model. See CompletionOpts.
-      const model = opts.model ?? await resolveModel(db, provider, meta.defaultModel ?? "");
-      const config = await getProviderCallConfig(db, provider);
+      const model = opts.model ?? await memo30(`model:${companyId}:${provider}`, () => resolveModel(db, provider, meta.defaultModel ?? ""));
+      const config = await memo30(`config:${companyId}:${provider}`, () => getProviderCallConfig(db, provider));
       const { json, usage } = await call(resolved.secret, model, opts, config);
       if (resolved.keyId) await markKeySucceeded(db, resolved.keyId);
       return { json: json as T, usage, model };
@@ -91,7 +112,7 @@ export async function complete<T = object>(
   // which in a side-by-side comparison is worse than an error.
   const tierOrder = opts.provider
     ? [opts.provider as LlmProviderId]
-    : await resolveLlmTierOrder(client);
+    : await memo30(`tiers:${companyId}`, () => resolveLlmTierOrder(client));
   const errors: string[] = [];
 
   for (let i = 0; i < tierOrder.length; i++) {

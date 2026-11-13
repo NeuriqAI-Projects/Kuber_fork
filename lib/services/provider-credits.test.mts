@@ -6,7 +6,7 @@ import { apolloOutOfCredits, checkApolloCredits } from "./provider-credits.ts";
 
 /** system_state with one saved Apollo balance `ageMin` minutes old; no Apollo key, so a re-check saves "no key". */
 function stubDb(remaining: number | null, ageMin: number) {
-  const state = { value: JSON.stringify({ ok: !!remaining, remaining, limit: 4000 }), updated_at: new Date(Date.now() - ageMin * 60_000).toISOString() };
+  const state = { value: JSON.stringify({ ok: remaining != null && remaining >= 5, remaining, limit: 4000 }), updated_at: new Date(Date.now() - ageMin * 60_000).toISOString() };
   let rechecks = 0;
   const q = (table: string) => {
     const b: Record<string, unknown> = {};
@@ -46,4 +46,16 @@ test("Apollo above 0, saved 6 min ago: the normal 5-minute check still re-reads 
   const s = stubDb(120, 6);
   await checkApolloCredits(s.db, "any");
   assert.equal(s.rechecks(), 1);
+});
+
+test("Apollo at 1-4 credits counts as out (same line as enrich's < 5), re-asked at most hourly", async () => {
+  const s = stubDb(3, 30);
+  assert.equal(await apolloOutOfCredits(s.db), true);
+  assert.equal(s.rechecks(), 0);
+  const old = stubDb(4, 61);
+  assert.equal(await apolloOutOfCredits(old.db), false, "re-checked: no key in the stub -> unknown -> not blocked");
+  assert.equal(old.rechecks(), 1);
+  const five = stubDb(5, 3 * 24 * 60);
+  assert.equal(await apolloOutOfCredits(five.db), false);
+  assert.equal(five.rechecks(), 0);
 });

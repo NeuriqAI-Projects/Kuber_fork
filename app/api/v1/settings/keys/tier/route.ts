@@ -4,6 +4,7 @@ import { ok, fail } from "@/lib/api-response";
 import { SetLlmTierRolesSchema } from "@/lib/validators/provider-keys";
 import { DEFAULT_LLM_TIER_ORDER } from "@/lib/services/providers/registry";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { forgetLlmConfigMemo } from "@/lib/services/llm";
 
 export const maxDuration = 60;
 
@@ -43,5 +44,6 @@ export async function PUT(req: NextRequest) {
     .single();
 
   if (error) return fail(500, "INTERNAL", error.message);
+  forgetLlmConfigMemo();
   return ok({ primary: data.primary_provider, fallback: data.fallback_provider });
 }

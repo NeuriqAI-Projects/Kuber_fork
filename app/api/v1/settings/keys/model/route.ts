@@ -4,6 +4,7 @@ import { ok, fail } from "@/lib/api-response";
 import { SetProviderModelSchema } from "@/lib/validators/provider-keys";
 import { PROVIDER_META } from "@/lib/services/providers/registry";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { forgetLlmConfigMemo } from "@/lib/services/llm";
 
 export const maxDuration = 60;
 
@@ -27,5 +28,6 @@ export async function PUT(req: NextRequest) {
     .single();
 
   if (error) return fail(500, "INTERNAL", error.message);
+  forgetLlmConfigMemo();
   return ok(data);
 }

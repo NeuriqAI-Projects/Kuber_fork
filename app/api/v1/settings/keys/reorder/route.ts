@@ -3,6 +3,7 @@ import { requireManager } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { ReorderProviderKeysSchema } from "@/lib/validators/provider-keys";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { forgetKeyMemo } from "@/lib/services/provider-keys";
 
 export const maxDuration = 60;
 
@@ -26,5 +27,6 @@ export async function PUT(req: NextRequest) {
       .eq("provider", provider);
   }
 
+  forgetKeyMemo();
   return ok({ provider, orderedIds });
 }

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { type KeyScope, getActiveKey } from "@/lib/services/provider-keys";
+import { type KeyScope, getActiveKey, getActiveKeyMemo } from "@/lib/services/provider-keys";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { CreditCheck } from "@/lib/services/providers/types";
 import type { ProviderId } from "@/lib/services/providers/types";
 
@@ -41,20 +42,20 @@ function cacheKeyFor(settingsKey: string, scope: KeyScope): string {
   return scope === "any" ? settingsKey : `${settingsKey}:${scope}`;
 }
 
-// Apollo at 0: re-ask at most once an hour (13 Nov 2026: the 5-minute window
+// Apollo at 0 (or under APOLLO_MIN_CREDITS, which enrich already treats as out): re-ask at most once an hour (13 Nov 2026: the 5-minute window
 // meant ~500 balance reads a day while nothing could be bought). A manual
 // refresh (`fresh`) still reads it live. pg_cron's gates use the same hour
 // (supabase/migrations/2026_11_13_apollo_zero_gates.sql).
 export const APOLLO_EMPTY_RECHECK_MS = 60 * 60 * 1000;
 
-/** `emptyMaxAgeMs`: how long a saved balance of 0 (or less) stays good, when longer than `maxAgeMs`. */
+/** `emptyMaxAgeMs`: how long a saved balance too low to use (a number, `ok` false) stays good, when longer than `maxAgeMs`. */
 async function getCached(db: Db, key: string, maxAgeMs = CACHE_TTL_MS, emptyMaxAgeMs = 0): Promise<CreditCheck | null> {
   const { data } = await db.from("system_state").select("value, updated_at").eq("key", key).maybeSingle();
   if (!data) return null;
   const age = Date.now() - new Date(data.updated_at).getTime();
   let v: CreditCheck;
   try { v = JSON.parse(data.value) as CreditCheck; } catch { return null; }
-  const empty = v.remaining != null && v.remaining <= 0;
+  const empty = v.remaining != null && !v.ok;
   return age > (empty ? Math.max(maxAgeMs, emptyMaxAgeMs) : maxAgeMs) ? null : v;
 }
 
@@ -380,7 +381,13 @@ async function checkCredits(
   // it in the cross-tenant system_state row — it never selects the key that
   // gets SPENT (that is complete()/scrapePage()). Per-company balances are
   // a follow-up; showing a shared reading costs nobody money.
-  const resolved = await getActiveKey(db, provider, scope);
+  //
+  // Key resolve: the 30 s memo, except for a manual `fresh` check (live key
+  // list) and "any" on a company-scoped client (that returns THIS company's
+  // key, which must not be memoised as the shared one).
+  const resolved = !opts?.fresh && (scope !== "any" || isAdminClient(db))
+    ? await getActiveKeyMemo(db, provider, scope)
+    : await getActiveKey(db, provider, scope);
   if (!resolved) {
     const fresh = { ok: false, remaining: null, message: `No usable ${provider} key configured` };
     await setCached(db, cacheKey, fresh);
@@ -390,6 +397,10 @@ async function checkCredits(
   const fresh = await FETCHERS[provider](resolved.secret);
   await setCached(db, cacheKey, fresh);
   return fresh;
+}
+
+function isAdminClient(db: Db): boolean {
+  try { return db === createAdminClient(); } catch { return false; } // no env (unit tests): not the admin client
 }
 
 export const checkFirecrawlCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "firecrawl", "credit_check_firecrawl", scope, opts);
@@ -404,13 +415,18 @@ export const checkGeminiCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOp
 export const checkMistralCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "mistral", "credit_check_mistral", scope, opts);
 export const checkGroqCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "groq", "credit_check_groq", scope, opts);
 
-/** true = Apollo's balance is 0. A saved balance above 0 is trusted (every real
- *  spend re-saves it, and the per-reveal check re-reads it every 5 min), so this
- *  never calls Apollo while credits exist; at 0 it re-asks Apollo at most hourly. */
+/** true = Apollo's balance is under APOLLO_MIN_CREDITS (5), the same line the
+ *  enrich route uses to refuse reveals (13 Nov 2026: was "0", so 1-4 credits let
+ *  scoring queue reveals that enrich then refused every 5 minutes). A saved usable
+ *  balance is trusted (every real spend re-saves it, and the per-reveal check
+ *  re-reads it every 5 min), so this never calls Apollo while credits exist;
+ *  below the line it re-asks Apollo at most hourly. pg_cron's gates use the same
+ *  line (2026_11_13_s2_apollo_min_gates.sql). */
 export async function apolloOutOfCredits(db: Db): Promise<boolean> {
   const saved = await checkApolloCredits(db, "any" /* one shared Apollo account */, { savedOnly: true });
-  if (saved.remaining == null || saved.remaining > 0) return false;
-  return ((await checkApolloCredits(db, "any")).remaining ?? 1) <= 0;
+  if (saved.remaining == null || saved.ok) return false;
+  const now = await checkApolloCredits(db, "any");
+  return now.remaining != null && !now.ok;
 }
 
 /** Used by the "Re-check" button on a specific stored key — bypasses the

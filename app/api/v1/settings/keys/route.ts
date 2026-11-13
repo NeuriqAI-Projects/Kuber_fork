@@ -4,7 +4,8 @@ import { requireManager } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { CreateProviderKeySchema } from "@/lib/validators/provider-keys";
 import { getLlmTierRoles, PROVIDER_META, resolveLlmTierOrder } from "@/lib/services/providers/registry";
-import { ENV_KEY_VARS, isUsableLlmKeyRow, kickLlmWork } from "@/lib/services/provider-keys";
+import { ENV_KEY_VARS, forgetKeyMemo, isUsableLlmKeyRow, isUsableScrapeKeyRow, kickLlmWork, kickScrapeWork } from "@/lib/services/provider-keys";
+import { checkApolloCredits } from "@/lib/services/provider-credits";
 import { internalAppBaseUrl } from "@/lib/internal-url";
 import { dbForUser } from "@/lib/supabase/scoped";
 
@@ -112,10 +113,19 @@ export async function POST(req: NextRequest) {
     try { await db.rpc("provider_key_delete_secret", { p_vault_id: vaultId }); } catch { /* best effort */ }
     return fail(500, "INTERNAL", error.message);
   }
+  forgetKeyMemo();
+  // A new Apollo key (a top-up on a new account): save its live balance so the
+  // "Apollo out of credits" gates reopen at once.
+  if (provider === "apollo") after(() => checkApolloCredits(db, "any" /* one shared Apollo account */, { fresh: true }));
   // A new AI key is saved as healthy without a test: start waiting drafts on it now.
   if (isUsableLlmKeyRow(created)) {
     const baseUrl = internalAppBaseUrl(req);
     after(() => kickLlmWork(baseUrl, caller.companyId));
+  }
+  // A new Firecrawl or AI key: start the website scrapes waiting for one.
+  if (isUsableScrapeKeyRow(created)) {
+    const baseUrl = internalAppBaseUrl(req);
+    after(() => kickScrapeWork(baseUrl));
   }
   return ok(created);
 }

@@ -1,12 +1,12 @@
 import { NextRequest, after } from "next/server";
 import { requireManager } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
-import { checkSpecificKey } from "@/lib/services/provider-credits";
+import { checkApolloCredits, checkSpecificKey } from "@/lib/services/provider-credits";
 import { PROVIDER_META } from "@/lib/services/providers/registry";
 import type { ProviderId } from "@/lib/services/providers/types";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { internalAppBaseUrl } from "@/lib/internal-url";
-import { isUsableLlmKeyRow, kickLlmWork } from "@/lib/services/provider-keys";
+import { forgetKeyMemo, isUsableLlmKeyRow, isUsableScrapeKeyRow, kickLlmWork, kickScrapeWork } from "@/lib/services/provider-keys";
 
 export const maxDuration = 60;
 
@@ -38,11 +38,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     last_error: result.ok ? null : result.message,
     last_error_at: result.ok ? null : nowIso,
   }).eq("id", id);
+  forgetKeyMemo();
+  // Apollo: save the live balance too, so the "Apollo out of credits" gates
+  // (scoring, reveal; held for an hour at a low balance) reopen at once.
+  if (keyRow.provider === "apollo") after(() => checkApolloCredits(db, "any" /* one shared Apollo account */, { fresh: true }));
 
   // A working AI key again: start the drafts that were waiting for it now.
-  if (result.ok && isUsableLlmKeyRow({ provider: keyRow.provider as string, is_active: keyRow.is_active as boolean, status: "healthy", cooling_off_until: null })) {
+  // A working Firecrawl or AI key: start the website scrapes waiting for it.
+  const checked = { provider: keyRow.provider as string, is_active: keyRow.is_active as boolean, status: "healthy", cooling_off_until: null };
+  if (result.ok && isUsableLlmKeyRow(checked)) {
     const baseUrl = internalAppBaseUrl(req);
     after(() => kickLlmWork(baseUrl, user.companyId));
+  }
+  if (result.ok && isUsableScrapeKeyRow(checked)) {
+    const baseUrl = internalAppBaseUrl(req);
+    after(() => kickScrapeWork(baseUrl));
   }
 
   return ok({ id, ...result });

@@ -73,7 +73,7 @@ export async function getActiveKey(
 
   let query = db
     .from("provider_keys")
-    .select("id, secret_vault_id")
+    .select("id, secret_vault_id, status, last_error")
     .eq("provider", provider)
     .eq("is_active", true)
     .or(`status.eq.healthy,and(status.eq.cooling_off,cooling_off_until.lte.${nowIso})`);
@@ -90,8 +90,13 @@ export async function getActiveKey(
   const candidate = (rows ?? []).find((r) => !exclude.has(r.id as string));
 
   if (candidate) {
-    const { data: secret } = await db.rpc("provider_key_read_secret", { p_vault_id: candidate.secret_vault_id });
+    if (candidate.status === "healthy" && !candidate.last_error) knownClean.set(candidate.id as string, Date.now());
+    else knownClean.delete(candidate.id as string);
+    const vaultId = candidate.secret_vault_id as string;
+    const secret = secretByVaultId.get(vaultId)
+      ?? (await db.rpc("provider_key_read_secret", { p_vault_id: vaultId })).data;
     if (typeof secret === "string" && secret) {
+      secretByVaultId.set(vaultId, secret);
       return { source: "db", keyId: candidate.id as string, secret };
     }
     // Vault read failed unexpectedly (shouldn't happen for a row we just
@@ -106,19 +111,31 @@ export async function getActiveKey(
 }
 
 /**
+ * Decrypted secrets by Vault id, per instance. A Vault id's secret never
+ * changes: nothing updates a stored secret (a new secret is a new key row with
+ * a new Vault id, and deleting a row deletes its Vault secret), so this needs
+ * no expiry. It saves the Vault decrypt on every key resolve after the first
+ * (~1,800 provider_key_read_secret calls a day, 13 Nov 2026). The row read
+ * still runs, so a dead, deactivated or deleted key is never handed out.
+ */
+const secretByVaultId = new Map<string, string>();
+
+/**
  * getActiveKey with a short per-instance memo, for the hot paths (every
- * Instantly/Apollo HTTP request, every LLM call). Saves the provider_keys read
- * and the Vault decrypt on repeat calls.
+ * Instantly/Apollo HTTP request, every LLM call) and the credit checks. Saves
+ * the provider_keys read on repeat calls.
  *
  * Keyed by scope + provider, so one company's key is never handed to another.
  * Only use it where `db` is built FROM `scope` (getServiceSecret, complete()),
- * so the memo key and the query filter always agree. Only DB keys are memoised
- * (env keys cost nothing to read). markKeyFailed evicts the key at once on this
- * instance; any other change in Settings > Keys (new key, deactivated key, new
- * priority) reaches a warm instance within KEY_MEMO_TTL_MS.
+ * or is the admin client, so the memo key and the query filter always agree.
+ * "No key" and env answers are memoised too (a company without a DB key used
+ * to re-read provider_keys on every call). markKeyFailed evicts the key at once
+ * on this instance and the Settings > Keys routes clear the memo
+ * (forgetKeyMemo); any other change reaches a warm instance within
+ * KEY_MEMO_TTL_MS.
  */
 const KEY_MEMO_TTL_MS = 30_000;
-const keyMemo = new Map<string, { value: ResolvedKey; expires: number }>();
+const keyMemo = new Map<string, { value: ResolvedKey | null; at: number }>();
 
 export async function getActiveKeyMemo(
   db: Db,
@@ -127,11 +144,17 @@ export async function getActiveKeyMemo(
 ): Promise<ResolvedKey | null> {
   const memoKey = `${scope}:${provider}`;
   const hit = keyMemo.get(memoKey);
-  if (hit && hit.expires > Date.now()) return hit.value;
+  if (hit && Date.now() - hit.at < KEY_MEMO_TTL_MS) return hit.value;
   const value = await getActiveKey(db, provider, scope);
-  if (value?.keyId) keyMemo.set(memoKey, { value, expires: Date.now() + KEY_MEMO_TTL_MS });
-  else keyMemo.delete(memoKey);
+  keyMemo.set(memoKey, { value, at: Date.now() });
   return value;
+}
+
+/** A key was added, edited, re-checked or deleted on this instance: drop the
+ *  memo so the next resolve reads provider_keys again. */
+export function forgetKeyMemo(): void {
+  keyMemo.clear();
+  knownClean.clear();
 }
 
 /** Settings key holding the Anthropic workspace id for a company. Stored in
@@ -192,8 +215,25 @@ export async function resolveModel(
   return envModel || hardcodedDefault;
 }
 
+/** Keys this instance saw healthy with no error (from the row read or its own
+ *  success write), and when. markKeySucceeded skips its write for those. */
+const knownClean = new Map<string, number>();
+const CLEAN_WRITE_SKIP_MS = 5 * 60_000;
+
+/**
+ * Record a successful call: healthy, no cooldown, no error, last used now.
+ *
+ * Skipped when this instance saw the row healthy with no error in the last
+ * 5 minutes: the write would change nothing but last_used_at, which no screen
+ * shows (it was an UPDATE per LLM call / scrape, ~2,000 a day on busy days).
+ * ponytail: a key another instance marked failed in those 5 minutes stays
+ * marked until this instance's next write (at most 5 minutes later).
+ */
 export async function markKeySucceeded(db: Db, keyId: string | null): Promise<void> {
   if (!keyId) return;
+  const seen = knownClean.get(keyId);
+  if (seen && Date.now() - seen < CLEAN_WRITE_SKIP_MS) return;
+  knownClean.set(keyId, Date.now());
   await db.from("provider_keys").update({
     status: "healthy",
     cooling_off_until: null,
@@ -239,13 +279,36 @@ export async function hasUsableLlmKey(db: Db, companyId: string): Promise<boolea
 
 /** Would getActiveKey pick this row for an AI call right now? Same rule as its
  *  filter (active; healthy, or cooling off with the cooldown over), for one row. */
-export function isUsableLlmKeyRow(
-  row: { provider: string; is_active: boolean; status: string; cooling_off_until: string | null },
-  now = Date.now(),
-): boolean {
-  if ((SERVICE_PROVIDER_IDS as readonly string[]).includes(row.provider) || !row.is_active) return false;
-  return row.status === "healthy"
-    || (row.status === "cooling_off" && !!row.cooling_off_until && Date.parse(row.cooling_off_until) <= now);
+type KeyRowHealth = { provider: string; is_active: boolean; status: string; cooling_off_until: string | null };
+
+function isUsableRow(row: KeyRowHealth, now: number): boolean {
+  return row.is_active && (row.status === "healthy"
+    || (row.status === "cooling_off" && !!row.cooling_off_until && Date.parse(row.cooling_off_until) <= now));
+}
+
+export function isUsableLlmKeyRow(row: KeyRowHealth, now = Date.now()): boolean {
+  if ((SERVICE_PROVIDER_IDS as readonly string[]).includes(row.provider)) return false;
+  return isUsableRow(row, now);
+}
+
+/** Would website scraping use this key right now? Firecrawl reads the site and
+ *  an AI key writes the profile (complete()), so either can be what it waited for. */
+export function isUsableScrapeKeyRow(row: KeyRowHealth, now = Date.now()): boolean {
+  return row.provider === "firecrawl" ? isUsableRow(row, now) : isUsableLlmKeyRow(row, now);
+}
+
+/**
+ * A Firecrawl or AI key just became usable: start queued website scrapes now.
+ * scrape-orgs holds the queue for about an hour after skipping a batch for
+ * credits (SKIPPED_LOW_CREDITS), so a top-up would otherwise wait out the hour.
+ * scrape-orgs takes no company (it claims queued orgs of any company, oldest
+ * first) and stops at once when nothing is queued. Call it inside after().
+ */
+export async function kickScrapeWork(baseUrl: string): Promise<void> {
+  const secret = process.env.INTERNAL_SECRET;
+  if (!secret) return;
+  await fetch(`${baseUrl}/api/enrich/scrape-orgs`, { method: "POST", headers: { "x-internal-secret": secret } })
+    .then(() => {}, () => {});
 }
 
 /**
@@ -314,7 +377,8 @@ export async function hasUsableServiceKey(
  *  reaches here, retrying the same key again is not going to help. */
 export async function markKeyFailed(db: Db, keyId: string | null, info: KeyFailureInfo): Promise<void> {
   if (!keyId) return;
-  for (const [k, e] of keyMemo) if (e.value.keyId === keyId) keyMemo.delete(k);
+  for (const [k, e] of keyMemo) if (e.value?.keyId === keyId) keyMemo.delete(k);
+  knownClean.delete(keyId);
   const now = Date.now();
   const updates: Record<string, unknown> = {
     last_error: info.message.slice(0, 500),
