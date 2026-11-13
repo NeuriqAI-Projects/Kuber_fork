@@ -25,7 +25,7 @@ import { summarizeTerritory } from "@/lib/territory";
 import { LOCATION_CATEGORIES } from "@/lib/constants";
 import {
   fetchUsers, createUser, patchUser,
-  fetchOversight, fetchSendingAccounts,
+  fetchOversight, fetchSendingAccounts, queryCache,
   type Profile, type HandoverStrategy, type HandoverSummary,
   type InstantlySendingAccount,
 } from "@/lib/api-client";
@@ -108,8 +108,10 @@ export function TeamView() {
 
     // Separate from the roster load on purpose: this one calls Instantly, so a
     // missing key or a provider outage must not blank out the whole team page.
-    // Without it the mailbox column just has nothing to offer.
-    fetchSendingAccounts(session.access_token)
+    // Without it the mailbox column just has nothing to offer. Reused for 5 min
+    // (each Team visit asked Instantly again); a Settings write makes it stale.
+    const token = session.access_token;
+    queryCache.fetch("/api/v1/settings/keys/sending-accounts", () => fetchSendingAccounts(token), { maxAgeMs: 5 * 60_000 })
       .then((s) => { setMailboxes(s.accounts); setDefaultMailbox(s.selected_email); })
       .catch(() => { /* column degrades to read-only text */ });
   }, [session, role]);

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CampaignDetail } from "@/components/app/campaign-drawer";
 import { useApp } from "@/lib/app-context";
+import { prefetch, cacheKeys, cachedFetchers } from "@/lib/api-client";
 import CampaignDetailLoading from "./loading";
 import { Megaphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,9 +23,10 @@ export function CampaignDetailClient({ campaignId }: Props) {
   // before that list has ever loaded, shows the skeleton.
   const campaign = campaigns.find((c) => c.id === campaignId) ?? null;
 
-  // Header/tiles come from the cached list; refresh it quietly per visit.
+  // Header/tiles come from the cached list; refresh it quietly per visit when
+  // it is over 30 s old or stale (writes mark it stale).
   useEffect(() => {
-    if (session) void loadCampaigns(session.access_token);
+    if (session) prefetch(cacheKeys.campaigns, cachedFetchers.campaigns, { maxAgeMs: 30_000 });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per visit
   }, [campaignId]);
 

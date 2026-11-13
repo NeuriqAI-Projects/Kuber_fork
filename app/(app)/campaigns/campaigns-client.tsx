@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import {
-  deleteCampaign, pauseCampaign, resumeCampaign, prefetchCampaign,
+  deleteCampaign, pauseCampaign, resumeCampaign, prefetchCampaign, prefetch,
   useCached, cacheKeys, cachedFetchers, type Profile,
 } from "@/lib/api-client";
 import { CampaignsSkeleton } from "@/components/app/page-skeletons";
@@ -51,10 +51,11 @@ export function CampaignsClient() {
   const { campaigns, setCampaigns, campaignsLoaded, loadCampaigns, session, role } = useApp();
   const list = campaigns;
 
-  // The cached list paints at once; refresh it quietly on every visit, as the
-  // old server-rendered page effectively did.
+  // The cached list paints at once; refresh it quietly on a visit when it is
+  // over 30 s old (list -> campaign -> back was 3 list loads in a minute). Any
+  // write marks it stale, and a stale list reloads whatever its age.
   useEffect(() => {
-    if (session) void loadCampaigns(session.access_token);
+    if (session) prefetch(cacheKeys.campaigns, cachedFetchers.campaigns, { maxAgeMs: 30_000 });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per visit
   }, []);
 

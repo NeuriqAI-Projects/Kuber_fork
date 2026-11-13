@@ -40,13 +40,12 @@ export default function LeadDetailPage() {
   useEffect(() => {
     let mounted = true;
 
+    // The local session, not getUser(): that was a Supabase Auth call per lead
+    // open, and the (app) layout has already checked the user on the server.
     async function init() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!mounted) return;
-      if (!user || !isAppUser(user)) { router.replace("/"); return; }
-
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { router.replace("/"); return; }
+      if (!mounted) return;
+      if (!session || !isAppUser(session.user)) router.replace("/");
     }
 
     void init();
