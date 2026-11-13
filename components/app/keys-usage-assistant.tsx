@@ -211,7 +211,7 @@ export function AssistantUsageView() {
           <UsageEmpty>No AI spend recorded in this period.</UsageEmpty>
         ) : (
           <UsageBarChart
-            data={data.daily.map((d) => ({ date: d.date.slice(5), assistant: d.assistant, other: d.other }))}
+            data={data.daily.map((d) => ({ date: d.date, assistant: d.assistant, other: d.other }))}
             bars={[
               { dataKey: "other", name: "Drafts & other", color: CHART_COLORS.primarySoft },
               { dataKey: "assistant", name: "Assistant", color: CHART_COLORS.primary },
