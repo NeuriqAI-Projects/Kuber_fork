@@ -10,7 +10,7 @@ import { ServiceHealthBanner } from "@/components/app/service-health-banner";
 
 import { useRef, useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { cn, everyWhileVisible } from "@/lib/utils";
 import {
   type Lead,
   type LeadStatus,
@@ -723,22 +723,15 @@ export default function LeadsPage() {
   // Ticks skip the exact count too (`poll`); loadLeads keeps the total right.
   const leadsOnScreen = useRef(true);
   leadsOnScreen.current = !scoredView && !(leadsEntityMode === "individual" && searchResults !== null);
-  const lastActivity = useRef(Date.now());
-  useEffect(() => {
-    const touch = () => { lastActivity.current = Date.now(); };
-    const events = ["pointermove", "pointerdown", "keydown", "wheel", "touchstart"] as const;
-    for (const e of events) window.addEventListener(e, touch, { passive: true });
-    return () => { for (const e of events) window.removeEventListener(e, touch); };
-  }, []);
+  // everyWhileVisible holds the shared hidden-tab / 5-min-idle rule (lib/utils.ts).
+  // A `poll` tick first asks a ~100-byte "what changed last" stamp and re-downloads
+  // the page only when it moved (or every 5 min, for org-only edits): see loadLeads.
   useEffect(() => {
     if (!session) return;
-    const interval = setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      if (Date.now() - lastActivity.current > 5 * 60_000) return;
+    return everyWhileVisible(() => {
       if (!leadsOnScreen.current) return;
       void loadLeads(session.access_token, { background: true, poll: true });
     }, 30_000);
-    return () => clearInterval(interval);
   }, [session, loadLeads]);
 
   // Fetch import batches for the batch filter dropdown. Keyed on leads.length,
@@ -766,15 +759,18 @@ export default function LeadsPage() {
   //
   // Batch is chosen by label in the UI but stored as import_id, and two imports
   // can share a label, so map the label to every id that carries it.
+  // The ids as a string: the imports list is refetched after any lead write, and a
+  // new (equal) array re-ran the search below, paging every match again.
+  const batchIdsKey = useMemo(
+    () => (filters.batchLabels.size > 0 ? importBatches.filter((b) => filters.batchLabels.has(b.label)).map((b) => b.id).join(",") : ""),
+    [filters.batchLabels, importBatches],
+  );
   const serverFilters: LeadListFilters | undefined = useMemo(() => {
     const f: LeadListFilters = {};
     if (filters.assignees.size > 0) f.assigned_to = [...filters.assignees].join(",");
     if (filters.statuses.size > 0) f.statuses = [...filters.statuses].map((s) => DB_LEAD_STATUS[s] ?? s);
     if (filters.sources.size > 0) f.sources = [...filters.sources].map((s) => DB_LEAD_SOURCE[s] ?? s);
-    if (filters.batchLabels.size > 0) {
-      f.import_ids = importBatches.filter((b) => filters.batchLabels.has(b.label)).map((b) => b.id);
-      if (f.import_ids.length === 0) delete f.import_ids;
-    }
+    if (batchIdsKey) f.import_ids = batchIdsKey.split(",");
     if (filters.createdFrom) f.created_after = filters.createdFrom.toISOString();
     if (filters.createdTo) {
       const to = new Date(filters.createdTo);
@@ -782,7 +778,7 @@ export default function LeadsPage() {
       f.created_before = to.toISOString();
     }
     return Object.keys(f).length > 0 ? f : undefined;
-  }, [filters, importBatches]);
+  }, [filters, batchIdsKey]);
 
   // True per-stage totals for the Kanban headers. The board renders whatever
   // cards are loaded (with its own "Show more" below), but the numbers on the

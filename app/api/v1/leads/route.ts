@@ -97,6 +97,22 @@ export async function GET(req: NextRequest) {
   const { country, email_status, lead_source, organization_id, email_domain_catchall, import_id, created_after, assigned_to, statuses, sources, import_ids, created_before, q: search, page, limit, count: countMode } = parsed.data;
   const db = dbForUser(user);
 
+  // ?stamp=1: the Leads page's 30 s poll asks this first (~100 bytes, 2 one-row
+  // reads) and re-downloads the 500-row page (~0.5 MB) only when it moved. Any
+  // lead write bumps updated_at (trigger, also when an org's enrichment changes
+  // a lead's status); a new lead has a new created_at. Leads are soft-deleted.
+  if (req.nextUrl.searchParams.get("stamp") === "1") {
+    const newest = (col: "updated_at" | "created_at") => {
+      let s = db.from("leads").select(col);
+      if (user.role === "employee") s = s.eq("assigned_to", user.id);
+      return s.not(col, "is", null).order(col, { ascending: false }).limit(1);
+    };
+    const [u, c] = await Promise.all([newest("updated_at"), newest("created_at")]);
+    if (u.error || c.error) return fail(500, "INTERNAL", (u.error ?? c.error)!.message);
+    const at = (r: typeof u.data, col: string) => String((r?.[0] as Record<string, unknown> | undefined)?.[col] ?? "");
+    return ok({ stamp: `${at(u.data, "updated_at")}|${at(c.data, "created_at")}` });
+  }
+
   // A search reads leads_search (leads + org_name) so the company-name match is a
   // column filter, not an id list in the URL — see 2026_11_06_leads_search_view.sql.
   let q = onlyRevealedLeads(

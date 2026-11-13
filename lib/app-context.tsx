@@ -7,7 +7,7 @@ import { type Lead } from "@/lib/leads";
 import { type Campaign } from "@/components/app/create-campaign-modal";
 import { supabase } from "@/lib/supabase";
 import {
-  fetchLeads, fetchLeadsCount, rescrapeOrg, type LeadListFilters,
+  fetchLeads, fetchLeadsCount, fetchLeadsStamp, rescrapeOrg, type LeadListFilters,
   useCached, cacheKeys, cachedFetchers, queryCache,
 } from "@/lib/api-client";
 
@@ -254,6 +254,8 @@ export function AppProvider({
   const leadsInFlight = useRef(false);
   const leadsRef = useRef(leads);
   leadsRef.current = leads;
+  /** The poll's last "what changed" stamp and when page 1 was last downloaded. */
+  const pollStamp = useRef<{ stamp: string; at: number } | null>(null);
   const loadLeads = useCallback(async (token: string, opts?: { background?: boolean; poll?: boolean }) => {
     // `background` = the Leads page's 30s poll. It must NOT flip `loadingLeads`:
     // that flag drives a full-page skeleton there, so every tick blanked the
@@ -271,6 +273,15 @@ export function AppProvider({
     leadsInFlight.current = true;
     if (!opts?.background) setLoadingLeads(true);
     try {
+      // `poll`: ask the ~100-byte stamp first; nothing changed and page 1 is under
+      // 5 min old = no download (the stamp misses org-only edits like a new
+      // description, so 5 min bounds those). Each tick was ~0.5 MB before.
+      let stamp: string | null = null;
+      if (opts?.poll) {
+        stamp = await fetchLeadsStamp(token).catch(() => null);
+        const last = pollStamp.current;
+        if (stamp && last?.stamp === stamp && Date.now() - last.at < 5 * 60_000) return;
+      }
       // `poll` = the 30 s tick: same rows, no exact count (the count is a
       // second full scan of the table and the total rarely moves). The total is
       // kept up to date from the rows instead: a short page IS the whole list;
@@ -287,6 +298,7 @@ export function AppProvider({
       setLeadsTotal((prev) =>
         res.total ?? (res.leads.length < LEADS_PAGE_SIZE ? res.leads.length : prev === null ? null : prev + unseen));
       setLeadsLoadedFor(session?.user.id ?? null);
+      pollStamp.current = stamp ? { stamp, at: Date.now() } : null;
     } catch { /* silently ignore */ }
     finally {
       leadsInFlight.current = false;
