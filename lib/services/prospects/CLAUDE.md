@@ -23,6 +23,7 @@ no site → LinkedIn via Tavily) → **Jev** classifier → reveal ONE contact o
 
 - Same search twice (23 Oct 2026): the wizard sends one `request_id` per session (kept in its draft, stored in `prospect_searches.filters`); `runProspectSearch` answers 409 `ALREADY_STARTED` with that search's id. Not unique-indexed, see the ponytail note.
 - Organizations list (24 Oct 2026): `GET /api/v1/prospects` counts every search (head-only counts, `all_counts`, `review_total`), lists every search in `batches`, returns the newest `limit` (300) rows + `total_matching` ("Show more"); full progress numbers only for the 20 newest searches + `search_ids`.
+- Apollo at 0 (13 Nov 2026): `runBatch` asks once per run (`deps.apolloEmpty` = `apolloOutOfCredits`, provider-credits.ts) and parks waiting_credits rows in one write (`store.parkWaiting`); `companiesWithWork` and the pg_cron gate (`2026_11_13_apollo_zero_gates.sql`) skip them while the saved Apollo balance is 0 and < 1 h old. A saved 0 is re-read from Apollo at most hourly; Usage > Apollo refresh reopens at once.
 - Tests: `npx tsx --test lib/services/prospects/*.test.mts` (fake DB in `fake-db.mts`).
 - Mock scenarios by batch-name words (Dev only): `[no-credits] [credits-run-out] [sites-down] [no-socials] [jev-down] [flaky] [apollo-down] [apollo-timeout] [apollo-0] [apollo-empty] [pages-N] [firecrawl-low]`.
 - Tables: `prospect_searches`, `prospect_companies`, `prospect_page_memory` (migrations `2026_10_08_*`, `2026_10_09_*`, `2026_10_19_*`).

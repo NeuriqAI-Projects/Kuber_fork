@@ -41,12 +41,21 @@ function cacheKeyFor(settingsKey: string, scope: KeyScope): string {
   return scope === "any" ? settingsKey : `${settingsKey}:${scope}`;
 }
 
-async function getCached(db: Db, key: string, maxAgeMs = CACHE_TTL_MS): Promise<CreditCheck | null> {
+// Apollo at 0: re-ask at most once an hour (13 Nov 2026: the 5-minute window
+// meant ~500 balance reads a day while nothing could be bought). A manual
+// refresh (`fresh`) still reads it live. pg_cron's gates use the same hour
+// (supabase/migrations/2026_11_13_apollo_zero_gates.sql).
+export const APOLLO_EMPTY_RECHECK_MS = 60 * 60 * 1000;
+
+/** `emptyMaxAgeMs`: how long a saved balance of 0 (or less) stays good, when longer than `maxAgeMs`. */
+async function getCached(db: Db, key: string, maxAgeMs = CACHE_TTL_MS, emptyMaxAgeMs = 0): Promise<CreditCheck | null> {
   const { data } = await db.from("system_state").select("value, updated_at").eq("key", key).maybeSingle();
   if (!data) return null;
   const age = Date.now() - new Date(data.updated_at).getTime();
-  if (age > maxAgeMs) return null;
-  try { return JSON.parse(data.value) as CreditCheck; } catch { return null; }
+  let v: CreditCheck;
+  try { v = JSON.parse(data.value) as CreditCheck; } catch { return null; }
+  const empty = v.remaining != null && v.remaining <= 0;
+  return age > (empty ? Math.max(maxAgeMs, emptyMaxAgeMs) : maxAgeMs) ? null : v;
 }
 
 async function setCached(db: Db, key: string, value: CreditCheck): Promise<void> {
@@ -363,7 +372,8 @@ async function checkCredits(
   opts?: CreditCheckOptions,
 ): Promise<CreditCheck> {
   const cacheKey = cacheKeyFor(settingsKey, scope);
-  const cached = opts?.fresh ? null : await getCached(db, cacheKey, opts?.savedOnly ? Infinity : CACHE_TTL_MS);
+  const cached = opts?.fresh ? null
+    : await getCached(db, cacheKey, opts?.savedOnly ? Infinity : CACHE_TTL_MS, provider === "apollo" ? APOLLO_EMPTY_RECHECK_MS : 0);
   if (cached) return cached;
 
   // "any": this reports a balance for the service-health banner and caches
@@ -393,6 +403,15 @@ export const checkAnthropicCredits = (db: Db, scope: KeyScope, opts?: CreditChec
 export const checkGeminiCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "gemini", "credit_check_gemini", scope, opts);
 export const checkMistralCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "mistral", "credit_check_mistral", scope, opts);
 export const checkGroqCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "groq", "credit_check_groq", scope, opts);
+
+/** true = Apollo's balance is 0. A saved balance above 0 is trusted (every real
+ *  spend re-saves it, and the per-reveal check re-reads it every 5 min), so this
+ *  never calls Apollo while credits exist; at 0 it re-asks Apollo at most hourly. */
+export async function apolloOutOfCredits(db: Db): Promise<boolean> {
+  const saved = await checkApolloCredits(db, "any" /* one shared Apollo account */, { savedOnly: true });
+  if (saved.remaining == null || saved.remaining > 0) return false;
+  return ((await checkApolloCredits(db, "any")).remaining ?? 1) <= 0;
+}
 
 /** Used by the "Re-check" button on a specific stored key — bypasses the
  *  currently-active-key resolution and the 5-minute cache entirely, since

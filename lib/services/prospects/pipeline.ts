@@ -97,6 +97,8 @@ export interface Deps {
   score(row: ProspectRow, text: string): Promise<JevVerdict>;
   /** Apollo credits free for NEW reveals (balance minus reveals already queued). null = unknown, proceed. */
   apolloCreditsFree(row: ProspectRow): Promise<number | null>;
+  /** Asked once per run: true = Apollo's balance is 0, so no row can be revealed this run. Optional (mocks skip it). */
+  apolloEmpty?(): Promise<boolean>;
   findPeople(apolloOrgId: string): Promise<Person[]>;
   /** The job titles the search asked for (empty = use the buyer ranking). Optional so test deps can skip it. */
   jobTitles?(searchId: string): Promise<string[]>;
@@ -112,6 +114,8 @@ export interface Store {
   /** Atomically take one automatic-reveal slot for this search. false = the search's cap
    *  (its own, else `defaultCap`) is already used up. Must be safe under parallel callers. */
   reserveAutoReveal(searchId: string, defaultCap: number): Promise<boolean>;
+  /** Lock every claimable waiting_credits row until `until` (epoch ms) in one write, without claiming them. */
+  parkWaiting(until: number): Promise<void>;
 }
 
 /** A paid call was not started because the run is about to end. Not a failure:
@@ -122,7 +126,7 @@ export class OutOfTime extends Error {
 
 export const MAX_ATTEMPTS = 3;
 const MIN_WORDS = 20;
-const WAIT_FOR_CREDITS_MS = 10 * 60_000;
+export const WAIT_FOR_CREDITS_MS = 10 * 60_000;
 const backoffMs = (attempt: number) => attempt * 2 * 60_000;
 /** Contact types worth an automatic reveal (lead-ranking.ts tiers). */
 const BUYER_TIERS = new Set(["procurement", "owner", "technical", "leadership"]);
@@ -330,6 +334,14 @@ export async function runBatch(deps: Deps, store: Store, cfg: FitScoring, opts: 
   // Latest moment a paid read may START (it can take ~15 s and must finish before the function is stopped).
   // paidStartBy is the request-wide cap (worker.ts): whichever comes first.
   const startBy = Math.min(start + (opts.paidStartMs ?? opts.budgetMs), opts.paidStartBy ?? Infinity);
+  // Apollo at 0: one check for the whole run. Rows already waiting for credits
+  // are parked in one write instead of being claimed, checked and saved one by
+  // one (13 Nov 2026: 151 waiting rows made ~80K Supabase calls a day), and good
+  // fits reached in this run go straight to waiting without asking again.
+  if (await deps.apolloEmpty?.()) {
+    await store.parkWaiting(deps.now() + WAIT_FOR_CREDITS_MS);
+    deps = { ...deps, apolloCreditsFree: async () => 0 };
+  }
   let advanced = 0;
   async function lane() {
     while (timeLeft()) {

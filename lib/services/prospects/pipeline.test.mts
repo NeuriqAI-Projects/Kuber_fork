@@ -42,6 +42,9 @@ class MemStore implements Store {
     if (this.autoRevealCount >= (this.capOverride ?? defaultCap)) return false;
     this.autoRevealCount++; return true;
   }
+  async parkWaiting(until: number) {
+    for (const r of this.rows.values()) if (r.status === "waiting_credits" && (r.locked_until === null || r.locked_until <= this.clock.t)) r.locked_until = until;
+  }
   get(id: string) { return this.rows.get(id)!; }
 }
 
@@ -97,6 +100,32 @@ test("2. Jev's answer decides: plastic maker → good, not → hidden, in betwee
     await drain(store, deps, clock);
     assert.equal(store.get("x").status, want, `score ${score}`);
   }
+});
+
+test("3b. Apollo at 0: one check per run, waiting rows parked without a claim/save each, nothing failed — resumes after top-up", async () => {
+  const clock = { t: 0 }; const store = new MemStore(clock);
+  let empty = true, checks = 0, freeAsked = 0, claims = 0, saves = 0;
+  const { deps, calls } = makeDeps(clock, {
+    apolloEmpty: async () => { checks++; return empty; },
+    apolloCreditsFree: async () => { freeAsked++; return empty ? 0 : 50; },
+  });
+  for (let i = 0; i < 100; i++) store.add({ id: `w${i}`, status: "waiting_credits", website_url: "https://w.com" });
+  store.add({ id: "q", website_url: "https://q.com" }); // non-Apollo work still flows
+  const claim = store.claim.bind(store), save = store.save.bind(store);
+  store.claim = async (n) => { claims++; return claim(n); };
+  store.save = async (id, p) => { saves++; return save(id, p); };
+  await runBatch(deps, store, CFG, { budgetMs: 60_000, lanes: 8 });
+  assert.equal(checks, 1, "one balance check for the whole run");
+  assert.equal(freeAsked, 0, "never asked per row");
+  // Only q's 3 stages (read, score, park) claim + save; then each of the 8 lanes' empty claim.
+  assert.ok(claims === 11 && saves === 3, `constant work, not per row (claims ${claims}, saves ${saves})`);
+  assert.equal(store.get("q").status, "waiting_credits", "scored and parked, not failed");
+  assert.equal(calls.readHome, 1);
+  for (let i = 0; i < 100; i++) { assert.equal(store.get(`w${i}`).status, "waiting_credits"); assert.equal(store.get(`w${i}`).attempts, 0); }
+  // Top-up: the next run after the locks pass promotes them exactly as before.
+  empty = false; clock.t += 11 * 60_000;
+  await runBatch(deps, store, { ...CFG, max_auto_reveals_per_search: 1000 }, { budgetMs: 60_000, lanes: 8 });
+  assert.equal([...store.rows.values()].filter((r) => r.status === "promoted").length, 101);
 });
 
 test("3. 2–3 Apollo credits: search done, scoring done, reveal waits for credits — then resumes after top-up", async () => {

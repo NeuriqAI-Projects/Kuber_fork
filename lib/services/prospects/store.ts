@@ -24,5 +24,12 @@ export function supabaseStore(db: SupabaseClient, companyId: string): Store {
       if (error) throw new Error(`reserve_auto_reveal: ${error.message}`);
       return data === true;
     },
+    async parkWaiting(until) {
+      const now = new Date().toISOString();
+      const { error } = await db.from("prospect_companies").update({ locked_until: new Date(until).toISOString() })
+        .eq("company_id", companyId).eq("status", "waiting_credits")
+        .or(`locked_until.is.null,locked_until.lte.${now}`);
+      if (error) throw new Error(`park waiting prospects: ${error.message}`);
+    },
   };
 }

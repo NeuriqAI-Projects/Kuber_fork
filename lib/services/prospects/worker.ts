@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { after } from "next/server";
 import { internalAppBaseUrl } from "@/lib/internal-url";
 import { triggerEnrichWatchdog } from "@/lib/services/enrichment-watchdog";
+import { apolloOutOfCredits } from "@/lib/services/provider-credits";
 import { createScopedClient } from "@/lib/supabase/scoped";
 import { parseFitScoring } from "./fit-rules";
 import { isMockProspecting, mockDeps, realDeps } from "./deps";
@@ -113,8 +114,11 @@ export async function companiesWithWork(admin: SupabaseClient): Promise<string[]
   // Same lock rule as claim_prospects: a row still locked can't be claimed, so
   // it isn't work yet. Without this, rows waiting for credits made their company
   // "busy" every minute. pg_cron's gate repeats this query
-  // (supabase/migrations/2026_11_05_cron_work_gates.sql).
-  const { data } = await admin.from("prospect_companies").select("company_id").in("status", WORKABLE)
+  // (supabase/migrations/2026_11_05_cron_work_gates.sql). While Apollo is at 0,
+  // rows waiting for credits aren't work either (2026_11_13_apollo_zero_gates.sql);
+  // that check re-asks Apollo at most once an hour, so they resume on their own.
+  const statuses = (await apolloOutOfCredits(admin)) ? WORKABLE.filter((s) => s !== "waiting_credits") : WORKABLE;
+  const { data } = await admin.from("prospect_companies").select("company_id").in("status", statuses)
     .or(`locked_until.is.null,locked_until.lte.${new Date().toISOString()}`).limit(1000);
   // Plus searches waiting to read their next page (nothing in progress, target not reached yet).
   const { data: runs } = await admin.from("prospect_searches").select("company_id").eq("run_status", "running").limit(1000);

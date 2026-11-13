@@ -9,7 +9,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { scrapePage } from "@/lib/services/firecrawl";
 import { searchPeople } from "@/lib/services/apollo";
 import { isApolloMockCompany, mockRevealedEmail, mockSearchPeople } from "@/lib/services/apollo-mock";
-import { checkApolloCredits } from "@/lib/services/provider-credits";
+import { apolloOutOfCredits, checkApolloCredits } from "@/lib/services/provider-credits";
 import { getServiceSecret } from "@/lib/services/service-keys";
 import { createScopedClient } from "@/lib/supabase/scoped";
 import { normalizeDomain } from "@/lib/utils/domain";
@@ -181,6 +181,7 @@ export function realDeps(admin: SupabaseClient, companyId: string, batchFor: Bat
     tavilySearch: async (q) => tavilySearch(await need("tavily", companyId), q),
     score: async (row, text) => jevCheck(await need("jev", companyId), { name: row.name, website: row.domain }, await searchedFor(row.search_id), text),
     apolloCreditsFree: () => apolloCreditsFree(admin),
+    apolloEmpty: () => apolloOutOfCredits(admin),
     findPeople: async (orgId) => (await searchPeople({ organizationIds: [orgId], page: 1 })).people,
     promote: async (row, person) => promote(createScopedClient(companyId), row, person, false, await batchFor(row.search_id)),
   };
