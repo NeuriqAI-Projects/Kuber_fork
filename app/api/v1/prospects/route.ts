@@ -41,8 +41,9 @@ async function readAll(page: (from: number, to: number) => Page): Promise<Rows> 
  *   ?q=acme           name/domain contains (Hidden ones too)
  *   ?orgs=1           only companies that already have an organization (all the plain Organization list needs)
  *   ?limit=300        the newest N companies of the filter; `total_matching` says how many match
- *   ?summary=1        searches + review total only (for the Started screen)
+ *   ?summary=1        searches + review total only (for the Started screen; with ?search_ids only those searches)
  *   ?summary=badge    review total only, one count query (for the side-menu badge)
+ *   ?summary=stamp    newest updated_at / created_at only: "anything changed?" for the idle poll
  *
  * Every search counts (24 Oct 2026; it was only the 20 newest, so ~3,000 older review companies were
  * invisible and the "need review" number went down as searches were added): `all_counts` and
@@ -103,6 +104,17 @@ export async function GET(req: NextRequest) {
       }),
     });
   }
+  // Organization view's quiet minute poll: "did anything change?" before the full read (~14 DB
+  // requests, ~1-1.5 MB for the client). Every visible change writes updated_at (store.save,
+  // decisions, the claim); a new search has a new created_at.
+  if (sp.get("summary") === "stamp") {
+    const newest = (t: "prospect_companies" | "prospect_searches", col: "updated_at" | "created_at") =>
+      db.from(t).select(col).order(col, { ascending: false, nullsFirst: false }).limit(1);
+    const rs = await Promise.all([newest("prospect_companies", "updated_at"), newest("prospect_searches", "updated_at"), newest("prospect_searches", "created_at")]);
+    const bad = rs.find((r) => r.error);
+    if (bad) return fail(500, "INTERNAL", bad.error!.message);
+    return ok({ stamp: rs.map((r) => Object.values((r.data?.[0] ?? {}) as Record<string, unknown>)[0] ?? "").join("|") });
+  }
   const countsP = Promise.all(summary
     ? [count((b) => b.in("status", REVIEW))]
     : [
@@ -127,8 +139,13 @@ export async function GET(req: NextRequest) {
     if (error) throw new Error(error.message);
     return { rows: (data ?? []) as unknown as Rows, total: total ?? 0 };
   })();
+  // The Started screen (summary + search_ids) needs only its own search: it read every search and
+  // the rows of the 20 newest (~5,000 rows in 5 pages for the client) every 4 s to show one.
+  const onlyWanted = summary && wanted.length > 0;
   // ponytail: the newest 1,000 searches are listed; page the Batch filter if a company ever has more.
-  const searchesP = db.from("prospect_searches").select("*").order("created_at", { ascending: false }).limit(1000);
+  let searchesQ = db.from("prospect_searches").select("*");
+  if (onlyWanted) searchesQ = searchesQ.in("id", wanted);
+  const searchesP = searchesQ.order("created_at", { ascending: false }).limit(1000);
 
   let searches: Rows, c: number[], listed: { rows: Rows; total: number };
   try {
@@ -144,7 +161,7 @@ export async function GET(req: NextRequest) {
   if (!searches.length) return ok({ searches: [], batches: [], counts: emptyCounts(), all_counts: allCounts, companies: [], review_total: 0, total_matching: 0 });
 
   const meta = (s: Record<string, unknown>) => (s.filters ?? {}) as { batch_name?: string; color?: string; keyword_labels?: string[]; keywords?: string[]; max_auto_reveals?: number; request_id?: string; job_titles?: string[] };
-  const detailed = searches.filter((s, i) => i < DETAILED || wanted.includes(s.id as string));
+  const detailed = searches.filter((s, i) => (!onlyWanted && i < DETAILED) || wanted.includes(s.id as string));
   let rows: Rows;
   try {
     rows = await readAll((from, to) => db.from("prospect_companies").select(LIGHT_COLS).in("search_id", detailed.map((s) => s.id as string)).order("id").range(from, to));

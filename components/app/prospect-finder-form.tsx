@@ -228,7 +228,6 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
   // false until the first answer: after it, no `s` = the search is gone (it is asked for by id).
   const [loaded, setLoaded] = useState(false);
   const [netError, setNetError] = useState<string | null>(null);
-  const kicking = useRef(false);
   // When the numbers last moved: no change for a while means a service is down, not slow (Time left).
   // `at` = a company last finished checking (AI answer or given up); `scoredAt` = the AI last really answered.
   const progress = useRef({ sig: "", at: Date.now(), scored: -1, scoredAt: Date.now() });
@@ -236,9 +235,13 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
 
   useEffect(() => {
     let alive = true;
+    let done = false, busy = false, polledAt = 0, lastKick = 0;
     async function tick() {
+      if (busy) return;
+      busy = true;
+      polledAt = Date.now();
       try {
-        // Asked for by id, so its numbers come back however many searches were started since.
+        // Asked for by id: the server reads only this search (it read the 20 newest, ~5,000 rows).
         const d = await api<{ searches: ScoredSearch[] }>(`/api/v1/prospects?summary=1&search_ids=${searchId}`);
         const mine = d.searches.find((x) => x.id === searchId) ?? null;
         if (!alive) return;
@@ -249,15 +252,25 @@ function Started({ searchId, batchName, batchColor, onOpen, onAnother }: {
         const p = progress.current;
         if (sig !== p.sig) { p.sig = sig; p.at = Date.now(); }
         if (mine && mine.stages.scored !== p.scored) { p.scored = mine.stages.scored; p.scoredAt = Date.now(); }
-        // On a laptop there's no minute pump; nudge the background job while there's work.
-        if (mine && mine.in_progress > 0 && !kicking.current) {
-          kicking.current = true;
-          api("/api/v1/prospects/run", {}).catch(() => {}).finally(() => { kicking.current = false; });
+        // Finished, or gone: the numbers can't move any more, stop asking.
+        done = !mine || mine.in_progress === 0;
+        // Nudge the background job at most once a minute (the minute pump does the same on Vercel;
+        // a laptop has none). It was every 4 s tick.
+        if (mine && mine.in_progress > 0 && Date.now() - lastKick >= 60_000) {
+          lastKick = Date.now();
+          api("/api/v1/prospects/run", {}).catch(() => {});
         }
       } catch (e) { if (alive) setNetError((e as Error).message); }
+      finally { busy = false; }
     }
     void tick();
-    const stop = everyWhileVisible(tick, 4000);
+    // Every 5 s while companies finish; every 30 s once nothing finished for a minute (credits,
+    // AI or websites down: the "Waiting" / "Retrying" labels still come up on time).
+    const stop = everyWhileVisible(() => {
+      const quiet = Date.now() - progress.current.at >= 60_000;
+      if (done || (quiet && Date.now() - polledAt < 30_000)) return;
+      void tick();
+    }, 5000);
     return () => { alive = false; stop(); };
   }, [searchId]);
 

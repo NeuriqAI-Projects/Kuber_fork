@@ -92,7 +92,7 @@ export async function api<T>(url: string, body?: unknown, signal?: AbortSignal):
 export const checkedDone = (s: Pick<ScoredSearch, "stages">) => s.stages.scored + (s.stages.score_failed ?? 0);
 
 /** Loads scored companies for the filter; while anything is still being worked on it
- *  refreshes every 4 s and nudges the background job (the minute pump does the same
+ *  refreshes every 10 s and nudges the background job once a minute (the minute pump does the same
  *  in production — running both is safe, rows are locked). Network errors are shown,
  *  never thrown away: the last good data stays on screen. */
 export function useScoredOrgs(filter: ScoredFilter, qInput: string, enabled = true, { orgsOnly = false }: { orgsOnly?: boolean } = {}) {
@@ -111,7 +111,6 @@ export function useScoredOrgs(filter: ScoredFilter, qInput: string, enabled = tr
   const [state, setState] = useState<{ data: ScoredData; key: string; fk: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const kicking = useRef(false);
   // "Show more" raises it; a new filter starts again from one page.
   const [limit, setLimit] = useState(SCORED_PAGE);
   const filterKey = JSON.stringify({ filter, q, orgsOnly });
@@ -150,7 +149,7 @@ export function useScoredOrgs(filter: ScoredFilter, qInput: string, enabled = tr
       if (keyRef.current !== key) return;
       answered.current.add(key);
       setState({ data: d, key, fk: filterKey });
-      // The side menu's "N to review" polls once a minute; give it this fresher number so both always match.
+      // The side menu's "N to review" polls every 3 min; give it this fresher number so both always match.
       window.dispatchEvent(new CustomEvent(REVIEW_TOTAL_EVENT, { detail: d.review_total }));
       setError(null);
     } catch (e) {
@@ -172,17 +171,32 @@ export function useScoredOrgs(filter: ScoredFilter, qInput: string, enabled = tr
   // Waiting for credits is not busy: it can last hours, and polled every 4 s that whole time.
   const busy = (data?.searches ?? []).some((s) => s.in_progress > 0);
   // Idle pages still look every minute: a search started after this page loaded (Add Leads closed
-  // mid-start, another tab, a teammate) must show up without a reload.
+  // mid-start, another tab, a teammate) must show up without a reload. That look is a ~100-byte
+  // "anything changed?" stamp first; the full read (~14 DB requests, ~1-1.5 MB for the client) runs
+  // only when it moved, or every 10 min. Busy (a search running): full read every 10 s (was 4 s)
+  // and a worker nudge at most once a minute (was every tick). Hidden / idle tabs: no ticks at all.
+  const stampRef = useRef<{ stamp: string; at: number } | null>(null);
+  const lastKick = useRef(0);
   useEffect(() => {
     if (!enabled) return;
     return everyWhileVisible(() => {
-      if (busy && !kicking.current && (data?.searches ?? []).some((s) => s.in_progress > 0)) {
-        kicking.current = true;
-        api("/api/v1/prospects/run", {}).catch(() => {}).finally(() => { kicking.current = false; });
+      if (busy) {
+        if (Date.now() - lastKick.current >= 60_000) {
+          lastKick.current = Date.now();
+          api("/api/v1/prospects/run", {}).catch(() => {});
+        }
+        void load();
+        return;
       }
-      void load();
-    }, busy ? 4000 : 60_000);
-  }, [enabled, busy, load, data]);
+      void (async () => {
+        const stamp = await api<{ stamp: string }>("/api/v1/prospects?summary=stamp").then((d) => d.stamp, () => null);
+        const last = stampRef.current;
+        if (stamp && last?.stamp === stamp && Date.now() - last.at < 10 * 60_000) return;
+        await load();
+        stampRef.current = stamp ? { stamp, at: Date.now() } : null;
+      })();
+    }, busy ? 10_000 : 60_000);
+  }, [enabled, busy, load]);
 
   /** Change companies on screen at once (after a decision), before the reload lands. */
   const patch = useCallback((ids: string[], change: Partial<ScoredCompany>) => {
