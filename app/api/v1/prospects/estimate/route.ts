@@ -6,7 +6,9 @@ import { dbForUser } from "@/lib/supabase/scoped";
 import { parseIndustryKeywordGroups, resolveApolloKeyword } from "@/lib/constants";
 import { countPeopleAtCompanies, scanBuyerCompanies } from "@/lib/services/apollo";
 import { estimateFromCount, estimateMarket, leadShare, normCompanyName, type SearchHistory } from "@/lib/services/prospects/estimate";
-import { filterKey, leadsApolloFits, leadsFirecrawlFits } from "@/lib/services/prospects/digging";
+import { bookedBy, filterKey, leadsApolloFits, leadsFirecrawlFits } from "@/lib/services/prospects/digging";
+import { apolloBooked } from "@/lib/services/prospects/search";
+import { isApolloMockCompany } from "@/lib/services/apollo-mock";
 import { checkApolloCredits, checkFirecrawlCredits } from "@/lib/services/provider-credits";
 
 const Body = z.object({
@@ -102,6 +104,8 @@ export async function POST(req: NextRequest) {
     // A slow balance check gives "unknown" after 5 s rather than holding the whole answer.
     capped(checkApolloCredits(db, "any" /* one shared Apollo account */).then((c) => c.remaining).catch(() => null)),
     capped(checkFirecrawlCredits(db, user.companyId ?? "any").then((c) => c.remaining).catch(() => null)),
+    // What this company's running searches can still spend: not free for a new one (search start refuses the same).
+    user.companyId ? capped(apolloBooked(db, user.companyId, isApolloMockCompany(user.companyId)).catch(() => null)) : null,
   ]);
   const f = { keywordTags, locations: parsed.data.locations, employeeRanges: parsed.data.employee_ranges };
   const fk = filterKey({ ...parsed.data, keywords: keywordTags } as never);
@@ -136,12 +140,13 @@ export async function POST(req: NextRequest) {
     const totalPages = (mem?.total_pages as number | undefined) ?? Math.max(1, Math.ceil(est.companies.mid / 100));
     // The counted check already left out companies this workspace has; the people-count maths can only skip read pages.
     const leftShare = est.counted ? 1 : Math.max(0, 1 - pagesUsed / totalPages);
-    const [apolloLeft, firecrawlLeft] = await balances;
+    const [apolloLeft, firecrawlLeft, booked] = await balances;
     return ok({
       free: true, ...est, partial_filters: partial,
       fits: {
-        apollo_leads: leadsApolloFits(apolloLeft), firecrawl_leads: leadsFirecrawlFits(firecrawlLeft),
+        apollo_leads: leadsApolloFits(apolloLeft == null ? null : Math.max(0, apolloLeft - (booked?.credits ?? 0))), firecrawl_leads: leadsFirecrawlFits(firecrawlLeft),
         apollo_credits: apolloLeft, firecrawl_credits: firecrawlLeft,
+        apollo_booked: booked?.credits ?? 0, apollo_booked_by: booked ? bookedBy(booked) : null,
       },
       pages_used: pagesUsed, total_pages: mem?.total_pages ?? null,
       leads_left: { low: Math.round(est.leads.low * leftShare), high: Math.round(est.leads.high * leftShare) },

@@ -53,7 +53,8 @@ interface MarketEstimate {
   /** Lookalikes, excluded websites or advanced filters were set: the count leaves them out. */
   partial_filters?: boolean;
   /** Most leads the Apollo / Firecrawl balances can pay for (null = unknown). */
-  fits?: { apollo_leads: number | null; firecrawl_leads: number | null; apollo_credits?: number | null; firecrawl_credits?: number | null };
+  /** apollo_leads already leaves out apollo_booked: credits running searches can still spend (apollo_booked_by says who). */
+  fits?: { apollo_leads: number | null; firecrawl_leads: number | null; apollo_credits?: number | null; firecrawl_credits?: number | null; apollo_booked?: number; apollo_booked_by?: string | null };
 }
 type Fits = NonNullable<MarketEstimate["fits"]>;
 
@@ -448,8 +449,13 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
   const [size, setSize] = useState<SizeVerdict>(null);
   const [sizeAvail, setSizeAvail] = useState<number | null>(null);
   const noneLeft = size === "none-left";
-  // The credit box cannot go over the Apollo balance when it is known (5,000 otherwise); the field says so.
-  const creditCap = fits?.apollo_credits ? Math.min(5000, fits.apollo_credits) : 5000;
+  // Credits other searches can still spend are not free for this one (the server refuses the same).
+  const booked = fits?.apollo_booked ?? 0;
+  const bookedLine = booked > 0 ? `${booked.toLocaleString()} credits are already booked by ${fits?.apollo_booked_by}.` : "";
+  const apolloFree = fits?.apollo_credits != null ? Math.max(0, fits.apollo_credits - booked) : null;
+  // The credit box cannot go over the free Apollo credits when they are known (5,000 otherwise); the field says so.
+  const creditCap = apolloFree ? Math.min(5000, apolloFree) : 5000;
+  const capWord = booked > 0 ? "your free Apollo credits (balance minus what is booked)" : "your Apollo balance";
   // What stops step 2, each with the lead count that would fit.
   const fitBlock: { msg: string; fix: number } | null =
     targetMsg ? null
@@ -460,7 +466,7 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
       : fits?.firecrawl_leads != null && target > fits.firecrawl_leads
         ? { msg: `Not enough Firecrawl credits. Kuber reads about 100 company websites (100 Firecrawl credits) for every ${LEADS_PER_PAGE} leads, so ${leadsN(target)} need about ${(pages * FIRECRAWL_PER_PAGE).toLocaleString()}. What is left is enough for about ${leadsN(fits.firecrawl_leads)}. Ask for fewer leads or top up Firecrawl.`, fix: fits.firecrawl_leads }
         : fits?.apollo_leads != null && target > fits.apollo_leads
-          ? { msg: `Not enough Apollo credits. ${leadsN(target)} need at least ${needCredits} Apollo credits. What is left is enough for about ${leadsN(fits.apollo_leads)}. Ask for fewer leads or top up Apollo.`, fix: fits.apollo_leads }
+          ? { msg: `Not enough Apollo credits. ${bookedLine ? `${bookedLine} ` : ""}${leadsN(target)} need at least ${needCredits} Apollo credits. What is left is enough for about ${leadsN(fits.apollo_leads)}. Ask for fewer leads or top up Apollo.`, fix: fits.apollo_leads }
           : null;
   const creditsMsg = `${leadsN(target)} need at least ${needCredits} credits (${target} for the leads + ${pages} for searching). Raise your credits to ${needCredits} or more, or ask for fewer leads.`;
   const [batchName, setBatchName] = useDraft("scored", "batchName", "");
@@ -713,15 +719,15 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
                 </div>
                 <div className="flex items-center gap-2">
                   <NumberInput id="max-credits" min={0} max={creditCap} value={creditsEmpty ? null : maxCredits} aria-invalid={creditsTooLow || creditsEmpty}
-                    onAdjust={(t, k) => setCreditsNote(adjustNote(t, k, creditCap === fits?.apollo_credits
-                      ? `Your Apollo balance is ${creditCap.toLocaleString()} credits, so ${creditCap.toLocaleString()} is the most you can set.`
+                    onAdjust={(t, k) => setCreditsNote(adjustNote(t, k, creditCap === apolloFree
+                      ? `${capWord.replace(/^./, (c) => c.toUpperCase())}: ${creditCap.toLocaleString()}, so ${creditCap.toLocaleString()} is the most you can set.`
                       : `${creditCap.toLocaleString()} is the most one search can use.`))}
                     onValueChange={(n) => { setError(""); setCreditsEmpty(n === null); if (n === null) setCreditsNote(null); else setMaxCreditsTyped(n); }} className="w-28" />
                   {(maxCreditsTyped !== null || creditsEmpty) && (
                     <Button type="button" variant="ghost" size="sm" onClick={() => { setCreditsEmpty(false); setCreditsNote(null); setMaxCreditsTyped(null); }}>Use suggested ({suggestedMaxCredits(target)})</Button>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">{fits === undefined ? "Checking your Apollo balance…" : creditCap === fits?.apollo_credits ? `Most you can set: ${creditCap.toLocaleString()}, your Apollo balance.` : `Most you can set: ${creditCap.toLocaleString()}.`}</p>
+                <p className="text-xs text-muted-foreground">{fits === undefined ? "Checking your Apollo balance…" : creditCap === apolloFree ? `Most you can set: ${creditCap.toLocaleString()}, ${capWord}.` : `Most you can set: ${creditCap.toLocaleString()}.`}</p>
                 {!creditsEmpty && creditsNote && <p className="text-xs font-medium text-amber-700 dark:text-amber-300">{creditsNote}</p>}
                 {creditsEmptyMsg && <p className="flex items-start gap-1.5 text-sm font-medium text-destructive"><AlertCircle className="mt-0.5 size-4 shrink-0" />{creditsEmptyMsg}</p>}
                 {creditsTooLow && <p className="flex items-start gap-1.5 text-sm font-medium text-destructive"><AlertCircle className="mt-0.5 size-4 shrink-0" />Not enough credits. {creditsMsg}</p>}
@@ -745,7 +751,8 @@ export function ProspectFinderForm({ onDone }: { onDone?: () => void }) {
             {!inputMsg && target <= MAX_LEADS_PER_SEARCH && <Bill target={target} maxCredits={maxCredits} firecrawlShort={fits?.firecrawl_leads != null && target > fits.firecrawl_leads} size={size} jobTitles={jobTitles.length} />}
             {fits && (fits.apollo_leads != null || fits.firecrawl_leads != null) && (
               <div className="space-y-1 text-[13px] font-medium tabular-nums text-amber-700 dark:text-amber-300">
-                {fits.apollo_leads != null && <p>Apollo credits left: {fits.apollo_credits != null ? `${fits.apollo_credits.toLocaleString()} → ` : ""}enough for about {leadsN(fits.apollo_leads)}</p>}
+                {fits.apollo_leads != null && <p>Apollo credits left: {fits.apollo_credits != null ? `${fits.apollo_credits.toLocaleString()}${booked > 0 ? `, ${apolloFree!.toLocaleString()} free` : ""} → ` : ""}enough for about {leadsN(fits.apollo_leads)}</p>}
+                {bookedLine && <p className="font-normal">{bookedLine} Kuber keeps them for those searches, so they are not counted here.</p>}
                 {fits.firecrawl_leads != null && <p>Firecrawl credits left: {fits.firecrawl_credits != null ? `${fits.firecrawl_credits.toLocaleString()} → ` : ""}enough for about {leadsN(fits.firecrawl_leads)}</p>}
               </div>
             )}

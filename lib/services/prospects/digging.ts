@@ -109,7 +109,7 @@ export function nextStep(s: RunState): DigStep {
 
 /** The stop note with today's numbers. Leads still arrive after a run stopped (waiting companies get
  *  their contact after a top-up, approvals), so the note written at the stop would go stale. */
-export function liveRunNote({ note, leads, target, approved = 0, waiting = 0 }: { note: string | null; leads: number; target: number | null; approved?: number; waiting?: number }): string | null {
+export function liveRunNote({ note, leads, target, approved = 0, waiting = 0, waitedOut = 0 }: { note: string | null; leads: number; target: number | null; approved?: number; waiting?: number; /** moved to Needs review after 2 days waiting */ waitedOut?: number }): string | null {
   if (!note || target == null) return note;
   const split = approved > 0 ? ` (${leads - approved} automatic + ${approved} approved)` : "";
   const m = note.match(/^Stopped at (\d+) of \d+ leads: ([\s\S]*)$/);
@@ -118,9 +118,11 @@ export function liveRunNote({ note, leads, target, approved = 0, waiting = 0 }: 
   const at = Number(m[1]);
   let reason = m[2];
   if (/^Apollo ran out of credits\./.test(reason)) {
-    reason = waiting > 0
-      ? `Apollo ran out of credits. ${waiting} good compan${waiting === 1 ? "y is" : "ies are"} waiting for credits and get their contact on their own after a top-up, within your credit limit.`
-      : "Apollo ran out of credits. No companies are waiting any more.";
+    const parts = [
+      waiting > 0 && `${waiting} good compan${waiting === 1 ? "y is" : "ies are"} waiting for credits and get their contact on their own after a top-up, within your credit limit.`,
+      waitedOut > 0 && `${waitedOut} good compan${waitedOut === 1 ? "y" : "ies"} waited 2 days for credits and ${waitedOut === 1 ? "is" : "are"} now in Needs review: approve ${waitedOut === 1 ? "it" : "them"} to get the contact once credits are back.`,
+    ].filter(Boolean);
+    reason = `Apollo ran out of credits. ${parts.length ? parts.join(" ") : "No companies are waiting any more."}`;
   }
   if (leads >= target) return `Done: ${leads} leads${split}. It had stopped at ${at} (${reason.split(/(?<=\.)\s/)[0].replace(/\.$/, "")}); the rest came in later.`;
   if (leads === at) return `Stopped at ${at} of ${target} leads: ${reason}`;
@@ -146,6 +148,49 @@ export function leadsApolloFits(apolloLeft: number | null): number | null {
 }
 export function leadsFirecrawlFits(firecrawlLeft: number | null): number | null {
   return firecrawlLeft == null ? null : Math.floor(firecrawlLeft / FIRECRAWL_PER_PAGE) * LEADS_PER_PAGE;
+}
+
+/** One search that can still spend Apollo credits: a row of the prospect_credit_bookings RPC
+ *  (migration 2026_11_13_credit_bookings_long_wait.sql). */
+export interface Booking {
+  running: boolean;
+  max_credits: number | null;
+  /** Pages read + contacts promoted (approvals included), as continueRun counts it. */
+  used: number;
+  pages_read: number;
+  max_auto_reveals: number | null;
+  auto_reveals_used: number;
+  /** Companies not decided by the client that could still get an automatic reveal. */
+  pending_auto: number;
+  /** Approved by the client, not revealed yet: 1 credit each, outside the search's limit. */
+  pending_approved: number;
+}
+
+/** The most Apollo credits a search can still spend within its own limits. Running: pages + automatic
+ *  reveals, never past its credit limit nor past its reveal cap + the pages it may still read. Stopped:
+ *  only its unfinished companies (e.g. waiting for credits), within its reveal cap. Approvals add 1 each. */
+export function bookedCredits(b: Booking): number {
+  const revealsLeft = b.max_auto_reveals == null ? Infinity : Math.max(0, b.max_auto_reveals - b.auto_reveals_used);
+  const auto = b.running
+    ? Math.min(b.max_credits == null ? Infinity : Math.max(0, b.max_credits - b.used), revealsLeft + Math.max(0, MAX_PAGES_PER_SEARCH - b.pages_read))
+    : Math.min(b.pending_auto, revealsLeft);
+  return (Number.isFinite(auto) ? auto : b.pending_auto) + b.pending_approved;
+}
+
+/** Credits already promised away: searches that can still spend + contacts queued for a reveal. */
+export interface Booked { credits: number; searches: number; reveals: number }
+
+export function sumBookings(rows: Booking[], reveals: number): Booked {
+  const per = rows.map(bookedCredits).filter((n) => n > 0);
+  return { credits: per.reduce((t, n) => t + n, 0) + reveals, searches: per.length, reveals };
+}
+
+/** "2 searches still running or waiting for credits and 4 contacts waiting to be revealed". */
+export function bookedBy(b: Pick<Booked, "searches" | "reveals">): string {
+  return [
+    b.searches > 0 && `${b.searches} search${b.searches === 1 ? "" : "es"} still running or waiting for credits`,
+    b.reveals > 0 && `${b.reveals} contact${b.reveals === 1 ? "" : "s"} waiting to be revealed`,
+  ].filter(Boolean).join(" and ");
 }
 
 /** Cap on automatic reveals: never past the target, never past what the credit limit leaves after pages. */

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { requireManager } from "@/lib/auth/api-auth";
 import { fail, ok } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
-import { companiesFilter, GROUPS, groupOf, isWorking, NO_TITLE_MATCH, type Group } from "@/lib/services/prospects/groups";
+import { companiesFilter, GROUPS, groupOf, isWorking, LONG_WAIT, NO_TITLE_MATCH, type Group } from "@/lib/services/prospects/groups";
 import { liveRunNote } from "@/lib/services/prospects/digging";
 
 export const maxDuration = 60;
@@ -199,6 +199,7 @@ export async function GET(req: NextRequest) {
       run_note: liveRunNote({
         note: (s.run_note as string | null) ?? null, leads: n("promoted"), target: (s.target_leads as number | null) ?? null,
         approved: rs.filter((r) => r.status === "promoted" && r.decided_by).length, waiting: n("waiting_credits"),
+        waitedOut: rs.filter((r) => r.status === "review" && String(r.last_error ?? "").startsWith(LONG_WAIT)).length,
       }),
       job_titles: (f.job_titles ?? []).filter(Boolean),
       // A search still reading pages counts as in progress even between pages.

@@ -229,3 +229,42 @@ test("S21. Apollo has no more pages and good fits only miss the job titles: the 
   assert.equal(r.bought(), 0);
   assert.equal(r.tables.prospect_searches[0].run_note, "Stopped at 0 of 50 leads: 7 good companies had nobody with your job titles; they wait in Needs review for free. Approve them or widen the titles.");
 });
+
+// ── Credits booked by other searches (13 Nov 2026) ──────────────────────────
+const TARGET: ProspectSearchInput = { ...INPUT, target_leads: 500, max_credits: 568 };
+
+test("S-book1. two running searches booked the balance: a third is refused before anything is saved or paid", async () => {
+  const { db, tables } = fakeDb(); let called = false;
+  const out = await runProspectSearch(db, "co", "u", TARGET, deps({
+    creditsLeft: async () => 1200, booked: async () => ({ credits: 1114, searches: 2, reveals: 0 }),
+    search: async () => { called = true; throw new Error("x"); },
+  }));
+  assert.ok(!out.ok); assert.equal(out.code, "APOLLO_CREDITS_BOOKED"); assert.equal(out.status, 402);
+  assert.equal(out.message, "Apollo has 1200 credits, but 1114 are already booked by 2 searches still running or waiting for credits, so 86 are free. 500 leads need at least 516. Ask for 83 leads or fewer, wait for those to finish, or top up Apollo. Nothing was searched or charged.");
+  assert.equal(called, false); assert.equal(tables.prospect_searches.length, 0);
+});
+
+test("S-book2. what is left still fits: the search starts", async () => {
+  const { db } = fakeDb();
+  const out = await runProspectSearch(db, "co", "u", TARGET, deps({ creditsLeft: async () => 1700, booked: async () => ({ credits: 1114, searches: 2, reveals: 0 }) }));
+  assert.ok(out.ok, "1700 - 1114 = 586 free >= 516");
+});
+
+test("S-book3. nothing booked but the balance is below the target's minimum: refused (the form's rule, now on the server)", async () => {
+  const { db } = fakeDb();
+  const out = await runProspectSearch(db, "co", "u", TARGET, deps({ creditsLeft: async () => 300, booked: async () => ({ credits: 0, searches: 0, reveals: 0 }) }));
+  assert.ok(!out.ok);
+  assert.equal(out.message, "Apollo has only 300 credits left. 500 leads need at least 516. Ask for 291 leads or fewer, or top up Apollo. Nothing was searched or charged.");
+});
+
+test("S-book4. bookings unknown (RPC missing) or balance unknown: the old check only", async () => {
+  const { db } = fakeDb();
+  assert.ok((await runProspectSearch(db, "co", "u", TARGET, deps({ creditsLeft: async () => 3, booked: async () => null }))).ok);
+  assert.ok((await runProspectSearch(fakeDb().db, "co", "u", TARGET, deps({ creditsLeft: async () => null, booked: async () => ({ credits: 999, searches: 3, reveals: 0 }) }))).ok);
+});
+
+test("S-book5. plain one-page search (no target): needs 1 free credit", async () => {
+  const out = await runProspectSearch(fakeDb().db, "co", "u", INPUT, deps({ creditsLeft: async () => 10, booked: async () => ({ credits: 10, searches: 1, reveals: 0 }) }));
+  assert.ok(!out.ok);
+  assert.equal(out.message, "Apollo has 10 credits, but 10 are already booked by 1 search still running or waiting for credits, so 0 are free. Wait for those to finish, or top up Apollo. Nothing was searched or charged.");
+});

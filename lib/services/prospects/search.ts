@@ -24,7 +24,7 @@ import type { ApolloOrgAdvancedFilters } from "@/lib/services/apollo";
 import { normalizeDomain } from "@/lib/utils/domain";
 import { companyName } from "./text";
 import { isWorking, NO_TITLE_MATCH } from "./groups";
-import { FIRECRAWL_PER_PAGE, filterKey, nextStep, outageNote, revealCap, suggestedMaxCredits, titlesNote, type RunState } from "./digging";
+import { bookedBy, FIRECRAWL_PER_PAGE, filterKey, leadsApolloFits, minCredits, nextStep, outageNote, revealCap, suggestedMaxCredits, sumBookings, titlesNote, type Booked, type Booking, type RunState } from "./digging";
 
 export interface ProspectSearchInput {
   keywords: string[];
@@ -68,6 +68,21 @@ export interface SearchDeps {
   /** Firecrawl credits left; a page of 100 companies can use up to 100. */
   firecrawlLeft?(): Promise<number | null>;
   search(input: ProspectSearchInput): Promise<OrgPage>;
+  /** Apollo credits this company's other searches can still spend (null = unknown, not checked). */
+  booked?(): Promise<Booked | null>;
+}
+
+/** What the company's searches still running or waiting for credits can spend, plus contacts queued for
+ *  a reveal (balance not taken yet). null when the RPC is missing (migration not applied): no booking check. */
+export async function apolloBooked(db: SupabaseClient, companyId: string, mock: boolean): Promise<Booked | null> {
+  const [b, r] = await Promise.all([
+    db.rpc("prospect_credit_bookings", { p_company: companyId, p_mock: mock }),
+    // Same rows resume-apollo-reveal buys (its pg_cron gate).
+    db.from("leads").select("id", { count: "exact", head: true })
+      .eq("lead_source", "apollo").eq("has_email", true).is("email", null).eq("is_deleted", false).lt("enrich_attempts", 2),
+  ]);
+  if (b.error) { console.warn("[prospects] credit bookings unknown:", b.error.message); return null; }
+  return sumBookings((b.data ?? []) as Booking[], mock ? 0 : (r.count ?? 0));
 }
 
 /** Dev-workspace test scenarios, switched on by a word in the batch name:
@@ -80,6 +95,7 @@ export function defaultSearchDeps(db: SupabaseClient, companyId: string, input?:
   const mock = isApolloMockCompany(companyId);
   return {
     mock,
+    booked: () => apolloBooked(db, companyId, mock),
     creditsLeft: async () => (mock ? (input && has(input, "apollo-0") ? 0 : null) : (await checkApolloCredits(db, "any" /* one shared Apollo account */, { fresh: true })).remaining),
     firecrawlLeft: async () => (mock ? (input && has(input, "firecrawl-low") ? 50 : null) : (await checkFirecrawlCredits(db, companyId, { fresh: true })).remaining),
     search: async (input) => {
@@ -135,13 +151,29 @@ export async function runProspectSearch(db: SupabaseClient, companyId: string, u
   {
     // Mock mode only reports a number in the [apollo-0] test scenario. Both balances are asked at once
     // (each is a live call to the provider; one after the other made "Starting your search" slow).
-    const [left, fc] = await Promise.all([deps.creditsLeft(), deps.firecrawlLeft?.() ?? null]);
+    const [left, fc, booked] = await Promise.all([deps.creditsLeft(), deps.firecrawlLeft?.() ?? null, deps.booked?.() ?? null]);
     if (left !== null && left < 1) {
       return { ok: false, status: 402, code: "APOLLO_OUT_OF_CREDITS", message: "Apollo has no credits left. Nothing was searched or charged." };
     }
     // Every company found is read by Firecrawl; don't pay Apollo for companies we can't read.
     if (fc != null && fc < FIRECRAWL_PER_PAGE) {
       return { ok: false, status: 402, code: "FIRECRAWL_LOW", message: `Firecrawl (it reads company websites) has only ${fc} credits left, and 100 companies need up to 100. Top up Firecrawl first. Nothing was searched or charged.` };
+    }
+    // Credits other searches can still spend are not free (7 Nov 2026: five searches each passed alone
+    // and together ran Apollo to 0). The form shows the same numbers; this is the check that holds.
+    if (left !== null && booked) {
+      const free = left - booked.credits;
+      const target = input.target_leads;
+      const need = target ? minCredits(target) : 1;
+      if (free < need) {
+        const fit = target ? leadsApolloFits(Math.max(0, free))! : 0;
+        const needs = target ? ` ${target} lead${target === 1 ? "" : "s"} need at least ${need}.` : "";
+        const fewer = fit > 0 ? ` Ask for ${fit} lead${fit === 1 ? "" : "s"} or fewer,` : "";
+        const message = booked.credits > 0
+          ? `Apollo has ${left} credits, but ${booked.credits} are already booked by ${bookedBy(booked)}, so ${Math.max(0, free)} are free.${needs}${fewer ? `${fewer} wait` : " Wait"} for those to finish, or top up Apollo. Nothing was searched or charged.`
+          : `Apollo has only ${left} credits left.${needs}${fewer ? `${fewer} or top` : " Top"} up Apollo. Nothing was searched or charged.`;
+        return { ok: false, status: 402, code: "APOLLO_CREDITS_BOOKED", message };
+      }
     }
   }
 

@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fakeDb } from "./fake-db.mts";
-import { scoredForOrg, statusLine } from "./groups.ts";
+import { groupOf, LONG_WAIT, scoredForOrg, statusLine } from "./groups.ts";
 
 test("scoredForOrg: an org from a scored search gets its fit, reason, group, batch and contact", async () => {
   const { db, tables } = fakeDb();
@@ -52,4 +52,15 @@ test("no-title-match review names the titles, a long list shortened", async () =
   assert.equal(titledAs(["a", "b", "c"]), "is titled 'a', 'b' or 1 more title");
   assert.equal(titledAs(["a", "b", "c", "d"]), "is titled 'a', 'b' or 2 more titles");
   assert.equal(titledAs([]), "has the job titles you picked");
+});
+
+test("a company that waited 2 days for Apollo credits shows in Needs review with plain words", () => {
+  // The text review_long_waits (SQL, 2026_11_13_credit_bookings_long_wait.sql) writes.
+  const r = { status: "review", last_error: "Waited 2 days for Apollo credits — approve to get the contact once credits are back", decided_by: null };
+  assert.ok(r.last_error.startsWith(LONG_WAIT));
+  assert.equal(groupOf(r), "review");
+  const line = statusLine(r);
+  assert.equal(line.tone, "amber");
+  assert.match(line.text, /^Waited 2 days for Apollo credits, nothing spent\. Approve to get the contact once credits are back \(1 credit\)\.$/);
+  assert.equal(groupOf({ ...r, decided_by: "u1" }), "review", "approved before: still Needs review");
 });

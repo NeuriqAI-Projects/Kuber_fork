@@ -28,7 +28,7 @@ import { DetailRow, DetailSection } from "@/components/ui/record-layout";
 import { prefetchOrg } from "@/lib/api-client";
 import { getBatchColor } from "@/lib/constants";
 import { plainReason } from "@/lib/services/prospects/fit-rules";
-import { GROUP_LABEL, GROUPS, NO_TITLE_MATCH, plainCause, REVIEW_TOTAL_EVENT, statusLine, type Group, type Tone } from "@/lib/services/prospects/groups";
+import { GROUP_LABEL, GROUPS, LONG_WAIT, NO_TITLE_MATCH, plainCause, REVIEW_TOTAL_EVENT, statusLine, type Group, type Tone } from "@/lib/services/prospects/groups";
 import { cn, everyWhileVisible } from "@/lib/utils";
 
 // ── data ─────────────────────────────────────────────────────────────────────
@@ -308,6 +308,7 @@ function problemLabel(c: ScoredCompany, text: string): string {
   if (c.status === "review" && !c.last_error) return "AI unsure";
   if (c.status === "waiting_credits") return "Waiting for credits";
   if (c.last_error?.startsWith(NO_TITLE_MATCH)) return "No title match";
+  if (c.last_error?.startsWith(LONG_WAIT)) return "Waited for credits";
   if (c.last_error?.startsWith("No buyer found")) return "No buyer";
   if (c.last_error?.includes("automatic reveals")) return "Reveal limit";
   return "Error";

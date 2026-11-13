@@ -1,7 +1,7 @@
 // npx tsx --test lib/services/prospects/digging.test.mts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nextStep, liveRunNote, minCredits, leadsApolloFits, leadsFirecrawlFits, MAX_LEADS_PER_SEARCH, suggestedMaxCredits, revealCap, filterKey, type RunState } from "./digging.ts";
+import { nextStep, liveRunNote, minCredits, leadsApolloFits, leadsFirecrawlFits, MAX_LEADS_PER_SEARCH, suggestedMaxCredits, revealCap, filterKey, bookedCredits, sumBookings, bookedBy, type Booking, type RunState } from "./digging.ts";
 
 const base: RunState = { target: 200, maxCredits: 230, creditsUsed: 0, leads: 0, working: 0, pagesRead: 0, leadsPerPage: [], totalPages: null, nextPage: 1, lastPageEmpty: false };
 const step = (o: Partial<RunState>) => nextStep({ ...base, ...o });
@@ -103,4 +103,48 @@ test("job titles that nobody has: the note names them, not Apollo or the keyword
   assert.match(note({ ...end, titleBlocked: 0 }), /no more companies/);
   // An outage is still the first cause.
   assert.match(note({ ...end, failed: 48, failedError: "JEV_HTTP_503", titleBlocked: 3 }), /AI that scores/);
+});
+
+// ── Credits booked by other searches (13 Nov 2026) ──────────────────────────
+const bk = (o: Partial<Booking>): Booking => ({ running: true, max_credits: 568, used: 0, pages_read: 0, max_auto_reveals: 500, auto_reveals_used: 0, pending_auto: 0, pending_approved: 0, ...o });
+
+test("bookedCredits: a running search books what is left of its credit limit", () => {
+  assert.equal(bookedCredits(bk({ max_credits: 510 })), 510, "just started: the whole limit");
+  assert.equal(bookedCredits(bk({})), 520, "limit 568, but 500 reveals + 20 pages is the most it can ever spend");
+  // 4 pages read, 60 contacts (55 automatic + 5 approvals): 441 reveals + 16 pages left (limit leaves 504).
+  assert.equal(bookedCredits(bk({ used: 64, pages_read: 4, max_auto_reveals: 496, auto_reveals_used: 55 })), 457);
+  assert.equal(bookedCredits(bk({ max_credits: 450, used: 64, pages_read: 4, max_auto_reveals: 446, auto_reveals_used: 55 })), 386, "the limit is lower: 450 - 64");
+  assert.equal(bookedCredits(bk({ used: 600 })), 0, "approvals pushed it past the limit: nothing more automatic");
+  // A limit far above the target: reveal cap + pages it may still read is the real ceiling.
+  assert.equal(bookedCredits(bk({ max_credits: 5000, max_auto_reveals: 10, auto_reveals_used: 2, pages_read: 1, used: 3 })), 8 + 19);
+  assert.equal(bookedCredits(bk({ pending_approved: 3 })), 523, "approved companies are 1 each, outside the limit");
+});
+
+test("bookedCredits: a stopped search books only its unfinished companies, within its reveal cap", () => {
+  // 7 Nov client search 534d1e95: 71 waiting, cap 500, 281 automatic reveals used.
+  assert.equal(bookedCredits(bk({ running: false, pending_auto: 71, auto_reveals_used: 281 })), 71);
+  assert.equal(bookedCredits(bk({ running: false, pending_auto: 71, max_auto_reveals: 300, auto_reveals_used: 281 })), 19, "cap left 19");
+  assert.equal(bookedCredits(bk({ running: false, pending_auto: 0, pending_approved: 1 })), 1, "one approved company waiting");
+  assert.equal(bookedCredits(bk({ running: false, pending_auto: 5, max_auto_reveals: null })), 5, "no cap stored");
+});
+
+test("sumBookings: the 7 Nov case — two running 500-lead searches leave no room for a third", () => {
+  const a = bk({ used: 20, pages_read: 3, max_auto_reveals: 497, auto_reveals_used: 17 });   // 480 reveals + 17 pages
+  const b = bk({ used: 2, pages_read: 1, max_auto_reveals: 499, auto_reveals_used: 1 });     // 498 reveals + 19 pages
+  const s = sumBookings([a, b, bk({ running: false, pending_auto: 0 })], 4);
+  assert.deepEqual(s, { credits: 497 + 517 + 4, searches: 2, reveals: 4 });
+  const balance = 1400, free = balance - s.credits;
+  assert.equal(free, 382);
+  assert.ok(minCredits(200) <= free, "a 200-lead search still fits (needs 207)");
+  assert.ok(minCredits(500) > free, "a 500-lead one does not (needs 516)");
+  assert.equal(bookedBy(s), "2 searches still running or waiting for credits and 4 contacts waiting to be revealed");
+  assert.equal(bookedBy({ searches: 1, reveals: 0 }), "1 search still running or waiting for credits");
+});
+
+test("liveRunNote: companies that waited 2 days are said to be in Needs review", () => {
+  const credits = "Stopped at 0 of 200 leads: Apollo ran out of credits. 40 good companies are waiting for credits and get their contact on their own after a top-up, within your credit limit.";
+  assert.equal(liveRunNote({ note: credits, leads: 0, target: 200, waiting: 0, waitedOut: 40 }),
+    "Stopped at 0 of 200 leads: Apollo ran out of credits. 40 good companies waited 2 days for credits and are now in Needs review: approve them to get the contact once credits are back.");
+  assert.match(liveRunNote({ note: credits, leads: 0, target: 200, waiting: 1, waitedOut: 39 })!, /1 good company is waiting .* 39 good companies waited 2 days/);
+  assert.match(liveRunNote({ note: credits, leads: 0, target: 200, waitedOut: 1 })!, /1 good company waited 2 days for credits and is now in Needs review: approve it/);
 });

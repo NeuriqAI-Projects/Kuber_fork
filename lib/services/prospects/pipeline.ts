@@ -26,7 +26,7 @@ export type ProspectStatus =
   | "read"            // text saved, waiting to be scored
   | "good"            // a plastic maker, will reveal one contact
   | "approved"        // client approved from Review, will reveal one contact
-  | "waiting_credits" // good/approved, but Apollo has no credit free right now
+  | "waiting_credits" // good/approved, but Apollo has no credit free right now (> 2 days: review, SQL review_long_waits)
   | "review"          // client decides (unsure, over auto limit, or failed 3 times)
   | "hidden"          // not a plastic maker
   | "flagged"         // nothing to score from (no website, no LinkedIn, or LinkedIn too thin/unsure)

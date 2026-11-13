@@ -41,6 +41,8 @@ export const isWorking = (r: GroupRow) => ["queued", "read_social", "read", "goo
 export const NO_TITLE_MATCH = "No one with your job titles";
 /** Start of last_error when a good fit was not revealed because the search's automatic reveals ran out. */
 export const REVEAL_CAP_HIT = "Good fit, but this search already used all its automatic reveals";
+/** Start of last_error when a good fit waited 2 days for Apollo credits (SQL review_long_waits, pg_cron). */
+export const LONG_WAIT = "Waited 2 days for Apollo credits";
 
 export type Tone = "blue" | "amber" | "green" | "red" | "gray";
 
@@ -83,6 +85,7 @@ export function statusLine(r: GroupRow & { contact?: { first_name: string | null
       if (r.last_error?.startsWith("Stopped after")) return { text: `Could not be checked after 3 tries because ${plainCause(r.last_error)}. Approve or decline it yourself.`, tone: "amber" };
       // Search with job titles, nobody here has one (pipeline.ts): say what Approve does instead.
       if (r.last_error?.startsWith(NO_TITLE_MATCH)) return { text: `Nobody here ${titledAs(r.job_titles)}. Nothing spent. Approve to reveal the best buyer (1 credit).`, tone: "amber" };
+      if (r.last_error?.startsWith(LONG_WAIT)) return { text: "Waited 2 days for Apollo credits, nothing spent. Approve to get the contact once credits are back (1 credit).", tone: "amber" };
       if (r.last_error?.startsWith(REVEAL_CAP_HIT)) return { text: "Good fit. Not revealed because you already got the leads you asked for. Approve to reveal (1 credit).", tone: "amber" };
       return { text: r.last_error ?? "AI unsure — your call", tone: "amber" };
     case "flagged": return { text: r.last_error ?? "Not enough information to check", tone: "amber" };
