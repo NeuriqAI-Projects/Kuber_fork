@@ -21,9 +21,37 @@ export function triggerScrapeWatchdog(baseUrl: string) {
   }).then(() => {}, () => {}));
 }
 
-/** Any organisation queued or mid-scrape? (indexed; ~2 ms) */
-async function hasScrapeWork(db: Db): Promise<boolean> {
-  const { data } = await db.from("organizations").select("id").in("enrichment_stage", ["queued", "scraping"]).limit(1);
+/** Is there anything scrape-orgs could do right now? A queued org it may claim
+ *  (or give a domain to), or one stuck in 'scraping' past 10 minutes. One
+ *  indexed read. Same rule as claim_queued_orgs (an org requeued for OUR
+ *  provider fault waits 10 minutes) and as the enrichment-watchdog cron gate
+ *  (2026_11_13_s1_watchdog_gate.sql): keep the three in step.
+ *  NULL status / updated_at count as claimable: the old "any queued or
+ *  scraping row" check kicked scrape-orgs 144 times a day for 2 rows the
+ *  claim could never take (13 Nov 2026). */
+export async function hasScrapeWork(db: Db): Promise<boolean> {
+  const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const { data } = await db.from("organizations").select("id")
+    .or(`and(enrichment_stage.eq.queued,or(enrichment_status.is.null,enrichment_status.neq.SCRAPE_PROVIDER_UNAVAILABLE,updated_at.is.null,updated_at.lte.${tenMinAgo})),`
+      + `and(enrichment_stage.eq.scraping,enrichment_started_at.lt.${tenMinAgo})`)
+    .limit(1);
+  return (data ?? []).length > 0;
+}
+
+/** How long scraping waits after a credit skip before asking the providers again. */
+const SCRAPE_CREDIT_RECHECK_MS = 60 * 60 * 1000;
+
+/** Did scrape-orgs skip a batch for credits (Firecrawl, or every AI tier) in
+ *  the last hour? Then the watchdog leaves it alone: one re-check an hour, like
+ *  Apollo at 0. Each kick re-asked the providers every 10 minutes while the
+ *  queue waited. A manual retry or a new import still calls scrape-orgs
+ *  directly, and a batch that runs restarts the self-chain on its own.
+ *  ponytail: global, not per company (the skip row has no company). */
+async function scrapeHeldForCredits(db: Db): Promise<boolean> {
+  const { data } = await db.from("enrichment_logs").select("id")
+    .eq("event", "SKIPPED_LOW_CREDITS")
+    .gt("created_at", new Date(Date.now() - SCRAPE_CREDIT_RECHECK_MS).toISOString())
+    .limit(1);
   return (data ?? []).length > 0;
 }
 
@@ -418,7 +446,7 @@ export async function triggerDraftGenerationWatchdog(baseUrl: string, db: Db) {
  * domain or an empty page is the company's own problem and stays where it is —
  * requeueing those is what turns a watchdog into a credit-burning loop.
  */
-export async function triggerScrapeRecoveryWatchdog(baseUrl: string, db: Db) {
+export async function triggerScrapeRecoveryWatchdog(baseUrl: string, db: Db, kick = true) {
   const { data: orgs } = await db
     .from("organizations")
     .select("id, company_id")
@@ -459,7 +487,7 @@ export async function triggerScrapeRecoveryWatchdog(baseUrl: string, db: Db) {
     created_at: new Date().toISOString(),
   });
 
-  triggerScrapeWatchdog(baseUrl);
+  if (kick) triggerScrapeWatchdog(baseUrl);
 }
 
 /**
@@ -474,14 +502,18 @@ export async function triggerScrapeRecoveryWatchdog(baseUrl: string, db: Db) {
  *
  * The balance is read once every 3 hours (the pass in the first 10 minutes of
  * 00:00, 03:00, ... UTC): a credit warning can wait that long, and every pass used to miss
- * the 5-minute cache anyway. The webhook check stays on every pass, because
- * events Instantly drops while it is disabled are never sent again.
+ * the 5-minute cache anyway. The webhook is checked once an hour (the pass in
+ * the first 10 minutes of each hour; the cron gate always runs that pass).
+ * It was every 10 minutes; the user chose hourly on 13 Nov 2026: a disabled
+ * webhook is now resumed within an hour, and unibox-sync still pulls replies
+ * the webhook missed.
  *
  * Scoped "any": Instantly is one workspace shared by every company.
  */
 async function refreshInstantlyHealth(db: Db) {
   const now = new Date();
-  if (now.getUTCHours() % 3 === 0 && now.getUTCMinutes() < 10) {
+  if (now.getUTCMinutes() >= 10) return;
+  if (now.getUTCHours() % 3 === 0) {
     try {
       await checkInstantlyCredits(db, "any");
     } catch { /* a health probe must never break the watchdog */ }
@@ -498,8 +530,8 @@ async function refreshInstantlyHealth(db: Db) {
  * stayed dead after the site came back: no sent, reply or bounce events reached
  * the app for EITHER company (they share one Instantly workspace), so follow-up
  * clocks never started and replies never updated a lead. It was only noticed
- * because an end-to-end test stalled. Checked every 10 minutes from here, a
- * disabled webhook is resumed within one tick of the site recovering.
+ * because an end-to-end test stalled. Checked hourly from here, a disabled
+ * webhook is resumed within an hour of the site recovering.
  */
 async function ensureInstantlyWebhook(db: Db) {
   const raw = process.env.NEXT_PUBLIC_APP_URL ?? "";
@@ -536,11 +568,15 @@ async function ensureInstantlyWebhook(db: Db) {
  *  It no longer starts a follow-up sweep (5 Nov 2026): that swept every sent
  *  lead 144 times a day and almost always found nothing. The hourly
  *  write-followups job and the minute publish pump cover it, and follow-ups are
- *  written about a day before they are due. */
+ *  written about a day before they are due.
+ *
+ *  pg_cron calls it only when one of these jobs has work, plus once an hour
+ *  (2026_11_13_s1_watchdog_gate.sql). */
 export async function runEnrichmentWatchdog(baseUrl: string, db: Db) {
   await refreshInstantlyHealth(db);
-  if (await hasScrapeWork(db)) triggerScrapeWatchdog(baseUrl);
-  await triggerScrapeRecoveryWatchdog(baseUrl, db);
+  const scrapeHeld = await scrapeHeldForCredits(db);
+  if (!scrapeHeld && await hasScrapeWork(db)) triggerScrapeWatchdog(baseUrl);
+  await triggerScrapeRecoveryWatchdog(baseUrl, db, !scrapeHeld);
   await triggerRegenerationWatchdog(baseUrl, db);
   await triggerDraftGenerationWatchdog(baseUrl, db);
 }

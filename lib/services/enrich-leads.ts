@@ -353,7 +353,13 @@ export async function enrichLeads(
                 employees: match.organization.estimated_num_employees ?? null,
                 city: match.organization.city ?? null,
                 country: match.organization.country ?? null,
+                // Same queue stamp as every other org insert. Left out, the row
+                // was queued with status and updated_at NULL, which the claim and
+                // the 24 h clean-up both skipped: 2 client orgs sat a week (13 Nov).
+                enrichment_stage: "queued",
+                enrichment_status: "SCRAPE_QUEUED",
                 created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
               }).select("id").single();
               if (newOrg) orgId = newOrg.id;
             }

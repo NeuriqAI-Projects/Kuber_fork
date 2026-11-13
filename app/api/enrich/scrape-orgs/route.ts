@@ -17,6 +17,7 @@ import { PROVIDER_META, resolveLlmTierOrder, type LlmProviderId } from "@/lib/se
 import { safeSecretEqual } from "@/lib/auth/secret";
 import { countsFromBody, writeRouteTiming } from "@/lib/services/route-timing";
 import { TERMINAL_ENRICHMENT_STATUSES, llmFailureStatus, mayConcludeAbandonedQueue, ABANDONED_QUEUE_MS } from "@/lib/services/enrichment-status";
+import { hasScrapeWork } from "@/lib/services/enrichment-watchdog";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const LLM_CREDIT_CHECKS: Record<LlmProviderId, (db: SupabaseClient, scope: string) => Promise<CreditCheck>> = {
@@ -699,6 +700,16 @@ export async function POST(req: NextRequest) {
 async function runScrapeBatch(baseUrl: string) {
   const db = createAdminClient();
 
+  // ── Nothing to do? Stop before the credit gate. That gate asks Firecrawl and
+  // every AI tier (a cache miss at the 10-minute cadence): ~35 DB requests and
+  // 2 provider calls per pass, 144 times a day, for 2 orgs the claim could
+  // never take (13 Nov 2026). The same read covers the stuck-scraping reset
+  // and the 24 h clean-up below: an org either of them would touch is queued
+  // (and claimable) or stuck in 'scraping'.
+  if (!(await hasScrapeWork(db))) {
+    return Response.json({ processed: 0, succeeded: 0, failed: 0, status: "idle" });
+  }
+
   // ── Credit gate: don't spend a single attempt on a guaranteed failure.
   // Retrying while a provider is genuinely out of money just burns the 3-try
   // budget for no reason (real websites, none of it their fault) and leaves
@@ -765,8 +776,9 @@ async function runScrapeBatch(baseUrl: string) {
       error: reason,
     });
     // Deliberately do NOT self-trigger here — that would spin in a tight loop
-    // re-checking credits every few hundred ms. The 15-min watchdog is the
-    // only thing that re-checks while credit stays low.
+    // re-checking credits every few hundred ms. The watchdog re-checks once an
+    // hour while credit stays low: it does not kick this route while this
+    // row is under an hour old (enrichment-watchdog.ts scrapeHeldForCredits).
     return Response.json({ processed: 0, succeeded: 0, failed: 0, status: "skipped_low_credits", reason });
   }
 
@@ -800,6 +812,8 @@ async function runScrapeBatch(baseUrl: string) {
     .select("created_at").eq("event", "SKIPPED_LOW_CREDITS")
     .order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (mayConcludeAbandonedQueue((lastWait?.created_at as string | undefined) ?? null)) {
+    // An org never touched since its insert has updated_at NULL: count from created_at.
+    const cutoff = new Date(Date.now() - ABANDONED_QUEUE_MS).toISOString();
     await db.from("organizations")
       .update({
         enrichment_stage: "failed",
@@ -809,7 +823,7 @@ async function runScrapeBatch(baseUrl: string) {
         updated_at: new Date().toISOString(),
       })
       .eq("enrichment_stage", "queued")
-      .lt("updated_at", new Date(Date.now() - ABANDONED_QUEUE_MS).toISOString());
+      .or(`updated_at.lt.${cutoff},and(updated_at.is.null,created_at.lt.${cutoff})`);
   }
 
   let processed = 0;
@@ -860,11 +874,7 @@ async function runScrapeBatch(baseUrl: string) {
     .map((o) => ({ id: o.id, company_id: o.company_id, domain: o.domain, name: o.name, scraped_markdown: o.scraped_markdown, scraped_at: o.scraped_at }));
 
   if (orgs.length === 0) {
-    await insertLog(db, {
-      source: "system",
-      event: "BATCH_COMPLETE",
-      payload: { reason: "no_more_queued_orgs" },
-    });
+    // No log row: an empty pass was 144 identical BATCH_COMPLETE rows a day.
     return Response.json({ processed: 0, succeeded: 0, failed: 0, status: "no_more_queued" });
   }
 
