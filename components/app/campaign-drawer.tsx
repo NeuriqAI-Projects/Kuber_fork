@@ -357,6 +357,9 @@ type DraftVersion = {
 
 type DraftActivity = "generating" | "regenerating" | null;
 
+/** Drafting / regeneration polls: 10 s while numbers move, 60 s after a quiet minute. */
+const FAST_POLL_MS = 10_000, SLOW_POLL_MS = 60_000, QUIET_MS = 60_000;
+
 type DraftProgress = {
   total: number; generating: number; draft: number; approved: number;
   sent: number; failed: number; pending: number;
@@ -1330,7 +1333,8 @@ export function CampaignDetail({
    *  lead). A ref, so the pollers' loadData always reads the current ones. */
   const openLeadIdsRef = useRef<string[]>([]);
 
-  const loadData = useCallback(async () => {
+  /** `knownProgress`: the drafting poll already has fresh numbers, don't ask twice. */
+  const loadData = useCallback(async (knownProgress?: DraftProgress) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     const token = session.access_token;
@@ -1340,7 +1344,7 @@ export function CampaignDetail({
     // lead's come in alongside, so a refresh never blanks the open email.
     const [leadsRes, prog, details] = await Promise.all([
       queryCache.fetch(drawerKeys.leads(campaign.id), () => fetchCampaignLeads(token, campaign.id)),
-      queryCache.fetch(drawerKeys.progress(campaign.id), () => fetchDraftProgress(token, campaign.id)),
+      knownProgress ?? queryCache.fetch(drawerKeys.progress(campaign.id), () => fetchDraftProgress(token, campaign.id)),
       fetchLeadDetails(token, campaign.id, openIds),
     ]);
     const leads = mapCampaignLeadRows(leadsRes);
@@ -1570,63 +1574,94 @@ export function CampaignDetail({
     else if (progress.ai_available === true && ++aiBackPollsRef.current >= 2) setPausedSticky(false);
   }, [progress]);
 
+  // Drafting: one light /draft-progress poll (was leads list + progress + open
+  // rows every 3 s, and forever while the AI key was dead: ~3,600 calls an hour
+  // per open drawer, 6-12 Nov). 10 s while numbers move; 60 s once nothing moved
+  // for a minute or drafting is paused for credits. The leads list reloads only
+  // when a number changed. A bulk regeneration has its own poll below, so this
+  // one stands down then (two timers used to load the same data twice).
+  const progressRef = useRef(progress);
+  progressRef.current = progress;
+  const drafting = !!progress && progress.generating + progress.pending > 0;
+  const regenActive = !!regenJob?.active;
   useEffect(() => {
-    if (!progress) return;
-    const isGenerating = (progress.generating + progress.pending) > 0;
-    if (!isGenerating) return;
+    if (!drafting || regenActive) return;
+    let sig = JSON.stringify(progressRef.current);
+    let changedAt = Date.now(), polledAt = 0, busy = false;
     return everyWhileVisible(() => {
-      void loadData();
-      // The worker's batch chain dies after ~5 hops; the watchdog takes 10-20
-      // minutes to notice. While someone is watching, ask once a minute — the
-      // server only restarts generation that has actually stopped. A ref, not
-      // a second interval: this effect re-runs on every 3s progress update.
-      if (Date.now() - lastDraftKickRef.current < 60_000) return;
-      lastDraftKickRef.current = Date.now();
+      const slow = progressRef.current?.ai_available === false || Date.now() - changedAt >= QUIET_MS;
+      if (busy || (slow && Date.now() - polledAt < SLOW_POLL_MS)) return;
+      busy = true;
+      polledAt = Date.now();
       void (async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) void kickDraftGeneration(session.access_token, campaign.id).catch(() => {});
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) return;
+          const prog = await queryCache.fetch(drawerKeys.progress(campaign.id), () => fetchDraftProgress(session.access_token, campaign.id));
+          const next = JSON.stringify(prog);
+          if (next !== sig) { sig = next; changedAt = Date.now(); await loadData(prog); }
+          else setProgress(prog);
+          // The worker's batch chain dies after ~5 hops; the watchdog takes 10-20
+          // minutes to notice. While someone is watching, ask once a minute (the
+          // server only restarts what has really stopped), never while the AI is out.
+          if (prog.ai_available !== false && Date.now() - lastDraftKickRef.current >= 60_000) {
+            lastDraftKickRef.current = Date.now();
+            void kickDraftGeneration(session.access_token, campaign.id).catch(() => {});
+          }
+        } catch { /* next tick */ } finally { busy = false; }
       })();
-    }, 3000);
-  }, [progress, loadData, campaign.id]);
+    }, FAST_POLL_MS);
+  }, [drafting, regenActive, campaign.id, loadData]);
 
   // A bulk regeneration runs entirely server-side, so the only way to see it
-  // advance is to ask. Poll the job and the leads together while one is live;
-  // on the tick where it stops being active, refresh once more so the final
-  // drafts are on screen.
+  // advance is to ask. Same pacing as drafting: the job every 10 s (60 s once it
+  // has not moved for a minute); the leads list only when its numbers moved. On
+  // the tick where it stops being active, the list refreshes once more so the
+  // final drafts are on screen.
+  const sendingHeldRef = useRef(sendingHeld);
+  sendingHeldRef.current = sendingHeld;
   useEffect(() => {
-    if (!regenJob?.active) return;
-    let lastKick = 0;
+    if (!regenActive) return;
+    let lastKick = 0, sig = "", changedAt = Date.now(), polledAt = 0, busy = false;
     return everyWhileVisible(() => {
+      const slow = Date.now() - changedAt >= QUIET_MS;
+      if (busy || (slow && Date.now() - polledAt < SLOW_POLL_MS)) return;
+      busy = true;
+      polledAt = Date.now();
       void (async () => {
-        const job = await loadRegenJob();
-        await loadData();
-        // The worker's batch chain dies after ~5 hops on the platform. While
-        // someone is watching, a job quiet for a minute gets a fresh kick from
-        // here (see regeneration-job/kick) rather than waiting on the watchdog.
-        if (job?.active) {
-          const quietMs = Date.now() - Date.parse(job.heartbeat_at ?? job.started_at ?? job.created_at);
-          if (quietMs > 60_000 && Date.now() - lastKick > 60_000) {
-            lastKick = Date.now();
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) void kickRegenerationJob(session.access_token, campaign.id).catch(() => {});
+        try {
+          const job = await loadRegenJob();
+          const next = job ? `${job.processed}/${job.succeeded}/${job.failed}/${job.active}` : "none";
+          if (!sig && job?.active) sig = next; // first tick of a running job: the list on screen matches it
+          else if (next !== sig) { sig = next; changedAt = Date.now(); await loadData(); }
+          // The worker's batch chain dies after ~5 hops on the platform. While
+          // someone is watching, a job quiet for a minute gets a fresh kick from
+          // here (see regeneration-job/kick) rather than waiting on the watchdog.
+          if (job?.active && progressRef.current?.ai_available !== false) {
+            const quietMs = Date.now() - Date.parse(job.heartbeat_at ?? job.started_at ?? job.created_at);
+            if (quietMs > 60_000 && Date.now() - lastKick > 60_000) {
+              lastKick = Date.now();
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session) void kickRegenerationJob(session.access_token, campaign.id).catch(() => {});
+            }
           }
-        }
-        if (job && !job.active) {
-          const done = job.status === "completed";
-          // The run releases the hold it was started under; say so, or the
-          // amber banner and the toast contradict each other.
-          const resumed = done && sendingHeld && !job.sending_held;
-          if (resumed) setHeldAt(null);
-          const tail = resumed ? " — sending resumed" : "";
-          if (done && job.failed > 0) {
-            toast.warning(`Regenerated ${job.succeeded} draft${job.succeeded !== 1 ? "s" : ""}; ${job.failed} failed${tail}`);
-          } else if (done) {
-            toast.success(`${job.succeeded} draft${job.succeeded !== 1 ? "s" : ""} regenerated${tail}`);
+          if (job && !job.active) {
+            const done = job.status === "completed";
+            // The run releases the hold it was started under; say so, or the
+            // amber banner and the toast contradict each other.
+            const resumed = done && sendingHeldRef.current && !job.sending_held;
+            if (resumed) setHeldAt(null);
+            const tail = resumed ? " — sending resumed" : "";
+            if (done && job.failed > 0) {
+              toast.warning(`Regenerated ${job.succeeded} draft${job.succeeded !== 1 ? "s" : ""}; ${job.failed} failed${tail}`);
+            } else if (done) {
+              toast.success(`${job.succeeded} draft${job.succeeded !== 1 ? "s" : ""} regenerated${tail}`);
+            }
           }
-        }
+        } finally { busy = false; }
       })();
-    }, 3000);
-  }, [regenJob?.active, loadRegenJob, loadData, sendingHeld]);
+    }, FAST_POLL_MS);
+  }, [regenActive, loadRegenJob, loadData, campaign.id]);
 
   const selected = campaignLeads.find((cl) => cl.id === selectedId) ?? null;
 
