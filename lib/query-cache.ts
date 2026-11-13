@@ -41,7 +41,7 @@ const RELATED: Record<string, string[]> = {
   unibox:           ["unibox", "campaigns", "leads"],
   imports:          ["imports", "leads"],
   prospects:        ["prospects", "organizations", "leads"],
-  settings:         ["settings"],
+  settings:         ["settings", "service-health"],
   me:               ["me", "settings"],
   "user-signature": ["user-signature"],
   "model-lab":      ["model-lab"],
@@ -51,8 +51,8 @@ const RELATED: Record<string, string[]> = {
  *  mounted keys" meant every lead / reply / unibox write reloaded it (194
  *  list loads a day against ~21 campaign opens). Only campaign writes refetch
  *  it now — the hold banner on a campaign page relies on that. Other writes
- *  just mark it stale: the Campaigns and campaign pages reload it on every
- *  visit, the Dashboard and hover prefetch reload it when stale. Sub-keys
+ *  just mark it stale: the Campaigns and campaign pages, the Dashboard and
+ *  hover prefetch reload it when stale or over 30 s old. Sub-keys
  *  (`/api/v1/campaigns/<id>/…`) keep the normal rule. */
 const CAMPAIGNS_LIST = "/api/v1/campaigns";
 const REFETCHES_CAMPAIGNS_LIST = new Set(["campaigns", "campaign-leads"]);

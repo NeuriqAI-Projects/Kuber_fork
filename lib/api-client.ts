@@ -7,6 +7,7 @@ import type { CampaignStepInput, IndustryKeywordGroup } from "@/lib/constants";
 import { campaignOutcomes } from "@/lib/campaign-status";
 import { mapDbCampaign as mapDbCampaignFull } from "@/lib/mappers";
 import { queryCache } from "@/lib/query-cache";
+import { everyWhileVisible } from "@/lib/utils";
 
 // ─── Token helper ─────────────────────────────────────────────────────────────
 
@@ -304,6 +305,12 @@ export async function fetchLeads(token: string, params?: { limit?: number; page?
   if (params?.count) qs.set("count", params.count);
   const data = await apiFetch<{ leads: DbLead[]; total: number | null }>(`/api/v1/leads?${qs}`, {}, token);
   return { leads: data.leads.map(mapDbLead), total: data.total };
+}
+
+/** "What changed last" marker for the caller's leads (Leads page poll). */
+export async function fetchLeadsStamp(token: string): Promise<string | null> {
+  const data = await apiFetch<{ stamp?: string }>("/api/v1/leads?stamp=1", {}, token);
+  return data.stamp ?? null;
 }
 
 export async function fetchLeadsByOrg(token: string, orgId: string): Promise<Lead[]> {
@@ -2009,11 +2016,11 @@ export function useCached<T>(
   const refreshMs = opts.refreshMs;
   useEffect(() => {
     if (!key || !refreshMs) return;
-    const t = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      void queryCache.fetch(key, () => fetcherRef.current()).catch(() => {});
+    // Visible tab and someone at the keyboard only; several screens with the same
+    // key share one entry, so a fresh value (another screen's tick) is reused.
+    return everyWhileVisible(() => {
+      void queryCache.fetch(key, () => fetcherRef.current(), { maxAgeMs: refreshMs - 1000 }).catch(() => {});
     }, refreshMs);
-    return () => clearInterval(t);
   }, [key, refreshMs]);
 
   const mutate = useCallback((next: T | ((prev: T | undefined) => T)) => {

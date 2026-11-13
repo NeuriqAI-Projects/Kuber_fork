@@ -1,31 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useApp } from "@/lib/app-context";
-import { fetchServiceHealth, type ServiceIssue } from "@/lib/api-client";
-import { cn, everyWhileVisible } from "@/lib/utils";
+import { fetchServiceHealth, getAccessToken, useCached } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
+
+const HEALTH_MS = 5 * 60_000;
+const fetchHealth = async () => fetchServiceHealth(await getAccessToken());
 
 // Red banner for the dashboard — surfaces paid upstream failures (OpenRouter,
 // Firecrawl, Apollo, OpenAI) so dead API keys / empty credit balances show as
 // clear, actionable messages instead of raw HTTP 402s buried in lead logs.
+// One shared cache entry for the five screens that show it: a screen change
+// reuses an answer under 5 min old (each mount used to ask again). A Settings
+// write marks it stale (query-cache RELATED), so a fixed key shows on the next screen.
 export function ServiceHealthBanner() {
   const { session } = useApp();
-  const [issues, setIssues] = useState<ServiceIssue[]>([]);
-
-  useEffect(() => {
-    if (!session) return;
-    let cancelled = false;
-    const load = () => {
-      fetchServiceHealth(session.access_token)
-        .then((i) => { if (!cancelled) setIssues(i); })
-        .catch(() => {});
-    };
-    load();
-    // Provider outages don't need minute-by-minute news; this runs on five screens.
-    const stop = everyWhileVisible(load, 5 * 60_000);
-    return () => { cancelled = true; stop(); };
-  }, [session]);
+  const { data } = useCached(session ? "/api/v1/service-health" : null, fetchHealth, { dedupeMs: HEALTH_MS, refreshMs: HEALTH_MS });
+  const issues = data ?? [];
 
   if (issues.length === 0) return null;
 

@@ -245,7 +245,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
       fetchUniboxUnread(session.access_token).then((r) => setUniboxUnread(r.unread)).catch(() => {});
     };
     load();
-    return everyWhileVisible(load, 60_000);
+    // 3 min, and not while nobody touches the tab (everyWhileVisible): the count only
+    // moves on a reply. Opening Unibox shows the live list anyway.
+    return everyWhileVisible(load, 3 * 60_000);
   }, [session]);
 
   // Scored companies waiting for a manager's Approve / Decline (Leads > Organization).
@@ -257,7 +259,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
         .then((r) => r.json()).then((j) => setScoredToReview(j?.data?.review_total ?? 0)).catch(() => {});
     };
     load();
-    const stop = everyWhileVisible(load, 60_000);
+    // 3 min: it only moves when a scoring run finishes a company.
+    const stop = everyWhileVisible(load, 3 * 60_000);
     // The Leads page refreshes every few seconds and passes its number on, so badge and banner match.
     const onTotal = (e: Event) => setScoredToReview(Number((e as CustomEvent<number>).detail) || 0);
     window.addEventListener(REVIEW_TOTAL_EVENT, onTotal);

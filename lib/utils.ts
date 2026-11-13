@@ -5,16 +5,47 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** setInterval for browser polls: skips ticks while the tab is hidden and runs at
- *  once when it is shown again (if a tick was missed). Each tick is a Vercel call,
- *  and a forgotten background tab used to poll all day. Returns the stop function. */
+/** No mouse / key / scroll / touch input for this long = nobody is looking. */
+export const IDLE_MS = 5 * 60_000;
+let lastInput = Date.now();
+let tracking = false;
+const wakers = new Set<() => void>();
+
+/** One shared idle tracker for every poll (installed on first use). Input after
+ *  an idle spell, or the tab being shown, wakes the polls that skipped ticks. */
+function trackInput() {
+  if (tracking) return;
+  tracking = true;
+  const touch = () => {
+    const wasIdle = Date.now() - lastInput > IDLE_MS;
+    lastInput = Date.now();
+    if (wasIdle) wakers.forEach((f) => f());
+  };
+  for (const e of ["pointermove", "pointerdown", "keydown", "wheel", "touchstart"]) {
+    document.addEventListener(e, touch, { passive: true, capture: true });
+  }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") touch(); });
+}
+
+/** True when nobody touched the page for `IDLE_MS`. */
+export function userIdle(): boolean {
+  return Date.now() - lastInput > IDLE_MS;
+}
+
+/** setInterval for browser polls: skips ticks while the tab is hidden or nobody
+ *  has touched it for 5 min, and runs once at once when the tab is shown again or
+ *  the user comes back (if a tick was missed). Each tick is a Vercel call, and a
+ *  tab left open on a second screen used to poll all day. Returns the stop function. */
 export function everyWhileVisible(fn: () => void, ms: number): () => void {
+  trackInput();
   let last = Date.now();
+  const live = () => document.visibilityState === "visible" && !userIdle();
   const run = () => { last = Date.now(); fn(); };
-  const t = setInterval(() => { if (document.visibilityState === "visible") run(); }, ms);
-  const onShow = () => { if (document.visibilityState === "visible" && Date.now() - last >= ms) run(); };
-  document.addEventListener("visibilitychange", onShow);
-  return () => { clearInterval(t); document.removeEventListener("visibilitychange", onShow); };
+  const t = setInterval(() => { if (live()) run(); }, ms);
+  const wake = () => { if (live() && Date.now() - last >= ms) run(); };
+  document.addEventListener("visibilitychange", wake);
+  wakers.add(wake);
+  return () => { clearInterval(t); document.removeEventListener("visibilitychange", wake); wakers.delete(wake); };
 }
 
 /** USD, with cents for anything under $1 (AI cost is often a few tenths of a
