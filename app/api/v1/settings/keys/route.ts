@@ -1,10 +1,11 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import crypto from "crypto";
 import { requireManager } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { CreateProviderKeySchema } from "@/lib/validators/provider-keys";
 import { getLlmTierRoles, PROVIDER_META, resolveLlmTierOrder } from "@/lib/services/providers/registry";
-import { ENV_KEY_VARS } from "@/lib/services/provider-keys";
+import { ENV_KEY_VARS, isUsableLlmKeyRow, kickLlmWork } from "@/lib/services/provider-keys";
+import { internalAppBaseUrl } from "@/lib/internal-url";
 import { dbForUser } from "@/lib/supabase/scoped";
 
 export const maxDuration = 60;
@@ -110,6 +111,11 @@ export async function POST(req: NextRequest) {
     // Roll back the orphaned Vault secret rather than leaving it dangling.
     try { await db.rpc("provider_key_delete_secret", { p_vault_id: vaultId }); } catch { /* best effort */ }
     return fail(500, "INTERNAL", error.message);
+  }
+  // A new AI key is saved as healthy without a test: start waiting drafts on it now.
+  if (isUsableLlmKeyRow(created)) {
+    const baseUrl = internalAppBaseUrl(req);
+    after(() => kickLlmWork(baseUrl, caller.companyId));
   }
   return ok(created);
 }

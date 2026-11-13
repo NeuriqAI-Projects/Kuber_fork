@@ -1,10 +1,12 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { requireManager } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { checkSpecificKey } from "@/lib/services/provider-credits";
 import { PROVIDER_META } from "@/lib/services/providers/registry";
 import type { ProviderId } from "@/lib/services/providers/types";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { internalAppBaseUrl } from "@/lib/internal-url";
+import { isUsableLlmKeyRow, kickLlmWork } from "@/lib/services/provider-keys";
 
 export const maxDuration = 60;
 
@@ -18,7 +20,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const db = dbForUser(user);
 
-  const { data: keyRow } = await db.from("provider_keys").select("id, provider, secret_vault_id").eq("id", id).maybeSingle();
+  const { data: keyRow } = await db.from("provider_keys").select("id, provider, secret_vault_id, is_active").eq("id", id).maybeSingle();
   if (!keyRow) return fail(404, "NOT_FOUND", "Key not found");
   if (!(keyRow.provider in PROVIDER_META)) return fail(400, "INVALID_PROVIDER", `Unknown provider "${keyRow.provider}"`);
 
@@ -36,6 +38,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     last_error: result.ok ? null : result.message,
     last_error_at: result.ok ? null : nowIso,
   }).eq("id", id);
+
+  // A working AI key again: start the drafts that were waiting for it now.
+  if (result.ok && isUsableLlmKeyRow({ provider: keyRow.provider as string, is_active: keyRow.is_active as boolean, status: "healthy", cooling_off_until: null })) {
+    const baseUrl = internalAppBaseUrl(req);
+    after(() => kickLlmWork(baseUrl, user.companyId));
+  }
 
   return ok({ id, ...result });
 }

@@ -1,8 +1,10 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { requireManager } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { PatchProviderKeySchema } from "@/lib/validators/provider-keys";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { internalAppBaseUrl } from "@/lib/internal-url";
+import { isUsableLlmKeyRow, kickLlmWork } from "@/lib/services/provider-keys";
 
 export const maxDuration = 60;
 
@@ -27,6 +29,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { data, error } = await db.from("provider_keys").update(updates).eq("id", id).select(KEY_SELECT).maybeSingle();
   if (error) return fail(500, "INTERNAL", error.message);
   if (!data) return fail(404, "NOT_FOUND", "Key not found");
+  // Status or on/off changed and the AI key is usable now: start waiting drafts.
+  if ((parsed.data.status !== undefined || parsed.data.is_active !== undefined) && isUsableLlmKeyRow(data)) {
+    const baseUrl = internalAppBaseUrl(req);
+    after(() => kickLlmWork(baseUrl, user.companyId));
+  }
   return ok(data);
 }
 

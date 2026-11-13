@@ -237,6 +237,40 @@ export async function hasUsableLlmKey(db: Db, companyId: string): Promise<boolea
   return (data ?? []).length > 0;
 }
 
+/** Would getActiveKey pick this row for an AI call right now? Same rule as its
+ *  filter (active; healthy, or cooling off with the cooldown over), for one row. */
+export function isUsableLlmKeyRow(
+  row: { provider: string; is_active: boolean; status: string; cooling_off_until: string | null },
+  now = Date.now(),
+): boolean {
+  if ((SERVICE_PROVIDER_IDS as readonly string[]).includes(row.provider) || !row.is_active) return false;
+  return row.status === "healthy"
+    || (row.status === "cooling_off" && !!row.cooling_off_until && Date.parse(row.cooling_off_until) <= now);
+}
+
+/**
+ * An AI key just became usable (Re-check passed, saved as healthy/active, or
+ * added): restart this company's AI work now instead of waiting for the
+ * minute pumps, which skip a company whose keys are all down
+ * (company_llm_keys_all_down, 2026_11_13_llmkey_gates.sql). Each worker only
+ * starts what is really stalled, so a kick with nothing to do is one idle call.
+ * company_id goes on every request: an unscoped write-followups is refused
+ * outside production and sweeps every tenant inside it. Call it inside after().
+ */
+export async function kickLlmWork(baseUrl: string, companyId: string | null): Promise<void> {
+  const secret = process.env.INTERNAL_SECRET;
+  if (!secret || !companyId) return;
+  const body = JSON.stringify({ company_id: companyId });
+  await Promise.all(
+    ["/api/enrich/generate-drafts", "/api/enrich/regenerate-drafts", "/api/internal/write-followups"].map((path) =>
+      fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-internal-secret": secret },
+        body,
+      }).catch(() => {})),
+  );
+}
+
 /**
  * Is there a usable key for ONE service provider (Firecrawl, Apollo, Instantly)?
  *

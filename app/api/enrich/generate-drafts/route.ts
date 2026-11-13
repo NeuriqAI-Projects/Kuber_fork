@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await req.json().catch(() => ({})) as { campaign_id?: string; step_number?: number };
+  const body = await req.json().catch(() => ({})) as { campaign_id?: string; step_number?: number; company_id?: string };
   const campaignId = body.campaign_id;
   const stepNumber = body.step_number ?? 1;
   const db = createAdminClient();
@@ -47,8 +47,9 @@ export async function POST(req: NextRequest) {
   // The batch chain below dies after ~5 hops on the platform and the watchdog
   // takes 10-20 minutes to notice; this restarts a stopped campaign within a
   // minute whether or not anyone has it open. A campaign still producing
-  // drafts is left alone (isDraftGenerationStalled).
-  if (!campaignId) return pumpStalledCampaigns(req, db);
+  // drafts is left alone (isDraftGenerationStalled). With company_id (a key
+  // just came back, kickLlmWork) only that company's campaigns are looked at.
+  if (!campaignId) return pumpStalledCampaigns(req, db, body.company_id);
 
   // REPLY NOW, WORK AFTER (as regenerate-drafts does). The batch used to run
   // inside the request, and the previous batch kicked it with an awaited fetch
@@ -274,15 +275,17 @@ async function runDraftBatch(
 }
 
 /** Restart opening-draft generation on any campaign whose chain has died. */
-async function pumpStalledCampaigns(req: NextRequest, db: ReturnType<typeof createAdminClient>) {
+async function pumpStalledCampaigns(req: NextRequest, db: ReturnType<typeof createAdminClient>, companyId?: string) {
   // Same candidates as the watchdog: drafts were asked for, and the campaign is
   // not paused or finished — those must not start spending AI credits.
-  const { data: candidates } = await db
+  let candidatesQuery = db
     .from("campaigns")
     .select("id, name, company_id")
     .in("status", ["draft", "processing", "active"])
     .eq("is_deleted", false)
     .not("draft_generation_started_at", "is", null);
+  if (companyId) candidatesQuery = candidatesQuery.eq("company_id", companyId);
+  const { data: candidates } = await candidatesQuery;
 
   // One read narrows ~20 campaigns to the few with any lead still waiting, so
   // an idle pass is two queries instead of four per campaign (measured 23s).

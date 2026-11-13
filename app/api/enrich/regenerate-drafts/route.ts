@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await req.json().catch(() => ({})) as { job_id?: string };
+  const body = await req.json().catch(() => ({})) as { job_id?: string; company_id?: string };
   const db = createAdminClient();
 
   // No job_id: the once-a-minute pump (pg_cron 'regeneration-pump'). Pick up
@@ -84,15 +84,18 @@ export async function POST(req: NextRequest) {
   // stall; kick; 20 more, stall — and the watchdog only looks every ten
   // minutes at jobs five minutes stale, so a 96-lead run crawled for the best
   // part of an hour. A heartbeat under a minute old means a chain is still
-  // moving and is left alone.
+  // moving and is left alone. With company_id (a key just came back,
+  // kickLlmWork) only that company's jobs are looked at.
   let jobId = body.job_id;
   if (!jobId) {
     const quietBefore = new Date(Date.now() - 60_000).toISOString();
-    const { data: quiet } = await db
+    let quietQuery = db
       .from("draft_regeneration_jobs")
       .select("id")
       .in("status", ["queued", "running"])
-      .or(`heartbeat_at.is.null,heartbeat_at.lt.${quietBefore}`)
+      .or(`heartbeat_at.is.null,heartbeat_at.lt.${quietBefore}`);
+    if (body.company_id) quietQuery = quietQuery.eq("company_id", body.company_id);
+    const { data: quiet } = await quietQuery
       .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle();
