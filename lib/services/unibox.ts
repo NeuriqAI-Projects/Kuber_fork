@@ -930,53 +930,12 @@ export async function getThreadMessages(db: Db, threadId: string): Promise<{
   const { latestReceived, defaultReplyTarget } = replyTargetOf(msgs);
   const { default: sanitizeHtml } = await import("sanitize-html");
 
-  let reply_drafts: Record<string, unknown>[] = [];
   const campaignLeadId = msgs.find((m) => m.campaign_lead_id)?.campaign_lead_id ?? null;
-  if (campaignLeadId) {
-    const { data: drafts } = await db
-      .from("reply_drafts")
-      .select("*")
-      .eq("campaign_lead_id", campaignLeadId)
-      .order("created_at", { ascending: true });
-    reply_drafts = (drafts ?? []) as Record<string, unknown>[];
-  }
-
   const leadEmail = msgs.find((m) => m.lead_email)?.lead_email ?? null;
-  let lead: Record<string, unknown> | null = null;
-  // Where a promoted participant would land. Resolved here rather than embedded,
-  // because a PostgREST embed on assigned_to depends on an FK name this table
-  // has changed before.
-  let lead_organization_name: string | null = null;
-  let lead_owner_name: string | null = null;
-  if (leadEmail) {
-    const { data: l } = await db.from("leads").select("*").eq("email", leadEmail).maybeSingle();
-    lead = l;
-    if (l?.organization_id) {
-      const { data: org } = await db.from("organizations").select("name").eq("id", l.organization_id).maybeSingle();
-      lead_organization_name = (org?.name as string | null) ?? null;
-    }
-    if (l?.assigned_to) {
-      const { data: owner } = await db.from("profiles").select("full_name, email").eq("id", l.assigned_to).maybeSingle();
-      lead_owner_name = (owner?.full_name as string | null) || (owner?.email as string | null) || null;
-    }
-  }
-
   const campaignId = msgs.find((m) => m.campaign_id)?.campaign_id ?? null;
-  let campaign: Record<string, unknown> | null = null;
-  if (campaignId) {
-    const { data: c } = await db.from("campaigns").select("id, name").eq("id", campaignId).maybeSingle();
-    campaign = c;
-  }
-
   // Resolve sender names for accountability (review §4.2) — only messages we
   // sent ourselves carry sent_by; everything else stays anonymous/null.
   const senderIds = [...new Set(msgs.map((m) => m.sent_by).filter(Boolean))] as string[];
-  const senderNames = new Map<string, string>();
-  if (senderIds.length > 0) {
-    const { data: senders } = await db.from("profiles").select("id, full_name, email").in("id", senderIds);
-    for (const s of senders ?? []) senderNames.set(s.id, s.full_name || s.email);
-  }
-
   // Which of this thread's participants are already leads. One query over the
   // addresses actually present, rather than a per-participant lookup from the
   // client.
@@ -987,27 +946,48 @@ export async function getThreadMessages(db: Db, threadId: string): Promise<{
       ...parseAddressList(m.cc_emails),
     ]),
   )];
-  let known_lead_emails: string[] = [];
-  if (participantEmails.length > 0) {
-    const { data: knownLeads } = await db
-      .from("leads")
-      .select("email")
-      .in("email", participantEmails)
-      .eq("is_deleted", false);
-    known_lead_emails = (knownLeads ?? []).map((l) => (l.email as string).toLowerCase());
-  }
 
-  let interest_status: number | null = null;
-  let lead_temperature: string | null = null;
-  if (campaignLeadId) {
-    const { data: cl } = await db
-      .from("campaign_leads")
-      .select("interest_status, lead_temperature")
-      .eq("id", campaignLeadId)
-      .maybeSingle();
-    interest_status = cl?.interest_status ?? null;
-    lead_temperature = cl?.lead_temperature ?? null;
-  }
+  // Everything below depends only on the messages, so it runs at once (it was
+  // 6-8 reads one after another on every thread open).
+  const [reply_drafts, leadInfo, campaign, senderNames, known_lead_emails, clStatus] = await Promise.all([
+    campaignLeadId
+      ? db.from("reply_drafts").select("*").eq("campaign_lead_id", campaignLeadId).order("created_at", { ascending: true })
+        .then(({ data }) => (data ?? []) as Record<string, unknown>[])
+      : [] as Record<string, unknown>[],
+    // Where a promoted participant would land. Resolved here rather than
+    // embedded, because a PostgREST embed on assigned_to depends on an FK name
+    // this table has changed before.
+    (async () => {
+      if (!leadEmail) return { lead: null, orgName: null, ownerName: null };
+      const { data: l } = await db.from("leads").select("*").eq("email", leadEmail).maybeSingle();
+      const [org, owner] = await Promise.all([
+        l?.organization_id ? db.from("organizations").select("name").eq("id", l.organization_id).maybeSingle().then(({ data }) => data) : null,
+        l?.assigned_to ? db.from("profiles").select("full_name, email").eq("id", l.assigned_to).maybeSingle().then(({ data }) => data) : null,
+      ]);
+      return {
+        lead: l as Record<string, unknown> | null,
+        orgName: (org?.name as string | null) ?? null,
+        ownerName: (owner?.full_name as string | null) || (owner?.email as string | null) || null,
+      };
+    })(),
+    campaignId
+      ? db.from("campaigns").select("id, name").eq("id", campaignId).maybeSingle().then(({ data }) => data as Record<string, unknown> | null)
+      : null,
+    senderIds.length > 0
+      ? db.from("profiles").select("id, full_name, email").in("id", senderIds)
+        .then(({ data }) => new Map((data ?? []).map((p) => [p.id as string, (p.full_name || p.email) as string])))
+      : new Map<string, string>(),
+    participantEmails.length > 0
+      ? db.from("leads").select("email").in("email", participantEmails).eq("is_deleted", false)
+        .then(({ data }) => (data ?? []).map((l) => (l.email as string).toLowerCase()))
+      : [] as string[],
+    campaignLeadId
+      ? db.from("campaign_leads").select("interest_status, lead_temperature").eq("id", campaignLeadId).maybeSingle().then(({ data }) => data)
+      : null,
+  ]);
+  const { lead, orgName: lead_organization_name, ownerName: lead_owner_name } = leadInfo;
+  const interest_status: number | null = clStatus?.interest_status ?? null;
+  const lead_temperature: string | null = clStatus?.lead_temperature ?? null;
 
   return {
     thread_id: threadId,
@@ -1101,15 +1081,17 @@ export async function hydrateThreadIfStale(db: Db, threadId: string): Promise<vo
   const last = hydrateCooldown.get(threadId) ?? 0;
   if (Date.now() - last < HYDRATE_COOLDOWN_MS) return;
 
-  const { data: rows } = await db
-    .from("unibox_emails")
-    .select("id, body_html, body_text, instantly_email_id")
-    .eq("thread_id", threadId);
-
   // Both bodies, not just HTML: a plain-text-only message (Instantly sent no HTML)
   // never gains body_html, so the old check re-fetched that thread on every open.
-  const missing = (rows ?? []).some((r) => !r.body_html && !r.body_text);
-  if (!missing) return;
+  // Asks for one id, not every body (getThreadMessages reads the bodies next).
+  const { data: missingRows } = await db
+    .from("unibox_emails")
+    .select("id")
+    .eq("thread_id", threadId)
+    .or("body_html.is.null,body_html.eq.")
+    .or("body_text.is.null,body_text.eq.")
+    .limit(1);
+  if (!missingRows?.length) return;
 
   hydrateCooldown.set(threadId, Date.now());
   const emails = await listThreadEmails(threadId);
