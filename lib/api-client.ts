@@ -787,7 +787,15 @@ export async function deleteLead(token: string, id: string): Promise<{ deleted: 
 }
 
 export async function bulkDeleteLeads(token: string, ids: string[]): Promise<{ deleted: number }> {
-  return apiFetch("/api/v1/leads/bulk-delete", { method: "POST", body: JSON.stringify({ ids }) }, token);
+  // The route takes max 500 ids per call, so send in chunks.
+  let deleted = 0;
+  for (let i = 0; i < ids.length; i += 500) {
+    const r = await apiFetch<{ deleted: number }>("/api/v1/leads/bulk-delete", {
+      method: "POST", body: JSON.stringify({ ids: ids.slice(i, i + 500) }),
+    }, token);
+    deleted += r.deleted;
+  }
+  return { deleted };
 }
 
 export type BulkAssignStrategy = "manual" | "round_robin" | "territory";
@@ -1003,10 +1011,17 @@ export async function approveDraft(token: string, draftId: string): Promise<{ id
 }
 
 export async function bulkApproveDrafts(token: string, draftIds: string[]): Promise<{ approved: number; skipped: number }> {
-  return apiFetch("/api/v1/drafts/bulk-approve", {
-    method: "POST",
-    body: JSON.stringify({ draft_ids: draftIds }),
-  }, token);
+  // The route takes max 200 ids per call (lib/validators/drafts.ts), so send in chunks.
+  const total = { approved: 0, skipped: 0 };
+  for (let i = 0; i < draftIds.length; i += 200) {
+    const r = await apiFetch<{ approved: number; skipped: number }>("/api/v1/drafts/bulk-approve", {
+      method: "POST",
+      body: JSON.stringify({ draft_ids: draftIds.slice(i, i + 200) }),
+    }, token);
+    total.approved += r.approved;
+    total.skipped += r.skipped;
+  }
+  return total;
 }
 
 export type RegenerationSkipped = { certified: number; sent: number; no_draft: number; customized: number; other: number };
