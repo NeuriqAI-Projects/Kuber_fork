@@ -2,50 +2,43 @@ import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
+import {
+  AttachmentFinishSchema, AttachmentStartSchema, checkAttachment, finishAttachmentUpload,
+  safeFileName, signAttachmentUpload,
+} from "@/lib/services/attachment-upload";
 
 export const maxDuration = 30;
 
-const ALLOWED = new Set([
-  "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "image/png", "image/jpeg",
-]);
-const MAX_BYTES = 10 * 1024 * 1024;
-
+/**
+ * Two calls, the file itself never passes through here (Vercel caps bodies at 4.5 MB):
+ *  1. { name, type, size }            -> { path, token } signed upload URL; the browser uploads to Storage
+ *  2. { finish: true, path, name }    -> attachment fields + 1-year signed link
+ */
 export async function POST(req: NextRequest) {
-  let _user: Awaited<ReturnType<typeof requireAuth>>;
-  try { _user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireAuth>>;
+  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  const db = dbForUser(user);
+  const body = await req.json().catch(() => null);
 
-  const form = await req.formData();
-  const file = form.get("file") as File | null;
-  if (!file) return fail(400, "VALIDATION_ERROR", "No file provided");
-  if (!ALLOWED.has(file.type)) return fail(400, "VALIDATION_ERROR", `Unsupported file type: ${file.type}`);
-  if (file.size > MAX_BYTES) return fail(400, "VALIDATION_ERROR", "File exceeds 10MB limit");
+  const finish = AttachmentFinishSchema.safeParse(body);
+  if (finish.success) {
+    const { path, name } = finish.data;
+    if (!path.startsWith("uploads/") || path.includes("..")) return fail(400, "VALIDATION_ERROR", "Bad upload path");
+    try {
+      const f = await finishAttachmentUpload(db, path);
+      return ok({ attachment_path: path, attachment_name: name, attachment_mime: f.mime, attachment_size: f.size, attachment_url: f.url });
+    } catch (e) {
+      return fail(400, "VALIDATION_ERROR", (e as Error).message);
+    }
+  }
 
-  const db = dbForUser(_user);
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const path = `uploads/${crypto.randomUUID()}/${safeName}`;
-
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const { error: upErr } = await db.storage
-    .from("campaign-attachments")
-    .upload(path, bytes, { contentType: file.type, upsert: false });
-  if (upErr) return fail(500, "INTERNAL", upErr.message);
-
-  // Signed URL valid 1 year — the link is embedded in sent emails (Instantly has
-  // no attachment API), so recipients must be able to open it long after send.
-  const { data: signed } = await db.storage
-    .from("campaign-attachments")
-    .createSignedUrl(path, 60 * 60 * 24 * 365);
-
-  return ok({
-    attachment_path: path,
-    attachment_name: file.name,
-    attachment_mime: file.type,
-    attachment_size: file.size,
-    attachment_url: signed?.signedUrl ?? null,
-  });
+  const start = AttachmentStartSchema.safeParse(body);
+  if (!start.success) return fail(400, "VALIDATION_ERROR", "Invalid request", start.error.flatten());
+  const bad = checkAttachment(start.data.type, start.data.size);
+  if (bad) return fail(400, "VALIDATION_ERROR", bad);
+  try {
+    return ok(await signAttachmentUpload(db, `uploads/${crypto.randomUUID()}/${safeFileName(start.data.name)}`));
+  } catch (e) {
+    return fail(500, "INTERNAL", (e as Error).message);
+  }
 }

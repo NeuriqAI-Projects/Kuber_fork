@@ -69,6 +69,7 @@ async function apiFetch<T>(path: string, init: RequestInit = {}, token?: string)
       abortErr.name = "AbortError";
       throw abortErr;
     }
+    if (res.status === 413) throw new Error("Too large to send. Please use a smaller file or fewer items.");
     throw new Error(`Server returned an unreadable response (${res.status}). Please try again.`);
   }
   if (!json.success) {
@@ -1547,20 +1548,25 @@ export async function createCampaign(token: string, body: {
   return apiFetch<DbCampaign>("/api/v1/campaigns", { method: "POST", body: JSON.stringify(body) }, token);
 }
 
+// The file goes browser -> Supabase Storage on a signed upload URL our route hands out,
+// then the route checks it and signs the link. Through our API it broke above 4.5 MB
+// (Vercel's request body cap).
+async function uploadAttachmentFile<T>(token: string, route: string, file: File): Promise<T> {
+  const { path, token: uploadToken } = await apiFetch<{ path: string; token: string }>(route, {
+    method: "POST", body: JSON.stringify({ name: file.name, type: file.type, size: file.size }),
+  }, token);
+  const { supabase } = await import("@/lib/supabase");
+  const { error } = await supabase.storage.from("campaign-attachments")
+    .uploadToSignedUrl(path, uploadToken, file, { contentType: file.type });
+  if (error) throw new Error(`Upload failed: ${error.message}`);
+  return apiFetch<T>(route, { method: "POST", body: JSON.stringify({ finish: true, path, name: file.name }) }, token);
+}
+
 export async function uploadCampaignAttachment(token: string, file: File) {
-  const form = new FormData();
-  form.append("file", file);
-  const res = await fetch("/api/v1/campaigns/attachment", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: form,
-  });
-  const json = await res.json();
-  if (!json.success) throw new Error(json.error?.message ?? "Upload failed");
-  return json.data as {
+  return uploadAttachmentFile<{
     attachment_path: string; attachment_name: string;
     attachment_mime: string; attachment_size: number; attachment_url: string | null;
-  };
+  }>(token, "/api/v1/campaigns/attachment", file);
 }
 
 export async function fetchCampaignLeads(token: string, campaignId: string): Promise<{
@@ -1639,16 +1645,7 @@ export async function uploadCampaignLeadAttachment(
   campaignLeadId: string,
   file: File,
 ): Promise<{ attachment_name: string; attachment_size: number; attachment_mime: string; attachment_url: string | null }> {
-  const form = new FormData();
-  form.append("file", file);
-  const res = await fetch(`/api/v1/campaign-leads/${campaignLeadId}/attachment`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: form,
-  });
-  const json = await res.json();
-  if (!json.success) throw new Error(json.error?.message ?? "Upload failed");
-  return json.data;
+  return uploadAttachmentFile(token, `/api/v1/campaign-leads/${campaignLeadId}/attachment`, file);
 }
 
 export async function removeCampaignLeadAttachment(

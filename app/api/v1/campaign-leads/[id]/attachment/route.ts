@@ -3,66 +3,59 @@ import { requireAuth } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
+import {
+  AttachmentFinishSchema, AttachmentStartSchema, checkAttachment, finishAttachmentUpload,
+  safeFileName, signAttachmentUpload,
+} from "@/lib/services/attachment-upload";
 
 export const maxDuration = 30;
 
-const ALLOWED = new Set([
-  "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "image/png", "image/jpeg",
-]);
-const MAX_BYTES = 10 * 1024 * 1024;
-
-/** POST = set/replace the per-lead attachment override */
+/**
+ * POST = set/replace the per-lead attachment override, in two calls (the file
+ * itself never passes through here; Vercel caps bodies at 4.5 MB):
+ *  1. { name, type, size }          -> { path, token } signed upload URL; the browser uploads to Storage
+ *  2. { finish: true, path, name }  -> saves the override on the campaign lead
+ */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   let user: Awaited<ReturnType<typeof requireAuth>>;
   try { user = await requireAuth(req); } catch (r) { return r as Response; }
   const { id } = await params;
-
-  const form = await req.formData();
-  const file = form.get("file") as File | null;
-  if (!file) return fail(400, "NO_FILE", "No file provided");
-  if (!ALLOWED.has(file.type)) return fail(400, "BAD_TYPE", `Unsupported type: ${file.type}`);
-  if (file.size > MAX_BYTES) return fail(400, "TOO_LARGE", "File exceeds 10MB");
-
   const db = dbForUser(user);
 
   const { data: cl } = await db.from("campaign_leads").select("campaign_id").eq("id", id).maybeSingle();
   if (!cl) return fail(404, "NOT_FOUND", "Campaign lead not found");
   try { await assertCampaignAccess(db, user, cl.campaign_id); } catch (r) { return r as Response; }
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const path = `campaign-leads/${id}/${crypto.randomUUID()}-${safeName}`;
 
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const { error: upErr } = await db.storage
-    .from("campaign-attachments")
-    .upload(path, bytes, { contentType: file.type, upsert: false });
-  if (upErr) return fail(500, "UPLOAD_FAILED", upErr.message);
+  const body = await req.json().catch(() => null);
+  const finish = AttachmentFinishSchema.safeParse(body);
+  if (finish.success) {
+    const { path, name } = finish.data;
+    if (!path.startsWith(`campaign-leads/${id}/`) || path.includes("..")) return fail(400, "VALIDATION_ERROR", "Bad upload path");
+    let f: Awaited<ReturnType<typeof finishAttachmentUpload>>;
+    try { f = await finishAttachmentUpload(db, path); } catch (e) { return fail(400, "VALIDATION_ERROR", (e as Error).message); }
 
-  // 1-year signed URL — embedded as a download link in the sent email.
-  const { data: signed } = await db.storage
-    .from("campaign-attachments")
-    .createSignedUrl(path, 60 * 60 * 24 * 365);
+    const { error: updErr } = await db.from("campaign_leads").update({
+      attachment_path: path,
+      attachment_name: name,
+      attachment_mime: f.mime,
+      attachment_size: f.size,
+      attachment_url: f.url,
+      updated_at: new Date().toISOString(),
+    }).eq("id", id);
+    if (updErr) return fail(500, "INTERNAL", updErr.message);
 
-  const { error: updErr } = await db.from("campaign_leads").update({
-    attachment_path: path,
-    attachment_name: file.name,
-    attachment_mime: file.type,
-    attachment_size: file.size,
-    attachment_url: signed?.signedUrl ?? null,
-    updated_at: new Date().toISOString(),
-  }).eq("id", id);
-  if (updErr) return fail(500, "INTERNAL", updErr.message);
+    return ok({ attachment_name: name, attachment_size: f.size, attachment_mime: f.mime, attachment_url: f.url });
+  }
 
-  return ok({
-    attachment_name: file.name,
-    attachment_size: file.size,
-    attachment_mime: file.type,
-    attachment_url: signed?.signedUrl ?? null,
-  });
+  const start = AttachmentStartSchema.safeParse(body);
+  if (!start.success) return fail(400, "VALIDATION_ERROR", "Invalid request", start.error.flatten());
+  const bad = checkAttachment(start.data.type, start.data.size);
+  if (bad) return fail(400, "VALIDATION_ERROR", bad);
+  try {
+    return ok(await signAttachmentUpload(db, `campaign-leads/${id}/${crypto.randomUUID()}-${safeFileName(start.data.name)}`));
+  } catch (e) {
+    return fail(500, "INTERNAL", (e as Error).message);
+  }
 }
 
 /** DELETE = clear the per-lead override → fall back to the campaign default */
