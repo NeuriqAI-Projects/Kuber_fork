@@ -281,6 +281,10 @@ async function mergeDuplicateOrg(db: Db, dupOrgId: string, targetOrgId: string, 
   });
 
   await db.from("organizations").delete().eq("id", dupOrgId);
+
+  // The moved leads may already be workable (target done → enriched). Route them
+  // by their import's choice now; the target org will not be processed again.
+  await autoAssignEnrichedLeads(db, targetOrgId).catch(() => {});
 }
 
 type DomainInferenceResult =
@@ -329,6 +333,9 @@ async function inferDomainFromLeadEmails(db: Db, orgId: string): Promise<DomainI
   // Another org record may already own this domain (a duplicate company record,
   // e.g. two Apollo/Excel entries for the same real company). Reuse it instead
   // of failing — this is what actually resolves the common case.
+  // `db` MUST be the org's company-scoped client: the same website exists in
+  // more than one company, and an unscoped lookup merged one company's leads into
+  // another company's org (16 Nov 2026).
   const { data: existingOrg } = await db
     .from("organizations")
     .select("id")
@@ -382,18 +389,26 @@ const DOMAIN_RESOLVE_BATCH = 40;
 async function resolveDomainlessQueuedOrgs(db: Db, limit: number): Promise<void> {
   const { data: orgs } = await db
     .from("organizations")
-    .select("id")
+    .select("id, company_id")
     .eq("enrichment_stage", "queued")
     .is("domain", null)
     .order("created_at", { ascending: true })
     .limit(limit);
 
   for (const org of orgs ?? []) {
-    const result = await inferDomainFromLeadEmails(db, org.id);
+    // Cross-company lookups go through `db` (admin) above only to find the work;
+    // everything about ONE org runs on that org's company-scoped client, exactly
+    // like processOneOrg below. See inferDomainFromLeadEmails.
+    const orgDb = createScopedClient(org.company_id as string);
+    const result = await inferDomainFromLeadEmails(orgDb, org.id);
     if (result.type === "duplicate") {
-      await mergeDuplicateOrg(db, org.id, result.targetOrgId, result.domain);
+      await mergeDuplicateOrg(orgDb, org.id, result.targetOrgId, result.domain);
     } else if (result.type === "failed") {
-      await markFailed(db, org.id, "NO_DOMAIN", "No website on the record and no usable company domain in its leads' emails");
+      await markFailed(orgDb, org.id, "NO_DOMAIN", "No website on the record and no usable company domain in its leads' emails");
+      // Its leads are now Input Required (workable with the generic email):
+      // route them by their import's choice, as the scrape path does for its
+      // failures. Without this, a manager's "assign to X" never reached X.
+      await autoAssignEnrichedLeads(orgDb, org.id).catch(() => {});
     }
     // "resolved" needs nothing more — the org now has a domain and the claim
     // below (or the next pass) will pick it up like any other.
