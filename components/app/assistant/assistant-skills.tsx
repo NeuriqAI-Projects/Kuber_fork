@@ -43,7 +43,7 @@ const ACT: Skill[] = [
   { title: "Assign leads", description: "To a teammate, or shared round-robin", Icon: UserCheck, template: "Assign all unassigned leads from  to ", scopes: ["leads:assign", "assistant:actions"] },
   { title: "Draft a reply", description: "AI writes it, you review and send in Unibox", Icon: Reply, template: "Draft a reply to  saying " },
   { title: "Pause or resume", description: "Stop or restart a campaign's sending", Icon: PauseCircle, template: "Pause the campaign ''" },
-  { title: "Reveal emails", description: "Find emails for Apollo leads that have none", Icon: MailSearch, template: "Reveal emails for leads without an email from ", scopes: ["leads:import", "assistant:actions"], note: "Uses Apollo credits" },
+  { title: "Reveal emails", description: "Find emails for Apollo leads that have none", Icon: MailSearch, template: "Reveal emails for leads without an email from ", scopes: ["imports:apollo", "assistant:actions"], note: "Uses Apollo credits" },
   { title: "Add a note", description: "Save a note on a lead", Icon: StickyNote, template: "Add a note on : " },
 ];
 

@@ -382,8 +382,8 @@ export function UniboxThreadView({
   ownerName,
   onChanged,
 }: Props) {
-  // "Add as lead" creates a lead: leads:import.
-  const canAddLead = useAccess().can("leads:import");
+  // "Add as lead" creates a lead: imports:manual.
+  const canAddLead = useAccess().can("imports:manual");
   const [replyOpen, setReplyOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());

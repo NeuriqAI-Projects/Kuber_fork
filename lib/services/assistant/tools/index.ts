@@ -50,7 +50,7 @@ export const TOOL_SCOPES: Record<ToolName, Scope[]> = {
   // Pause/resume need campaigns:send, generate_drafts campaigns:generate: the tool
   // is offered with either and checks the one its action needs.
   propose_campaign_state: ["assistant:actions"],
-  propose_reveal_emails: ["assistant:actions", "leads:import"],
+  propose_reveal_emails: ["assistant:actions", "imports:apollo"],
   propose_lead_note: ["assistant:actions", "leads:write"],
   propose_reply_draft: ["assistant:actions", "unibox:reply"],
 };

@@ -30,7 +30,9 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { LocationsPicker } from "@/components/ui/locations-picker";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/leads/lead-ui";
+import { useAccess } from "@/lib/access-context";
 import {
+  AssignedToYouNote,
   AssignStrategyPicker,
   BatchNameField,
   buildImportAssignment,
@@ -40,7 +42,9 @@ import {
 } from "@/components/app/lead-forms";
 import { COMPANY_LOOKUP_MAX_CONTACTS, COMPANY_LOOKUP_MAX_PAGES } from "@/lib/constants";
 
+// Without leads:assign the last step is just "Batch": the server assigns the import to the member.
 const STEPS = ["Find company", "Select company", "Select people", "Batch & assign"];
+const STEPS_NO_ASSIGN = ["Find company", "Select company", "Select people", "Batch"];
 
 const COMPANY_PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 const CONTACT_PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
@@ -732,6 +736,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
   const [assignTo, setAssignTo] = useState("");
   const [assignMode, setAssignMode] = useState<ImportAssignMode>("manual");
   const employees = useAssignableEmployees(true);
+  const canAssign = useAccess().can("leads:assign");
 
   // Picks a search that was started before this form was (re)opened back up: shows the loading
   // screen again and puts the answer on screen when it lands.
@@ -933,7 +938,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
         })),
         batch_name: batchName,
         color,
-        ...buildImportAssignment(assignMode, assignTo),
+        ...(canAssign ? buildImportAssignment(assignMode, assignTo) : {}),
       });
       if (!data.inserted) { setError("No contacts were imported — they may already be in the system."); setBusy(false); return; }
       // The cached company list is stale the moment an import lands: the
@@ -970,7 +975,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
 
   return (
     <div className="space-y-5">
-      <Stepper steps={STEPS} current={step} className="pb-4 mb-5 border-b border-border" />
+      <Stepper steps={canAssign ? STEPS : STEPS_NO_ASSIGN} current={step} className="pb-4 mb-5 border-b border-border" />
 
       {mock && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
@@ -1285,13 +1290,15 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
             onColorChange={setColor}
             error={batchNameError}
           />
-          <AssignStrategyPicker
-            employees={employees}
-            mode={assignMode}
-            onModeChange={setAssignMode}
-            assignTo={assignTo}
-            onAssignToChange={setAssignTo}
-          />
+          {canAssign ? (
+            <AssignStrategyPicker
+              employees={employees}
+              mode={assignMode}
+              onModeChange={setAssignMode}
+              assignTo={assignTo}
+              onAssignToChange={setAssignTo}
+            />
+          ) : <AssignedToYouNote />}
           <ApolloCostNote
             credits={picked.length}
             spendingOn={`revealing email${picked.length === 1 ? "" : "s"} for the ${picked.length} imported contact${picked.length === 1 ? "" : "s"}`}

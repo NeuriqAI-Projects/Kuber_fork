@@ -98,8 +98,9 @@ function listed(list: AllowList, h: Handler): boolean {
   return false;
 }
 
+// requireAnyScope (Decisions 8, 17 Nov) = requireAuth + "holds at least one of these scopes".
 const hasScopeGuard = (body: string) =>
-  /\brequireScope\(/.test(body) || (/\brequireAuth\(/.test(body) && /\bassertScope\(/.test(body));
+  /\brequire(?:Any)?Scope\(/.test(body) || (/\brequireAuth\(/.test(body) && /\bassertScope\(/.test(body));
 const hasSecretCheck = (body: string) => /\bsafeSecretEqual\(|INTERNAL_SECRET|CRON_SECRET/.test(body);
 
 test("found the route handlers", () => {
@@ -136,7 +137,8 @@ test("no write handler is guarded by a :read scope (unless marked as a UI-state 
     if (h.method === "GET") continue;
     const lines = h.body.split(/\r?\n/);
     lines.forEach((line, i) => {
-      const m = /\brequireScope\(\s*\w+\s*,\s*["']([a-z_]+:read)["']/.exec(line);
+      // requireAnyScope: any of its scopes being a :read one counts.
+      const m = /\brequire(?:Any)?Scope\(\s*\w+\s*,(?:\s*["'][a-z_]+:[a-z_]+["']\s*,)*\s*["']([a-z_]+:read)["']/.exec(line);
       if (m && !(lines[i - 1] ?? "").includes(READ_MARKER)) bad.push(`${key(h)} → ${m[1]}`);
     });
   }
@@ -159,7 +161,7 @@ const sourceFiles = ["app", "lib", "components"].flatMap((d) =>
 test("every scope string used in code is in SCOPES", () => {
   const known = new Set<string>(SCOPES);
   const used = new Map<string, string>();
-  const CALL = /\b(?:requireScope|assertScope|requirePageScope|can|hasScope)\(([^()]*)\)/g;
+  const CALL = /\b(?:requireScope|requireAnyScope|assertScope|requirePageScope|can|hasScope)\(([^()]*)\)/g;
   const FIELD = /\bscope:\s*(["'][a-z_]+:[a-z_]+["'])/g;
   for (const file of sourceFiles) {
     const src = read(file);
@@ -168,6 +170,11 @@ test("every scope string used in code is in SCOPES", () => {
     }
   }
   assert.ok(used.size > 0, "no scope literals found at all");
+  // requireAnyScope(req, "imports:apollo", "imports:company") in leads/enrich must be scanned too.
+  const enrich = read(path.join(API, "v1", "leads", "enrich", "route.ts"));
+  const any = [...enrich.matchAll(/\brequireAnyScope\(([^()]*)\)/g)].flatMap((m) => [...m[1].matchAll(/["']([a-z_]+:[a-z_]+)["']/g)].map((x) => x[1]));
+  assert.deepEqual(any, ["imports:apollo", "imports:company"], "leads/enrich requireAnyScope literals");
+  for (const s of any) assert.ok(known.has(s), s);
   const unknown = [...used].filter(([s]) => !known.has(s)).map(([s, f]) => `${s} (${f})`);
   assert.deepEqual(unknown, [], `unknown scopes:\n  ${unknown.join("\n  ")}`);
 });

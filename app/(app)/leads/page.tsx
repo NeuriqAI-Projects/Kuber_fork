@@ -522,7 +522,7 @@ export default function LeadsPage() {
     setShowAddLeads,
   } = useApp();
 
-  const { can, seesAll } = useAccess();
+  const { can, seesAll, canImportAny } = useAccess();
   const canProspects = can("prospects:read");
   const router      = useRouter();
   const pathname    = usePathname();
@@ -1007,7 +1007,7 @@ export default function LeadsPage() {
             <Tip text={!canCreateCampaign ? "Only enriched leads with a domain can be added to campaigns. Select some first." : "Start a campaign from the selected leads."}>
               <Button
                 size="sm"
-                variant={can("leads:import") ? "outline" : "default"}
+                variant={canImportAny ? "outline" : "default"}
                 disabled={!canCreateCampaign}
                 onClick={() => { setShowCreateCampaign(true); }}
               >
@@ -1015,7 +1015,7 @@ export default function LeadsPage() {
               </Button>
             </Tip>
             )}
-            {can("leads:import") && (
+            {canImportAny && (
               <Tip text="Import leads from Apollo, Excel or add one manually.">
                 <Button size="sm" onClick={() => setShowAddLeads(true)}>
                   <Plus className="size-3.5" /> Add leads

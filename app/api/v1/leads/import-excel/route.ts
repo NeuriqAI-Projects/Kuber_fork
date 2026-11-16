@@ -1,6 +1,8 @@
 import { NextRequest, after } from "next/server";
 import crypto from "crypto";
-import { requireScope, assertScope } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
+import { canSeeAll } from "@/lib/auth/scopes";
+import { importAssignment } from "@/lib/auth/scope";
 import { ok, fail } from "@/lib/api-response";
 import { ExcelImportSchema } from "@/lib/validators/leads";
 import { internalAppBaseUrl } from "@/lib/internal-url";
@@ -58,6 +60,10 @@ async function processRows(
   importId?: string | null,
   assignedTo?: string | null,
   assignmentStrategy?: "manual" | "round_robin" | "territory",
+  /** Own import (no leads:assign): the leads are the importer's from the start —
+   *  deferred assignment only happens once enrichment succeeds, and a lead whose
+   *  site can't be read would otherwise stay unowned and invisible to them. */
+  assignNow = false,
 ) {
   const emailCol = mapping["email"];
   const firstNameCol = mapping["first_name"];
@@ -225,9 +231,10 @@ async function processRows(
       created_by: userId,
       import_id: importId ?? null,
       // Deferred assignment: land unassigned; the import's stored choice is
-      // applied by autoAssignEnrichedLeads once each lead is workable.
-      assigned_to: null,
-      assigned_at: null,
+      // applied by autoAssignEnrichedLeads once each lead is workable (it only
+      // touches unassigned leads). An own import is assigned straight away.
+      assigned_to: assignNow ? assignedTo ?? null : null,
+      assigned_at: assignNow && assignedTo ? new Date().toISOString() : null,
       created_at: new Date().toISOString(),
     };
   }).filter(Boolean) as object[];
@@ -280,7 +287,7 @@ function triggerScrape(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireScope>>;
-  try { user = await requireScope(req, "leads:import"); } catch (r) { return r as Response; }
+  try { user = await requireScope(req, "imports:excel"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
   const parsed = ExcelImportSchema.safeParse(body);
@@ -288,11 +295,18 @@ export async function POST(req: NextRequest) {
 
   const db = dbForUser(user);
 
-  // Choosing who gets the leads (a person, round robin or territory) also needs
-  // leads:assign; "manual" with no person = leave in pool, no assignment.
-  if (parsed.data.mode !== "headers" && (parsed.data.assigned_to || (parsed.data.assignment_strategy && parsed.data.assignment_strategy !== "manual"))) {
-    try { assertScope(user, "leads:assign"); } catch (r) { return r as Response; }
+  // Who gets the leads: chosen (person / strategy / pool) with leads:assign;
+  // without it, everything imported is assigned to the importer (importAssignment).
+  // Written back onto parsed.data so both import modes below use it.
+  let ownImport = false;
+  if (parsed.data.mode !== "headers") {
+    const a = importAssignment(user, parsed.data as { assigned_to?: string | null; assignment_strategy?: string | null });
+    Object.assign(parsed.data, { assigned_to: a.assigned_to ?? undefined, assignment_strategy: a.assignment_strategy ?? undefined });
+    ownImport = a.self;
   }
+  // Who owns a duplicate is other people's data: only with leads:all.
+  const shown = <T extends { duplicate_owners?: unknown[] }>(r: T): T =>
+    canSeeAll(user.member, "leads") ? r : { ...r, duplicate_owners: [] };
 
   if (parsed.data.mode !== "headers" && parsed.data.assigned_to) {
     const { data: employee } = await db.from("profiles").select("id, is_active").eq("id", parsed.data.assigned_to).maybeSingle();
@@ -307,12 +321,12 @@ export async function POST(req: NextRequest) {
       .insert({ label: batch_name, source: "excel", created_by: user.id, lead_count: 0, color: color ?? "violet", ...importAssignmentFields(assigned_to, assignment_strategy) })
       .select("id").single();
     const importId = importRow?.id ?? null;
-    const result = await processRows(rows, mapping, user.id, db, importId, assigned_to, assignment_strategy);
+    const result = await processRows(rows, mapping, user.id, db, importId, assigned_to, assignment_strategy, ownImport);
     if (importId && result.inserted > 0) {
       await db.from("imports").update({ lead_count: result.inserted }).eq("id", importId);
     }
     if (result.inserted > 0) triggerScrape(req);
-    return ok(result);
+    return ok(shown(result));
   }
 
   // Storage modes — download file first
@@ -341,10 +355,10 @@ export async function POST(req: NextRequest) {
     .insert({ label: importBatchName, source: "excel", created_by: user.id, lead_count: 0, color: importColor ?? "violet", ...importAssignmentFields(importAssignedTo, importStrategy) })
     .select("id").single();
   const importId2 = importRow2?.id ?? null;
-  const result = await processRows(parsed_excel.rows, mapping, user.id, db, importId2, importAssignedTo, importStrategy);
+  const result = await processRows(parsed_excel.rows, mapping, user.id, db, importId2, importAssignedTo, importStrategy, ownImport);
   if (importId2 && result.inserted > 0) {
     await db.from("imports").update({ lead_count: result.inserted }).eq("id", importId2);
   }
   if (result.inserted > 0) triggerScrape(req);
-  return ok(result);
+  return ok(shown(result));
 }

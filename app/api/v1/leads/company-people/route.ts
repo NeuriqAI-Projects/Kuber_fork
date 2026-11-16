@@ -27,7 +27,7 @@ export const maxDuration = 60;
  */
 export const POST = withRouteTiming("leads/company-people", async (req, timing) => {
   let user: Awaited<ReturnType<typeof requireScope>>;
-  try { user = await requireScope(req, "leads:import"); } catch (r) { return r as Response; }
+  try { user = await requireScope(req, "imports:company"); } catch (r) { return r as Response; }
   timing.companyId = user.companyId;
 
   // Dev workspace runs on fixtures — see apollo-mock.ts for why the switch is

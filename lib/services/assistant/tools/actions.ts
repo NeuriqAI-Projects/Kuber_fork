@@ -238,7 +238,7 @@ export function actionTools(caller: AssistantCaller) {
         "Returns a confirm card with the exact credit cost; nothing is spent until the user confirms.",
       inputSchema: LeadSetSchema,
       execute: async (set) => {
-        const denied = lacks(caller, "assistant:actions", "leads:import");
+        const denied = lacks(caller, "assistant:actions", "imports:apollo");
         if (denied) return denied;
         const leads = await loadLeadSet(caller, set);
         if ("error" in leads) return { error: leads.error };

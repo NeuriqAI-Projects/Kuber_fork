@@ -681,7 +681,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
           }
         }}
         // Opens Add leads in edit mode, which PATCHes the org and adds leads.
-        onAddLead={can("leads:import", "organizations:write") ? (org) => {
+        onAddLead={can("imports:manual", "organizations:write") ? (org) => {
           setSelectedOrgId(null);
           setSelectedLead(null);
           setManualPrefill({

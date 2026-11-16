@@ -13,7 +13,8 @@
 
 export const SCOPES = [
   "dashboard:read", "dashboard:all",
-  "leads:read", "leads:all", "leads:write", "leads:assign", "leads:delete", "leads:import",
+  "leads:read", "leads:all", "leads:write", "leads:assign", "leads:delete",
+  "imports:apollo", "imports:company", "imports:excel", "imports:manual",
   "organizations:read", "organizations:write",
   "prospects:read", "prospects:run",
   "campaigns:read", "campaigns:all", "campaigns:write", "campaigns:generate", "campaigns:assign", "campaigns:send", "campaigns:delete",

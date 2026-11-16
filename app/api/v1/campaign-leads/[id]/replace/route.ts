@@ -25,7 +25,7 @@ export const maxDuration = 60;
  * same update so the corrected contact rejoins the normal flow (Draft Ready →
  * certify → Send) without a fresh insert.
  *
- * Deliberately NOT reusing POST /api/v1/leads: that path needs leads:import, mints
+ * Deliberately NOT reusing POST /api/v1/leads: that path needs imports:manual, mints
  * an import batch, and fires an org scrape this org concluded long ago. Here the
  * lead owner working the bounce must be able to act, and the org is already done.
  */

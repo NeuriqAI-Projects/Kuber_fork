@@ -5179,7 +5179,7 @@ export function CampaignDetail({
                         replyTargetName={item.replyTargetName}
                         stepLabel={item.stepLabel}
                         addingLead={outboxSavingLead && outboxAddLeadFor === item.promotableEmail}
-                        onAddAsLead={item.promotableEmail && can("leads:import")
+                        onAddAsLead={item.promotableEmail && can("imports:manual")
                           ? () => setOutboxAddLeadFor(item.promotableEmail)
                           : null}
                         onReplyTo={item.replyTargetId && can("unibox:reply")

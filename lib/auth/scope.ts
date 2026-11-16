@@ -301,3 +301,21 @@ export async function assertReplyDraftAccess(db: Db, user: AuthedUser, replyDraf
   if (data.campaign_lead_id && await ownsCampaignLead(db, user.id, data.campaign_lead_id)) return;
   throw fail(404, "NOT_FOUND", "Reply draft not found");
 }
+
+/**
+ * Who an import is assigned to. A member with leads:assign chooses (a person, a
+ * strategy, or the pool), exactly as before. Anyone else — e.g. an employee allowed
+ * to import their own Excel — gets every lead they import assigned to themselves:
+ * the "assign to" choice is not theirs to make (and the UI hides that step).
+ * Whatever the body asked for is ignored in that case, so a member without
+ * leads:assign can never hand leads to someone else or into the pool.
+ */
+export function importAssignment<S extends string>(
+  user: AuthedUser,
+  requested: { assigned_to?: string | null; assignment_strategy?: S | null },
+): { assigned_to: string | null; assignment_strategy: S | null; self: boolean } {
+  if (user.scopes.includes("leads:assign")) {
+    return { assigned_to: requested.assigned_to ?? null, assignment_strategy: requested.assignment_strategy ?? null, self: false };
+  }
+  return { assigned_to: user.id, assignment_strategy: null, self: true };
+}

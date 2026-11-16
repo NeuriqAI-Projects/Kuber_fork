@@ -19,11 +19,15 @@ import {
   canManage, canGrant, type Member, type Scope,
 } from "./scopes.ts";
 import { SCOPE_AREAS, SCOPE_TEMPLATES, scopeLabel, templateName } from "./scope-areas.ts";
+import { importAssignment } from "./scope.ts";
+import type { AuthedUser } from "./api-auth.ts";
 
 // ── fixtures ──────────────────────────────────────────────────────────────
 const SPEC_SCOPES = [
   "dashboard:read", "dashboard:all",
-  "leads:read", "leads:all", "leads:write", "leads:assign", "leads:delete", "leads:import",
+  "leads:read", "leads:all", "leads:write", "leads:assign", "leads:delete",
+  // Decisions 8 (17 Nov): leads:import split into one box per Add-leads source.
+  "imports:apollo", "imports:company", "imports:excel", "imports:manual",
   "organizations:read", "organizations:write",
   "prospects:read", "prospects:run",
   "campaigns:read", "campaigns:all", "campaigns:write", "campaigns:generate", "campaigns:assign", "campaigns:send", "campaigns:delete",
@@ -52,8 +56,10 @@ const inScopesOrder = (a: readonly string[]) =>
   a.every((s, i) => i === 0 || SCOPES.indexOf(s as Scope) > SCOPES.indexOf(a[i - 1] as Scope));
 
 // ── §2 SCOPES ─────────────────────────────────────────────────────────────
-test("SCOPES is exactly the 36 scopes of §2, in that order", () => {
+test("SCOPES is exactly the 39 scopes of §2 (+ Decisions 8), in that order", () => {
+  assert.equal(SPEC_SCOPES.length, 39);
   assert.deepEqual([...SCOPES], SPEC_SCOPES);
+  assert.equal(isScope("leads:import"), false, "leads:import is gone");
 });
 
 test("SCOPES has no duplicates and every scope is area:verb", () => {
@@ -304,8 +310,10 @@ test("deactivated granter can do nothing, even the owner flag", () => {
 // ── §5 templates + picker ─────────────────────────────────────────────────
 const tpl = (id: "manager" | "employee") => SCOPE_TEMPLATES.find((t) => t.id === id)!;
 
-test("Manager template = every scope except sending_accounts:write", () => {
+test("Manager template = every scope except sending_accounts:write (38, all four imports:*)", () => {
+  assert.equal(tpl("manager").scopes.length, 38);
   assert.deepEqual(tpl("manager").scopes, SPEC_MANAGER);
+  for (const s of ["imports:apollo", "imports:company", "imports:excel", "imports:manual"]) assert.ok(tpl("manager").scopes.includes(s as Scope), s);
   assert.equal(tpl("manager").label, "Manager");
 });
 
@@ -313,6 +321,7 @@ test("Employee template = exactly the 14 scopes of §5", () => {
   assert.equal(tpl("employee").scopes.length, 14);
   assert.deepEqual(sorted(tpl("employee").scopes), sorted(SPEC_EMPLOYEE));
   assert.equal(tpl("employee").label, "Employee");
+  assert.ok(!tpl("employee").scopes.some((s) => s.startsWith("imports:")), "employee holds no import scope");
 });
 
 test("templates are subsets of SCOPES in SCOPES order", () => {
@@ -331,6 +340,8 @@ test("scopeLabel: area · box label; unknown passes through", () => {
   assert.equal(scopeLabel("leads:write"), "Leads · Edit");
   assert.equal(scopeLabel("leads:all"), "Leads · See all");
   assert.equal(scopeLabel("nope:thing"), "nope:thing");
+  assert.equal(scopeLabel("imports:excel"), "Import leads · Excel / CSV");
+  assert.equal(SCOPE_AREAS.find((a) => a.id === "imports")?.label, "Import leads");
 });
 
 test("templateName: Manager / Employee on exact match, else Custom", () => {
@@ -342,4 +353,29 @@ test("templateName: Manager / Employee on exact match, else Custom", () => {
   assert.equal(templateName([...SPEC_EMPLOYEE, "leads:assign"]), "Custom");
   assert.equal(templateName(SPEC_EMPLOYEE.slice(1)), "Custom");
   assert.equal(templateName([]), "Custom");
+  assert.equal(templateName(SPEC_MANAGER.filter((s) => s !== "imports:manual")), "Custom", "manager minus one import box");
+  // an old pre-split manager set (leads:import instead of the four) is no template any more
+  assert.equal(templateName([...SPEC_MANAGER.filter((s) => !s.startsWith("imports:")), "leads:import"]), "Custom");
+});
+
+// ── Decisions 8: importAssignment (lib/auth/scope.ts) ─────────────────────
+const authed = (scopes: string[]) => ({ id: "me-1", companyId: "c", isOwner: false, scopes, member: {} }) as unknown as AuthedUser;
+
+test("importAssignment with leads:assign passes the body through (person, strategy, pool)", () => {
+  const u = authed(["leads:read", "leads:assign", "imports:excel"]);
+  assert.deepEqual(importAssignment(u, { assigned_to: "other", assignment_strategy: null }), { assigned_to: "other", assignment_strategy: null, self: false });
+  assert.deepEqual(importAssignment(u, { assigned_to: null, assignment_strategy: "round_robin" }), { assigned_to: null, assignment_strategy: "round_robin", self: false });
+  assert.deepEqual(importAssignment(u, { assigned_to: null, assignment_strategy: null }), { assigned_to: null, assignment_strategy: null, self: false }, "pool");
+  assert.deepEqual(importAssignment(u, {}), { assigned_to: null, assignment_strategy: null, self: false }, "nothing asked = pool");
+});
+
+test("importAssignment without leads:assign always assigns to the importer, ignoring the body", () => {
+  const u = authed(["leads:read", "leads:all", "imports:excel", "imports:manual"]);
+  const self = { assigned_to: "me-1", assignment_strategy: null, self: true };
+  assert.deepEqual(importAssignment(u, {}), self);
+  assert.deepEqual(importAssignment(u, { assigned_to: null, assignment_strategy: null }), self, "pool request ignored");
+  assert.deepEqual(importAssignment(u, { assigned_to: "someone-else" }), self, "other person ignored");
+  assert.deepEqual(importAssignment(u, { assignment_strategy: "round_robin" }), self, "strategy ignored");
+  assert.deepEqual(importAssignment(u, { assigned_to: "someone-else", assignment_strategy: "territory" }), self);
+  assert.deepEqual(importAssignment(authed([]), { assigned_to: "x" }), self, "no scopes at all");
 });

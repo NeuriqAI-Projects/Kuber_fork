@@ -31,7 +31,7 @@ export const maxDuration = 60;
  */
 export const POST = withRouteTiming("leads/company-search", async (req, timing) => {
   let user: Awaited<ReturnType<typeof requireScope>>;
-  try { user = await requireScope(req, "leads:import"); } catch (r) { return r as Response; }
+  try { user = await requireScope(req, "imports:company"); } catch (r) { return r as Response; }
   timing.companyId = user.companyId;
 
   // provider_keys are shared across tenants, so an internal-workspace search

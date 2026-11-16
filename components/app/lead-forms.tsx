@@ -199,6 +199,15 @@ function AssignToField({
   );
 }
 
+/** Shown instead of the Assign step to a member without leads:assign — the server assigns their imports to them. */
+export function AssignedToYouNote() {
+  return (
+    <p className="text-xs text-muted-foreground rounded-lg border border-border bg-secondary px-3 py-2.5">
+      <span className="font-medium text-foreground">Assigned to you.</span> Every lead you import is assigned to you.
+    </p>
+  );
+}
+
 // ─── AssignStrategyPicker ─────────────────────────────────────────────────────
 // Batch imports (Apollo, Excel) can distribute leads as they land: to one
 // employee, spread round-robin (least-loaded first), or by territory
@@ -806,6 +815,8 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
   });
   const [includeSimilarTitles, setIncludeSimilarTitles] = useDraft("apollo", "similarTitles", true);
   const employees = useAssignableEmployees(true);
+  // Without leads:assign there is no Assign step: the server assigns the import to the member.
+  const canAssign = useAccess().can("leads:assign");
 
   useEffect(() => {
     (async () => {
@@ -822,8 +833,10 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
     })();
   }, []);
 
-  const APOLLO_STEPS = ["Criteria", "Settings", "Batch", "Assign"];
-  const [step, setStep] = useDraft("apollo", "step", 0);
+  const APOLLO_STEPS = canAssign ? ["Criteria", "Settings", "Batch", "Assign"] : ["Criteria", "Settings", "Batch"];
+  const [savedStep, setStep] = useDraft("apollo", "step", 0);
+  // The saved draft may point at an Assign step this member no longer has.
+  const step = Math.min(savedStep, APOLLO_STEPS.length - 1);
 
   const STRICT_TIERS = [25, 50, 100] as const;
   function toggleStrictCap(on: boolean) {
@@ -841,9 +854,9 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
   function goNext() {
     if (step === 0 && keywords.length === 0) { setError("Please select an industry keyword."); return; }
     setError("");
-    setStep((s) => Math.min(s + 1, APOLLO_STEPS.length - 1));
+    setStep(Math.min(step + 1, APOLLO_STEPS.length - 1));
   }
-  function goBack() { setStep((s) => Math.max(s - 1, 0)); }
+  function goBack() { setStep(Math.max(step - 1, 0)); }
 
   const effectiveLocations = locations.map((l) => LOCATION_MAP[l] ?? l);
   // Several keyword labels resolve to the same underlying Apollo query (e.g.
@@ -888,7 +901,7 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
           titles: [...APOLLO_TITLES],
           batch_name: batchName,
           color,
-          ...buildImportAssignment(assignMode, assignTo),
+          ...(canAssign ? buildImportAssignment(assignMode, assignTo) : {}),
           ...(advanced ? { advanced } : {}),
         }),
       });
@@ -1092,16 +1105,28 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
         )}
 
         {step === 2 && (
-          <BatchNameField
-            value={batchName}
-            onChange={(v) => { setBatchName(v); if (v.trim()) setBatchNameError(false); }}
-            color={color}
-            onColorChange={setColor}
-            error={batchNameError}
-          />
+          <div className="space-y-4">
+            <BatchNameField
+              value={batchName}
+              onChange={(v) => { setBatchName(v); if (v.trim()) setBatchNameError(false); }}
+              color={color}
+              onColorChange={setColor}
+              error={batchNameError}
+            />
+            {/* Last step for a member without leads:assign: the final cost note moves here. */}
+            {!canAssign && (
+              <>
+                <AssignedToYouNote />
+                <ApolloCostNote
+                  credits={maxTotalLeads}
+                  spendingOn={`revealing emails for up to ${maxTotalLeads.toLocaleString()} leads`}
+                />
+              </>
+            )}
+          </div>
         )}
 
-        {step === 3 && (
+        {step === 3 && canAssign && (
           <div className="space-y-4">
             <AssignStrategyPicker
               employees={employees}
@@ -1182,6 +1207,9 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
   const [assignTo,        setAssignTo       ] = useState("");
   const [assignMode,      setAssignMode     ] = useState<ImportAssignMode>("manual");
   const employees = useAssignableEmployees(true);
+  // Without leads:assign there is no Assign step: the server assigns the import to the member.
+  const canAssign = useAccess().can("leads:assign");
+  const steps = canAssign ? EXCEL_STEPS : EXCEL_STEPS.filter((s) => s !== "Assign");
 
   function tryAutoMap(cols: string[]): Record<string, string> {
     const auto: Record<string, string> = {};
@@ -1262,7 +1290,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
     setImporting(true);
     try {
       const token = await getToken();
-      const res = await importExcelDirect(token, rows, mapping, batchName, color, buildImportAssignment(assignMode, assignTo));
+      const res = await importExcelDirect(token, rows, mapping, batchName, color, canAssign ? buildImportAssignment(assignMode, assignTo) : {});
       setShowConfirm(false);
       setResult(res);
       setStage("result");
@@ -1324,11 +1352,13 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
   const emailMapped  = !!mapping.email;
   const nameMapped   = !!mapping.first_name;
   const domainMapped = !!mapping.organization_domain;
-  const currentStepIndex =
-    stage === "upload" ? 0
-    : stage === "map"  ? 1
-    : stage === "batch" ? 2
-    : showConfirm ? 4 : 3;
+  const currentStepIndex = steps.indexOf(
+    showConfirm ? "Review & import"
+    : stage === "upload" ? "Upload file"
+    : stage === "map" ? "Map columns"
+    : stage === "batch" ? "Batch"
+    : "Assign",
+  );
 
   function handleFormSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -1340,8 +1370,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
     if (stage === "batch") {
       if (!batchName.trim()) { setBatchNameError(true); return; }
       setBatchNameError(false);
-      setStage("assign");
-      return;
+      if (canAssign) { setStage("assign"); return; }
     }
     if (importing) return;
     setShowConfirm(true);
@@ -1349,7 +1378,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
 
   return (
     <div className="space-y-4">
-      <Stepper steps={EXCEL_STEPS} current={currentStepIndex} className="pb-4 mb-5 border-b border-border" />
+      <Stepper steps={steps} current={currentStepIndex} className="pb-4 mb-5 border-b border-border" />
 
       {stage === "upload" && (
         <div className="space-y-4">
@@ -1458,6 +1487,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
                 onColorChange={setColor}
                 error={batchNameError}
               />
+              {!canAssign && <AssignedToYouNote />}
 
               {fileError && <div className="flex items-center gap-2 text-xs text-destructive rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2"><AlertCircle className="size-3.5 shrink-0" />{fileError}</div>}
 
@@ -1465,8 +1495,8 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
                 <p className="text-xs text-muted-foreground">{rows.length} rows will be processed</p>
                 <div className="flex gap-2">
                   <Button type="button" variant="outline" onClick={() => setStage("map")}>Back</Button>
-                  <Button type="submit">
-                    Continue
+                  <Button type="submit" disabled={!canAssign && importing}>
+                    {canAssign ? "Continue" : "Preview & import"}
                   </Button>
                 </div>
               </div>
@@ -1581,8 +1611,10 @@ export function ManualForm({ onImport, prefillOrg, prefillLeads, editMode = fals
   const [error,       setError      ] = useState("");
   const [assignTo,    setAssignTo   ] = useState<string>("");
   const employees = useAssignableEmployees(!editMode);
+  // Without leads:assign there is no Assign step: the server assigns the leads to the member.
+  const canAssign = useAccess().can("leads:assign");
 
-  const MANUAL_STEPS = editMode ? ["Organization", "People"] : ["Organization", "People", "Batch", "Assign"];
+  const MANUAL_STEPS = editMode ? ["Organization", "People"] : canAssign ? ["Organization", "People", "Batch", "Assign"] : ["Organization", "People", "Batch"];
   const [step, setStep] = useState(0);
 
   function addLead()                                        { setLeads((p) => [...p, BLANK_LEAD()]); }
@@ -1657,7 +1689,7 @@ export function ManualForm({ onImport, prefillOrg, prefillLeads, editMode = fals
             organization_country: org.country || undefined,
             title:                entry.jobTitle || undefined,
             country:              org.country || undefined,
-            assigned_to:          assignTo || undefined,
+            assigned_to:          canAssign ? assignTo || undefined : undefined,
             // all leads in this batch share one import row
             ...(sharedImportId ? { import_id: sharedImportId } : { batch_name: resolvedBatchName, color: resolvedColor }),
           });
@@ -1772,16 +1804,19 @@ export function ManualForm({ onImport, prefillOrg, prefillLeads, editMode = fals
       )}
 
       {step === 2 && !editMode && (
-        <BatchNameField
-          value={batchName}
-          onChange={(v) => { setBatchName(v); if (v.trim()) setBatchNameError(false); }}
-          color={color}
-          onColorChange={setColor}
-          error={batchNameError}
-        />
+        <div className="space-y-4">
+          <BatchNameField
+            value={batchName}
+            onChange={(v) => { setBatchName(v); if (v.trim()) setBatchNameError(false); }}
+            color={color}
+            onColorChange={setColor}
+            error={batchNameError}
+          />
+          {!canAssign && <AssignedToYouNote />}
+        </div>
       )}
 
-      {step === 3 && !editMode && <AssignToField employees={employees} value={assignTo} onChange={setAssignTo} />}
+      {step === 3 && !editMode && canAssign && <AssignToField employees={employees} value={assignTo} onChange={setAssignTo} />}
 
       {error && <p className="text-xs text-destructive">{error}</p>}
 

@@ -15,7 +15,14 @@ export const SCOPE_AREAS: ScopeArea[] = [
     { scope: "leads:write", label: "Edit", description: "Edit lead fields and status, comment" },
     { scope: "leads:assign", label: "Assign", description: "Assign and reassign leads to people" },
     { scope: "leads:delete", label: "Delete", description: "Delete leads" },
-    { scope: "leads:import", label: "Import", description: "Find, import, add and enrich leads (spends Apollo / Firecrawl credits)" },
+  ] },
+  // Each Add-leads source is its own box. Without Leads · Assign, whatever a person
+  // imports is assigned to them (no "assign to" step).
+  { id: "imports", label: "Import leads", options: [
+    { scope: "imports:apollo", label: "Apollo search", description: "Find people in Apollo and reveal their emails (spends Apollo credits)" },
+    { scope: "imports:company", label: "Company lookup", description: "Find one company in Apollo and import its contacts (spends Apollo credits)" },
+    { scope: "imports:excel", label: "Excel / CSV", description: "Upload a spreadsheet of leads (their websites are read: spends Firecrawl)" },
+    { scope: "imports:manual", label: "Manual entry", description: "Add a company and people by hand, or add a reply's sender as a lead" },
   ] },
   { id: "organizations", label: "Organizations", options: [
     { scope: "organizations:read", label: "See all", description: "Open the organizations list and any company, not only those of their leads" },

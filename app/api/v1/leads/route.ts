@@ -1,6 +1,7 @@
 import { NextRequest, after } from "next/server";
 import crypto from "crypto";
-import { requireScope, assertScope } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
+import { importAssignment } from "@/lib/auth/scope";
 import { canSeeAll } from "@/lib/auth/scopes";
 import { ok, fail } from "@/lib/api-response";
 import { CreateLeadSchema, LeadListQuerySchema } from "@/lib/validators/leads";
@@ -204,23 +205,20 @@ export async function GET(req: NextRequest) {
   return ok({ leads, total: countMode === "exact" ? count : null, page, limit });
 }
 
-// Manual lead-add needs leads:import, same as every other lead-add path (Apollo
-// search, Excel import) — it fires scrape-orgs, so it spends Firecrawl/LLM.
-// Members without it are execution-only and cannot add leads (spec §1).
+// Manual lead-add needs imports:manual (one box per Add-leads source). It fires
+// scrape-orgs, so it spends Firecrawl/LLM.
 export async function POST(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireScope>>;
-  try { user = await requireScope(req, "leads:import"); } catch (r) { return r as Response; }
+  try { user = await requireScope(req, "imports:manual"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
   const parsed = CreateLeadSchema.safeParse(body);
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
 
   const { organization_name, organization_domain, organization_industry, organization_country, email, batch_name, color, import_id: providedImportId, assigned_to: requestedAssignedTo, ...leadFields } = parsed.data;
-  const assigned_to = requestedAssignedTo ?? null;
+  // With leads:assign the caller picks the owner (or none); without it the lead is theirs.
+  const { assigned_to } = importAssignment(user, { assigned_to: requestedAssignedTo });
   const db = dbForUser(user);
-  if (assigned_to) {
-    try { assertScope(user, "leads:assign"); } catch (r) { return r as Response; }
-  }
 
   // A supplied assignee must be a real, active user — same check the
   // Apollo/Excel import paths perform.

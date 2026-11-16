@@ -27,10 +27,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ threadId: string }> },
 ) {
-  // Creating leads is leads:import everywhere else in the app (manual add,
-  // Excel, Apollo); this is not the place to invent a second rule for it.
+  // Adding one person as a lead by hand needs imports:manual, the same box as
+  // Add leads › Manual entry; this is not the place to invent a second rule for it.
   let user: Awaited<ReturnType<typeof requireScope>>;
-  try { user = await requireScope(req, "leads:import"); } catch (r) { return r as Response; }
+  try { user = await requireScope(req, "imports:manual"); } catch (r) { return r as Response; }
 
   const { threadId } = await params;
   const body = await req.json().catch(() => null) as {
@@ -58,7 +58,7 @@ export async function POST(
   }
 
   // Trust boundary. Without this check the endpoint is "create a lead with any
-  // address at all", bypassing the validation and leads:import rules that guard
+  // address at all", bypassing the validation and import-scope rules that guard
   // POST /api/v1/leads. The address must genuinely be on this conversation.
   const ourEmails = ourAddresses(thread.messages, [thread.eaccount]);
   const participants = threadParticipants(thread.messages, {

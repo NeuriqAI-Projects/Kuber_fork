@@ -13,7 +13,7 @@ import { useAccess } from "@/lib/access-context";
 export default function AddLeadsPage() {
   const router = useRouter();
   const { loadingSession, setShowAddLeads } = useApp();
-  const canImport = useAccess().can("leads:import");
+  const canImport = useAccess().canImportAny;
 
   useEffect(() => {
     if (loadingSession) return;

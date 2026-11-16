@@ -20,7 +20,8 @@ Names are `area:action`. **See** never lets you edit, and **Edit** never lets yo
 | Area | Boxes |
 |---|---|
 | Dashboard | See · See all (company numbers, team table) |
-| Leads | See · See all · Edit · Assign · Delete · Import (spends Apollo / Firecrawl) |
+| Leads | See · See all · Edit · Assign · Delete |
+| Import leads | Apollo search · Company lookup · Excel / CSV · Manual entry (one box per Add-leads source; Apollo spends Apollo credits, every import reads websites with Firecrawl) |
 | Organizations | See all · Edit (re-reading a site spends Firecrawl) |
 | Scored companies | See · Run (spends credits) |
 | Campaigns | See · See all · Edit · AI drafts (spends AI) · Assign · Send (approve, send, pause, resume, hold) · Delete |
@@ -36,6 +37,10 @@ Names are `area:action`. **See** never lets you edit, and **Edit** never lets yo
 **"See all"** decides how much data you see. Without it you see only **your own** leads, your
 own campaigns (only your leads inside them) and replies on your own leads. With it you see the
 whole company.
+
+**Importing without Assign.** Someone who can import but does not have Leads · Assign (for example an
+employee allowed to upload their own Excel) gets no "assign to" step: everything they import is
+assigned to them.
 
 **Who gets new leads?** Auto-assign, round robin, territory and the "assign to" lists use
 **lead owners**: people with Leads · See but not Leads · See all (the old "employees").

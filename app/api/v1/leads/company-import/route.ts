@@ -1,5 +1,6 @@
 import { after } from "next/server";
-import { requireScope, assertScope } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
+import { importAssignment } from "@/lib/auth/scope";
 import { fail, ok } from "@/lib/api-response";
 import { CompanyImportSchema } from "@/lib/validators/leads";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -29,7 +30,7 @@ export const maxDuration = 60;
  */
 export const POST = withRouteTiming("leads/company-import", async (req, timing) => {
   let user: Awaited<ReturnType<typeof requireScope>>;
-  try { user = await requireScope(req, "leads:import"); } catch (r) { return r as Response; }
+  try { user = await requireScope(req, "imports:company"); } catch (r) { return r as Response; }
   timing.companyId = user.companyId;
 
   const mock = isApolloMockCompany(user.companyId);
@@ -38,12 +39,10 @@ export const POST = withRouteTiming("leads/company-import", async (req, timing) 
   const parsed = CompanyImportSchema.safeParse(body);
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
 
-  const { organization, contacts, batch_name, color, assigned_to, assignment_strategy } = parsed.data;
-  // Choosing who gets the leads (a person, round robin or territory) also needs
-  // leads:assign; "manual" with no person = leave in pool, no assignment.
-  if (assigned_to || (assignment_strategy && assignment_strategy !== "manual")) {
-    try { assertScope(user, "leads:assign"); } catch (r) { return r as Response; }
-  }
+  const { organization, contacts, batch_name, color } = parsed.data;
+  // Who gets the leads: chosen (person / strategy / pool) with leads:assign;
+  // without it, everything imported is assigned to the importer (importAssignment).
+  const { assigned_to, assignment_strategy } = importAssignment(user, parsed.data);
   const db = dbForUser(user);
 
   const domain = organization.domain ? safeDomain(organization.domain) : null;

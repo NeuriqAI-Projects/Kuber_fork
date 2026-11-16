@@ -10,6 +10,7 @@ Status: **Decisions taken 16 Nov 2026. Building.** Branch `feat/scopes`.
 5. Odd rows: fix **A, B, C**. Keep D (Apollo allowance stays `keys:write`) and E (dead code stays). Owner-only list stays **empty**.
 6. Drop `role` / `is_super_admin` in this work, as a second migration file run **after** the new code is live (migration A adds + backfills + makes `role` nullable; migration B drops). Only `team_oversight_counts` and `employee_campaign_stats` read them in the DB (checked 16 Nov); both are rewritten in A.
 7. Tests: HTTP + Playwright on the Dev company (no local Postgres). Test agents are separate from the build.
+8. **17 Nov 2026:** `leads:import` split into `imports:apollo` (Apollo search + email reveal), `imports:company` (Company lookup), `imports:excel`, `imports:manual` (Manual entry + "Add as lead"). Without `leads:assign`, whatever a member imports is assigned to them (`importAssignment`, lib/auth/scope.ts) and the Assign step is hidden. Who owns a duplicate is shown only with `leads:all`. Manager template = all four; Employee template unchanged (none) — tick per person. Migration `2026_11_17_import_scopes.sql` gives every former `leads:import` holder all four.
 
 Full audit tables (one row per handler, page, nav item, settings section, button, AI tool):
 - [scopes-audit/audit-leads.md](scopes-audit/audit-leads.md): leads, orgs, prospects, imports, dashboard, enrich, internal (43 + 12 handlers)

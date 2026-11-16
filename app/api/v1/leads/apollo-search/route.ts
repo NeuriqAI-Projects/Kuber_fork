@@ -1,5 +1,7 @@
 import { after } from "next/server";
-import { requireScope, assertScope } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
+import { canSeeAll } from "@/lib/auth/scopes";
+import { importAssignment } from "@/lib/auth/scope";
 import { fail, ok } from "@/lib/api-response";
 import { ApolloSearchSchema } from "@/lib/validators/leads";
 import { searchPeople } from "@/lib/services/apollo";
@@ -82,7 +84,7 @@ const SEARCH_TIME_BUDGET_MS = 240_000;
 
 export const POST = withRouteTiming("leads/apollo-search", async (req, timing) => {
   let user: Awaited<ReturnType<typeof requireScope>>;
-  try { user = await requireScope(req, "leads:import"); } catch (r) { return r as Response; }
+  try { user = await requireScope(req, "imports:apollo"); } catch (r) { return r as Response; }
   timing.companyId = user.companyId;
 
   // provider_keys (Apollo included) are shared across every company — a
@@ -98,12 +100,10 @@ export const POST = withRouteTiming("leads/apollo-search", async (req, timing) =
   const parsed = ApolloSearchSchema.safeParse(body);
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
 
-  const { keywords, locations, titles, seniorities, advanced, batch_name, color, preview, assigned_to, assignment_strategy, max_leads_per_keyword } = parsed.data;
-  // Choosing who gets the leads (a person, round robin or territory) also needs
-  // leads:assign; "manual" with no person = leave in pool, no assignment.
-  if (assigned_to || (assignment_strategy && assignment_strategy !== "manual")) {
-    try { assertScope(user, "leads:assign"); } catch (r) { return r as Response; }
-  }
+  const { keywords, locations, titles, seniorities, advanced, batch_name, color, preview, max_leads_per_keyword } = parsed.data;
+  // Who gets the leads: chosen (person / strategy / pool) with leads:assign;
+  // without it, everything imported is assigned to the importer (importAssignment).
+  const { assigned_to, assignment_strategy } = importAssignment(user, parsed.data);
   // Mutable: clamped down (never up) to Apollo's real remaining balance below,
   // once we have a DB client to check it with.
   let maxTotalLeads = parsed.data.max_total_leads;
@@ -840,7 +840,8 @@ export const POST = withRouteTiming("leads/apollo-search", async (req, timing) =
     orgs_reused: orgsReused,
     enrich_queued: newLeadTargets.length,
     assignment_skipped: assignmentSkipped,
-    duplicate_owners: duplicateOwners,
+    // Who owns a duplicate is other people's data: only with leads:all.
+    duplicate_owners: canSeeAll(user.member, "leads") ? duplicateOwners : [],
     // Lets the UI explain "you asked for 50 but only got 40" when Apollo's
     // real balance was lower than the requested cap.
     apollo_credits_remaining: apolloCredits.remaining,

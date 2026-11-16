@@ -157,6 +157,17 @@ export async function requireScope(request: NextRequest, scope: Scope | "owner")
   return user;
 }
 
+/**
+ * requireAuth + the caller must hold AT LEAST ONE of `scopes`. For a step shared by
+ * several flows (email reveal is reached from Apollo search and from Company lookup).
+ * The 403 names the first scope.
+ */
+export async function requireAnyScope(request: NextRequest, ...scopes: [Scope, ...Scope[]]): Promise<AuthedUser> {
+  const user = await requireAuth(request);
+  if (!scopes.some((s) => user.scopes.includes(s))) throw forbidden(missingScopeMessage(scopes[0]));
+  return user;
+}
+
 /** Throws a 403 unless the already-authed caller also holds `scope` (a second scope inside a handler). */
 export function assertScope(user: AuthedUser, scope: Scope): void {
   if (!user.scopes.includes(scope)) throw forbidden(missingScopeMessage(scope));

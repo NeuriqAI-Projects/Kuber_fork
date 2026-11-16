@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { requireScope } from "@/lib/auth/api-auth";
+import { requireScope, requireAnyScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { EnrichSchema } from "@/lib/validators/leads";
 import { enrichLeads, MAX_ENRICH_ATTEMPTS, type EnrichTarget } from "@/lib/services/enrich-leads";
@@ -58,7 +58,7 @@ const ENRICH_BATCH_SIZE = 50;
 
 export const POST = withRouteTiming("leads/enrich", async (req, timing) => {
   let user: Awaited<ReturnType<typeof requireScope>>;
-  try { user = await requireScope(req, "leads:import"); } catch (r) { return r as Response; }
+  try { user = await requireAnyScope(req, "imports:apollo", "imports:company"); } catch (r) { return r as Response; }
   timing.companyId = user.companyId;
 
   const body = await req.json().catch(() => null);

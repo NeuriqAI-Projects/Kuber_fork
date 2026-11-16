@@ -9,6 +9,7 @@ import { ProspectFinderForm } from "@/components/app/prospect-finder-form";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAccess } from "@/lib/access-context";
+import type { Scope } from "@/lib/auth/scopes";
 
 interface AddLeadsDrawerProps {
   open: boolean;
@@ -32,12 +33,13 @@ function lastSection(fallback: SectionKey): SectionKey {
   } catch { return fallback; }
 }
 
-const SECTIONS: { value: SectionKey; label: string; icon: typeof Search; description: string }[] = [
-  { value: "apollo",  label: "Apollo search",  icon: Search,          description: "Filter Apollo's database by industry, title & location" },
-  { value: "scored",  label: "Scored companies", icon: Sparkles,      description: "AI scores companies first; reveal one contact only at good fits" },
-  { value: "company", label: "Company lookup", icon: Building2,       description: "Find one company by name and pick its contacts" },
-  { value: "excel",   label: "Excel / CSV",    icon: FileSpreadsheet, description: "Upload a spreadsheet and map its columns" },
-  { value: "manual",  label: "Manual entry",   icon: UserPlus,        description: "Add an organization and its people by hand" },
+// Each source has its own scope (they spend different credits).
+const SECTIONS: { value: SectionKey; label: string; icon: typeof Search; description: string; scope: Scope }[] = [
+  { value: "apollo",  label: "Apollo search",  icon: Search,          scope: "imports:apollo",  description: "Filter Apollo's database by industry, title & location" },
+  { value: "scored",  label: "Scored companies", icon: Sparkles,      scope: "prospects:run",   description: "AI scores companies first; reveal one contact only at good fits" },
+  { value: "company", label: "Company lookup", icon: Building2,       scope: "imports:company", description: "Find one company by name and pick its contacts" },
+  { value: "excel",   label: "Excel / CSV",    icon: FileSpreadsheet, scope: "imports:excel",   description: "Upload a spreadsheet and map its columns" },
+  { value: "manual",  label: "Manual entry",   icon: UserPlus,        scope: "imports:manual",  description: "Add an organization and its people by hand" },
 ];
 
 export function AddLeadsDrawer({
@@ -46,9 +48,8 @@ export function AddLeadsDrawer({
   prefillOrg, prefillLeads, editMode,
 }: AddLeadsDrawerProps) {
   const { can } = useAccess();
-  // Each source spends credits: Apollo / Company / Excel / Manual need leads:import,
-  // Scored companies needs prospects:run. Every opener is gated on leads:import.
-  const allowed = SECTIONS.filter((s) => (s.value === "scored" ? can("prospects:run") : can("leads:import")));
+  // Openers are gated on holding any imports:* scope; the rail shows only the sources this member holds.
+  const allowed = SECTIONS.filter((s) => can(s.scope));
   const pick = (k: SectionKey): SectionKey => (allowed.some((s) => s.value === k) ? k : allowed[0]?.value ?? "manual");
   const [section, setSection] = useState<SectionKey>(prefillOrg ? "manual" : pick(defaultTab));
 
