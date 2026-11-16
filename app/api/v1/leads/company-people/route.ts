@@ -1,4 +1,4 @@
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { fail, ok } from "@/lib/api-response";
 import { CompanyPeopleSchema } from "@/lib/validators/leads";
 import { searchPeople } from "@/lib/services/apollo";
@@ -26,8 +26,8 @@ export const maxDuration = 60;
  * asked for. A candidate that is never inserted cannot be billed for.
  */
 export const POST = withRouteTiming("leads/company-people", async (req, timing) => {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "leads:import"); } catch (r) { return r as Response; }
   timing.companyId = user.companyId;
 
   // Dev workspace runs on fixtures — see apollo-mock.ts for why the switch is

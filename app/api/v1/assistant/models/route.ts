@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { PROVIDER_META, resolveLlmTierOrder, type LlmProviderId } from "@/lib/services/providers/registry";
@@ -16,8 +16,8 @@ const LLM_IDS = Object.keys(ASSISTANT_MODEL_DEFAULTS) as LlmProviderId[];
 
 /** GET /api/v1/assistant/models — which model the assistant uses per provider and mode. */
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "assistant:admin"); } catch (r) { return r as Response; }
   if (!user.companyId) return fail(403, "FORBIDDEN", "Company users only");
   const db = dbForUser(user);
   const [order, overrides] = await Promise.all([resolveLlmTierOrder(db), getAssistantModelOverrides(db)]);
@@ -42,8 +42,8 @@ const PutSchema = z.object({
 
 /** PUT /api/v1/assistant/models — set (or clear with null) the fast/deep model for one provider. */
 export async function PUT(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "assistant:admin"); } catch (r) { return r as Response; }
   if (!user.companyId) return fail(403, "FORBIDDEN", "Company users only");
   const parsed = PutSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());

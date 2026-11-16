@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { AddLeadsToCampaignSchema, CampaignLeadsQuerySchema, PatchCampaignLeadSchema } from "@/lib/validators/campaigns";
-import { assertCampaignAccess } from "@/lib/auth/scope";
+import { assertCampaignAccess, assertCampaignLeadAccess } from "@/lib/auth/scope";
+import { canSeeAll } from "@/lib/auth/scopes";
 import { dbForUser } from "@/lib/supabase/scoped";
 
 export const maxDuration = 60;
@@ -37,8 +38,8 @@ const DB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * - neither — the old paged full shape (`page`/`limit`), kept for scripts.
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:read"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const db = dbForUser(user);
@@ -66,9 +67,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         light ? undefined : { count: "exact" },
       )
       .eq("campaign_id", id);
-    // A campaign is a container spanning multiple employees (spec §5) — an
-    // employee sees ONLY their own leads within it, never a co-worker's.
-    if (user.role === "employee") q = q.eq("leads.assigned_to", user.id);
+    // A campaign is a container spanning multiple lead owners (spec §5) — a
+    // member without campaigns:all sees ONLY their own leads within it, never a co-worker's.
+    if (!canSeeAll(user.member, "campaigns")) q = q.eq("leads.assigned_to", user.id);
     if (crm_status) q = q.eq("crm_status", crm_status);
     if (oneId) q = q.eq("id", oneId);
     return q.order("created_at", { ascending: false }).order("id");
@@ -408,8 +409,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:write"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const body = await req.json().catch(() => null);
@@ -434,7 +435,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const leadIds = parsed.data.lead_ids;
 
-  // Bulk-fetch all leads in one query — employees can only add leads assigned to them.
+  // Bulk-fetch all leads in one query — members without leads:all can only add
+  // leads assigned to them (the leads they can see on the Leads page).
   // is_deleted is not just list cosmetics here: a deleted lead is either one a
   // manager retired or a bounced address a replacement already stood in for.
   // Neither may be campaigned again, and the ids arrive from the client — so the
@@ -445,7 +447,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .select("id, email, status, organization_id, assigned_to, organizations(domain, enrichment_stage, unsubscribed)")
     .eq("is_deleted", false)
     .in("id", leadIds);
-  if (user.role === "employee") leadsQuery = leadsQuery.eq("assigned_to", user.id);
+  if (!canSeeAll(user.member, "leads")) leadsQuery = leadsQuery.eq("assigned_to", user.id);
   const { data: leads } = await leadsQuery;
 
   const leadMap = new Map((leads ?? []).map((l) => [l.id, l]));
@@ -529,8 +531,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:write"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const body = await req.json().catch(() => null);
@@ -538,7 +540,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
 
   const db = dbForUser(user);
-  try { await assertCampaignAccess(db, user, id); } catch (r) { return r as Response; }
+  try {
+    await assertCampaignAccess(db, user, id);
+    // Per-lead action: without campaigns:all, only a lead assigned to the caller.
+    await assertCampaignLeadAccess(db, user, parsed.data.campaign_lead_id);
+  } catch (r) { return r as Response; }
 
   const { data: campaign } = await db.from("campaigns").select("id, name").eq("id", id).maybeSingle();
   if (!campaign) return fail(404, "NOT_FOUND", "Campaign not found");

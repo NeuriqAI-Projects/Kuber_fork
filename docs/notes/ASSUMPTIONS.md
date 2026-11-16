@@ -1,5 +1,9 @@
 # Role / Assignment / Campaign Logic — Assumptions & Needs-Confirmation
 
+> **16 Nov 2026:** roles were replaced by scopes (`docs/scopes.md`). Where this file says
+> "manager" read "a member with the `:all` / admin scope (Manager template)"; "employee" =
+> "a lead owner without `:all` (Employee template)"; "super admin" = "the owner".
+
 Implementation notes for the spec covering roles, availability, assignment
 methods, multi-employee campaigns, counts, and Unibox visibility. Where the
 brief was ambiguous, the safest interpretation was chosen and is documented

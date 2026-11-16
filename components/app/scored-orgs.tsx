@@ -14,6 +14,7 @@ import { ApolloCostNote } from "@/components/app/apollo-cost-note";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 // Not from lead-forms: that import dragged the xlsx library into /leads.
 import { getAccessToken as getToken } from "@/lib/api-client";
+import { useAccess } from "@/lib/access-context";
 import { Button } from "@/components/ui/button";
 import { FilterModal } from "@/components/ui/filter-modal";
 import { MultiSelectDropdown, type DropdownOption } from "@/components/ui/multi-select-dropdown";
@@ -177,11 +178,13 @@ export function useScoredOrgs(filter: ScoredFilter, qInput: string, enabled = tr
   // and a worker nudge at most once a minute (was every tick). Hidden / idle tabs: no ticks at all.
   const stampRef = useRef<{ stamp: string; at: number } | null>(null);
   const lastKick = useRef(0);
+  // The worker nudge is a run (prospects:run); a member who only sees scored companies just reloads.
+  const mayRun = useAccess().can("prospects:run");
   useEffect(() => {
     if (!enabled) return;
     return everyWhileVisible(() => {
       if (busy) {
-        if (Date.now() - lastKick.current >= 60_000) {
+        if (mayRun && Date.now() - lastKick.current >= 60_000) {
           lastKick.current = Date.now();
           api("/api/v1/prospects/run", {}).catch(() => {});
         }
@@ -196,7 +199,7 @@ export function useScoredOrgs(filter: ScoredFilter, qInput: string, enabled = tr
         stampRef.current = stamp ? { stamp, at: Date.now() } : null;
       })();
     }, busy ? 10_000 : 60_000);
-  }, [enabled, busy, load]);
+  }, [enabled, busy, load, mayRun]);
 
   /** Change companies on screen at once (after a decision), before the reload lands. */
   const patch = useCallback((ids: string[], change: Partial<ScoredCompany>) => {
@@ -351,6 +354,9 @@ function Links({ c, linkedin = true }: { c: ScoredCompany; linkedin?: boolean })
 export const canDecide = (c: ScoredCompany) => c.status === "rejected" || c.group === "review" || c.status === "hidden";
 
 export function Decide({ c, busy, onDecide, large = false }: { c: ScoredCompany; busy: boolean; onDecide: (ids: string[], a: DecideAction) => void; large?: boolean }) {
+  // Approve / Decline / Retry / Undo need prospects:run (Approve spends Apollo credits).
+  const mayDecide = useAccess().can("prospects:run");
+  if (!mayDecide) return null;
   const act = (a: DecideAction) => (e: React.MouseEvent) => { e.stopPropagation(); onDecide([c.id], a); };
   // `large` = the drawer footer: full-width, taller buttons. Cards keep the compact size.
   const btn = large ? "h-9 flex-1 gap-1.5 px-4 text-[13px] [&_svg]:size-4" : "h-6 gap-1 px-2 text-xs [&_svg]:size-3";
@@ -567,6 +573,7 @@ export function ScoredOrgsTable({ data, error, loading, stale = false, visible =
 }) {
   const [busy, setBusy] = useState(false);
   const [confirmApprove, setConfirmApprove] = useState<string[] | null>(null);
+  const mayDecide = useAccess().can("prospects:run");
   const run = async (ids: string[], a: DecideAction) => { setBusy(true); try { await onDecide(ids, a); } finally { setBusy(false); } };
   const rows = data?.companies ?? [];
   const reviewIds = rows.filter((c) => c.group === "review" && c.status !== "site_down").map((c) => c.id);
@@ -631,7 +638,7 @@ export function ScoredOrgsTable({ data, error, loading, stale = false, visible =
       {/* Room under the last row, so its Decide buttons scroll clear of the floating "Ask Kuber AI" button (64px tall with its margin). */}
       <div aria-hidden className="h-24" />
       {/* pr-28 keeps the buttons clear of the floating "Ask Kuber AI" button (bottom-right). */}
-      {reviewIds.length > 1 && (
+      {reviewIds.length > 1 && mayDecide && (
         <div className="sticky bottom-0 z-20 flex items-center justify-end gap-2 border-t border-border bg-background py-2 pl-4 pr-28">
           <Button size="sm" variant="outline" disabled={busy} onClick={() => run(reviewIds, "reject")}>Decline all {reviewIds.length}</Button>
           {/* Spends credits: asks first, with the exact numbers. The ids are the rows shown right now. */}
@@ -797,6 +804,7 @@ export function ScoredCompanyDrawer({ company, onClose, onDecide, onFilterBatch 
   /** Clicking the batch filters the board to that batch. */
   onFilterBatch: (searchId: string) => void;
 }) {
+  const mayDecide = useAccess().can("prospects:run");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -808,7 +816,7 @@ export function ScoredCompanyDrawer({ company, onClose, onDecide, onFilterBatch 
   const site = c ? (c.website_url ?? (c.domain ? `https://${c.domain}` : null)) : null;
   const line = c ? statusLine(c) : null;
   if (!c || !line) return null;
-  const hasDecide = canDecide(c);
+  const hasDecide = canDecide(c) && mayDecide;
 
   return (
     <>

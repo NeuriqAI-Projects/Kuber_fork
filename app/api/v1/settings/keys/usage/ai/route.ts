@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok } from "@/lib/api-response";
 import {
   checkOpenRouterCredits, checkOpenAICredits, checkAnthropicCredits,
@@ -34,8 +34,8 @@ function dayKey(iso: string): string {
  *  is counted from what the app actually produced: rows in email_drafts and
  *  reply_drafts, which is a true count of generations, not tokens/cost. */
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "credits:read"); } catch (r) { return r as Response; }
 
   const bypassCache = new URL(req.url).searchParams.get("refresh") === "1";
   const db = dbForUser(user);

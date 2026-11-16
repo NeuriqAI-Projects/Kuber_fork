@@ -26,6 +26,7 @@ import {
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-context";
+import { useAccess } from "@/lib/access-context";
 import {
   cacheKeys,
   queryCache,
@@ -158,6 +159,7 @@ export function UniboxClient() {
   // Seeded from the app session so the first request doesn't wait on a
   // separate getSession round trip; the effect below keeps the old behaviour.
   const { session, campaigns: allCampaigns } = useApp();
+  const { can, seesAll } = useAccess();
   const [token, setToken] = useState(() => session?.access_token ?? "");
   const [campaignIds, setCampaignIds] = useState<string[]>(() => parseCampaignIdsParam(searchParams));
   const [eaccount, setEaccount] = useState<string | null>(() => searchParams.get("eaccount"));
@@ -446,12 +448,13 @@ export function UniboxClient() {
           title="Unibox"
           icon={<Inbox />}
           description={unreadTotal > 0 ? `${unreadTotal} unread` : undefined}
-          actions={
+          // The manual sync reads every mailbox of the company: unibox:all.
+          actions={seesAll("unibox") ? (
             <Button type="button" variant="outline" onClick={() => void handleSync()} disabled={syncing}>
               {syncing ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
               Sync now
             </Button>
-          }
+          ) : undefined}
         />
         <div className="min-h-0 flex-1 bg-card">
           <UniboxThreadList
@@ -571,7 +574,7 @@ export function UniboxClient() {
                 {/* The Details rail carries these from xl up. */}
                 <div className="flex shrink-0 items-center gap-2 xl:hidden">
                   <UniboxTemperatureBadge temperature={leadTemperature} />
-                  <UniboxInstantlyInterestMenu interestStatus={interestStatus} onChange={handleInterestChange} />
+                  <UniboxInstantlyInterestMenu interestStatus={interestStatus} onChange={handleInterestChange} disabled={!can("unibox:write")} />
                 </div>
               </div>
               {detailLoading || !detail ? (
@@ -594,7 +597,7 @@ export function UniboxClient() {
                   campaign={selectedSummary.campaign}
                   threadId={selectedId!}
                   token={token}
-                  canReply={!!detail?.reply_to_uuid}
+                  canReply={!!detail?.reply_to_uuid && can("unibox:reply")}
                   latestDraft={latestDraft}
                   // Prefer what they wrote, but fall back to ANY message with a
                   // subject. A thread where the lead has never replied has no
@@ -671,7 +674,7 @@ export function UniboxClient() {
                 <UniboxTemperatureBadge temperature={leadTemperature} />
               </DetailRow>
               <DetailRow icon={<Zap />} label="Instantly status">
-                <UniboxInstantlyInterestMenu variant="inline" interestStatus={interestStatus} onChange={handleInterestChange} />
+                <UniboxInstantlyInterestMenu variant="inline" interestStatus={interestStatus} onChange={handleInterestChange} disabled={!can("unibox:write")} />
               </DetailRow>
               <DetailRow icon={<Megaphone />} label="Campaign">
                 {selectedSummary.campaign ? (

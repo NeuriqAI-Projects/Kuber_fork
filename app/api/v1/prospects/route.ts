@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { fail, ok } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { companiesFilter, GROUPS, groupOf, isWorking, LONG_WAIT, NO_TITLE_MATCH, type Group } from "@/lib/services/prospects/groups";
@@ -58,8 +58,8 @@ export async function GET(req: NextRequest) {
   const lap: string[] = [];
   const mark = (n: string) => lap.push(`${n};dur=${Date.now() - t0}`);
   const timed = (res: Response) => { res.headers.set("Server-Timing", lap.join(", ")); return res; };
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "prospects:read"); } catch (r) { return r as Response; }
   mark("auth");
   const db = dbForUser(user);
   const sp = new URL(req.url).searchParams;

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { dbId } from "@/lib/validators/id";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 
@@ -19,9 +19,8 @@ const Schema = z.object({
  * per run, and changing your mind is the ordinary case, not an error.
  */
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
-  if (user.role !== "manager") return fail(403, "FORBIDDEN", "Managers only");
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "model_lab:write"); } catch (r) { return r as Response; }
   if (!user.companyId) return fail(400, "VALIDATION_ERROR", "No company on this account");
 
   const parsed = Schema.safeParse(await req.json().catch(() => null));
@@ -46,8 +45,8 @@ export async function POST(req: NextRequest) {
 
 /** Take a verdict back entirely (clicking the same card again). */
 export async function DELETE(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "model_lab:write"); } catch (r) { return r as Response; }
   const url = new URL(req.url);
   const runGroup = url.searchParams.get("run_group");
   const verdict = url.searchParams.get("verdict");

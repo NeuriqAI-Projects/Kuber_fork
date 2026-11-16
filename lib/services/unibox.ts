@@ -1355,7 +1355,8 @@ export async function runUniboxSync(db: Db, maxPages = 8): Promise<{ ingested: n
 }
 
 /** Build campaign replies thread shape from unibox data (Phase 2). */
-export async function getCampaignReplyThreads(db: Db, campaignId: string) {
+/** `scope` (getUniboxScope): without unibox:all, only threads on the caller's own leads. */
+export async function getCampaignReplyThreads(db: Db, campaignId: string, scope?: UniboxScope) {
   // No Unibox primary/others tab filter — campaign Outbox should show every
   // inbound reply for the campaign, including messages Instantly puts in Others.
   //
@@ -1368,7 +1369,7 @@ export async function getCampaignReplyThreads(db: Db, campaignId: string) {
   // sequence sends, fetched separately and much more cheaply in the campaign
   // leads API (see components/app/campaign-drawer.tsx's outboxParticipantMessages
   // / thread-id fallback) — this endpoint only needs to cover the ones who did.
-  const { threads } = await getThreads(db, { campaign_id: campaignId, limit: 500 });
+  const { threads } = await getThreads(db, { campaign_id: campaignId, limit: 500, scope });
   const out = [];
 
   for (const t of threads) {

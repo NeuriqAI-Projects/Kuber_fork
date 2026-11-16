@@ -20,7 +20,8 @@ import { isCampaignEligible, CAMPAIGN_ACTION_HELP, getMostCommonCountry } from "
 import { COUNTRY_TO_TIMEZONE } from "@/lib/constants";
 import { createCampaign, addLeadsToCampaign, triggerDraftGeneration, checkAiReadiness, applyDefaultDrafts, mapDbCampaign, fetchMySettings, uploadCampaignAttachment, assignCampaign, queryCache, cacheKeys, cachedFetchers, type Profile } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
-import { useApp } from "@/lib/app-context";
+import { useAccess } from "@/lib/access-context";
+import { activeLeadOwners } from "@/lib/lead-owners";
 import { cumulativeDays, dayLabel, MAX_FOLLOWUP_STEPS } from "@/lib/followup-schedule-preview";
 
 export type Campaign = {
@@ -55,8 +56,8 @@ export type Campaign = {
   sendingHeldAt?: string | null;
   /**
    * Whether this viewer may edit the campaign's shared Options/Sequences.
-   * Decided by the server, never by role alone: a manager always may, and an
-   * employee may only on a campaign no other employee is part of
+   * Decided by the server: a member with campaigns:all always may, others
+   * only on a campaign no other lead owner is part of
    * (docs/notes/EDGE_CASES.md §2.10).
    */
   canEditSettings?: boolean;
@@ -122,7 +123,9 @@ export function CreateCampaignModal({
   onCreated: (c: Campaign) => void;
   leads: Lead[];
 }) {
-  const { role } = useApp();
+  const { can } = useAccess();
+  // "Assign entire campaign to": campaigns:assign; the picker list needs team:read.
+  const canAssign = can("campaigns:assign") && can("team:read");
   const [name, setName] = useState("");
   const [humanInLoop, setHumanInLoop] = useState(true);
   const [dailyLimit] = useState(100);
@@ -221,15 +224,15 @@ export function CreateCampaignModal({
         // Default "From" name: the creator's personal sender name, else the company default.
         const s = await fetchMySettings(token);
         setSenderName(s.sender_name ?? s.defaults.sender_name ?? "");
-        if (role === "manager") {
+        if (canAssign) {
           // Shared users cache (Leads / Campaigns read the same key).
           const users = await queryCache.fetch<Profile[]>(cacheKeys.users, cachedFetchers.users, { maxAgeMs: 60_000 });
-          setEmployees(users.filter((u) => u.role === "employee" && u.is_active));
+          setEmployees(activeLeadOwners(users));
         }
       } catch { /* use empty default */ }
     }
     void loadSettings();
-  }, [open, leads, role]);
+  }, [open, leads, canAssign]);
 
   function reset() {
     setName(""); setHumanInLoop(true);
@@ -314,9 +317,9 @@ export function CreateCampaignModal({
       }
 
       // Container by default (spec §5): leads keep their existing owners. Only
-      // if the manager explicitly picked "assign entire campaign to X" do we
-      // move every lead to that one employee.
-      const owner = role === "manager" && assignTo ? assignTo : null;
+      // if a member with campaigns:assign explicitly picked "assign entire
+      // campaign to X" do we move every lead to that one lead owner.
+      const owner = canAssign && assignTo ? assignTo : null;
       if (owner) {
         const assignResult = await assignCampaign(token, dbCampaign.id, owner, true);
         if (assignResult.manual_target_offline) {
@@ -375,7 +378,7 @@ export function CreateCampaignModal({
             </div>
           </div>
 
-          {role === "manager" && (
+          {canAssign && (
             <div className="space-y-1.5">
               <Label className="text-[13px] font-medium">Assign entire campaign to (optional)</Label>
               <Select value={assignTo || "keep"} onValueChange={(v) => setAssignTo(v === "keep" ? "" : v)}>

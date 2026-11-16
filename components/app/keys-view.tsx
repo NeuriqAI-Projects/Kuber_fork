@@ -7,6 +7,8 @@ import {
   Pencil, X, ArrowUp, ArrowDown, Check, ChevronsUpDown,
 } from "lucide-react";
 import { useApp } from "@/lib/app-context";
+import { useAccess } from "@/lib/access-context";
+import type { Scope } from "@/lib/auth/scopes";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -169,6 +171,8 @@ export function ServiceKeysPanel({ providerId }: { providerId: string }) {
 /** The AI tab: OpenRouter, OpenAI and Anthropic share one try-order (Primary, then Fallback). */
 export function LlmKeysPanel() {
   const { session } = useApp();
+  // keys:read members see the list; adding, reordering and editing need keys:write.
+  const canEdit = useAccess().can("keys:write");
   const { data, loading, reload: load } = useProviderKeys();
   const providers = useMemo(() => data?.providers ?? [], [data]);
   const tierOrder = useMemo(() => data?.tierOrder ?? [], [data]);
@@ -254,19 +258,23 @@ export function LlmKeysPanel() {
                   : "OpenRouter, OpenAI, and Anthropic only."}
             </p>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="shrink-0"
-            disabled={availableLlm.length === 0}
-            onClick={() => setAddOpen(true)}
-            title={availableLlm.length === 0 ? "Every supported provider is already configured" : undefined}
-          >
-            <Plus className="size-3.5" /> Add provider
-          </Button>
+          {canEdit && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0"
+              disabled={availableLlm.length === 0}
+              onClick={() => setAddOpen(true)}
+              title={availableLlm.length === 0 ? "Every supported provider is already configured" : undefined}
+            >
+              <Plus className="size-3.5" /> Add provider
+            </Button>
+          )}
         </div>
 
-        {configuredLlm.length === 0 ? (
+        {configuredLlm.length === 0 && !canEdit ? (
+          <p className="rounded-lg border border-border bg-card px-5 py-8 text-center text-[13px] text-muted-foreground">No LLM provider configured yet.</p>
+        ) : configuredLlm.length === 0 ? (
           <button
             type="button"
             onClick={() => setAddOpen(true)}
@@ -288,9 +296,9 @@ export function LlmKeysPanel() {
                 onManage={() => setEditing(p)}
                 onChanged={load}
                 rowRef={(el) => registerLlmRow(p.id, el)}
-                onMoveUp={orderedConfiguredLlm.length > 1 && i > 0 ? () => moveProvider(i, -1) : undefined}
-                onMoveDown={orderedConfiguredLlm.length > 1 && i < orderedConfiguredLlm.length - 1 ? () => moveProvider(i, 1) : undefined}
-                showMoveColumn={orderedConfiguredLlm.length > 1}
+                onMoveUp={canEdit && orderedConfiguredLlm.length > 1 && i > 0 ? () => moveProvider(i, -1) : undefined}
+                onMoveDown={canEdit && orderedConfiguredLlm.length > 1 && i < orderedConfiguredLlm.length - 1 ? () => moveProvider(i, 1) : undefined}
+                showMoveColumn={canEdit && orderedConfiguredLlm.length > 1}
               />
             ))}
           </div>
@@ -340,6 +348,7 @@ function ProviderRow({
   showMoveColumn?: boolean;
 }) {
   const { session } = useApp();
+  const canEdit = useAccess().can("keys:write");
   const model = provider.selectedModel || provider.defaultModel;
   const hasKeys = provider.keys.length > 0;
   const topKey = [...provider.keys].sort((a, b) => a.priority - b.priority)[0];
@@ -420,7 +429,7 @@ function ProviderRow({
         </div>
       </div>
 
-      <div className="flex items-center gap-1 shrink-0">
+      {canEdit && <div className="flex items-center gap-1 shrink-0">
         <Button
           size="icon-sm" variant="outline"
           onClick={onManage}
@@ -438,7 +447,7 @@ function ProviderRow({
             <Trash2 className="size-3.5" />
           </Button>
         )}
-      </div>
+      </div>}
 
       {confirmOpen && topKey && (
         <ConfirmDialog
@@ -590,12 +599,16 @@ function AddProviderModal({ available, onClose, onAdded }: {
  *  a guess. Falls back to the static option list / free text when the catalog
  *  can't be loaded (e.g. no key stored yet), and always keeps a manual-entry
  *  escape hatch so a brand-new model name never requires a code change. */
-export function ModelField({ provider, value, onChange }: {
+export function ModelField({ provider, value, onChange, editScope = "keys:write" }: {
   provider: ProviderConfig;
   value: string;
   onChange: (v: string) => void;
+  /** Scope needed to change the pick (keys:write; the Kuber AI picks use assistant:admin). */
+  editScope?: Scope;
 }) {
   const { session } = useApp();
+  // Picking a model needs editScope; without it the field only shows the value.
+  const canEdit = useAccess().can(editScope);
   const [models, setModels] = useState<ProviderModelOption[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -608,7 +621,7 @@ export function ModelField({ provider, value, onChange }: {
 
   useEffect(() => {
     let cancelled = false;
-    if (!session) { setLoading(false); return; }
+    if (!session || !canEdit) { setLoading(false); return; }
     setLoading(true);
     // One catalog per provider for the whole page (each picker used to download
     // it again). Kept 10 min; a key/settings write marks it stale (settings/*).
@@ -626,7 +639,7 @@ export function ModelField({ provider, value, onChange }: {
       .catch((e) => { if (!cancelled) setLoadError((e as Error).message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [session, provider.id]);
+  }, [session, provider.id, canEdit]);
 
   const manualInput = (
     <Input
@@ -636,6 +649,10 @@ export function ModelField({ provider, value, onChange }: {
       className="font-mono text-xs"
     />
   );
+
+  if (!canEdit) {
+    return <p className="truncate font-mono text-xs text-muted-foreground">{value || provider.defaultModel || "—"}</p>;
+  }
 
   if (loading) {
     return (

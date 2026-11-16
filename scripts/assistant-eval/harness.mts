@@ -6,38 +6,44 @@ import { createScopedClient } from "../../lib/supabase/scoped.ts";
 import { streamAssistant, type AssistantUIMessage } from "../../lib/services/assistant/agent.ts";
 import { buildProviderChain } from "../../lib/services/assistant/provider-chain.ts";
 import type { AssistantCaller } from "../../lib/services/assistant/context.ts";
+import { canSeeAll, isLeadOwner, memberScopes, type Member } from "../../lib/auth/scopes.ts";
 import type { LlmProviderId } from "../../lib/services/providers/registry.ts";
-import { ASSISTANT_STATIC_PROMPT } from "../../lib/services/assistant/prompt.ts";
+import { ASSISTANT_STATIC_PROMPT, describeReach } from "../../lib/services/assistant/prompt.ts";
 
 export const DEV = "00000000-0000-0000-0000-00000000000a";
-type EvalUser = { id: string; name: string; role: "manager" | "employee" };
+type EvalUser = { id: string; name: string; member: Member };
 
 /**
  * The two people the evals act as, picked from the Dev company's team at run
- * time: a manager, and the employee with the most assigned leads (so scope
- * cases have something to see). Nothing about real people is kept in this
+ * time: someone who sees every lead (leads:all — the Manager template or the
+ * owner), and the lead owner (leads:read without leads:all) with the most
+ * assigned leads, so scope cases have something to see. Nothing about real people is kept in this
  * repo — it is public.
  */
 export const USERS: { manager: EvalUser; employee: EvalUser } = {
-  manager: { id: "", name: "", role: "manager" },
-  employee: { id: "", name: "", role: "employee" },
+  manager: { id: "", name: "", member: { id: "", isOwner: false, active: false, scopes: [] } },
+  employee: { id: "", name: "", member: { id: "", isOwner: false, active: false, scopes: [] } },
 };
 
 export async function loadEvalUsers(): Promise<void> {
   const db = createScopedClient(DEV);
-  const { data: team } = await db.from("profiles").select("id, full_name, email, role, is_active");
+  const { data: team } = await db.from("profiles").select("id, full_name, email, is_owner, scopes, is_active");
   const people = (team ?? []).filter((p) => p.is_active !== false);
+  const memberOf = (p: { id: unknown; is_owner: unknown; scopes: unknown }): Member =>
+    ({ id: p.id as string, isOwner: !!p.is_owner, active: true, scopes: (p.scopes as string[] | null) ?? [] });
   const name = (p: { full_name: string | null; email: string | null }) => (p.full_name || p.email || "Teammate").split(" ")[0];
-  const manager = people.find((p) => p.role === "manager");
-  const employees = people.filter((p) => p.role === "employee");
-  if (!manager || employees.length === 0) throw new Error("The Dev company needs at least one manager and one employee for the evals.");
+  // Prefer a non-owner with leads:all (the Manager template); fall back to the owner.
+  const sees = people.filter((p) => canSeeAll(memberOf(p), "leads"));
+  const manager = sees.find((p) => !p.is_owner) ?? sees[0];
+  const employees = people.filter((p) => isLeadOwner(memberOf(p)));
+  if (!manager || employees.length === 0) throw new Error("The Dev company needs someone with leads:all and one lead owner for the evals.");
   const counts = await Promise.all(employees.map(async (e) => {
     const { count } = await db.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", e.id).eq("is_deleted", false);
     return { e, count: count ?? 0 };
   }));
   const employee = counts.sort((a, b) => b.count - a.count)[0].e;
-  USERS.manager = { id: manager.id as string, name: name(manager as never), role: "manager" };
-  USERS.employee = { id: employee.id as string, name: name(employee as never), role: "employee" };
+  USERS.manager = { id: manager.id as string, name: name(manager as never), member: memberOf(manager) };
+  USERS.employee = { id: employee.id as string, name: name(employee as never), member: memberOf(employee) };
 }
 
 export type ToolCall = { name: string; input: Record<string, unknown>; output: Record<string, unknown> | null; error: string | null };
@@ -55,7 +61,7 @@ export type TurnResult = {
 
 export function callerFor(who: keyof typeof USERS): AssistantCaller {
   const u = USERS[who];
-  return { userId: u.id, role: u.role, companyId: DEV, db: createScopedClient(DEV), token: "", baseUrl: "http://localhost:3000" };
+  return { userId: u.id, scopes: memberScopes(u.member), member: u.member, companyId: DEV, db: createScopedClient(DEV), token: "", baseUrl: "http://localhost:3000" };
 }
 
 /** SSE body → UI message chunks. */
@@ -158,7 +164,7 @@ Score 1-5:
 Also apply the case rubric. Reply with ONLY JSON: {"score": <1-5>, "reason": "<one sentence>"}
 
 Context the assistant legitimately has (do NOT mark these as unsupported):
-- The asker is ${USERS[opts.who].name} (${USERS[opts.who].role}); "you" in the answer means them.
+- The asker is ${USERS[opts.who].name} (${describeReach(USERS[opts.who].member)}); "you" in the answer means them.
 - Today is ${new Date().toISOString().slice(0, 10)}; the assistant knows today's date, so "waited 6 weeks" can be computed from a thread date.
 - Times may be shown in India time (UTC+5:30).
 - Revealing one email through Apollo costs 1 credit (from the tool's own description).

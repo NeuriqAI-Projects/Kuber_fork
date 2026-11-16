@@ -1,5 +1,6 @@
 import { NextRequest, after } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { assertScope, requireScope } from "@/lib/auth/api-auth";
+import { canSeeAll } from "@/lib/auth/scopes";
 import { ok, fail } from "@/lib/api-response";
 import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -24,13 +25,13 @@ export const maxDuration = 60;
  * same update so the corrected contact rejoins the normal flow (Draft Ready →
  * certify → Send) without a fresh insert.
  *
- * Deliberately NOT reusing POST /api/v1/leads: that path is manager-only, mints
+ * Deliberately NOT reusing POST /api/v1/leads: that path needs leads:import, mints
  * an import batch, and fires an org scrape this org concluded long ago. Here the
- * employee working the bounce must be able to act, and the org is already done.
+ * lead owner working the bounce must be able to act, and the org is already done.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:write"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const body = await req.json().catch(() => null);
@@ -49,7 +50,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .maybeSingle();
   if (!cl) return fail(404, "NOT_FOUND", "Campaign lead not found");
 
-  try { await assertCampaignAccess(db, user, cl.campaign_id as string); } catch (r) { return r as Response; }
+  try {
+    // It rewrites the lead's own identity (email/name/title), so leads:write too.
+    assertScope(user, "leads:write");
+    await assertCampaignAccess(db, user, cl.campaign_id as string);
+  } catch (r) { return r as Response; }
 
   const bounced = (Array.isArray(cl.leads) ? cl.leads[0] : cl.leads) as {
     first_name: string | null;
@@ -62,10 +67,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   };
   const org = Array.isArray(bounced.organizations) ? bounced.organizations[0] : bounced.organizations;
 
-  // A campaign is a shared container; an employee may only work their own leads
-  // inside it (spec §5). Same rule the campaign lead list already applies.
-  if (user.role === "employee" && bounced.assigned_to !== user.id) {
-    return fail(403, "FORBIDDEN", "This lead is assigned to another employee");
+  // A campaign is a shared container; a member without campaigns:all may only
+  // work their own leads inside it (spec §5). Same rule the campaign lead list already applies.
+  if (!canSeeAll(user.member, "campaigns") && bounced.assigned_to !== user.id) {
+    return fail(403, "FORBIDDEN", "This lead is assigned to someone else");
   }
 
   // Only a genuine bounce. crm_status='failed' is overloaded — first_sent_at is
@@ -178,10 +183,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // generate-drafts for any campaign in draft/processing/active with
   // draft_generation_started_at set and a lead like this one (draft_id null,
   // 'enriched', email set) — so the draft arrives within a minute. Only a
-  // campaign outside that gate (paused, or never drafted) still gets the kick.
+  // campaign outside that gate (paused, or never drafted) still gets the kick —
+  // and only from someone who may spend AI on drafts (campaigns:generate).
   const pumpCovers = ["draft", "processing", "active"].includes(campaign?.status as string)
     && !!campaign?.draft_generation_started_at;
-  if (!pumpCovers && process.env.INTERNAL_SECRET) {
+  if (!pumpCovers && user.scopes.includes("campaigns:generate") && process.env.INTERNAL_SECRET) {
     const baseUrl = internalAppBaseUrl(req);
     const secret = process.env.INTERNAL_SECRET;
     after(() =>

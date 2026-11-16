@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
-import type { AssistantCaller } from "@/lib/services/assistant/context";
+import { can, canSeeAll } from "@/lib/auth/scopes";
+import { lacks, type AssistantCaller } from "@/lib/services/assistant/context";
 import {
   applyLeadFilter, describeLeadFilter, LEAD_STATUSES, leadSelect, LeadFilterSchema, resolveLeadFilter,
 } from "@/lib/services/assistant/tools/lead-filter";
@@ -29,6 +30,8 @@ export function leadTools(caller: AssistantCaller) {
         sort: z.enum(["newest", "oldest", "name"]).optional(),
       }),
       execute: async ({ limit = 20, sort = "newest", ...filter }) => {
+        const denied = lacks(caller, "leads:read");
+        if (denied) return denied;
         const resolved = await resolveLeadFilter(caller, filter);
         if ("error" in resolved) return { error: resolved.error };
 
@@ -86,6 +89,8 @@ export function leadTools(caller: AssistantCaller) {
         top: z.number().int().min(1).max(50).optional().describe("How many groups to return (default 15)."),
       }),
       execute: async ({ group_by, top = 15, ...filter }) => {
+        const denied = lacks(caller, "leads:read");
+        if (denied) return denied;
         const resolved = await resolveLeadFilter(caller, filter);
         if ("error" in resolved) return { error: resolved.error };
         // A campaign-level grouping needs the campaign_leads rows, not just presence.
@@ -159,12 +164,14 @@ export function leadTools(caller: AssistantCaller) {
         lead: z.string().describe("Lead id, email, or full name."),
       }),
       execute: async ({ lead }) => {
+        const denied = lacks(caller, "leads:read");
+        if (denied) return denied;
         const v = lead.trim();
         let q = caller.db
           .from("leads")
           .select("id, first_name, last_name, email, email_status, title, headline, seniority, phone, linkedin_url, city, state, country, status, lead_source, assigned_to, created_at, organization_id")
           .eq("is_deleted", false);
-        if (caller.role === "employee") q = q.eq("assigned_to", caller.userId);
+        if (!canSeeAll(caller.member, "leads")) q = q.eq("assigned_to", caller.userId);
         if (isUuid(v)) q = q.eq("id", v);
         else if (v.includes("@")) q = q.ilike("email", cleanSearch(v).replace(/ /g, ""));
         else {
@@ -235,7 +242,8 @@ export function leadTools(caller: AssistantCaller) {
               interested: c.interest_status === 1,
               first_email_sent: c.first_sent_at,
               last_reply_at: c.last_reply_at,
-              last_reply: clip(c.last_reply_body as string | null, 400),
+              // Reply text is Unibox content: only with unibox:read.
+              last_reply: can(caller, "unibox:read") ? clip(c.last_reply_body as string | null, 400) : undefined,
             };
           }),
           notes: (commentsRes.data ?? []).map((c) => ({ by: names.get(c.author_id as string) ?? "someone", at: c.created_at, text: clip(c.body as string, 300) })),

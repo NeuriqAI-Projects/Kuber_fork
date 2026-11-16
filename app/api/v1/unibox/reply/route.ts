@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { getThreadCore, resolveReplyTarget, sendThreadReply } from "@/lib/services/unibox";
-import { assertThreadAccess } from "@/lib/auth/scope";
+import { assertReplyDraftAccess, assertThreadAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { parseAddressList } from "@/lib/thread-participants";
 
@@ -29,8 +29,8 @@ function normalizeEmailList(raw: unknown): string[] | null {
 }
 
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "unibox:reply"); } catch (r) { return r as Response; }
   const body = await req.json().catch(() => null) as {
     thread_id?: string;
     subject?: string;
@@ -78,6 +78,16 @@ export async function POST(req: NextRequest) {
     });
   } catch (r) {
     return r as Response;
+  }
+  // The draft this send marks as sent must be one of THIS thread's drafts (they
+  // hang off its campaign_lead) and one the caller may touch — otherwise any
+  // reply draft in the company, a teammate's included, could be marked sent.
+  if (body.reply_draft_id) {
+    const { data: rd } = await db.from("reply_drafts").select("campaign_lead_id").eq("id", body.reply_draft_id).maybeSingle();
+    if (!rd || !thread.campaign_lead_id || rd.campaign_lead_id !== thread.campaign_lead_id) {
+      return fail(400, "VALIDATION_ERROR", "That reply draft does not belong to this thread");
+    }
+    try { await assertReplyDraftAccess(db, user, body.reply_draft_id); } catch (r) { return r as Response; }
   }
   if (!thread.reply_to_uuid || !thread.eaccount) {
     return fail(400, "MISSING_THREAD", "No received message to reply to in this thread");

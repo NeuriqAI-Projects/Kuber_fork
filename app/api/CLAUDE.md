@@ -2,16 +2,17 @@
 
 | Folder | Who calls it | Auth |
 |---|---|---|
-| `v1/` | the browser (via `lib/api-client.ts`) | user JWT: `requireAuth` / `requireManager` / `requireSuperAdmin` (`lib/auth/api-auth.ts`) |
+| `v1/` | the browser (via `lib/api-client.ts`) | user JWT + a scope: `requireScope(req, "area:action")` (`lib/auth/api-auth.ts`); plain `requireAuth` only for the open routes allow-listed in `lib/auth/access-wiring.test.mts` |
 | `internal/` | pg_cron pump, Vercel cron, other routes | `INTERNAL_SECRET` (or `CRON_SECRET`) checked with `safeSecretEqual` |
 | `enrich/` | self-chaining enrichment workers | `INTERNAL_SECRET` |
 
 Route pattern:
 ```ts
-let user; try { user = await requireManager(req); } catch (r) { return r as Response; }
+let user; try { user = await requireScope(req, "leads:write"); } catch (r) { return r as Response; }
 const db = createScopedClient(user.companyId);   // never the raw admin client
 return ok(data);  // or fail(status, "CODE", "message")  — lib/api-response.ts
 ```
+- **Every handler needs a scope** (root CLAUDE.md "Permissions"). A write is never guarded by a `:read` scope.
 - Validate bodies with zod schemas from `lib/validators/`.
 - **Every route sets `export const maxDuration`** (route segment export, not vercel.json; 2 exceptions below). Default
   `60` (Vercel Fluid would otherwise allow 300 s, so a hung call bills 5 min). Long jobs stop work by ~35-50 s.

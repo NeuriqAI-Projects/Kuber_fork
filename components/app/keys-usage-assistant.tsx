@@ -1,6 +1,7 @@
 "use client";
 
 // Credits > AI: the Kuber AI assistant's models (per mode) and who used how much AI.
+// Both need assistant:admin (same as /api/v1/assistant/models and /assistant/usage).
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Bot, Brain, Coins, Users, Zap } from "lucide-react";
@@ -13,6 +14,7 @@ import { Panel } from "@/components/ui/panel";
 import { UsageBarChart, CHART_COLORS } from "@/components/app/usage-bar-chart";
 import { StatTileGridSkeleton, ChartCardSkeleton } from "@/components/app/usage-skeletons";
 import { useApp } from "@/lib/app-context";
+import { useAccess } from "@/lib/access-context";
 import {
   fetchAssistantModels, fetchAssistantUsage, saveAssistantModel,
   type AssistantModelSettings, type AssistantUsageData, type ProviderConfig,
@@ -91,11 +93,11 @@ function ProviderModels({ p, onSaved }: { p: AssistantModelSettings["providers"]
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Zap className="size-3" /> Fast mode — quick answers</p>
-          <ModelField provider={pickerProvider(p.id, p.label, p.defaults.fast)} value={fast} onChange={setFast} />
+          <ModelField provider={pickerProvider(p.id, p.label, p.defaults.fast)} value={fast} onChange={setFast} editScope="assistant:admin" />
         </div>
         <div className="space-y-1.5">
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Brain className="size-3" /> Deep analysis — thorough answers</p>
-          <ModelField provider={pickerProvider(p.id, p.label, p.defaults.deep)} value={deep} onChange={setDeep} />
+          <ModelField provider={pickerProvider(p.id, p.label, p.defaults.deep)} value={deep} onChange={setDeep} editScope="assistant:admin" />
         </div>
       </div>
       <p className="text-[11.5px] text-muted-foreground">Chat titles use {p.defaults.utility} (cheapest).</p>
@@ -104,6 +106,10 @@ function ProviderModels({ p, onSaved }: { p: AssistantModelSettings["providers"]
 }
 
 export function AssistantModelsPanel() {
+  return useAccess().can("assistant:admin") ? <AssistantModels /> : null;
+}
+
+function AssistantModels() {
   const { session } = useApp();
   const [data, setData] = useState<AssistantModelSettings | null>(null);
   const [version, setVersion] = useState(0);
@@ -135,6 +141,10 @@ export function AssistantModelsPanel() {
 }
 
 export function AssistantUsageView() {
+  return useAccess().can("assistant:admin") ? <AssistantUsage /> : null;
+}
+
+function AssistantUsage() {
   const [days, setDays] = useState(30);
   const { data, loading } = useCachedUsage<AssistantUsageData>(`/api/v1/assistant/usage?days=${days}`, (token) => fetchAssistantUsage(token, days));
 
@@ -193,7 +203,6 @@ export function AssistantUsageView() {
                 <TableRow key={p.user_id ?? "unknown"}>
                   <TableCell>
                     <span className="font-medium">{p.name}</span>
-                    {p.role && <span className="ml-1.5 text-xs text-muted-foreground capitalize">{p.role}</span>}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{p.calls.toLocaleString()}</TableCell>
                   <TableCell className="text-right tabular-nums">{compact(p.tokens)}</TableCell>

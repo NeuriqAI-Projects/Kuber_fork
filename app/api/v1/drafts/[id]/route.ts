@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { assertScope, requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { PatchDraftSchema } from "@/lib/validators/drafts";
 import { syncApprovedDraftToInstantly } from "@/lib/services/draft-sync";
@@ -11,8 +11,8 @@ import { getActiveJob } from "@/lib/services/regeneration-jobs";
 export const maxDuration = 60;
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:write"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const body = await req.json().catch(() => null);
@@ -20,7 +20,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
 
   const db = dbForUser(user);
-  try { await assertDraftAccess(db, user, id); } catch (r) { return r as Response; }
+  try {
+    // edit / reject / reopen need campaigns:write (the route's scope). approve
+    // certifies the draft for sending, and restore can make an approved version
+    // the live one again, so both also need campaigns:send.
+    if (parsed.data.action === "approve" || parsed.data.action === "restore") assertScope(user, "campaigns:send");
+    await assertDraftAccess(db, user, id);
+  } catch (r) { return r as Response; }
 
   const { data: draft } = await db
     .from("email_drafts")

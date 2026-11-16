@@ -1,21 +1,27 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { FollowUpStepTemplateRegenerateSchema } from "@/lib/validators/drafts";
 import { regenerateFollowUpTemplateText } from "@/lib/services/followup-regenerate";
+import { assertCampaignSettingsAccess } from "@/lib/auth/scope";
+import { dbForUser } from "@/lib/supabase/scoped";
 
 export const maxDuration = 60;
 
 // Campaign-level follow-up template rewrite for the Sequences tab — no per-lead
 // draft writes; the client saves via PUT .../steps when the user clicks Save.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:generate"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const body = await req.json().catch(() => null);
   const parsed = FollowUpStepTemplateRegenerateSchema.safeParse(body);
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
+
+  // The campaign id is written into llm_usage tagging, and the result is a
+  // campaign-wide step template, so: a real campaign the caller may change.
+  try { await assertCampaignSettingsAccess(dbForUser(user), user, id); } catch (r) { return r as Response; }
 
   try {
     const rewritten = await regenerateFollowUpTemplateText({

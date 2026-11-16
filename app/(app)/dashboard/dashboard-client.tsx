@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardSkeleton } from "@/components/app/page-skeletons";
 import { useApp } from "@/lib/app-context";
+import { useAccess } from "@/lib/access-context";
 import { cacheKeys, cachedFetchers, prefetch, useCached, type DashboardAnalyticsData } from "@/lib/api-client";
 
 // recharts is only needed here — load it with the view instead of in the
@@ -26,7 +27,8 @@ const EMPTY_ANALYTICS: DashboardAnalyticsData = {
 
 export function DashboardClient() {
   const router = useRouter();
-  const { session, role, campaigns, campaignsLoaded } = useApp();
+  const { session, campaigns, campaignsLoaded } = useApp();
+  const showImports = useAccess().can("dashboard:all");
 
   // Campaign tiles: cached list now; reload only when it is stale (a write
   // touched it) or older than 30 s — a quick Dashboard revisit no longer
@@ -36,15 +38,15 @@ export function DashboardClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per visit
   }, []);
 
-  // Analytics: manager = company-wide, employee = own leads/campaigns (the
-  // route picks by role). Imports are a manager-only card, as before.
+  // Analytics: company-wide with dashboard:all, else own leads/campaigns (the
+  // route decides). The Imports card needs dashboard:all, as before.
   const analyticsQuery = useCached(
     session ? cacheKeys.dashboardAnalytics : null,
     cachedFetchers.dashboardAnalytics,
     { dedupeMs: 60_000 }, // 10 queries per load; writes still mark it stale
   );
   const importsQuery = useCached(
-    session && role === "manager" ? cacheKeys.imports : null,
+    session && showImports ? cacheKeys.imports : null,
     cachedFetchers.imports,
     { dedupeMs: 30_000 },
   );
@@ -53,7 +55,7 @@ export function DashboardClient() {
   return (
     <DashboardView
       campaigns={campaigns}
-      imports={role === "manager" ? (importsQuery.data ?? []) : []}
+      imports={showImports ? (importsQuery.data ?? []) : []}
       loading={analyticsQuery.isLoading || !campaignsLoaded}
       totalLeads={analytics.totalLeads}
       leadsThisMonth={analytics.leadsThisMonth}

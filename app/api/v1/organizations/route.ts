@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { CreateOrgSchema, OrgListQuerySchema } from "@/lib/validators/organizations";
 import { normalizeDomain } from "@/lib/utils/domain";
@@ -12,12 +12,12 @@ export const maxDuration = 60;
 const ORG_COLUMNS =
   "id, apollo_org_id, domain, website, name, industry, keywords, employees, city, country, has_scraped, unsubscribed, created_at, updated_at, company_description, sells_to, enrichment_stage, enrichment_status, enrichment_started_at, enrichment_done_at, enrichment_attempts, last_error, domain_source, scraped_at, company_id";
 
-// Organizations are enrichment territory — manager-only (planning.md D8).
-// Employees reach org data only through their own leads' drawers
-// (GET /organizations/[id], scoped there).
+// Organizations are enrichment territory — the list needs organizations:read
+// (planning.md D8). Members without it reach org data only through their own
+// leads' drawers (GET /organizations/[id], scoped there).
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "organizations:read"); } catch (r) { return r as Response; }
 
   const sp = Object.fromEntries(req.nextUrl.searchParams.entries());
   const parsed = OrgListQuerySchema.safeParse(sp);
@@ -42,8 +42,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "organizations:write"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
   const parsed = CreateOrgSchema.safeParse(body);

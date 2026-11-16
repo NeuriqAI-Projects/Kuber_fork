@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { PROVIDER_META, type LlmProviderId } from "@/lib/services/providers/registry";
 import { getActiveKey, getProviderCallConfig } from "@/lib/services/provider-keys";
@@ -17,8 +17,8 @@ export type { ProviderModelOption };
  *  without a catalog integration return an empty list and the UI falls back
  *  to its static options / freeform input. */
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "keys:read"); } catch (r) { return r as Response; }
 
   const provider = req.nextUrl.searchParams.get("provider") as ProviderId | null;
   if (!provider || !(provider in PROVIDER_META)) {

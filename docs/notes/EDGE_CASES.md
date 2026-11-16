@@ -1,5 +1,9 @@
 # Edge Cases Audit — Roles, Leads, Campaigns, Unibox
 
+> **16 Nov 2026:** roles were replaced by scopes (`docs/scopes.md`). Where this file says
+> "manager" read "a member with the `:all` / admin scope (Manager template)"; "employee" =
+> "a lead owner without `:all` (Employee template)"; "super admin" = "the owner".
+
 Read-only analysis of the current implementation's business-logic edge cases: situations where ownership, visibility, or state can diverge in ways the code allows but the product probably didn't intend. Every item is grounded in the actual route/service code, not hypothetical. No fixes applied — this is a punch list to triage.
 
 Severity: **High** = data/ownership corruption, security-relevant, or silent data loss. **Med** = confusing UX or inconsistent rule enforcement, no data loss. **Low** = cosmetic/nice-to-have.

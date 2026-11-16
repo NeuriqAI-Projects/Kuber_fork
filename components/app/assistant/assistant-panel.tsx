@@ -19,6 +19,7 @@ import {
   ActionCard, isActionTool, toolNameOf, ToolSteps, type ActionOutcome, type ToolPartLike,
 } from "@/components/app/assistant/assistant-parts";
 import { useApp } from "@/lib/app-context";
+import { useAccess } from "@/lib/access-context";
 import {
   deleteAssistantThread, executeAssistantAction, fetchAssistantOverview, fetchAssistantThread, fetchAssistantThreads, saveAssistantThread,
   type AssistantOverview, type AssistantThreadSummary,
@@ -59,7 +60,8 @@ export function AssistantPanel({
   /** Closed but kept mounted, so the conversation survives closing and reopening. */
   hidden?: boolean;
 }) {
-  const { session, role, loadCampaigns } = useApp();
+  const { session, loadCampaigns } = useApp();
+  const { can, seesAll } = useAccess();
   const tokenRef = useRef<string>("");
   tokenRef.current = session?.access_token ?? "";
 
@@ -248,7 +250,8 @@ export function AssistantPanel({
     }
   }, [settleAction, loadCampaigns]);
 
-  const suggestions = SUGGESTIONS[role === "employee" ? "employee" : "manager"];
+  // Team-wide wording for members who see every lead; own-leads wording otherwise.
+  const suggestions = SUGGESTIONS[seesAll("leads") ? "manager" : "employee"];
   const firstName = (() => {
     const local = session?.user.email?.split("@")[0]?.split(/[._\d-]/)[0];
     return local ? local.charAt(0).toUpperCase() + local.slice(1) : null;
@@ -286,7 +289,7 @@ export function AssistantPanel({
           onNew={() => startNew()}
         />
       )}
-      {!inThread && tab === "skills" && <AssistantSkills host={host} role={role} onPick={pickSkill} />}
+      {!inThread && tab === "skills" && <AssistantSkills host={host} onPick={pickSkill} />}
 
       {inThread && (
         <>
@@ -347,7 +350,7 @@ export function AssistantPanel({
                     message={m}
                     isLast={i === messages.length - 1}
                     streaming={busy && i === messages.length - 1}
-                    showCost={role === "manager"}
+                    showCost={can("credits:read")}
                     onConfirm={(toolCallId, token, kind) => confirmAction(toolCallId, token, kind)}
                     onCancel={(toolCallId) => settleAction(toolCallId, { cancelled: true })}
                   />

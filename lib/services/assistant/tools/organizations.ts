@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
-import type { AssistantCaller } from "@/lib/services/assistant/context";
+import { can, canSeeAll } from "@/lib/auth/scopes";
+import { lacks, type AssistantCaller } from "@/lib/services/assistant/context";
 import { cleanSearch, clip, ilikeValue, isUuid, loadTeam, personName, teamNameMap } from "@/lib/services/assistant/tools/shared";
 
 export function organizationTools(caller: AssistantCaller) {
@@ -17,17 +18,23 @@ export function organizationTools(caller: AssistantCaller) {
         limit: z.number().int().min(0).max(50).optional().describe("Rows to return (default 15)."),
       }),
       execute: async ({ name, industry, country, website_read, limit = 15 }) => {
-        // Employees only see companies that hold one of their leads.
-        const employee = caller.role === "employee";
+        const denied = lacks(caller, "leads:read");
+        if (denied) return denied;
+        // Without organizations:read a member only sees companies that hold one of
+        // the leads they can see (their own, unless they hold leads:all).
+        const orgAll = can(caller, "organizations:read");
+        const leadsAll = canSeeAll(caller.member, "leads");
         let q = caller.db
           .from("organizations")
           .select(
-            employee
-              ? "id, name, domain, industry, employees, country, enrichment_stage, unsubscribed, leads!inner(id, assigned_to, is_deleted)"
-              : "id, name, domain, industry, employees, country, enrichment_stage, unsubscribed, leads(count)",
+            orgAll
+              ? "id, name, domain, industry, employees, country, enrichment_stage, unsubscribed, leads(count)"
+              : "id, name, domain, industry, employees, country, enrichment_stage, unsubscribed, leads!inner(id, assigned_to, is_deleted)",
             { count: "exact" },
           );
-        if (employee) q = q.eq("leads.assigned_to", caller.userId).eq("leads.is_deleted", false);
+        if (!orgAll) q = q.eq("leads.is_deleted", false);
+        // Lead counts only cover the leads the caller can see.
+        if (!leadsAll) q = q.eq("leads.assigned_to", caller.userId).eq("leads.is_deleted", false);
         if (name) q = q.ilike("name", `%${ilikeValue(name)}%`);
         if (industry) q = q.ilike("industry", `%${ilikeValue(industry)}%`);
         if (country) q = q.ilike("country", `%${ilikeValue(country)}%`);
@@ -41,7 +48,7 @@ export function organizationTools(caller: AssistantCaller) {
             return {
               id: o.id, name: o.name, domain: o.domain, industry: o.industry, employees: o.employees, country: o.country,
               website_read: o.enrichment_stage, unsubscribed: o.unsubscribed,
-              leads: employee ? leads.length : leads[0]?.count ?? 0,
+              leads: orgAll ? leads[0]?.count ?? 0 : leads.length,
             };
           }),
         };
@@ -52,9 +59,18 @@ export function organizationTools(caller: AssistantCaller) {
       description: "One company in full: what it does, who it sells to, size, website status, and its leads with their status.",
       inputSchema: z.object({ organization: z.string().describe("Company id, name or domain.") }),
       execute: async ({ organization }) => {
+        const denied = lacks(caller, "leads:read");
+        if (denied) return denied;
         const v = organization.trim();
-        let q = caller.db.from("organizations")
-          .select("id, name, domain, website, industry, keywords, employees, city, country, company_description, sells_to, unsubscribed, enrichment_stage, last_error, created_at");
+        const orgAll = can(caller, "organizations:read");
+        const leadsAll = canSeeAll(caller.member, "leads");
+        // Without organizations:read the match itself is limited to companies holding
+        // a lead the caller can see, so the "several match" list never names others.
+        const cols = "id, name, domain, website, industry, keywords, employees, city, country, company_description, sells_to, unsubscribed, enrichment_stage, last_error, created_at";
+        // The extra inner join only narrows rows; typed as the plain column list.
+        let q = caller.db.from("organizations").select((orgAll ? cols : `${cols}, leads!inner(id)`) as typeof cols);
+        if (!orgAll) q = q.eq("leads.is_deleted", false);
+        if (!orgAll && !leadsAll) q = q.eq("leads.assigned_to", caller.userId);
         if (isUuid(v)) q = q.eq("id", v);
         else q = q.or(`name.ilike.%${cleanSearch(v)}%,domain.ilike.%${cleanSearch(v)}%`);
         const { data: orgs } = await q.limit(5);
@@ -65,9 +81,8 @@ export function organizationTools(caller: AssistantCaller) {
         }
         const o = exact[0] ?? orgs[0];
         let lq = caller.db.from("leads").select("id, first_name, last_name, title, email, status, assigned_to").eq("organization_id", o.id).eq("is_deleted", false);
-        if (caller.role === "employee") lq = lq.eq("assigned_to", caller.userId);
+        if (!leadsAll) lq = lq.eq("assigned_to", caller.userId);
         const [{ data: leads }, team] = await Promise.all([lq.limit(30), loadTeam(caller.db)]);
-        if (caller.role === "employee" && !leads?.length) return { error: `No company matches "${v}".` };
         const names = teamNameMap(team);
         return {
           id: o.id, name: o.name, domain: o.domain, website: o.website, industry: o.industry,

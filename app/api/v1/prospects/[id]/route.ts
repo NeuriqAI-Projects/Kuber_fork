@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { fail, ok } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { ProspectDecisionSchema } from "@/lib/validators/leads";
@@ -8,8 +8,8 @@ import { decide } from "@/lib/services/prospects/decisions";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "prospects:run"); } catch (r) { return r as Response; }
   const { id } = await params;
 
   const parsed = ProspectDecisionSchema.safeParse(await req.json().catch(() => null));

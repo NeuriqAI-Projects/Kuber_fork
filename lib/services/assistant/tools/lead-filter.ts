@@ -2,6 +2,7 @@
 // these leads" and "put these leads in a campaign" can never disagree about
 // which leads "these" are.
 import { z } from "zod";
+import { canSeeAll } from "@/lib/auth/scopes";
 import type { AssistantCaller } from "@/lib/services/assistant/context";
 import { cleanSearch, ilikeValue, resolveAssignee, resolveCampaign } from "@/lib/services/assistant/tools/shared";
 
@@ -104,8 +105,8 @@ export function leadSelect(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function applyLeadFilter(q: any, caller: AssistantCaller, f: LeadFilter, r: ResolvedLeadFilter): any {
   q = q.eq("is_deleted", false);
-  // The security boundary: an employee only ever sees leads assigned to them.
-  if (caller.role === "employee") q = q.eq("assigned_to", caller.userId);
+  // The security boundary: without leads:all a member only ever sees leads assigned to them.
+  if (!canSeeAll(caller.member, "leads")) q = q.eq("assigned_to", caller.userId);
 
   if (r.assigneeId === "unassigned") q = q.is("assigned_to", null);
   else if (r.assigneeId) q = q.eq("assigned_to", r.assigneeId);

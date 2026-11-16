@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { getBenchLeadIds, getLabModels, getScoreboard, setSetting, BENCH_LEADS_KEY, LAB_MODELS_KEY } from "@/lib/services/model-lab";
@@ -7,12 +7,11 @@ import { getBenchLeadIds, getLabModels, getScoreboard, setSetting, BENCH_LEADS_K
 export const maxDuration = 60;
 
 /** Everything the lab screen needs to open: the bench, the candidates, the
- *  saved prompt sets and the scoreboard. Managers only — the lab spends money
+ *  saved prompt sets and the scoreboard. Needs model_lab:read — the lab spends money
  *  and decides what writes to customers. */
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
-  if (user.role !== "manager") return fail(403, "FORBIDDEN", "Managers only");
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "model_lab:read"); } catch (r) { return r as Response; }
 
   const db = dbForUser(user);
   const [leadIds, models, scoreboard] = await Promise.all([
@@ -42,9 +41,8 @@ export async function GET(req: NextRequest) {
 
 /** Change the bench, or which models are offered. */
 export async function PUT(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
-  if (user.role !== "manager") return fail(403, "FORBIDDEN", "Managers only");
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "model_lab:write"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null) as { lead_ids?: string[]; models?: string[] } | null;
   if (!body) return fail(400, "VALIDATION_ERROR", "Invalid request");

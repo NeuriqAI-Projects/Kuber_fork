@@ -1,14 +1,16 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { DraftsQuerySchema } from "@/lib/validators/drafts";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { getAccessibleCampaignIds } from "@/lib/auth/scope";
+import { canSeeAll } from "@/lib/auth/scopes";
 
 export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:read"); } catch (r) { return r as Response; }
 
   const sp = Object.fromEntries(req.nextUrl.searchParams.entries());
   const parsed = DraftsQuerySchema.safeParse(sp);
@@ -17,11 +19,14 @@ export async function GET(req: NextRequest) {
   const { campaign_id, status, page, limit } = parsed.data;
   const db = dbForUser(user);
 
-  let ownedCampaignIds: string[] | null = null;
-  if (user.role === "employee") {
-    const { data: owned } = await db.from("campaigns").select("id").eq("created_by", user.id);
-    ownedCampaignIds = (owned ?? []).map((c) => c.id);
-    if (campaign_id && !ownedCampaignIds.includes(campaign_id)) {
+  // Without campaigns:all: the campaigns they can open (getAccessibleCampaignIds,
+  // same rule as the campaign list) and, inside them, only drafts on their own
+  // leads — never a teammate's draft in a shared campaign.
+  const seesAll = canSeeAll(user.member, "campaigns");
+  let accessibleIds: string[] | null = null;
+  if (!seesAll) {
+    accessibleIds = await getAccessibleCampaignIds(db, user);
+    if (campaign_id ? !accessibleIds.includes(campaign_id) : accessibleIds.length === 0) {
       return ok({ drafts: [], total: 0, page, limit });
     }
   }
@@ -29,12 +34,13 @@ export async function GET(req: NextRequest) {
   let q = db
     .from("email_drafts")
     .select(
-      "*, leads(first_name, last_name, email, title, country, organizations(name, company_description, keywords))",
+      `*, leads${seesAll ? "" : "!inner"}(first_name, last_name, email, title, country, assigned_to, organizations(name, company_description, keywords))`,
       { count: "exact" }
     );
 
+  if (!seesAll) q = q.eq("leads.assigned_to", user.id);
   if (campaign_id) q = q.eq("campaign_id", campaign_id);
-  else if (ownedCampaignIds) q = q.in("campaign_id", ownedCampaignIds);
+  else if (accessibleIds) q = q.in("campaign_id", accessibleIds);
   if (status) q = q.eq("status", status);
   q = q.order("created_at", { ascending: false }).range((page - 1) * limit, page * limit - 1);
 

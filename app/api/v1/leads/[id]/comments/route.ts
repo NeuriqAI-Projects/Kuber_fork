@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { assertLeadAccess } from "@/lib/auth/scope";
 import { ok, fail } from "@/lib/api-response";
 import {
@@ -58,8 +58,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (response) { return response as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "leads:read"); } catch (response) { return response as Response; }
 
   const { id } = await params;
   const db = dbForUser(user);
@@ -84,8 +84,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (response) { return response as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "leads:write"); } catch (response) { return response as Response; }
 
   const { id } = await params;
   const db = dbForUser(user);

@@ -27,6 +27,34 @@ Lead-gen pipeline: **Apollo** (find people/companies, reveal emails) → **Firec
 - **Tests:** `npx tsx --test lib/**/*.test.mts` style, file by file (e.g. `npx tsx --test lib/services/prospects/*.test.mts`).
 - Answer the user in very short, easy words.
 
+## Permissions (scopes) for every feature (hard rule)
+Every page, API route, settings section, gated button and Kuber AI tool must be grantable to a
+member from Settings → Team (`docs/scopes.md`). When you add a feature or a new action in one,
+give it scopes **in the same task**:
+
+1. Add the scope(s) to `SCOPES` in `lib/auth/scopes.ts`, split `area:read` (See), `area:write`
+   (Edit), `area:delete` (Delete), plus a separate box for anything that sends email, spends
+   credits (Apollo, Firecrawl, LLM runs) or moves money. Row-level areas also get an `area:all`
+   reach scope (without it a member sees only their own rows).
+2. Add the row and plain-language labels to `SCOPE_AREAS` in `lib/auth/scope-areas.ts` (same
+   order as `SCOPES`), and decide whether the Manager / Employee templates in `SCOPE_TEMPLATES`
+   get it.
+3. Add a migration that re-creates `public.kuber_scopes_valid` with the full list in the same
+   order. The user runs it on the live DB **before** the code deploys (otherwise saving the new
+   box fails).
+4. Guard every handler with `requireScope(request, '<scope>')` (a write never with a `:read`
+   scope; a second scope inside a handler with `assertScope`), server pages with
+   `requirePageScope`, set `scope` on the nav item / settings section, hide buttons with
+   `useAccess().can(...)`, filter rows with `canSeeAll`, and gate AI tools with `can(caller, ...)`.
+5. Run `lib/auth/scopes.test.mts`, `lib/auth/access-wiring.test.mts`,
+   `lib/auth/scopes-sql.test.mts` and `lib/auth/scopes-parity.test.mts`; they fail if you skip
+   any step above.
+
+Never check a role, `is_owner` for anything but the owner rules, or the JWT for permissions.
+Owner-only actions (`requireScope(request, 'owner')`) are a short list pinned in the wiring test
+(empty today); adding to it is a product decision, so ask the user first and write the reason in
+the test's comment. "Who receives leads" is `isLeadOwner` (leads:read without leads:all), not a role.
+
 ## One shared component per control type (hard rule, strict)
 
 **Every field-like control anywhere in this app MUST be the shared component from `components/ui/` — never a one-off hand-styled element, and never a local re-implementation.**

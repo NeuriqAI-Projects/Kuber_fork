@@ -111,6 +111,7 @@ import { LeadDrawer } from "@/components/app/lead-drawer";
 import { OrgDrawer } from "@/components/app/org-drawer";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-context";
+import { useAccess } from "@/lib/access-context";
 import type { Campaign } from "@/components/app/create-campaign-modal";
 import { CampaignConfigModal } from "@/components/app/campaign-config-modal";
 import { EditCampaignForm, SharedSettingsNotice } from "@/components/app/edit-campaign-modal";
@@ -1162,14 +1163,23 @@ export function CampaignDetail({
     }, { maxAgeMs: 60_000 }).then(setSystemPromptUpdatedAt).catch(() => {});
   }, []);
 
-  const { loadCampaigns, session: appSession, role } = useApp();
+  const { loadCampaigns, session: appSession } = useApp();
+  const { can, seesAll } = useAccess();
   // Options/Sequences are shared campaign-wide settings (spec §5 — a campaign
-  // is a container that can hold leads owned by several employees at once).
-  // Managers may always edit them. An employee may only when they are the sole
-  // employee in this campaign; otherwise editing would silently change what a
-  // teammate's leads send under. The server decides (can_edit_settings) and
-  // re-checks on write — this only mirrors its verdict into the controls.
-  const canEditSettings = role === "manager" || campaign.canEditSettings === true;
+  // is a container that can hold leads owned by several lead owners at once).
+  // Members with campaigns:all may always change them. Others only when they are
+  // the sole lead owner in this campaign; otherwise editing would silently change
+  // what a teammate's leads send under. The server decides (can_edit_settings)
+  // and re-checks on write — this only mirrors its verdict into the controls.
+  const sharedOk = seesAll("campaigns") || campaign.canEditSettings === true;
+  const canEditSettings = sharedOk && can("campaigns:write");
+  /** Per-lead edits: draft text, attachments, replace / remove leads. */
+  const canWrite = can("campaigns:write");
+  /** AI drafts (spends LLM). The whole-campaign runs also need the shared rule. */
+  const canGenerate = can("campaigns:generate");
+  const canGenerateAll = canGenerate && sharedOk;
+  /** Certify, send, hold (sends email). Resume is campaign-wide: also the shared rule. */
+  const canSend = can("campaigns:send");
 
   const loadComments = useCallback(async (campaignId: string, quiet = false) => {
     if (!appSession?.access_token) return;
@@ -1604,14 +1614,15 @@ export function CampaignDetail({
           // The worker's batch chain dies after ~5 hops; the watchdog takes 10-20
           // minutes to notice. While someone is watching, ask once a minute (the
           // server only restarts what has really stopped), never while the AI is out.
-          if (prog.ai_available !== false && Date.now() - lastDraftKickRef.current >= 60_000) {
+          // The kick needs campaigns:generate + the shared rule (403 otherwise), so only those ask.
+          if (canGenerateAll && prog.ai_available !== false && Date.now() - lastDraftKickRef.current >= 60_000) {
             lastDraftKickRef.current = Date.now();
             void kickDraftGeneration(session.access_token, campaign.id).catch(() => {});
           }
         } catch { /* next tick */ } finally { busy = false; }
       })();
     }, FAST_POLL_MS);
-  }, [drafting, regenActive, campaign.id, loadData]);
+  }, [drafting, regenActive, campaign.id, loadData, canGenerateAll]);
 
   // A bulk regeneration runs entirely server-side, so the only way to see it
   // advance is to ask. Same pacing as drafting: the job every 10 s (60 s once it
@@ -1637,7 +1648,7 @@ export function CampaignDetail({
           // The worker's batch chain dies after ~5 hops on the platform. While
           // someone is watching, a job quiet for a minute gets a fresh kick from
           // here (see regeneration-job/kick) rather than waiting on the watchdog.
-          if (job?.active && progressRef.current?.ai_available !== false) {
+          if (canGenerate && job?.active && progressRef.current?.ai_available !== false) {
             const quietMs = Date.now() - Date.parse(job.heartbeat_at ?? job.started_at ?? job.created_at);
             if (quietMs > 60_000 && Date.now() - lastKick > 60_000) {
               lastKick = Date.now();
@@ -1661,7 +1672,7 @@ export function CampaignDetail({
         } finally { busy = false; }
       })();
     }, FAST_POLL_MS);
-  }, [regenActive, loadRegenJob, loadData, campaign.id]);
+  }, [regenActive, loadRegenJob, loadData, campaign.id, canGenerate]);
 
   const selected = campaignLeads.find((cl) => cl.id === selectedId) ?? null;
 
@@ -3144,7 +3155,7 @@ export function CampaignDetail({
     { value: "leads" as const,     label: "Leads",     icon: List,   count: analyticsTotalLeads },
     { value: "outbox" as const,    label: "Outbox",    icon: Send,   count: outboxActionableCount || undefined },
     { value: "sequences" as const, label: "Sequences", icon: Layers },
-    ...(role === "manager" ? [{ value: "credits" as const, label: "Credits", icon: Coins }] : []),
+    ...(can("credits:read") ? [{ value: "credits" as const, label: "Credits", icon: Coins }] : []),
     { value: "options" as const,   label: "Options",   icon: Gauge },
     { value: "discussion" as const, label: "Discussion", icon: MessageSquare, count: commentsFetched ? comments.length : (listCounts.comments ?? comments.length) },
   ];
@@ -3425,7 +3436,7 @@ export function CampaignDetail({
                 the lead rail: it stops the whole campaign, so anywhere lead-scoped
                 would read as "hold this one lead", which Instantly cannot do.
                 Hidden once held — the banner below owns Resume from then on. */}
-            {!sendingHeld && (campaign.status === "Live" || campaign.status === "Scheduled") && (
+            {canSend && !sendingHeld && (campaign.status === "Live" || campaign.status === "Scheduled") && (
               <Button
                 type="button"
                 variant="outline"
@@ -3441,7 +3452,7 @@ export function CampaignDetail({
             )}
             {viewTab === "outbox" && (
               <>
-                {aiFailedLeads.length > 0 && (
+                {canGenerate && aiFailedLeads.length > 0 && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -3454,7 +3465,7 @@ export function CampaignDetail({
                     Try AI again ({aiFailedLeads.length})
                   </Button>
                 )}
-                {campaignRegenerableCount > 0 && (
+                {canGenerate && campaignRegenerableCount > 0 && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -3468,7 +3479,7 @@ export function CampaignDetail({
                     Regenerate all ({campaignRegenerableCount})
                   </Button>
                 )}
-                {draftReadyLeads.length > 0 && (
+                {canSend && draftReadyLeads.length > 0 && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -3480,14 +3491,16 @@ export function CampaignDetail({
                     Certify all ({draftReadyLeads.length})
                   </Button>
                 )}
-                <Button
-                  size="sm"
-                  disabled={primaryBusy || certifying || sending || primaryAction.mode === "none"}
-                  onClick={() => void handlePrimaryAction()}
-                >
-                  {primaryBusy ? <Loader2 className="animate-spin" /> : null}
-                  {primaryLabel}
-                </Button>
+                {canSend && (
+                  <Button
+                    size="sm"
+                    disabled={primaryBusy || certifying || sending || primaryAction.mode === "none"}
+                    onClick={() => void handlePrimaryAction()}
+                  >
+                    {primaryBusy ? <Loader2 className="animate-spin" /> : null}
+                    {primaryLabel}
+                  </Button>
+                )}
               </>
             )}
           </>
@@ -3511,15 +3524,17 @@ export function CampaignDetail({
             )}
             <span className="font-normal"> · nothing goes out until someone resumes</span>
           </p>
-          <Button
-            size="sm"
-            className="ml-auto"
-            disabled={holdBusy}
-            onClick={() => void handleToggleHold(false)}
-          >
-            {holdBusy ? <Loader2 className="animate-spin" /> : <PlayCircle />}
-            Resume sending
-          </Button>
+          {canSend && sharedOk && (
+            <Button
+              size="sm"
+              className="ml-auto"
+              disabled={holdBusy}
+              onClick={() => void handleToggleHold(false)}
+            >
+              {holdBusy ? <Loader2 className="animate-spin" /> : <PlayCircle />}
+              Resume sending
+            </Button>
+          )}
         </div>
       )}
 
@@ -3569,17 +3584,19 @@ export function CampaignDetail({
         ) : (
           <span className="flex items-center gap-1 min-w-0">
             <span className="truncate">{campaignName}</span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => { setNameDraft(campaignName); setEditingName(true); }}
-              aria-label="Edit campaign name"
-              title="Rename campaign"
-              className="shrink-0 text-muted-foreground hover:text-foreground [&_svg]:size-3.5"
-            >
-              <Pencil />
-            </Button>
+            {canEditSettings && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => { setNameDraft(campaignName); setEditingName(true); }}
+                aria-label="Edit campaign name"
+                title="Rename campaign"
+                className="shrink-0 text-muted-foreground hover:text-foreground [&_svg]:size-3.5"
+              >
+                <Pencil />
+              </Button>
+            )}
           </span>
         )}
         badges={
@@ -3615,15 +3632,17 @@ export function CampaignDetail({
                 {progress.total - progress.pending} of {progress.total} emails written. The other {progress.pending} are written automatically within a minute of the credits being topped up.
               </p>
             </div>
-            {certifiedCount > 0 && (
+            {canSend && certifiedCount > 0 && (
               <Button size="sm" disabled={sending} onClick={() => void handlePrimaryAction(true)}>
                 Send the {certifiedCount} ready
               </Button>
             )}
-            <Button size="sm" variant="outline" disabled={usingDefault} onClick={() => void handleUseDefault()}>
-              {usingDefault ? <Loader2 className="animate-spin" /> : null}
-              Use default email for the other {progress.pending}
-            </Button>
+            {canEditSettings && (
+              <Button size="sm" variant="outline" disabled={usingDefault} onClick={() => void handleUseDefault()}>
+                {usingDefault ? <Loader2 className="animate-spin" /> : null}
+                Use default email for the other {progress.pending}
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -3644,7 +3663,7 @@ export function CampaignDetail({
       {/* ── Analytics ─────────────────────────────────────────────────────── */}
       {viewTab === "analytics" && (
         <div className="flex flex-col flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-          {progress && progress.failed > 0 && (
+          {canGenerate && progress && progress.failed > 0 && (
             <div className="px-6 pt-4 flex items-center justify-end gap-2">
               <Button
                 type="button"
@@ -4019,7 +4038,7 @@ export function CampaignDetail({
               ]}
             />
 
-            {leadsCheckedRemovable.length > 0 && (
+            {canWrite && leadsCheckedRemovable.length > 0 && (
               <Button
                 size="sm"
                 variant="outline"
@@ -4224,7 +4243,7 @@ export function CampaignDetail({
                                     <Check className="size-3" />
                                     Replaced
                                   </button>
-                                ) : (
+                                ) : canWrite && (
                                   <button
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); openReplace(cl); }}
@@ -4351,7 +4370,7 @@ export function CampaignDetail({
                   {/* Selection-scoped only. "Regenerate all" lives in the header,
                       so with nothing ticked this button stays out of the way
                       instead of showing the same count twice. */}
-                  {outboxCheckedRegenIds.length > 0 && (
+                  {canGenerate && outboxCheckedRegenIds.length > 0 && (
                     <Button
                       type="button"
                       variant="outline"
@@ -4367,7 +4386,7 @@ export function CampaignDetail({
                       Regenerate ({outboxCheckedRegenIds.length})
                     </Button>
                   )}
-                  {outboxCheckedRemovableIds.length > 0 && (
+                  {canWrite && outboxCheckedRemovableIds.length > 0 && (
                     <Button
                       type="button"
                       variant="outline"
@@ -4381,7 +4400,7 @@ export function CampaignDetail({
                       Remove ({outboxCheckedRemovableIds.length})
                     </Button>
                   )}
-                  {outboxCertifyDraftIds.length > 0 && (
+                  {canSend && outboxCertifyDraftIds.length > 0 && (
                     <Button
                       type="button"
                       variant="outline"
@@ -4418,16 +4437,18 @@ export function CampaignDetail({
                       )}
                       Safe to close this window.
                     </p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={cancellingJob}
-                      onClick={() => void handleCancelRegenJob()}
-                      className="h-6 shrink-0 px-2 text-[11px] text-muted-foreground hover:text-destructive"
-                    >
-                      {cancellingJob ? <Loader2 className="size-3 animate-spin" /> : "Cancel"}
-                    </Button>
+                    {canGenerateAll && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={cancellingJob}
+                        onClick={() => void handleCancelRegenJob()}
+                        className="h-6 shrink-0 px-2 text-[11px] text-muted-foreground hover:text-destructive"
+                      >
+                        {cancellingJob ? <Loader2 className="size-3 animate-spin" /> : "Cancel"}
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}
@@ -4557,7 +4578,7 @@ export function CampaignDetail({
                           )}
                         </span>
                       </div>
-                      {!activity && isAiFailedDefault(cl) && cl.email_drafts && status !== "sent" && (
+                      {canGenerate && !activity && isAiFailedDefault(cl) && cl.email_drafts && status !== "sent" && (
                         <Button
                           type="button"
                           variant="outline"
@@ -4675,7 +4696,7 @@ export function CampaignDetail({
                           <Check className="size-3" />
                           Replaced
                         </button>
-                      ) : (
+                      ) : canWrite && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -4766,16 +4787,18 @@ export function CampaignDetail({
                       <p className="text-[13px] font-semibold text-red-800 dark:text-red-300">AI couldn&apos;t write this one, so the default email is used</p>
                       <p className="text-xs text-foreground">{aiFailedReason(selected)} Nothing has been sent. Check the email below, or ask the AI again.</p>
                       <div className="flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          className="gap-1.5"
-                          disabled={retryingId === selected.id}
-                          onClick={() => void handleRetryOne(selected.email_drafts!.id, selected.id)}
-                        >
-                          {retryingId === selected.id ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}
-                          Try AI again
-                        </Button>
-                        {isRemovableLead(selected) && (
+                        {canGenerate && (
+                          <Button
+                            size="sm"
+                            className="gap-1.5"
+                            disabled={retryingId === selected.id}
+                            onClick={() => void handleRetryOne(selected.email_drafts!.id, selected.id)}
+                          >
+                            {retryingId === selected.id ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}
+                            Try AI again
+                          </Button>
+                        )}
+                        {canWrite && isRemovableLead(selected) && (
                           <Button size="sm" variant="outline" className="gap-1.5 text-destructive hover:text-destructive" onClick={() => setRemoveIds([selected.id])}>
                             <UserMinus className="size-3.5" />
                             Remove from campaign
@@ -4958,7 +4981,7 @@ export function CampaignDetail({
                           <span className="text-muted-foreground">
                             ({selected.attachment.effective.source === "lead" ? "this lead" : "campaign default"} · sent as link)
                           </span>
-                          {selected.attachment.effective.source === "lead" && (
+                          {canWrite && selected.attachment.effective.source === "lead" && (
                             <Button
                               type="button"
                               variant="ghost"
@@ -4977,33 +5000,35 @@ export function CampaignDetail({
                           <Paperclip className="size-3" /> No attachment — the email will not mention a brochure
                         </span>
                       )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={attaching}
-                        onClick={() => attachInputRef.current?.click()}
-                        className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground [&_svg]:size-3"
-                      >
-                        {attaching ? <Loader2 className="size-3 animate-spin" /> : <Paperclip className="size-3" />}
-                        {selected.attachment?.effective ? "Replace for this lead" : "Add for this lead"}
-                      </Button>
+                      {canWrite && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={attaching}
+                          onClick={() => attachInputRef.current?.click()}
+                          className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground [&_svg]:size-3"
+                        >
+                          {attaching ? <Loader2 className="size-3 animate-spin" /> : <Paperclip className="size-3" />}
+                          {selected.attachment?.effective ? "Replace for this lead" : "Add for this lead"}
+                        </Button>
+                      )}
                     </div>
 
                     {/* Action buttons */}
                     <div className="flex flex-wrap gap-2 pt-1">
                       {selected.email_drafts.status === "draft" && !isPreviewingHistory && (
                         <>
-                          <Button variant="outline" className="gap-1.5" disabled={saving} onClick={handleSaveEdit}>
+                          {canWrite && <Button variant="outline" className="gap-1.5" disabled={saving} onClick={handleSaveEdit}>
                             {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
                             Save edits
-                          </Button>
-                          <Button className="gap-1.5" disabled={certifying || regenJobActive} title={regenJobActive ? "A regeneration is running — certifying is paused until it finishes" : undefined} onClick={() => (hasUnsavedEdits ? setCertifyPrompt({ bulk: false }) : void handleCertifyOne(selected.email_drafts!.id))}>
+                          </Button>}
+                          {canSend && <Button className="gap-1.5" disabled={certifying || regenJobActive} title={regenJobActive ? "A regeneration is running — certifying is paused until it finishes" : undefined} onClick={() => (hasUnsavedEdits ? setCertifyPrompt({ bulk: false }) : void handleCertifyOne(selected.email_drafts!.id))}>
                             {certifying ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
                             Certify
-                          </Button>
+                          </Button>}
                         </>
                       )}
-                      {isPromptStaleForSelected && !isPreviewingHistory && (
+                      {canGenerate && isPromptStaleForSelected && !isPreviewingHistory && (
                         <Button
                           variant="outline"
                           className="gap-1.5 text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
@@ -5020,15 +5045,17 @@ export function CampaignDetail({
                           <p className="text-[13px] text-green-700 dark:text-green-400 flex items-center gap-1.5 mr-1">
                             <CheckCircle2 className="size-4" /> Certified. Ready to send.
                           </p>
-                          <Button variant="outline" className="gap-1.5 text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300" disabled={certifying} onClick={handleReopen}>
-                            <RotateCcw className="size-3.5" /> Undo certify
-                          </Button>
+                          {canSend && (
+                            <Button variant="outline" className="gap-1.5 text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300" disabled={certifying} onClick={handleReopen}>
+                              <RotateCcw className="size-3.5" /> Undo certify
+                            </Button>
+                          )}
                         </>
                       )}
                       {/* Available for any lead not yet sent — draft, approved (certified), failed, or rejected —
                           so a fresh draft can be regenerated against the current prompt without an extra
                           reopen step, matching what the regenerate API already allows. */}
-                      {["draft", "approved", "failed", "rejected"].includes(selected.email_drafts.status) && !isPreviewingHistory && (
+                      {canGenerate && ["draft", "approved", "failed", "rejected"].includes(selected.email_drafts.status) && !isPreviewingHistory && (
                         <Button
                           variant="outline"
                           className={cn("gap-1.5", regenOpen && "bg-accent hover:bg-accent")}
@@ -5077,9 +5104,11 @@ export function CampaignDetail({
                         {isPreviewingHistory && (
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="text-xs text-amber-700 dark:text-amber-400">Viewing historical version (read-only)</p>
-                            <Button size="sm" variant="outline" disabled={restoring} onClick={() => handleRestoreVersion(previewVersionId!)}>
-                              {restoring ? <Loader2 className="size-3 animate-spin" /> : "Restore this version"}
-                            </Button>
+                            {canWrite && (
+                              <Button size="sm" variant="outline" disabled={restoring} onClick={() => handleRestoreVersion(previewVersionId!)}>
+                                {restoring ? <Loader2 className="size-3 animate-spin" /> : "Restore this version"}
+                              </Button>
+                            )}
                             <Button size="sm" variant="ghost" onClick={() => {
                               setPreviewVersionId(null);
                               setEditSubject(selected.email_drafts?.subject ?? "");
@@ -5150,17 +5179,17 @@ export function CampaignDetail({
                         replyTargetName={item.replyTargetName}
                         stepLabel={item.stepLabel}
                         addingLead={outboxSavingLead && outboxAddLeadFor === item.promotableEmail}
-                        onAddAsLead={item.promotableEmail
+                        onAddAsLead={item.promotableEmail && can("leads:import")
                           ? () => setOutboxAddLeadFor(item.promotableEmail)
                           : null}
-                        onReplyTo={item.replyTargetId
+                        onReplyTo={item.replyTargetId && can("unibox:reply")
                           ? () => {
                               setOutboxReplyTargetId(item.replyTargetId);
                               setOutboxReplyAll(false);
                               setOutboxReplyOpen(true);
                             }
                           : null}
-                        onReplyAll={item.replyTargetId
+                        onReplyAll={item.replyTargetId && can("unibox:reply")
                           ? () => {
                               setOutboxReplyTargetId(item.replyTargetId);
                               setOutboxReplyAll(true);
@@ -5199,7 +5228,8 @@ export function CampaignDetail({
                     lead: getCampaignReplyThreads deliberately skips those, see
                     its own comment) as long as we at least have a thread id to
                     reply into, from this lead's own sequence sends. */}
-                {selected.detail && (selectedThread || outboxFallbackThreadId) && (() => {
+                {/* Replying sends email: unibox:reply. */}
+                {can("unibox:reply") && selected.detail && (selectedThread || outboxFallbackThreadId) && (() => {
                   const outboxThreadId = selectedThread?.thread_key ?? outboxFallbackThreadId!;
                   // No inbound message at all (a pure cold-outreach thread) is
                   // fine — there is simply no AI reply draft to prefill, and the
@@ -5715,7 +5745,7 @@ export function CampaignDetail({
                                 Edit
                               </Button>
                             )}
-                            <Button
+                            {canGenerate && <Button
                               type="button"
                               size="sm"
                               variant="outline"
@@ -5734,7 +5764,7 @@ export function CampaignDetail({
                                 : <RotateCcw />}
                               Regenerate
                               <ChevronDown className={cn("transition-transform", seqRegenOpenFor === row.draft?.id && "rotate-180")} />
-                            </Button>
+                            </Button>}
                             <Button
                               type="button"
                               size="sm"
@@ -6029,7 +6059,7 @@ export function CampaignDetail({
                           {!hasVisibleText(st.fallback_body) && (
                             <p className="text-[11px] text-muted-foreground">Using the company default</p>
                           )}
-                          {canEditSettings && (
+                          {canEditSettings && canGenerate && (
                             <Button
                               type="button"
                               variant="outline"
@@ -6087,7 +6117,7 @@ export function CampaignDetail({
                           const d = (cl.all_drafts ?? []).find((x) => x.step_number === st.step_order);
                           return hasBody(d) && d.source === "manual" && !hasReceivedFollowupStep(cl, st.step_order);
                         }).length;
-                        if (n === 0) return null;
+                        if (n === 0 || !canGenerate) return null;
                         return (
                           <Button
                             key={st.step_order}
@@ -6125,7 +6155,7 @@ export function CampaignDetail({
       )}
 
       {/* ── Credits (managers) ────────────────────────────────────────────── */}
-      {viewTab === "credits" && role === "manager" && <CampaignCredits campaignId={campaign.id} />}
+      {viewTab === "credits" && can("credits:read") && <CampaignCredits campaignId={campaign.id} />}
 
       {/* ── Options ───────────────────────────────────────────────────────── */}
       {viewTab === "options" && (

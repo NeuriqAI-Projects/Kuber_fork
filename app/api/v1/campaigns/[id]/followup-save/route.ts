@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { FollowUpSaveSchema } from "@/lib/validators/drafts";
 import { syncApprovedDraftToInstantly } from "@/lib/services/draft-sync";
 import { patchInstantlySequences, type InstantlyStep } from "@/lib/services/instantly";
-import { assertCampaignAccess } from "@/lib/auth/scope";
+import { assertCampaignAccess, assertCampaignLeadAccess, assertCampaignSettingsAccess } from "@/lib/auth/scope";
 import { logLeadEvent } from "@/lib/services/lead-events";
 import { dbForUser } from "@/lib/supabase/scoped";
 
@@ -23,8 +23,8 @@ export const maxDuration = 60;
 // campaign Cost table (app/api/v1/campaigns/[id]/llm-cost) sums exactly that
 // table and would otherwise bill a human-written edit as if the AI wrote it.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:write"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const body = await req.json().catch(() => null);
@@ -32,7 +32,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
 
   const db = dbForUser(user);
-  try { await assertCampaignAccess(db, user, id); } catch (r) { return r as Response; }
+  try {
+    await assertCampaignAccess(db, user, id);
+    // Per-lead action: without campaigns:all, only a lead assigned to the caller.
+    await assertCampaignLeadAccess(db, user, parsed.data.campaign_lead_id);
+  } catch (r) { return r as Response; }
 
   const { data: cl } = await db
     .from("campaign_leads")
@@ -42,6 +46,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .maybeSingle();
 
   if (!cl) return fail(404, "NOT_FOUND", "Campaign lead not found");
+
+  // An old campaign whose step still holds a hardcoded body gets its
+  // campaign_steps row and every Instantly sub-campaign's sequence rewritten
+  // below — a campaign-wide change, so the shared-campaign rule applies. Checked
+  // up front so a refusal leaves nothing half-saved.
+  const expectedTemplate = `{{customBody${parsed.data.step_number}}}`;
+  const { data: stepRow } = await db
+    .from("campaign_steps")
+    .select("body")
+    .eq("campaign_id", id)
+    .eq("step_order", parsed.data.step_number)
+    .maybeSingle();
+  const rewritesSequence = !!stepRow && stepRow.body !== expectedTemplate;
+  if (rewritesSequence) {
+    try { await assertCampaignSettingsAccess(db, user, id); } catch (r) { return r as Response; }
+  }
 
   const now = new Date().toISOString();
 
@@ -113,15 +133,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // (not the {{customBodyN}} variable placeholder), patch it now so future sends
   // actually use the per-lead variable. This covers campaigns created before the
   // {{customBodyN}} template was introduced.
-  const expectedTemplate = `{{customBody${parsed.data.step_number}}}`;
-  const { data: stepRow } = await db
-    .from("campaign_steps")
-    .select("body")
-    .eq("campaign_id", id)
-    .eq("step_order", parsed.data.step_number)
-    .maybeSingle();
-
-  if (stepRow && stepRow.body !== expectedTemplate) {
+  if (rewritesSequence) {
     // Update our DB first
     await db
       .from("campaign_steps")

@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
-import type { AssistantCaller } from "@/lib/services/assistant/context";
+import { can, canSeeAll } from "@/lib/auth/scopes";
+import { lacks, type AssistantCaller } from "@/lib/services/assistant/context";
 import {
   accessibleCampaignIds, clip, countBy, ilikeValue, loadTeam, one, personName, readAllPages, resolveCampaign, teamNameMap,
 } from "@/lib/services/assistant/tools/shared";
@@ -20,6 +21,8 @@ export function campaignTools(caller: AssistantCaller) {
         limit: z.number().int().min(1).max(50).optional().describe("Default 15."),
       }),
       execute: async ({ status, name, sort = "newest", limit = 15 }) => {
+        const denied = lacks(caller, "campaigns:read");
+        if (denied) return denied;
         const allowed = await accessibleCampaignIds(caller);
         let q = caller.db.from("campaigns")
           .select("id, name, status, total_leads, sent_count, opened_count, replied_count, hot_count, bounced_count, daily_limit, created_by, assigned_to, created_at", { count: "exact" })
@@ -69,24 +72,28 @@ export function campaignTools(caller: AssistantCaller) {
         "Use before answering anything about a single campaign.",
       inputSchema: z.object({ campaign: z.string().describe("Campaign name (or part of it) or id.") }),
       execute: async ({ campaign }) => {
+        const denied = lacks(caller, "campaigns:read");
+        if (denied) return denied;
         const ref = await resolveCampaign(caller, campaign);
         if ("error" in ref) return { error: ref.error };
-        const employee = caller.role === "employee";
+        // Without campaigns:all only the caller's own leads count inside a campaign.
+        const ownOnly = !canSeeAll(caller.member, "campaigns");
+        const seesReplies = can(caller, "unibox:read");
         const [campRes, steps, cls, drafts, replies, team] = await Promise.all([
           caller.db.from("campaigns").select("*").eq("id", ref.id).maybeSingle(),
           caller.db.from("campaign_steps").select("step_order, delay, delay_unit, subject").eq("campaign_id", ref.id).order("step_order"),
           readAllPages<{ crm_status: string; lead_temperature: string | null; interest_status: number | null; leads: { assigned_to: string | null } | null }>((from, to) => {
             let q = caller.db.from("campaign_leads")
-              .select(`crm_status, lead_temperature, interest_status, leads!lead_id${employee ? "!inner" : ""}(assigned_to)`)
+              .select(`crm_status, lead_temperature, interest_status, leads!lead_id${ownOnly ? "!inner" : ""}(assigned_to)`)
               .eq("campaign_id", ref.id);
-            if (employee) q = q.eq("leads.assigned_to", caller.userId);
+            if (ownOnly) q = q.eq("leads.assigned_to", caller.userId);
             return q.order("id").range(from, to);
           }),
           readAllPages<{ status: string; step_number: number | null }>((from, to) => {
             let q = caller.db.from("email_drafts")
-              .select(employee ? "status, step_number, leads!inner(assigned_to)" : "status, step_number")
+              .select(ownOnly ? "status, step_number, leads!inner(assigned_to)" : "status, step_number")
               .eq("campaign_id", ref.id);
-            if (employee) q = q.eq("leads.assigned_to", caller.userId);
+            if (ownOnly) q = q.eq("leads.assigned_to", caller.userId);
             return q.order("id").range(from, to);
           }),
           caller.db.from("campaign_leads")
@@ -119,13 +126,14 @@ export function campaignTools(caller: AssistantCaller) {
           temperature_breakdown: countBy(cls.rows.filter((r) => r.lead_temperature), (r) => r.lead_temperature),
           interested_leads: cls.rows.filter((r) => r.interest_status === 1).length,
           draft_breakdown: countBy(drafts.rows, (r) => `step ${r.step_number ?? 1}: ${r.status}`),
-          latest_replies: (replies.data ?? [])
-            .filter((r) => !employee || one(r.leads as unknown as { assigned_to: string | null } | null)?.assigned_to === caller.userId)
+          // Reply text is Unibox content: only with unibox:read.
+          latest_replies: !seesReplies ? undefined : (replies.data ?? [])
+            .filter((r) => !ownOnly || one(r.leads as unknown as { assigned_to: string | null } | null)?.assigned_to === caller.userId)
             .map((r) => {
               const l = one(r.leads as unknown as { id: string; first_name: string | null; last_name: string | null; email: string | null } | null);
               return { lead: l ? personName(l.first_name, l.last_name) : null, lead_id: l?.id ?? null, email: l?.email ?? null, at: r.last_reply_at, temperature: r.lead_temperature, reply: clip(r.last_reply_body as string | null, 300) };
             }),
-          scope_note: employee ? "Counts cover only your own leads in this campaign." : undefined,
+          scope_note: ownOnly ? "Counts cover only your own leads in this campaign." : undefined,
         };
       },
     }),

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAuth, requireManager } from "@/lib/auth/api-auth";
+import { requireAuth, requireScope } from "@/lib/auth/api-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -37,13 +37,13 @@ export async function GET(req: NextRequest) {
   return ok({ logo_path: logoPath, logo_url: logoUrl });
 }
 
-// The brand logo is part of Company Details, so writes are manager-only — the
-// same rule PATCH /api/v1/settings enforces via KNOWLEDGE_SETTINGS_KEYS. This
+// The brand logo is part of Company Details, so writes need settings:write — the
+// same rule PATCH /api/v1/settings enforces for every non-knowledge key. This
 // route writes `brand_logo_path` directly and would otherwise be the way around
 // that check.
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "settings:write"); } catch (r) { return r as Response; }
 
   const form = await req.formData();
   const file = form.get("file") as File | null;
@@ -79,8 +79,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "settings:write"); } catch (r) { return r as Response; }
 
   const db = dbForUser(user);
   const { data, error } = await db

@@ -2,7 +2,6 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { isAppUser, getUserRole, type AppRole } from "@/lib/auth/roles";
 import { type Lead } from "@/lib/leads";
 import { type Campaign } from "@/components/app/create-campaign-modal";
 import { supabase } from "@/lib/supabase";
@@ -21,7 +20,6 @@ type AppContextValue = {
   // Auth
   session: Session | null;
   loadingSession: boolean;
-  role: AppRole | null;
 
   // Leads
   leads: Lead[];
@@ -110,13 +108,8 @@ async function resolveSession(): Promise<Session | null> {
   const { data, error } = await supabase.auth.getClaims(session.access_token);
   if (error || !data?.claims) return null;
 
-  const user = {
-    app_metadata: data.claims.app_metadata,
-  } as Parameters<typeof isAppUser>[0];
-  if (!isAppUser(user)) {
-    await supabase.auth.signOut();
-    return null;
-  }
+  // Whether this user is an active member is the profile row, checked by the
+  // (app) layout on the server and by every API call — never a JWT claim.
   return session;
 }
 
@@ -203,8 +196,7 @@ export function AppProvider({
         setLoadingSession(false);
         return;
       }
-      if (!s?.user || !isAppUser(s.user)) {
-        if (s?.user && !isAppUser(s.user)) await supabase.auth.signOut();
+      if (!s?.user) {
         setSession(null);
         setLoadingSession(false);
         return;
@@ -433,7 +425,6 @@ export function AppProvider({
   const value: AppContextValue = useMemo(() => ({
     session,
     loadingSession,
-    role: getUserRole(session?.user),
     leads,
     setLeads,
     leadsTotal,

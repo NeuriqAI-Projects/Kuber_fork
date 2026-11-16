@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
+import { canGrant, isLeadOwner, parseScopes } from "@/lib/auth/scopes";
 import { ok, fail } from "@/lib/api-response";
 import { CreateUserSchema } from "@/lib/validators/users";
 import { canonicalCountryList } from "@/lib/territory";
@@ -8,13 +9,13 @@ import { dbForUser } from "@/lib/supabase/scoped";
 export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "team:read"); } catch (r) { return r as Response; }
 
   const db = dbForUser(user);
   const { data, error } = await db
     .from("profiles")
-    .select("id, email, full_name, role, territory_countries, is_active, availability_status, is_super_admin, sending_email, created_at")
+    .select("id, email, full_name, territory_countries, is_active, availability_status, sending_email, created_at, is_owner, scopes")
     .order("created_at", { ascending: true });
 
   if (error) return fail(500, "INTERNAL", error.message);
@@ -22,19 +23,22 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  let caller: Awaited<ReturnType<typeof requireManager>>;
-  try { caller = await requireManager(req); } catch (r) { return r as Response; }
+  let caller: Awaited<ReturnType<typeof requireScope>>;
+  try { caller = await requireScope(req, "team:write"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
   const parsed = CreateUserSchema.safeParse(body);
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
-  const { email, password, full_name, role, territory_countries } = parsed.data;
+  const { email, password, full_name, territory_countries } = parsed.data;
 
-  // Only the Super Admin creates other manager accounts — regular managers
-  // may only bring on employees (mirrors the PATCH-side restriction below).
-  if (role === "manager" && !caller.isSuperAdmin) {
-    return fail(403, "FORBIDDEN", "Only the Super Admin can create manager accounts.");
-  }
+  const scopes = parseScopes(parsed.data.scopes);
+  if (!scopes.ok) return fail(400, "VALIDATION_ERROR", scopes.error);
+  // No escalation (lib/auth/scopes.ts canGrant): a non-owner may only hand out
+  // scopes they hold themselves, and only the owner gives out team:write — the
+  // old "only the Super Admin creates managers" rule.
+  const verdict = canGrant(caller.member, { id: "new", isOwner: false, active: true, scopes: [] }, scopes.scopes);
+  if (!verdict.ok) return fail(403, "FORBIDDEN", verdict.error);
+  const leadOwner = isLeadOwner({ id: "new", isOwner: false, active: true, scopes: scopes.scopes });
 
   const db = dbForUser(caller);
 
@@ -42,7 +46,6 @@ export async function POST(req: NextRequest) {
     email,
     password,
     email_confirm: true,
-    app_metadata: { role },
   });
   if (createError || !created.user) {
     return fail(400, "USER_CREATE_FAILED", createError?.message ?? "Could not create user");
@@ -54,11 +57,11 @@ export async function POST(req: NextRequest) {
       id: created.user.id,
       email,
       full_name,
-      role,
-      territory_countries: role === "employee" ? canonicalCountryList(territory_countries) : [],
+      scopes: scopes.scopes,
+      territory_countries: leadOwner ? canonicalCountryList(territory_countries) : [],
       is_active: true,
     })
-    .select("id, email, full_name, role, territory_countries, is_active, availability_status, is_super_admin, sending_email, created_at")
+    .select("id, email, full_name, territory_countries, is_active, availability_status, sending_email, created_at, is_owner, scopes")
     .single();
 
   if (profileError) {

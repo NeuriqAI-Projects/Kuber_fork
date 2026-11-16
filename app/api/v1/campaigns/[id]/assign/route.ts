@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { dbId } from "@/lib/validators/id";
-import { requireManager } from "@/lib/auth/api-auth";
+import { assertScope, requireScope } from "@/lib/auth/api-auth";
+import { assertCampaignSettingsAccess } from "@/lib/auth/scope";
 import { ok, fail } from "@/lib/api-response";
 import { logLeadEvents } from "@/lib/services/lead-events";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -9,12 +10,12 @@ import { dbForUser } from "@/lib/supabase/scoped";
 export const maxDuration = 60;
 
 const AssignCampaignSchema = z.object({
-  assigned_to: dbId.nullable(),   // null = return to the manager pool
+  assigned_to: dbId.nullable(),   // null = return to the unassigned pool
   reassign_leads: z.boolean().optional().default(false),
 });
 
 /**
- * Assign (or reassign, or unassign) a whole campaign to one employee
+ * Assign (or reassign, or unassign) a whole campaign to one member
  * (planning.md Phase 2 / Q2). The campaign row holds the single current
  * assignee; campaign_assignments keeps the append-only history so repeated
  * reassignment can never pile up or become ambiguous.
@@ -23,16 +24,23 @@ const AssignCampaignSchema = z.object({
  * the Leads table and the inbox tell the same story.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let caller: Awaited<ReturnType<typeof requireManager>>;
-  try { caller = await requireManager(req); } catch (r) { return r as Response; }
+  let caller: Awaited<ReturnType<typeof requireScope>>;
+  try { caller = await requireScope(req, "campaigns:assign"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const body = await req.json().catch(() => null);
   const parsed = AssignCampaignSchema.safeParse(body);
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
   const { assigned_to, reassign_leads } = parsed.data;
+  // Moving the campaign's leads is a lead assignment too.
+  if (reassign_leads) {
+    try { assertScope(caller, "leads:assign"); } catch (r) { return r as Response; }
+  }
 
   const db = dbForUser(caller);
+  // Campaign-wide change: no-op for members with campaigns:all (who held this
+  // route alone before scopes); others only on a campaign that is theirs alone.
+  try { await assertCampaignSettingsAccess(db, caller, id); } catch (r) { return r as Response; }
 
   const { data: campaign, error: campaignErr } = await db
     .from("campaigns")

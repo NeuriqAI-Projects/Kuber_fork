@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { getUniboxScope } from "@/lib/auth/scope";
 import { getThreads, type UniboxReadState, type UniboxTab } from "@/lib/services/unibox";
@@ -21,8 +21,8 @@ function parseReadState(raw: string | null): UniboxReadState | undefined {
 }
 
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "unibox:read"); } catch (r) { return r as Response; }
   const sp = req.nextUrl.searchParams;
   const db = dbForUser(user);
 
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     : undefined;
   const campaign_id: string | undefined = sp.get("campaign_id") ?? undefined;
 
-  // Employees see ONLY threads of leads assigned to them (spec §7). The scope
+  // Without unibox:all a member sees ONLY threads of leads assigned to them (spec §7). The scope
   // is the security boundary; campaign_id(s) stay purely user-facing filters
   // intersected on top.
   const scope = getUniboxScope(user) ?? undefined;

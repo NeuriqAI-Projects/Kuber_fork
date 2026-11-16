@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireAuth, type AuthedUser } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { PatchUserSettingsSchema } from "@/lib/validators/settings";
 import {
@@ -22,7 +22,8 @@ type Db = SupabaseClient;
 // is nullable — null means "inherit the company default". The response carries
 // both the raw personal values and the resolved effective ones so the UI can
 // show "Using company default" states without a second round-trip.
-async function buildResponse(db: Db, userId: string, isSuperAdmin: boolean) {
+async function buildResponse(db: Db, user: AuthedUser) {
+  const userId = user.id;
   const [personal, globalPrompt, replyPrompts, signature, client] = await Promise.all([
     getUserSettings(db, userId),
     getSystemPrompt(db),
@@ -40,7 +41,8 @@ async function buildResponse(db: Db, userId: string, isSuperAdmin: boolean) {
     theme:        personal?.theme ?? null,
     theme_mode:   personal?.theme_mode ?? null,
     // Already resolved by requireAuth — no extra profile round-trip.
-    is_super_admin: isSuperAdmin,
+    is_owner: user.isOwner,
+    scopes: user.scopes,
     defaults: {
       draft_prompt: globalPrompt,
       reply_prompt: replyPrompts.drafter,
@@ -58,7 +60,7 @@ export async function GET(req: NextRequest) {
   }
 
   const db = dbForUser(user);
-  return ok(await buildResponse(db, user.id, user.isSuperAdmin));
+  return ok(await buildResponse(db, user));
 }
 
 export async function PATCH(req: NextRequest) {
@@ -89,5 +91,5 @@ export async function PATCH(req: NextRequest) {
     if (error) return fail(500, "INTERNAL", error.message);
   }
 
-  return ok(await buildResponse(db, user.id, user.isSuperAdmin));
+  return ok(await buildResponse(db, user));
 }

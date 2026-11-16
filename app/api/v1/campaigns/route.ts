@@ -1,25 +1,26 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { CreateCampaignSchema } from "@/lib/validators/campaigns";
 import { buildDefaultCampaignSteps } from "@/lib/constants";
 import { getAccessibleCampaignIds, campaignsEditableByEmployee } from "@/lib/auth/scope";
 import { computeCampaignStats, type CampaignStatsRow } from "@/lib/campaign-status";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { canSeeAll } from "@/lib/auth/scopes";
 
 export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:read"); } catch (r) { return r as Response; }
 
   const db = dbForUser(user);
 
-  // A campaign is a container that may hold leads from several employees
-  // (spec §5). An employee sees any campaign that contains at least one lead
-  // assigned to them (getAccessibleCampaignIds resolves that).
-  if (user.role === "employee") {
-    // One SQL call: visible campaigns + this employee's own counts + the edit
+  // A campaign is a container that may hold leads from several lead owners
+  // (spec §5). A member without campaigns:all sees any campaign that contains
+  // at least one lead assigned to them (getAccessibleCampaignIds resolves that).
+  if (!canSeeAll(user.member, "campaigns")) {
+    // One SQL call: visible campaigns + this member's own counts + the edit
     // flag (employee_campaign_stats, 2026_11_05_D_campaign_rpcs.sql). Same rules
     // as the fallback below, which runs only if that function is missing.
     const { data: stats, error: rpcError } = user.companyId
@@ -65,11 +66,11 @@ export async function GET(req: NextRequest) {
     if (error) return fail(500, "INTERNAL", error.message);
 
     // The row's own total_leads/sent_count/replied_count/hot_count/cold_count
-    // are campaign-wide — an employee must only see counts for THEIR OWN leads
+    // are campaign-wide — a member without campaigns:all must only see counts for THEIR OWN leads
     // in each campaign, never a co-worker's (confirmed live: an employee with
     // 2 of a campaign's 7 leads was seeing the full 7/7/2/29% campaign-wide
     // stats on their card and Analytics tab). Recompute from campaign_leads
-    // scoped to this employee and overlay onto each row before returning.
+    // scoped to this member and overlay onto each row before returning.
     // Only the live campaigns (ids also holds deleted ones), and paged: one
     // query caps at 1000 rows, which cut an employee's counts to a random few
     // (live: 342 own leads showed as 0/0/1/5).
@@ -95,8 +96,8 @@ export async function GET(req: NextRequest) {
       byCampaign.set(row.campaign_id as string, list);
     }
 
-    // Which of these the employee may edit the shared Options/Sequences of:
-    // the ones no other employee is part of (docs/notes/EDGE_CASES.md §2.10). The UI needs
+    // Which of these the member may edit the shared Options/Sequences of:
+    // the ones no other lead owner is part of (docs/notes/EDGE_CASES.md §2.10). The UI needs
     // it per card to know whether to render those tabs editable.
     const editable = await campaignsEditableByEmployee(db, user.id, ids);
 
@@ -125,17 +126,17 @@ export async function GET(req: NextRequest) {
     .order("created_at", { ascending: false });
 
   if (error) return fail(500, "INTERNAL", error.message);
-  // Managers administer every campaign, so this is always true for them.
+  // Members with campaigns:all administer every campaign, so this is always true for them.
   return ok({ campaigns: (data ?? []).map((c) => ({ ...c, can_edit_settings: true })) });
 }
 
-// Any authenticated user may create a campaign. An employee only ever sees
-// their own leads on the Leads page (GET /leads scoping), so a campaign they
-// build is naturally scoped to leads they already own — there is no separate
-// permission needed here, and no way for them to pull in a co-worker's lead.
+// Any member with campaigns:write may create a campaign. A member without
+// leads:all only ever sees their own leads on the Leads page (GET /leads
+// scoping), so a campaign they build is naturally scoped to leads they already
+// own — no way for them to pull in a co-worker's lead.
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:write"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
   const parsed = CreateCampaignSchema.safeParse(body);

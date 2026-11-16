@@ -11,6 +11,7 @@ import { sequenceStepLabel } from "@/lib/campaign-status";
 import { convertResidualMarkdownInHtml } from "@/lib/utils/email-html";
 import type { ReplyDraft, UniboxMessage } from "@/lib/api-client";
 import { addThreadParticipantAsLead, generateReplyDraftForThread } from "@/lib/api-client";
+import { useAccess } from "@/lib/access-context";
 import dynamic from "next/dynamic";
 import { replyDraftHasContent } from "@/lib/reply-draft-content";
 import type { ReplyRecipientContext } from "@/components/app/manual-reply-box";
@@ -381,6 +382,8 @@ export function UniboxThreadView({
   ownerName,
   onChanged,
 }: Props) {
+  // "Add as lead" creates a lead: leads:import.
+  const canAddLead = useAccess().can("leads:import");
   const [replyOpen, setReplyOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -615,7 +618,7 @@ export function UniboxThreadView({
                 const from = parseAddressList(msg.from_email)[0];
                 const isThirdParty =
                   msg.direction === "received" && !!from && from !== leadAddress && !ourEmails.has(from);
-                if (!isThirdParty || knownLeadSet.has(from)) return null;
+                if (!canAddLead || !isThirdParty || knownLeadSet.has(from)) return null;
                 return () => setAddLeadFor(from);
               })()}
               addingLead={savingLead && addLeadFor === parseAddressList(msg.from_email)[0]}

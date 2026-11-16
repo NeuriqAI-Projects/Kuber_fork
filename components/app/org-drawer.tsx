@@ -8,6 +8,7 @@ import {
 import { cn } from "@/lib/utils";
 import { patchOrg, queryCache, cacheKeys, cachedFetchers, prefetchLead } from "@/lib/api-client";
 import { useApp } from "@/lib/app-context";
+import { useAccess } from "@/lib/access-context";
 import type { Lead } from "@/lib/leads";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -115,6 +116,7 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
   // Until the org record arrives, title the drawer with the company name of
   // any lead already loaded for it instead of "Loading…".
   const { leads: knownLeads } = useApp();
+  const { can } = useAccess();
   const fallbackName = orgId ? knownLeads.find((l) => l.orgId === orgId)?.company || null : null;
 
   const activeOrgIdRef = useRef<string | null>(null);
@@ -322,7 +324,7 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
           crumbs={[{ icon: <Building2 />, label: "Organization" }, { label: title }]}
           actions={
             <>
-              {org && !editing && (
+              {org && !editing && can("organizations:write") && (
                 <Button
                   type="button" variant="ghost" size="sm"
                   onClick={() => { setEditing(true); setError(""); }}
@@ -511,7 +513,7 @@ export function OrgDrawer({ orgId, onClose, onAddLead, onLeadClick }: {
             )}
           </RecordLayout>
         )}
-        {org?.scored && !editing && canDecide(org.scored) && (
+        {org?.scored && !editing && canDecide(org.scored) && can("prospects:run") && (
           <div className="shrink-0 border-t border-border p-4"><Decide c={org.scored} busy={deciding} onDecide={decide} large /></div>
         )}
       </div>

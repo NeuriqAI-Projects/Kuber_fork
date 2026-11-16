@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { dbId } from "@/lib/validators/id";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { bulkAssignByStrategy } from "@/lib/services/assignment";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -18,8 +18,8 @@ const BulkAssignSchema = z.discriminatedUnion("strategy", [
 ]);
 
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "leads:assign"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
   const parsed = BulkAssignSchema.safeParse(body);

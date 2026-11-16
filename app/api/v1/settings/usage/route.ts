@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok } from "@/lib/api-response";
 import {
   checkApolloCredits, checkFirecrawlCredits, checkOpenRouterCredits, checkInstantlyCredits, checkJevCredits, checkTavilyCredits,
@@ -33,12 +33,12 @@ const PROVIDERS: Array<{
   { id: "tavily", label: "Tavily", shared: false, check: checkTavilyCredits },
 ];
 
-// Every manager can see whether a provider is running low; only super admins
-// get the exact remaining number — trimmed here, server-side, rather than
-// trusting the client to hide a number it already received.
+// Anyone with credits:read sees each provider's status and the exact remaining
+// number. (A super-admin-only trim used to null `remaining`, but `message` and
+// the keys/usage/* routes already gave every manager the number — plan §7 C.)
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "credits:read"); } catch (r) { return r as Response; }
 
   const db = dbForUser(user);
   const checks = await Promise.all(
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
       id: p.id,
       label: p.label,
       status: statusFor(check),
-      remaining: user.isSuperAdmin ? check.remaining : null,
+      remaining: check.remaining,
       message: check.message,
     };
   });

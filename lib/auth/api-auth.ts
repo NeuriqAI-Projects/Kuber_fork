@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { verifyAccessToken } from "@/lib/auth/verify-jwt";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { AppRole } from "@/lib/auth/roles";
+import { memberScopes, missingScopeMessage, SCOPES, type Member, type Scope } from "@/lib/auth/scopes";
 import { SERVICE_ROLE_USER_ID } from "@/lib/constants";
 import { checkRateLimit, tierFor } from "@/lib/auth/rate-limit";
 
@@ -16,9 +16,11 @@ const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 export type AuthedUser = {
   id: string;
   email?: string;
-  role: AppRole;
-  isSuperAdmin: boolean;
   companyId: string | null;
+  isOwner: boolean;
+  /** memberScopes(member) at request time — read from profiles, never the JWT. */
+  scopes: Scope[];
+  member: Member;
 };
 
 function unauthorized(message: string) {
@@ -49,7 +51,7 @@ function forbidden(message: string) {
   );
 }
 
-type ProfileRow = { role: string; is_active: boolean; is_super_admin: boolean; company_id: string | null };
+type ProfileRow = { is_active: boolean; is_owner: boolean; scopes: string[] | null; company_id: string | null };
 
 /** Profile rows cached per server instance for at most PROFILE_TTL_MS. */
 const PROFILE_TTL_MS = 30_000;
@@ -60,7 +62,7 @@ async function loadProfile(userId: string): Promise<ProfileRow | null> {
   if (hit && hit.expires > Date.now()) return hit.profile;
   const { data } = await createAdminClient()
     .from("profiles")
-    .select("role, is_active, is_super_admin, company_id")
+    .select("is_active, is_owner, scopes, company_id")
     .eq("id", userId)
     .maybeSingle();
   // Misses are not cached, so a just-provisioned user works on the next call.
@@ -71,10 +73,15 @@ async function loadProfile(userId: string): Promise<ProfileRow | null> {
   return (data as ProfileRow | null) ?? null;
 }
 
+/** Drop a member's cached profile on this instance (after their scopes / active flag change). */
+export function forgetProfile(userId: string): void {
+  profileCache.delete(userId);
+}
+
 /**
- * Verifies the Bearer JWT and resolves the caller's role from `profiles` (not the JWT claim) so a
- * role change does not wait on token refresh. The profile row is cached per server instance for
- * 30 s, so a role change or deactivation reaches API calls within 30 s (not instantly).
+ * Verifies the Bearer JWT and resolves the caller's scopes from `profiles` (never the JWT)
+ * so a change does not wait on token refresh. The profile row is cached per server instance
+ * for 30 s, so a scope change or deactivation reaches other instances within 30 s.
  * Returns the user or throws a Response.
  */
 export async function requireAuth(request: NextRequest): Promise<AuthedUser> {
@@ -86,7 +93,9 @@ export async function requireAuth(request: NextRequest): Promise<AuthedUser> {
   }
 
   if (SERVICE_ROLE_KEY && token === SERVICE_ROLE_KEY) {
-    return { id: SERVICE_ROLE_USER_ID, email: "admin@service", role: "manager", isSuperAdmin: true, companyId: null };
+    // Internal server-to-server bearer: acts as an owner with every scope, across companies.
+    const member: Member = { id: SERVICE_ROLE_USER_ID, isOwner: true, active: true, scopes: [] };
+    return { id: SERVICE_ROLE_USER_ID, email: "admin@service", companyId: null, isOwner: true, scopes: [...SCOPES], member };
   }
 
   const verified = await verifyAccessToken(token);
@@ -118,33 +127,37 @@ export async function requireAuth(request: NextRequest): Promise<AuthedUser> {
     throw unauthorized("Account is not assigned to a company");
   }
 
+  const member: Member = {
+    id: verified.id,
+    isOwner: profile.is_owner,
+    active: profile.is_active,
+    scopes: profile.scopes ?? [],
+  };
   return {
     id: verified.id,
     email: verified.email,
-    role: profile.role as AppRole,
-    isSuperAdmin: profile.is_super_admin,
     companyId: profile.company_id as string,
+    isOwner: member.isOwner,
+    scopes: memberScopes(member),
+    member,
   };
 }
 
-/** Like requireAuth, but 403s unless the caller is a manager. */
-export async function requireManager(request: NextRequest): Promise<AuthedUser> {
+/**
+ * requireAuth + the caller must hold `scope` (or be the owner, for "owner").
+ * Every user-facing route handler calls this (lib/auth/access-wiring.test.mts
+ * enforces it). A write handler is never guarded by a `:read` scope.
+ */
+export async function requireScope(request: NextRequest, scope: Scope | "owner"): Promise<AuthedUser> {
   const user = await requireAuth(request);
-  if (user.role !== "manager") {
-    throw forbidden("Manager access required");
+  const allowed = scope === "owner" ? user.isOwner : user.scopes.includes(scope);
+  if (!allowed) {
+    throw forbidden(scope === "owner" ? "Only the owner can do this." : missingScopeMessage(scope));
   }
   return user;
 }
 
-/** Like requireManager, but 403s unless the caller is also flagged
- *  is_super_admin — for the handful of routes more sensitive than ordinary
- *  manager territory (provider API keys). Promotes the inline
- *  `caller.isSuperAdmin` check already used ad hoc in settings/users/route.ts
- *  to a reusable guard now that a whole route family needs it. */
-export async function requireSuperAdmin(request: NextRequest): Promise<AuthedUser> {
-  const user = await requireManager(request);
-  if (!user.isSuperAdmin) {
-    throw forbidden("Super admin access required");
-  }
-  return user;
+/** Throws a 403 unless the already-authed caller also holds `scope` (a second scope inside a handler). */
+export function assertScope(user: AuthedUser, scope: Scope): void {
+  if (!user.scopes.includes(scope)) throw forbidden(missingScopeMessage(scope));
 }

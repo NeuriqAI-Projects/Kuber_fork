@@ -13,8 +13,9 @@ type Db = ReturnType<typeof createAdminClient>;
 export type AssignmentStrategy = "manual" | "round_robin" | "territory";
 
 /**
- * Employees ELIGIBLE for automatic assignment (spec §2B/§3): role=employee,
- * is_active=true, AND availability_status='online'. Deactivated users can't be
+ * Employees ELIGIBLE for automatic assignment (spec §2B/§3): lead owners
+ * (isLeadOwner in lib/auth/scopes.ts — not the owner, leads:read without
+ * leads:all; the old role = 'employee'), is_active=true, AND availability_status='online'. Deactivated users can't be
  * assigned at all; offline users are temporarily excluded from round-robin and
  * territory routing (but can still receive a manual assignment, with a warning).
  *
@@ -26,7 +27,7 @@ export type AssignmentStrategy = "manual" | "round_robin" | "territory";
 export async function getEligibleEmployees(db: Db, excludeId?: string | null): Promise<string[]> {
   let q = db.from("profiles")
     .select("id")
-    .eq("role", "employee")
+    .eq("is_owner", false).contains("scopes", ["leads:read"]).not("scopes", "cs", "{leads:all}")
     .eq("is_active", true)
     .eq("availability_status", "online");
   if (excludeId) q = q.neq("id", excludeId);
@@ -51,7 +52,7 @@ export async function getEligibleEmployees(db: Db, excludeId?: string | null): P
 export async function getCoverage(db: Db, excludeId?: string | null): Promise<Coverage[]> {
   let q = db.from("profiles")
     .select("id, territory_countries")
-    .eq("role", "employee")
+    .eq("is_owner", false).contains("scopes", ["leads:read"]).not("scopes", "cs", "{leads:all}")
     .eq("is_active", true)
     .eq("availability_status", "online");
   if (excludeId) q = q.neq("id", excludeId);
@@ -69,9 +70,11 @@ export async function getCoverage(db: Db, excludeId?: string | null): Promise<Co
 async function getExclusionCounts(db: Db): Promise<{ excluded_offline: number; excluded_deactivated: number }> {
   const [{ count: offline }, { count: deactivated }] = await Promise.all([
     db.from("profiles").select("id", { count: "exact", head: true })
-      .eq("role", "employee").eq("is_active", true).eq("availability_status", "offline"),
+      .eq("is_owner", false).contains("scopes", ["leads:read"]).not("scopes", "cs", "{leads:all}")
+      .eq("is_active", true).eq("availability_status", "offline"),
     db.from("profiles").select("id", { count: "exact", head: true })
-      .eq("role", "employee").eq("is_active", false),
+      .eq("is_owner", false).contains("scopes", ["leads:read"]).not("scopes", "cs", "{leads:all}")
+      .eq("is_active", false),
   ]);
   return { excluded_offline: offline ?? 0, excluded_deactivated: deactivated ?? 0 };
 }

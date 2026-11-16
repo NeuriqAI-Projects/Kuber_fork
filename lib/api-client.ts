@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import type { Lead, LeadStatus, LeadScore, LeadSource, EnrichmentStage } from "@/lib/leads";
 import type { Campaign } from "@/components/app/create-campaign-modal";
 import type { CampaignStepInput, IndustryKeywordGroup } from "@/lib/constants";
+import type { Member, Scope } from "@/lib/auth/scopes";
 import { campaignOutcomes } from "@/lib/campaign-status";
 import { mapDbCampaign as mapDbCampaignFull } from "@/lib/mappers";
 import { queryCache } from "@/lib/query-cache";
@@ -344,7 +345,7 @@ export type LeadActivityEvent = {
   created_at: string;
 };
 
-// Settings > Keys (super-admin only) — multi-provider API key management.
+// Credits > keys (keys:read to see, keys:write to change) — multi-provider API key management.
 export type ProviderCategory = "llm" | "service";
 export type ProviderKeyStatus = "healthy" | "cooling_off" | "dead";
 export type ProviderKey = {
@@ -381,8 +382,8 @@ export type ProviderUsage = {
   id: string;
   label: string;
   status: "ok" | "low" | "out" | "unknown";
-  // Exact numbers are super-admin only — the API trims this to null for
-  // everyone else, so absence here just means "not shown to you."
+  // null when the provider gave no number (credits:read shows exact numbers,
+  // plan §7 C).
   remaining: number | null;
   message: string;
 };
@@ -1278,7 +1279,10 @@ export type MySettings = {
   sender_name: string | null;
   theme: string | null;
   theme_mode: string | null;
-  is_super_admin: boolean;
+  /** The company owner (holds every permission). */
+  is_owner: boolean;
+  /** The member's ticked permissions (profiles.scopes). */
+  scopes: Scope[];
   defaults: {
     draft_prompt: string;
     reply_prompt: string;
@@ -1299,7 +1303,7 @@ export async function patchMySettings(
   return apiFetch("/api/v1/me/settings", { method: "PATCH", body: JSON.stringify(body) }, token);
 }
 
-// ─── Roles / users / assignment ───────────────────────────────────────────────
+// ─── Team members / assignment ────────────────────────────────────────────────
 
 export type AvailabilityStatus = "online" | "offline";
 
@@ -1307,23 +1311,30 @@ export type Profile = {
   id: string;
   email: string;
   full_name: string | null;
-  role: "manager" | "employee";
-  /** Canonical country names this employee receives leads for. Empty = no territory. */
+  /** Canonical country names this lead owner receives leads for. Empty = no territory. */
   territory_countries: string[];
   is_active: boolean;
   availability_status: AvailabilityStatus;
-  is_super_admin: boolean;
   /** Instantly mailbox this person's leads are mailed from. null = company default. */
   sending_email: string | null;
   created_at: string;
+  /** The company owner: holds every permission whatever `scopes` says. */
+  is_owner: boolean;
+  /** Ticked permissions (profiles.scopes), in SCOPES order. */
+  scopes: Scope[];
 };
+
+/** A profile as the pure permission helpers (lib/auth/scopes.ts) see it. */
+export function profileMember(p: Pick<Profile, "id" | "is_owner" | "is_active" | "scopes">): Member {
+  return { id: p.id, isOwner: p.is_owner, active: p.is_active, scopes: p.scopes ?? [] };
+}
 
 export async function fetchUsers(token: string): Promise<Profile[]> {
   return apiFetch("/api/v1/settings/users", {}, token);
 }
 
 export async function createUser(token: string, body: {
-  email: string; password: string; full_name: string; role: "manager" | "employee"; territory_countries?: string[];
+  email: string; password: string; full_name: string; scopes: Scope[]; territory_countries?: string[];
 }): Promise<Profile> {
   return apiFetch("/api/v1/settings/users", { method: "POST", body: JSON.stringify(body) }, token);
 }
@@ -1345,7 +1356,7 @@ export type HandoverSummary = {
 };
 
 export async function patchUser(token: string, id: string, body: Partial<{
-  full_name: string; role: "manager" | "employee"; territory_countries: string[]; is_active: boolean; availability_status: AvailabilityStatus; password: string; handover_strategy: HandoverStrategy; reassign_to: string; sending_email: string | null;
+  full_name: string; scopes: Scope[]; territory_countries: string[]; is_active: boolean; availability_status: AvailabilityStatus; password: string; handover_strategy: HandoverStrategy; reassign_to: string; sending_email: string | null;
 }>): Promise<Profile & { handover?: HandoverSummary }> {
   return apiFetch(`/api/v1/settings/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }, token);
 }
@@ -1359,7 +1370,7 @@ export async function setMyAvailability(token: string, availability_status: Avai
   return apiFetch("/api/v1/me/availability", { method: "PATCH", body: JSON.stringify({ availability_status }) }, token);
 }
 
-// Auto-assignment default for newly-enriched pool leads (manager-only).
+// Auto-assignment default for newly-enriched pool leads (settings:write).
 export async function fetchAssignmentSettings(token: string): Promise<{ strategy: "manual" | "round_robin" | "territory" }> {
   return apiFetch("/api/v1/settings/assignment", {}, token);
 }
@@ -1371,9 +1382,13 @@ export async function patchAssignmentSettings(
   return apiFetch("/api/v1/settings/assignment", { method: "PATCH", body: JSON.stringify({ strategy }) }, token);
 }
 
+/** A profile as the oversight route returns it: no permission fields (is_owner / scopes). */
+type OversightProfile = Pick<Profile, "id" | "email" | "full_name" | "territory_countries" | "is_active" | "availability_status">;
+
+/** dashboard:all. `employees` = lead owners (isLeadOwner), with their workload counts. */
 export async function fetchOversight(token: string): Promise<{
-  campaigns: Array<{ id: string; name: string; status: string; created_by: string; total_leads: number; sent_count: number; opened_count: number; replied_count: number; hot_count: number; created_at: string; owner: Profile | null }>;
-  employees: Array<Profile & { assigned_lead_count: number; campaign_count: number }>;
+  campaigns: Array<{ id: string; name: string; status: string; created_by: string; total_leads: number; sent_count: number; opened_count: number; replied_count: number; hot_count: number; created_at: string; owner: OversightProfile | null }>;
+  employees: Array<OversightProfile & { assigned_lead_count: number; campaign_count: number }>;
 }> {
   return apiFetch("/api/v1/dashboard/oversight", {}, token);
 }
@@ -2106,8 +2121,8 @@ export type DashboardAnalyticsData = {
   stageDonutData: Array<{ name: string; value: number; color: string }>;
 };
 
-/** Manager: company-wide; employee: scoped to their own leads/campaigns —
- *  the route decides from the caller's role, same as the old server page. */
+/** With dashboard:all: company-wide; without: scoped to their own leads/campaigns —
+ *  the route decides from the caller's scopes, same as the old server page. */
 export async function fetchDashboardAnalytics(token: string): Promise<DashboardAnalyticsData> {
   return apiFetch("/api/v1/dashboard/analytics", {}, token);
 }
@@ -2229,7 +2244,7 @@ export type AssistantUsageData = {
   per_person_available: boolean;
   total: UsageAgg;
   by_purpose: Array<UsageAgg & { purpose: string }>;
-  by_person: Array<UsageAgg & { user_id: string | null; name: string; email: string | null; role: string | null }>;
+  by_person: Array<UsageAgg & { user_id: string | null; name: string; email: string | null }>;
   by_model: Array<UsageAgg & { model: string }>;
   daily: Array<{ date: string; assistant: number; other: number }>;
 };

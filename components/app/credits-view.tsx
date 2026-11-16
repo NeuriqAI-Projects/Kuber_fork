@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { Coins } from "lucide-react";
-import { useApp } from "@/lib/app-context";
+import { useAccess } from "@/lib/access-context";
+import { missingScopeMessage } from "@/lib/auth/scopes";
+import { EmptyState } from "@/components/ui/empty-state";
 import { InfoTip } from "@/components/ui/info-tip";
 import { PageShell } from "@/components/ui/page-shell";
 import { SettingsSection } from "@/components/ui/settings";
@@ -27,12 +29,18 @@ const TABS: { id: Tab; label: string; blurb: string }[] = [
 ];
 
 export function CreditsView() {
-  const { role } = useApp();
+  const { can } = useAccess();
   const [tab, setTab] = useState<Tab>("apollo");
 
-  if (role !== "manager") {
-    return <p className="text-sm text-muted-foreground px-6 py-10 text-center">Only managers can see credits and keys.</p>;
+  // Usage = credits:read; the key panels need keys:read (changing a key: keys:write, checked by the API).
+  if (!can("credits:read")) {
+    return (
+      <PageShell title="Credits" icon={<Coins />}>
+        <EmptyState icon={Coins} title="No access" message={missingScopeMessage("credits:read")} />
+      </PageShell>
+    );
   }
+  const canSeeKeys = can("keys:read");
   const active = TABS.find((t) => t.id === tab);
 
   return (
@@ -59,14 +67,14 @@ export function CreditsView() {
     >
       {tab === "ai" ? (
         <>
-          <SettingsSection title="Keys" description={active?.blurb} className="space-y-3"><LlmKeysPanel /></SettingsSection>
+          {canSeeKeys && <SettingsSection title="Keys" description={active?.blurb} className="space-y-3"><LlmKeysPanel /></SettingsSection>}
           <AssistantModelsPanel />
           <AssistantUsageView />
           <AiUsageView />
         </>
       ) : (
         <>
-          <SettingsSection title="Key" description={active?.blurb} className="space-y-3"><ServiceKeysPanel key={tab} providerId={tab} /></SettingsSection>
+          {canSeeKeys && <SettingsSection title="Key" description={active?.blurb} className="space-y-3"><ServiceKeysPanel key={tab} providerId={tab} /></SettingsSection>}
           {tab === "apollo" && <ApolloUsageView />}
           {tab === "instantly" && <InstantlyUsageView />}
           {tab === "firecrawl" && <FirecrawlUsageView />}

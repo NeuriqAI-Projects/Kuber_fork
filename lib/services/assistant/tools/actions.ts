@@ -1,9 +1,12 @@
 // The assistant's action tools. Each one only builds a PROPOSAL (see
 // lib/services/assistant/actions.ts) — it checks what would happen, counts it,
-// and returns a confirm card. Nothing in the database changes here.
+// and returns a confirm card. Nothing in the database changes here. Each one
+// needs assistant:actions plus the scope of the route it will call (tools/index.ts
+// hides it otherwise); it re-checks that here, and the route checks again on confirm.
 import { tool } from "ai";
 import { z } from "zod";
-import type { AssistantCaller } from "@/lib/services/assistant/context";
+import { canSeeAll } from "@/lib/auth/scopes";
+import { lacks, type AssistantCaller } from "@/lib/services/assistant/context";
 import { signProposal, type ActionPayload, type ActionProposal } from "@/lib/services/assistant/actions";
 import {
   applyLeadFilter, describeLeadFilter, leadSelect, LeadFilterSchema, resolveLeadFilter, type LeadFilter,
@@ -37,7 +40,7 @@ async function loadLeadSet(
     const ids = input.lead_ids.filter((id) => isUuid(id));
     if (!ids.length) return { error: "Those are not valid lead ids — use search_leads first or pass a filter." };
     let q = caller.db.from("leads").select(`${cols}, organizations(unsubscribed)`).in("id", ids).eq("is_deleted", false);
-    if (caller.role === "employee") q = q.eq("assigned_to", caller.userId);
+    if (!canSeeAll(caller.member, "leads")) q = q.eq("assigned_to", caller.userId);
     const { data, error } = await q;
     if (error) return { error: error.message };
     return { rows: (data ?? []) as unknown as LeadSetRow[], description: `${ids.length} selected leads`, truncated: false };
@@ -87,8 +90,6 @@ function proposalForModel({ output }: { output: unknown }) {
 }
 
 export function actionTools(caller: AssistantCaller) {
-  const manager = caller.role === "manager";
-
   return {
     propose_create_campaign: tool({
       description:
@@ -99,6 +100,8 @@ export function actionTools(caller: AssistantCaller) {
         daily_limit: z.number().int().min(1).max(500).optional().describe("Emails per day (default 100)."),
       }),
       execute: async ({ name, daily_limit = 100, ...set }) => {
+        const denied = lacks(caller, "assistant:actions", "campaigns:write");
+        if (denied) return denied;
         const leads = await loadLeadSet(caller, set);
         if ("error" in leads) return { error: leads.error };
         if (leads.truncated) return { error: `That matches more than ${MAX_LEADS} leads. Narrow the filter (e.g. by country or industry) or split it into several campaigns.` };
@@ -126,6 +129,8 @@ export function actionTools(caller: AssistantCaller) {
       description: "Propose adding leads (filter or ids) to an EXISTING campaign. Returns a confirm card; nothing changes until the user confirms.",
       inputSchema: LeadSetSchema.extend({ campaign: z.string().describe("Target campaign name or id.") }),
       execute: async ({ campaign, ...set }) => {
+        const denied = lacks(caller, "assistant:actions", "campaigns:write");
+        if (denied) return denied;
         const ref = await resolveCampaign(caller, campaign);
         if ("error" in ref) return { error: ref.error };
         if (TERMINAL.has(ref.status)) return { error: `"${ref.name}" is ${ref.status} — leads cannot be added to it. Resume it first or pick another campaign.` };
@@ -158,12 +163,13 @@ export function actionTools(caller: AssistantCaller) {
     }),
 
     propose_assign_leads: tool({
-      description: "Managers only. Propose assigning leads (filter or ids) to a teammate, or sharing them round-robin. Returns a confirm card.",
+      description: "Propose assigning leads (filter or ids) to a teammate, or sharing them round-robin. Returns a confirm card.",
       inputSchema: LeadSetSchema.extend({
         to: z.string().describe("Teammate name/email/id, or 'round robin' to share across the team."),
       }),
       execute: async ({ to, ...set }) => {
-        if (!manager) return { error: "Only managers can assign leads." };
+        const denied = lacks(caller, "assistant:actions", "leads:assign");
+        if (denied) return denied;
         const roundRobin = /round.?robin|share|split|evenly/i.test(to);
         let assigned_to: string | null = null;
         let assignee_name = "round-robin";
@@ -201,6 +207,9 @@ export function actionTools(caller: AssistantCaller) {
         action: z.enum(["pause", "resume", "generate_drafts"]),
       }),
       execute: async ({ campaign, action }) => {
+        // Pause / resume send email (campaigns:send); drafts spend AI credits (campaigns:generate).
+        const denied = lacks(caller, "assistant:actions", action === "generate_drafts" ? "campaigns:generate" : "campaigns:send");
+        if (denied) return denied;
         const ref = await resolveCampaign(caller, campaign);
         if ("error" in ref) return { error: ref.error };
         if (action === "pause" && ref.status === "paused") return { error: `"${ref.name}" is already paused.` };
@@ -225,11 +234,12 @@ export function actionTools(caller: AssistantCaller) {
 
     propose_reveal_emails: tool({
       description:
-        "Managers only. Propose revealing emails through Apollo for leads that do not have one yet. COSTS 1 Apollo credit per lead. " +
+        "Propose revealing emails through Apollo for leads that do not have one yet. COSTS 1 Apollo credit per lead. " +
         "Returns a confirm card with the exact credit cost; nothing is spent until the user confirms.",
       inputSchema: LeadSetSchema,
       execute: async (set) => {
-        if (!manager) return { error: "Only managers can reveal emails (it spends Apollo credits)." };
+        const denied = lacks(caller, "assistant:actions", "leads:import");
+        if (denied) return denied;
         const leads = await loadLeadSet(caller, set);
         if ("error" in leads) return { error: leads.error };
         // Same selection the reveal route makes — only these leads can cost a credit.
@@ -254,8 +264,10 @@ export function actionTools(caller: AssistantCaller) {
         text: z.string().min(1).max(2000),
       }),
       execute: async ({ lead, text }) => {
+        const denied = lacks(caller, "assistant:actions", "leads:write");
+        if (denied) return denied;
         let q = caller.db.from("leads").select("id, first_name, last_name, email").eq("is_deleted", false);
-        if (caller.role === "employee") q = q.eq("assigned_to", caller.userId);
+        if (!canSeeAll(caller.member, "leads")) q = q.eq("assigned_to", caller.userId);
         const v = lead.trim();
         if (isUuid(v)) q = q.eq("id", v);
         else if (v.includes("@")) q = q.ilike("email", cleanSearch(v).replace(/ /g, ""));
@@ -285,12 +297,15 @@ export function actionTools(caller: AssistantCaller) {
         instruction: z.string().max(500).optional().describe("What the reply should say, e.g. 'offer a call on Monday'."),
       }),
       execute: async ({ thread_id, instruction }) => {
+        const denied = lacks(caller, "assistant:actions", "unibox:reply");
+        if (denied) return denied;
+        const own = !canSeeAll(caller.member, "unibox");
         let q = caller.db.from("unibox_emails")
-          .select(caller.role === "employee"
+          .select(own
             ? "thread_id, lead_email, campaign_leads!inner(leads!lead_id!inner(first_name, last_name, assigned_to))"
             : "thread_id, lead_email, campaign_leads(leads!lead_id(first_name, last_name))")
           .eq("thread_id", thread_id).eq("direction", "received");
-        if (caller.role === "employee") q = q.eq("campaign_leads.leads.assigned_to", caller.userId);
+        if (own) q = q.eq("campaign_leads.leads.assigned_to", caller.userId);
         const { data } = await q.limit(1);
         const row = data?.[0] as { lead_email: string | null; campaign_leads: unknown } | undefined;
         if (!row) return { error: "No received email in that conversation to reply to." };

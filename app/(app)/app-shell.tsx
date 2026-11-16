@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   LayoutDashboard, Users, Megaphone, Settings, Inbox, FlaskConical,
-  PanelLeft, Bug, Coins, Search, User, LogOut,
+  PanelLeft, Bug, Coins, Search, User, LogOut, Lock, type LucideIcon,
 } from "lucide-react";
 import { KuberAiMark } from "@/components/app/assistant/kuber-ai-mark";
 import { AssistantLauncher, useAssistantSize, useIsPhone } from "@/components/app/assistant/assistant-launcher";
@@ -14,6 +14,10 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CommandMenu, type CommandGroup } from "@/components/ui/command-menu";
 import { useApp } from "@/lib/app-context";
+import { useAccess } from "@/lib/access-context";
+import { hasScope, type Member, type Scope } from "@/lib/auth/scopes";
+import { scopeLabel } from "@/lib/auth/scope-areas";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ThemeProvider } from "@/lib/theme-context";
 import { APP_LOGO_INITIAL, APP_NAME, BRAND_LOGO_CHANGED } from "@/lib/branding";
 import { isCampaignEligible, type Lead } from "@/lib/leads";
@@ -49,18 +53,54 @@ const NO_LEADS: Lead[] = [];
 const BUG_REPORT_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdzYy8kUC3a9JSyhrWZJjvrmde9V3qBVycKMRSpLLUpQqkWug/viewform";
 
 // Sidebar groups, Attio-style: a top group, "Records", then "Workspace".
-const NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard",  icon: LayoutDashboard, exact: true,  managerOnly: false, group: "main"      },
-  { href: "/unibox",    label: "Unibox",     icon: Inbox,           exact: false, managerOnly: false, group: "main"      },
-  { href: "/leads",     label: "Leads",      icon: Users,           exact: false, managerOnly: false, group: "records"   },
-  { href: "/campaigns", label: "Campaigns",  icon: Megaphone,       exact: false, managerOnly: false, group: "records"   },
-  // Managers only: the lab spends on model calls and decides what writes to
-  // customers. It never sends anything — see lib/services/model-lab.ts.
-  { href: "/model-lab", label: "Model Lab",  icon: FlaskConical,    exact: false, managerOnly: true,  group: "workspace" },
-  // Managers only: provider keys and what each one has spent.
-  { href: "/credits",   label: "Credits",    icon: Coins,           exact: false, managerOnly: true,  group: "workspace" },
-  { href: "/settings",  label: "Settings",   icon: Settings,        exact: false, managerOnly: false, group: "workspace" },
-] as const;
+// `scope` = what a member must hold to see the item and open its page
+// (null = every member). The API checks the same scope again.
+type NavItem = {
+  href: string; label: string; icon: LucideIcon; exact: boolean;
+  scope: Scope | null; group: "main" | "records" | "workspace";
+};
+const NAV_ITEMS: NavItem[] = [
+  { href: "/dashboard", label: "Dashboard",  icon: LayoutDashboard, exact: true,  scope: "dashboard:read", group: "main"      },
+  { href: "/unibox",    label: "Unibox",     icon: Inbox,           exact: false, scope: "unibox:read",    group: "main"      },
+  { href: "/leads",     label: "Leads",      icon: Users,           exact: false, scope: "leads:read",     group: "records"   },
+  { href: "/campaigns", label: "Campaigns",  icon: Megaphone,       exact: false, scope: "campaigns:read", group: "records"   },
+  // The lab spends on model calls and decides what writes to customers.
+  // It never sends anything — see lib/services/model-lab.ts.
+  { href: "/model-lab", label: "Model Lab",  icon: FlaskConical,    exact: false, scope: "model_lab:read", group: "workspace" },
+  // Provider keys and what each one has spent.
+  { href: "/credits",   label: "Credits",    icon: Coins,           exact: false, scope: "credits:read",   group: "workspace" },
+  // Always open: personal tabs are for everyone, sections are gated one by one.
+  { href: "/settings",  label: "Settings",   icon: Settings,        exact: false, scope: null,             group: "workspace" },
+];
+
+export function canOpen(item: Pick<NavItem, "scope">, member: Member): boolean {
+  return item.scope === null || hasScope(member, item.scope);
+}
+
+/** The nav entry a path belongs to (longest matching href), or undefined. */
+function navItemFor(pathname: string): NavItem | undefined {
+  return NAV_ITEMS
+    .filter(({ href }) => pathname === href || pathname.startsWith(`${href}/`))
+    .sort((a, b) => b.href.length - a.href.length)[0];
+}
+
+/**
+ * Shows an empty state instead of a page the member may not open. Client pages
+ * have no server guard, so this is their gate; server pages also call
+ * requirePageScope. Hides only — the API refuses the data anyway.
+ */
+function PageAccessGate({ pathname, member, children }: { pathname: string; member: Member; children: React.ReactNode }) {
+  const item = navItemFor(pathname);
+  if (!item || canOpen(item, member)) return <>{children}</>;
+  return (
+    <div className="p-6">
+      <EmptyState
+        icon={Lock}
+        message={`You don't have access to ${item.label}. Ask the owner to add ${scopeLabel(item.scope!)}.`}
+      />
+    </div>
+  );
+}
 
 const NAV_GROUPS = [
   { id: "main",      label: null },
@@ -82,14 +122,17 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const {
-    session, loadingSession, role, leads, setLeads, leadsTotal, leadsByIds, campaigns, loadCampaigns, setCampaigns, loadLeads,
+    session, loadingSession, leads, setLeads, leadsTotal, leadsByIds, campaigns, loadCampaigns, setCampaigns, loadLeads,
     checkedIds, setCheckedIds, selectedLead, setSelectedLead, selectedOrgId, setSelectedOrgId,
     showAddLeads, setShowAddLeads, manualPrefill, setManualPrefill,
     showCreateCampaign, setShowCreateCampaign, deletingLead, setDeletingLead,
     deleteLeadLoading, setDeleteLeadLoading,
   } = useApp();
 
-  const visibleNavItems = NAV_ITEMS.filter((item) => !item.managerOnly || role === "manager");
+  const { member, can } = useAccess();
+  const visibleNavItems = NAV_ITEMS.filter((item) => canOpen(item, member));
+  // Kuber AI (button, ⌘J, launcher, panel) needs assistant:use.
+  const canAsk = can("assistant:use");
 
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [uniboxUnread, setUniboxUnread] = useState<number | null>(null);
@@ -191,10 +234,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   const commandGroups = useMemo<CommandGroup[]>(() => [
-    {
+    ...(canAsk ? [{
       label: "Kuber AI",
       items: [{ id: "ask-ai", label: "Ask Kuber AI", icon: <KuberAiMark />, hint: "⌘J", onSelect: () => toggleAssistant(true) }],
-    },
+    }] : []),
     {
       label: "Go to",
       items: visibleNavItems.map(({ href, label, icon: Icon }) => ({
@@ -217,7 +260,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
       })),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [leads, role, router, setSelectedLead]);
+  ], [leads, member, canAsk, router, setSelectedLead]);
 
   useEffect(() => {
     if (!loadingSession && !session) router.replace("/");
@@ -250,10 +293,11 @@ function AppShell({ children }: { children: React.ReactNode }) {
     return everyWhileVisible(load, 3 * 60_000);
   }, [session]);
 
-  // Scored companies waiting for a manager's Approve / Decline (Leads > Organization).
+  // Scored companies waiting for Approve / Decline (Leads > Organization). Needs prospects:read.
+  const canSeeProspects = can("prospects:read");
   const [scoredToReview, setScoredToReview] = useState(0);
   useEffect(() => {
-    if (!session || role !== "manager") return;
+    if (!session || !canSeeProspects) return;
     const load = () => {
       fetch("/api/v1/prospects?summary=badge", { headers: { Authorization: `Bearer ${session.access_token}` } })
         .then((r) => r.json()).then((j) => setScoredToReview(j?.data?.review_total ?? 0)).catch(() => {});
@@ -265,7 +309,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
     const onTotal = (e: Event) => setScoredToReview(Number((e as CustomEvent<number>).detail) || 0);
     window.addEventListener(REVIEW_TOTAL_EVENT, onTotal);
     return () => { stop(); window.removeEventListener(REVIEW_TOTAL_EVENT, onTotal); };
-  }, [session, role]);
+  }, [session, canSeeProspects]);
 
   useEffect(() => {
     if (!session) return;
@@ -378,7 +422,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                 </>
               )}
             </button>
-            <button
+            {canAsk && <button
               type="button"
               onClick={() => toggleAssistant()}
               title={sidebarCollapsed ? "Ask Kuber AI (⌘J)" : undefined}
@@ -396,7 +440,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                   <kbd className="text-[11px] font-medium text-muted-foreground/80">⌘J</kbd>
                 </>
               )}
-            </button>
+            </button>}
           </div>
 
           <nav className="flex-1 overflow-y-auto px-2 pb-2">
@@ -545,10 +589,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
         <main className="relative flex-1 overflow-y-auto">
           {navigating && <div className="route-progress" aria-hidden />}
-          {children}
+          <PageAccessGate pathname={pathname} member={member}>{children}</PageAccessGate>
         </main>
 
-        {assistantMounted && (
+        {canAsk && assistantMounted && (
           <AssistantPanel
             hidden={!assistantOpen}
             size={assistantSize}
@@ -559,10 +603,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
         )}
       </div>
 
-      {assistantOpen && assistantSize === "full" && !phone && (
+      {canAsk && assistantOpen && assistantSize === "full" && !phone && (
         <div className="fixed inset-0 z-40 bg-black/40" onClick={() => toggleAssistant(false)} aria-hidden />
       )}
-      {!assistantOpen && <AssistantLauncher onOpen={() => toggleAssistant(true)} />}
+      {canAsk && !assistantOpen && <AssistantLauncher onOpen={() => toggleAssistant(true)} />}
 
       <CommandMenu open={commandOpen} onOpenChange={setCommandOpen} groups={commandGroups} />
 
@@ -636,7 +680,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
             setSelectedLead({ id: leadId, firstName: "", lastName: "", email: "", company: "", domain: "", domainSource: null, phone: "", jobTitle: "", country: "", status: "Enriched", score: "—", source: "Apollo", campaign: "", campaigns: [], createdAt: new Date().toISOString(), orgId: null, enrichmentStage: null, companyDescription: null, sellsTo: null, lastError: null, hasScraped: false, importId: null, batchLabel: null, batchColor: null, assignedTo: null, orgShared: null } satisfies Lead);
           }
         }}
-        onAddLead={role === "manager" ? (org) => {
+        // Opens Add leads in edit mode, which PATCHes the org and adds leads.
+        onAddLead={can("leads:import", "organizations:write") ? (org) => {
           setSelectedOrgId(null);
           setSelectedLead(null);
           setManualPrefill({

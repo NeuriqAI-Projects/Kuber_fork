@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ok, fail } from "@/lib/api-response";
 import { runUniboxSync } from "@/lib/services/unibox";
@@ -11,7 +11,9 @@ export async function POST(req: NextRequest) {
   const secret = req.headers.get("x-internal-secret");
   const isCron = safeSecretEqual(secret, process.env.INTERNAL_SECRET);
   if (!isCron) {
-    try { await requireAuth(req); } catch (r) { return r as Response; }
+    // A user-triggered sync pulls the whole shared mailbox (both companies), so
+    // only someone who sees every thread may start one.
+    try { await requireScope(req, "unibox:all"); } catch (r) { return r as Response; }
   }
 
   // Cross-company by design: both tenants share one Instantly workspace, so the

@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Building2, CalendarDays, Globe2, LayoutGrid, Mail, Megaphone, Target, User, Users, Zap } from "lucide-react";
-import { isAppUser } from "@/lib/auth/roles";
 import { supabase } from "@/lib/supabase";
 import { useCached, cacheKeys, cachedFetchers } from "@/lib/api-client";
 import { useApp } from "@/lib/app-context";
@@ -45,7 +44,7 @@ export default function LeadDetailPage() {
     async function init() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!mounted) return;
-      if (!session || !isAppUser(session.user)) router.replace("/");
+      if (!session) router.replace("/");
     }
 
     void init();

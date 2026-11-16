@@ -36,7 +36,9 @@ import { cn } from "@/lib/utils";
 import { BRAND_LOGO_CHANGED, COLORS } from "@/lib/branding";
 import { MANDATORY_FORMATTING_RULES, parseIndustryKeywordGroups, type IndustryKeywordGroup } from "@/lib/constants";
 import { useTheme } from "@/lib/theme-context";
-import { useApp } from "@/lib/app-context";
+import { useAccess } from "@/lib/access-context";
+import type { Scope } from "@/lib/auth/scopes";
+import { templateName } from "@/lib/auth/scope-areas";
 import dynamic from "next/dynamic";
 import { useSearchParams, useRouter } from "next/navigation";
 
@@ -69,28 +71,24 @@ const FOLLOWUP_FALLBACK_TEMPLATE_VARS: TemplateVar[] = [
   { token: "first_name", label: "first_name", description: "Lead's first name", example: "John" },
 ];
 
-// Knowledge Sources is open to everyone — employees work with the company
-// context and product library more than managers do. Prompt-shaped company
-// defaults (Email Template, Reply AI, Footer) remain manager-only.
-const NAV_ITEMS: { id: Section; label: string }[] = [
+// Knowledge Sources is open to everyone to read — lead owners work with the
+// product library more than anyone. Editing products / segments needs
+// knowledge:write; Company details and the prompt-shaped company defaults
+// (Email Template, Reply AI, Footer) need settings:write. A section with a
+// `scope` is hidden without it.
+const NAV_ITEMS: { id: Section; label: string; scope?: Scope }[] = [
   { id: "profile",    label: "My profile" },
   { id: "ai",         label: "AI & outreach" },
   { id: "knowledge",  label: "Knowledge sources" },
   { id: "appearance", label: "Appearance" },
   { id: "account",    label: "Account" },
-];
-
-const MANAGER_NAV_ITEMS: { id: Section; label: string }[] = [
-  { id: "profile",    label: "My profile" },
-  { id: "ai",         label: "AI & outreach" },
-  { id: "knowledge",  label: "Knowledge sources" },
-  { id: "appearance", label: "Appearance" },
-  { id: "account",    label: "Account" },
-  { id: "team",       label: "Team" },
+  { id: "team",       label: "Team",            scope: "team:read" },
+  // Seeing the mailboxes is keys:read; changing the default is sending_accounts:write (inside the view).
+  { id: "email",      label: "Email & sending", scope: "keys:read" },
 ];
 
 // Personal tabs (everyone — stored per user, campaigns you create use these) vs
-// company-default tabs (managers only — the fallback every user inherits).
+// company-default tabs (settings:write — the fallback every user inherits).
 const PERSONAL_AI_NAV_ITEMS: { id: AiSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: "my-writing",   label: "My writing",   icon: PenLine },
   { id: "my-signature", label: "My signature", icon: Type },
@@ -166,7 +164,7 @@ function MandatoryFormattingNotice() {
   );
 }
 
-// Self-service availability toggle (spec §2B) — an employee marking themselves
+// Self-service availability toggle (spec §2B) — a lead owner marking themselves
 // available/away (e.g. going on leave) so they stop receiving new automatic
 // assignments, without being deactivated. Self-contained (own fetch/save).
 function AvailabilityCard() {
@@ -233,22 +231,18 @@ function AvailabilityCard() {
 
 export function SettingsView() {
   const { theme, mode, setTheme, setMode, savingTheme } = useTheme();
-  const { role } = useApp();
-  const isManager = role === "manager";
-  // Declared here (rather than alongside the other useState calls below) so
-  // navItems — which needs it — can be computed in the same statement order
-  // hooks already run in; moving a useState call is safe as long as it still
-  // runs unconditionally on every render.
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const navItems = isManager
-    ? [...MANAGER_NAV_ITEMS, { id: "email" as const, label: "Email & sending" }]
-    : NAV_ITEMS;
-  const aiNavItems = isManager ? [...PERSONAL_AI_NAV_ITEMS, ...COMPANY_AI_NAV_ITEMS] : PERSONAL_AI_NAV_ITEMS;
-  // Company Details is company identity (sender name, context, logo) — manager /
-  // super-admin only. Employees keep the Product Offerings library.
-  const knowledgeNavItems = isManager ? KNOWLEDGE_NAV_ITEMS : KNOWLEDGE_NAV_ITEMS.filter((i) => i.id !== "company");
+  const { can, member, ownsLeads } = useAccess();
+  const canCompany = can("settings:write");
+  const canKnowledge = can("knowledge:write");
+  const navItems = NAV_ITEMS.filter((i) => !i.scope || can(i.scope));
+  const aiNavItems = canCompany ? [...PERSONAL_AI_NAV_ITEMS, ...COMPANY_AI_NAV_ITEMS] : PERSONAL_AI_NAV_ITEMS;
+  // Company Details is company identity (sender name, context, logo) —
+  // settings:write. Everyone keeps the Product Offerings library.
+  const knowledgeNavItems = canCompany ? KNOWLEDGE_NAV_ITEMS : KNOWLEDGE_NAV_ITEMS.filter((i) => i.id !== "company");
   const logoInputRef = useRef<HTMLInputElement>(null);
-  const [section, setSection] = useState<Section>("profile");
+  const [requestedSection, setSection] = useState<Section>("profile");
+  // A section this member can't open (e.g. a ?section=team deep link) falls back to their profile.
+  const section: Section = navItems.some((n) => n.id === requestedSection) ? requestedSection : "profile";
   const [aiSection, setAiSection] = useState<AiSection>("my-writing");
   const [knowledgeSection, setKnowledgeSection] = useState<KnowledgeSection>("company");
 
@@ -270,7 +264,7 @@ export function SettingsView() {
     }
   }, [searchParams]);
 
-  // Company-wide settings (managers edit; everyone inherits)
+  // Company-wide settings (settings:write edits; everyone inherits)
   const [senderName,     setSenderName    ] = useState("");
   const [clientIndustry, setClientIndustry] = useState("");
   const [companyContext, setCompanyContext] = useState("");
@@ -326,10 +320,9 @@ export function SettingsView() {
   const [error,   setError   ] = useState("");
 
   const activeAiNavItem        = aiNavItems.find((i) => i.id === aiSection);
-  // Employees can't see "company" (manager-only identity settings), but can
-  // freely switch between the other Knowledge Sources tabs — only fall back
-  // to "products" if they land on the one tab hidden from them.
-  const activeKnowledgeSection: KnowledgeSection = (!isManager && knowledgeSection === "company") ? "products" : knowledgeSection;
+  // Without settings:write "company" is hidden, but the other Knowledge Sources
+  // tabs stay open — only fall back to "products" if they land on the hidden one.
+  const activeKnowledgeSection: KnowledgeSection = (!canCompany && knowledgeSection === "company") ? "products" : knowledgeSection;
   const activeKnowledgeNavItem = KNOWLEDGE_NAV_ITEMS.find((i) => i.id === activeKnowledgeSection);
 
   // One Attio-style settings nav: every leaf (including the AI and Knowledge
@@ -345,14 +338,12 @@ export function SettingsView() {
   const navGroups: { label: string; items: NavEntry[] }[] = [
     { label: "Personal", items: [sectionEntry("profile"), sectionEntry("appearance"), sectionEntry("account")].filter((e): e is NavEntry => !!e) },
     { label: "AI & outreach", items: PERSONAL_AI_NAV_ITEMS.map((i) => ({ key: `ai-${i.id}`, label: i.label, icon: i.icon, section: "ai" as const, ai: i.id })) },
-    ...(isManager
+    ...(canCompany
       ? [{ label: "Company defaults", items: COMPANY_AI_NAV_ITEMS.map((i) => ({ key: `ai-${i.id}`, label: i.label, icon: i.icon, section: "ai" as const, ai: i.id })) }]
       : []),
     { label: "Knowledge sources", items: knowledgeNavItems.map((i) => ({ key: `kn-${i.id}`, label: i.label, icon: i.icon, section: "knowledge" as const, knowledge: i.id })) },
-    ...(isManager
-      ? [{ label: "Workspace", items: [sectionEntry("team"), sectionEntry("email")].filter((e): e is NavEntry => !!e) }]
-      : []),
-  ];
+    { label: "Workspace", items: [sectionEntry("team"), sectionEntry("email")].filter((e): e is NavEntry => !!e) },
+  ].filter((g) => g.items.length > 0);
   const isActiveEntry = (e: NavEntry) =>
     e.section === section &&
     (!e.ai || e.ai === aiSection) &&
@@ -386,9 +377,6 @@ export function SettingsView() {
     const LOGO_KEY = "/api/v1/settings/logo";
 
     function applyMy(my: MyData) {
-      // Keys nav depends on this — set it from /me/settings immediately so we
-      // don't wait on company settings / logo (or a full Team users list).
-      setIsSuperAdmin(my.is_super_admin);
       setMyDraftPrompt(my.draft_prompt ?? "");
       setMyDraftTemplate(my.draft_template ?? "");
       setMyReplyPrompt(my.reply_prompt ?? "");
@@ -440,7 +428,7 @@ export function SettingsView() {
         setUserName(session?.user?.user_metadata?.full_name ?? session?.user?.user_metadata?.name ?? "");
 
         // Personal settings, company settings and the logo all load for everyone
-        // — employees need the company settings behind Knowledge Sources, and
+        // — members without settings:write need the company settings behind Knowledge Sources, and
         // GET /settings is readable by any authenticated user.
         const myPromise = queryCache.fetch(MY_KEY, () => fetchMySettings(token));
         const settingsPromise = queryCache.fetch(SETTINGS_KEY, () => fetchSettings(token));
@@ -532,13 +520,14 @@ export function SettingsView() {
         setMyDefaults(my.defaults);
         toast.success("Your settings were saved");
       } else if (section === "knowledge") {
-        // Send only the keys these tabs own — the prompt-shaped keys are
-        // manager-only server-side and including them would 403 the save.
-        // Company Details is manager-only too, so an employee sends products
-        // alone; sending those keys back unchanged would 403 their whole save.
+        // Send only the keys these tabs own AND the member may write — the
+        // prompt-shaped keys need settings:write server-side and including them
+        // would 403 the save. Company Details needs settings:write too and
+        // products need knowledge:write; sending a key back unchanged without
+        // its scope would 403 the whole save.
         await patchSettings(token, {
-          product_offerings: JSON.stringify(productOfferings),
-          ...(isManager && {
+          ...(canKnowledge && { product_offerings: JSON.stringify(productOfferings) }),
+          ...(canCompany && {
             default_sender_name: senderName,
             client_industry:     clientIndustry,
             company_context:     companyContext,
@@ -763,7 +752,10 @@ export function SettingsView() {
 
   // Industry Segments saves every action immediately (see saveIndustryKeywordGroups
   // above) — no page-wide Save button needed while that sub-tab is active.
-  const showSaveBar = !loading && (section === "ai" || (section === "knowledge" && activeKnowledgeSection !== "industry-segments"));
+  // Products without knowledge:write is a read-only view: nothing to save.
+  const showSaveBar = !loading && (section === "ai" || (section === "knowledge" && (
+    activeKnowledgeSection === "company" || (activeKnowledgeSection === "products" && canKnowledge)
+  )));
 
   return (
     <PageShell
@@ -808,7 +800,7 @@ export function SettingsView() {
                   <p className="text-[13px] text-muted-foreground truncate">{userEmail}</p>
                 </div>
                 <span className="shrink-0 rounded-[5px] bg-primary/10 px-1.5 py-[3px] text-xs font-medium leading-none text-primary">
-                  {isSuperAdmin ? "Super Admin" : role === "manager" ? "Manager" : role === "employee" ? "Employee" : "—"}
+                  {member.isOwner ? "Owner" : templateName(member.scopes)}
                 </span>
               </div>
 
@@ -821,8 +813,8 @@ export function SettingsView() {
                 </SettingsRow>
               </div>
 
-              {/* Employees can mark themselves away (spec §2B). */}
-              {role === "employee" && (
+              {/* Lead owners can mark themselves away (spec §2B). */}
+              {ownsLeads && (
                 <div className="mt-6">
                   <SettingsSectionHeader title="Assignment" />
                   <AvailabilityCard />
@@ -914,7 +906,7 @@ export function SettingsView() {
                 </>
               )}
 
-              {isManager && aiSection === "template" && (
+              {canCompany && aiSection === "template" && (
                 <section className="space-y-4">
                   <SettingsSectionHeader
                     title="AI writing instructions"
@@ -932,7 +924,7 @@ export function SettingsView() {
                 </section>
               )}
 
-              {isManager && aiSection === "default" && (
+              {canCompany && aiSection === "default" && (
                 <section className="space-y-4">
                   <SettingsSectionHeader
                     title="Fallback email"
@@ -961,7 +953,7 @@ export function SettingsView() {
                 </section>
               )}
 
-              {isManager && aiSection === "followup" && (
+              {canCompany && aiSection === "followup" && (
                 <section className="space-y-4">
                   <SettingsSectionHeader title="Fallback follow-up" />
                   <p className="text-[13px] text-muted-foreground">
@@ -988,7 +980,7 @@ export function SettingsView() {
                 </section>
               )}
 
-              {isManager && aiSection === "html" && (
+              {canCompany && aiSection === "html" && (
                 <section className="space-y-4">
                   <SettingsSectionHeader title="Tables in emails" />
                   <SettingsRow
@@ -1007,7 +999,7 @@ export function SettingsView() {
                 </section>
               )}
 
-              {isManager && aiSection === "replies" && (
+              {canCompany && aiSection === "replies" && (
                 <section className="space-y-5">
                   <SettingsSectionHeader
                     title="Reply drafting"
@@ -1020,7 +1012,7 @@ export function SettingsView() {
                 </section>
               )}
 
-              {isManager && aiSection === "footer" && (
+              {canCompany && aiSection === "footer" && (
                 <section className="space-y-4">
                   <SettingsSectionHeader title="Contact footer" description="Contact lines appended at the end of every generated email." />
                   <RichTextEditor label="Contact footer" value={sigContact} onChange={setSigContact} minHeight={160} singleLineBreaks
@@ -1092,15 +1084,15 @@ export function SettingsView() {
                   <SettingsSectionHeader
                     title="Products"
                     description="The AI picks the best-matching product for each lead and uses its description as context."
-                    aside={
+                    aside={canKnowledge && (
                       <Button type="button" size="sm" variant="outline" onClick={addProduct}>
                         <Plus className="size-3.5" /> Add product
                       </Button>
-                    }
+                    )}
                   />
 
                   {productOfferings.length === 0 && (
-                    <EmptyState icon={Package} message={<>No products yet — click &quot;Add product&quot; to get started.</>} />
+                    <EmptyState icon={Package} message={canKnowledge ? <>No products yet — click &quot;Add product&quot; to get started.</> : "No products yet."} />
                   )}
 
                   <div className="grid gap-3 lg:grid-cols-2">
@@ -1113,17 +1105,21 @@ export function SettingsView() {
                             onChange={(e) => updateProduct(idx, "name", e.target.value)}
                             placeholder="Product name"
                             className="font-medium flex-1"
+                            disabled={!canKnowledge}
                           />
-                          <Button type="button" variant="ghost" size="icon-sm" onClick={() => removeProduct(idx)}
-                            className="shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
-                            <X className="size-3.5" />
-                          </Button>
+                          {canKnowledge && (
+                            <Button type="button" variant="ghost" size="icon-sm" onClick={() => removeProduct(idx)}
+                              className="shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                              <X className="size-3.5" />
+                            </Button>
+                          )}
                         </div>
                         <Textarea
                           value={product.description}
                           onChange={(e) => updateProduct(idx, "description", e.target.value)}
                           placeholder="Describe this product — what it is, who it fits, key benefits..."
                           className="min-h-32 resize-y"
+                          disabled={!canKnowledge}
                         />
                       </div>
                     ))}
@@ -1137,15 +1133,15 @@ export function SettingsView() {
                   <SettingsSectionHeader
                     title="Groups and keywords"
                     description={<>Shown in the Apollo import dropdown. Each keyword&apos;s &quot;Apollo search term&quot; is the actual text sent to Apollo — keep it short and plain, since Apollo matches it near-literally.</>}
-                    aside={
+                    aside={canKnowledge && (
                       <Button type="button" size="sm" variant="outline" onClick={addGroup} disabled={savingGroupIds.size > 0}>
                         {savingGroupIds.size > 0 ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />} Add group
                       </Button>
-                    }
+                    )}
                   />
 
                   {industryKeywordGroups.length === 0 && (
-                    <EmptyState icon={Tags} message={<>No groups yet — click &quot;Add group&quot; to get started.</>} />
+                    <EmptyState icon={Tags} message={canKnowledge ? <>No groups yet — click &quot;Add group&quot; to get started.</> : "No groups yet."} />
                   )}
 
 
@@ -1170,14 +1166,18 @@ export function SettingsView() {
                             ) : (
                               <span className="text-sm font-semibold flex-1 px-1">{group.label || "Untitled group"}</span>
                             )}
-                            <Button type="button" variant="ghost" size="icon-sm" onClick={() => toggleGroupEdit(group.id)}
-                              disabled={groupSaving} className="shrink-0 text-muted-foreground hover:text-foreground">
-                              {groupSaving ? <Loader2 className="size-3.5 animate-spin" /> : groupEditing ? <Check className="size-3.5" /> : <Pencil className="size-3.5" />}
-                            </Button>
-                            <Button type="button" variant="ghost" size="icon-sm" onClick={() => setGroupPendingDelete({ idx: groupIdx, label: group.label || "this group" })}
-                              disabled={groupSaving} className="shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
-                              <X className="size-3.5" />
-                            </Button>
+                            {canKnowledge && (
+                              <>
+                                <Button type="button" variant="ghost" size="icon-sm" onClick={() => toggleGroupEdit(group.id)}
+                                  disabled={groupSaving} className="shrink-0 text-muted-foreground hover:text-foreground">
+                                  {groupSaving ? <Loader2 className="size-3.5 animate-spin" /> : groupEditing ? <Check className="size-3.5" /> : <Pencil className="size-3.5" />}
+                                </Button>
+                                <Button type="button" variant="ghost" size="icon-sm" onClick={() => setGroupPendingDelete({ idx: groupIdx, label: group.label || "this group" })}
+                                  disabled={groupSaving} className="shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                                  <X className="size-3.5" />
+                                </Button>
+                              </>
+                            )}
                           </div>
 
                           <div className="p-3 space-y-2">
@@ -1357,9 +1357,9 @@ export function SettingsView() {
             </div>
           )}
 
-          {section === "team" && role === "manager" && <TeamView />}
+          {section === "team" && <TeamView />}
 
-          {section === "email" && isManager && <EmailSendingView />}
+          {section === "email" && <EmailSendingView />}
 
         </div>
       )}

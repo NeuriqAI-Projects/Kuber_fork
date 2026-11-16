@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { requireManager, requireSuperAdmin } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { getSendingAccounts, SENDING_ACCOUNTS_SETTING_KEY } from "@/lib/services/service-keys";
 import { listInstantlyAccounts } from "@/lib/services/instantly";
@@ -22,8 +22,8 @@ const STATUS_LABEL: Record<number, string> = {
 };
 
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "keys:read"); } catch (r) { return r as Response; }
 
   const db = dbForUser(user);
   try {
@@ -48,8 +48,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireSuperAdmin>>;
-  try { user = await requireSuperAdmin(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "sending_accounts:write"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
   const parsed = BodySchema.safeParse(body);

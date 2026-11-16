@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useApp } from "@/lib/app-context";
+import { useAccess } from "@/lib/access-context";
 
 // The Add Leads flow now lives in one place — the shared `AddLeadsDrawer`
 // modal rendered by the app shell — instead of being duplicated here as a
@@ -11,14 +12,15 @@ import { useApp } from "@/lib/app-context";
 // modal and redirects back to the leads list.
 export default function AddLeadsPage() {
   const router = useRouter();
-  const { role, loadingSession, setShowAddLeads } = useApp();
+  const { loadingSession, setShowAddLeads } = useApp();
+  const canImport = useAccess().can("leads:import");
 
   useEffect(() => {
     if (loadingSession) return;
-    if (role === "manager") setShowAddLeads(true);
+    if (canImport) setShowAddLeads(true);
     router.replace("/leads");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingSession, role]);
+  }, [loadingSession, canImport]);
 
   return null;
 }

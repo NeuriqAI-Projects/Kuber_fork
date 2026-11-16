@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { requireAuth, requireManager } from "@/lib/auth/api-auth";
+import { requireScope, assertScope } from "@/lib/auth/api-auth";
+import { canSeeAll } from "@/lib/auth/scopes";
 import { ok, fail } from "@/lib/api-response";
 import { PatchLeadSchema } from "@/lib/validators/leads";
 import { logLeadEvent } from "@/lib/services/lead-events";
@@ -9,8 +10,8 @@ import { dbForUser } from "@/lib/supabase/scoped";
 export const maxDuration = 60;
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(_req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(_req, "leads:read"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const db = dbForUser(user);
@@ -32,8 +33,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   if (error) return fail(500, "INTERNAL", error.message);
   if (!lead) return fail(404, "NOT_FOUND", "Lead not found");
-  // Employees see only their own assigned leads (spec §5).
-  if (user.role === "employee" && lead.assigned_to !== user.id) {
+  // Without leads:all, only their own assigned leads (spec §5).
+  if (!canSeeAll(user.member, "leads") && lead.assigned_to !== user.id) {
     return fail(404, "NOT_FOUND", "Lead not found");
   }
 
@@ -62,8 +63,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(_req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(_req, "leads:delete"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const db = dbForUser(user);
@@ -80,8 +81,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "leads:write"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const body = await req.json().catch(() => null);
@@ -90,7 +91,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const db = dbForUser(user);
 
-  // Prior state, read before the update: gates the employee scope check and lets
+  // Prior state, read before the update: gates the own-lead check (members without leads:all) and lets
   // the activity log report real transitions ("from X to Y") rather than echoing
   // whatever the client submitted.
   const { data: before } = await db
@@ -99,19 +100,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .eq("id", id)
     .maybeSingle();
   if (!before) return fail(404, "NOT_FOUND", "Lead not found");
-  if (user.role === "employee" && before.assigned_to !== user.id) {
+  if (!canSeeAll(user.member, "leads") && before.assigned_to !== user.id) {
     return fail(404, "NOT_FOUND", "Lead not found");
   }
 
   const { email, assigned_to, ...rest } = parsed.data;
 
-  // Single-lead reassignment is a manager-only action (review §3.2) — the
+  // Single-lead reassignment needs leads:assign (review §3.2) — the
   // only prior path was bulk-assign or a campaign-assign side effect.
   // manualTargetOffline mirrors bulkAssignByStrategy's own flag (assignment.ts)
   // so this path warns too instead of silently parking a lead on someone away.
   let manualTargetOffline = false;
   if (assigned_to !== undefined) {
-    if (user.role !== "manager") return fail(403, "FORBIDDEN", "Only managers can reassign leads");
+    try { assertScope(user, "leads:assign"); } catch (r) { return r as Response; }
     if (assigned_to) {
       const { data: assignee } = await db
         .from("profiles")

@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { createHash } from "crypto";
 import { listInstantlyCampaignReplies, getInstantlyLeadStatus, getInstantlyEmail } from "@/lib/services/instantly";
 import { ingestInstantlyEmail } from "@/lib/services/unibox";
 import { INTEREST_TO_TEMPERATURE } from "@/lib/constants";
 import { ok } from "@/lib/api-response";
-import { assertCampaignAccess } from "@/lib/auth/scope";
+import { assertCampaignSettingsAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { recountCampaignTemperature } from "@/lib/services/campaign-counters";
 
@@ -37,12 +37,13 @@ function tsMinute(v: string | null | undefined): string {
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:write"); } catch (r) { return r as Response; }
 
   const { id: masterCampaignId } = await params;
   const db = dbForUser(user);
-  try { await assertCampaignAccess(db, user, masterCampaignId); } catch (r) { return r as Response; }
+  // Rewrites every lead's reply rows and statuses: shared-campaign rule.
+  try { await assertCampaignSettingsAccess(db, user, masterCampaignId); } catch (r) { return r as Response; }
 
   // 1. Get all sub-campaign Instantly IDs for this master campaign
   const { data: subs } = await db

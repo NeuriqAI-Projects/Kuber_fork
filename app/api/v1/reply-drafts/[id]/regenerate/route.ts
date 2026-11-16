@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { generateReplyDraft } from "@/lib/services/generate-reply";
 import { assertReplyDraftAccess } from "@/lib/auth/scope";
@@ -8,8 +8,8 @@ import { dbForUser } from "@/lib/supabase/scoped";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "unibox:reply"); } catch (r) { return r as Response; }
   const { id } = await params;
   const { instruction } = (await req.json().catch(() => ({}))) as { instruction?: string };
   const db = dbForUser(user);

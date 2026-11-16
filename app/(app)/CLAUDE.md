@@ -15,4 +15,4 @@ top bar, review badge and service-health banner.
 | `/model-lab` | try models/prompts | `model-lab-view.tsx` |
 
 - Each route has a `loading.tsx` skeleton — use `components/app/page-skeletons.tsx`.
-- Managers vs employees see different data; respect `role` from the session.
+- What a member sees depends on their scopes: pages are gated by `NAV_ITEMS[].scope` (`PageAccessGate` in `app-shell.tsx`, `requirePageScope` in server pages); buttons by `useAccess().can(...)`. Never a role.

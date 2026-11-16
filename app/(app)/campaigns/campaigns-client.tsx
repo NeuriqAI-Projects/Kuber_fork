@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
+import { useAccess } from "@/lib/access-context";
 import {
   deleteCampaign, pauseCampaign, resumeCampaign, prefetchCampaign, prefetch,
   useCached, cacheKeys, cachedFetchers, type Profile,
@@ -48,7 +49,10 @@ export function CampaignsClient() {
   // The list is the shared campaigns cache: instant on revisit, refreshed in
   // the background, and updated in place after pause/resume/delete (no
   // router.refresh(), which threw the whole router cache away).
-  const { campaigns, setCampaigns, campaignsLoaded, loadCampaigns, session, role } = useApp();
+  const { campaigns, setCampaigns, campaignsLoaded, loadCampaigns, session } = useApp();
+  const { can, seesAll } = useAccess();
+  // Owner filter + column: only with campaigns:all (the users list itself needs team:read).
+  const showOwners = seesAll("campaigns");
   const list = campaigns;
 
   // The cached list paints at once; refresh it quietly on a visit when it is
@@ -63,7 +67,7 @@ export function CampaignsClient() {
   const [statusFilter, setStatusFilter] = useState<CampaignStatus | "All">("All");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const usersQuery = useCached<Profile[]>(
-    role === "manager" && session ? cacheKeys.users : null,
+    showOwners && can("team:read") && session ? cacheKeys.users : null,
     cachedFetchers.users,
   );
   const users = usersQuery.data ?? [];
@@ -117,8 +121,6 @@ export function CampaignsClient() {
   // First visit only — afterwards the cached list renders immediately.
   if (!campaignsLoaded) return <CampaignsSkeleton />;
 
-  const isManager = role === "manager";
-
   return (
     <div className="flex h-full flex-col">
       <PageHeader
@@ -151,7 +153,7 @@ export function CampaignsClient() {
             value: s, label: s, count: counts[s],
           }))}
         />
-        {isManager && users.length > 0 && (
+        {showOwners && users.length > 0 && (
           <Select value={ownerFilter} onValueChange={setOwnerFilter}>
             <SelectTrigger className="h-8 w-40">
               <SelectValue placeholder="Owner" />
@@ -200,7 +202,7 @@ export function CampaignsClient() {
                 <TableHead className="min-w-[220px]">Campaign</TableHead>
                 <TableHead className="w-24">Status</TableHead>
                 <TableHead className="w-28">Mode</TableHead>
-                {isManager && <TableHead className="w-44">Owner</TableHead>}
+                {showOwners && <TableHead className="w-44">Owner</TableHead>}
                 <TableHead className="w-20 text-right">Leads</TableHead>
                 <TableHead className="w-20 text-right">Sent</TableHead>
                 <TableHead className="w-20 text-right">Replied</TableHead>
@@ -220,6 +222,10 @@ export function CampaignsClient() {
                 const replyRate = c.delivered > 0 ? Math.round((c.replied / c.delivered) * 100) : 0;
                 const ownerName = displayName(c.assignedTo) ?? displayName(c.createdBy);
                 const open = () => router.push(`/campaigns/${c.id}`);
+                // Campaign-wide actions on a campaign shared with a teammate's leads need
+                // campaigns:all (the server refuses otherwise, can_edit_settings mirrors it).
+                const wide = seesAll("campaigns") || c.canEditSettings === true;
+                const canSend = wide && can("campaigns:send");
                 return (
                   <TableRow
                     key={c.id}
@@ -242,7 +248,7 @@ export function CampaignsClient() {
                     <TableCell className="whitespace-nowrap text-muted-foreground">
                       {c.humanInLoop ? "Human review" : "Auto-send"}
                     </TableCell>
-                    {isManager && (
+                    {showOwners && (
                       <TableCell>
                         {ownerName ? (
                           <span className="flex min-w-0 items-center gap-2">
@@ -265,7 +271,7 @@ export function CampaignsClient() {
                     </TableCell>
                     <TableCell className="py-0" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100">
-                        {c.status === "Live" && (
+                        {canSend && c.status === "Live" && (
                           <Button
                             type="button" variant="ghost" size="icon-sm"
                             title="Pause campaign (stops all sending, incl. follow-ups)"
@@ -275,7 +281,7 @@ export function CampaignsClient() {
                             <Pause className="size-3.5" />
                           </Button>
                         )}
-                        {c.status === "Paused" && (
+                        {canSend && c.status === "Paused" && (
                           <Button
                             type="button" variant="ghost" size="icon-sm"
                             title="Resume campaign"
@@ -286,14 +292,16 @@ export function CampaignsClient() {
                             <Play className="size-3.5" />
                           </Button>
                         )}
-                        <Button
-                          type="button" variant="ghost" size="icon-sm"
-                          title="Delete campaign"
-                          onClick={() => setDeletingCampaign(c)}
-                          className="text-muted-foreground hover:text-destructive"
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
+                        {wide && can("campaigns:delete") && (
+                          <Button
+                            type="button" variant="ghost" size="icon-sm"
+                            title="Delete campaign"
+                            onClick={() => setDeletingCampaign(c)}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

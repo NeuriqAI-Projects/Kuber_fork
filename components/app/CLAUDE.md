@@ -10,10 +10,11 @@ Group by feature (find the file by prefix):
   `campaign-config-modal`, `campaign-kanban`, `campaign-report`, `regenerate-drafts-modal`,
   `hold-sending-modal`, `replace-lead-modal`, `email-sending-view`.
 - **Replies:** `reply-draft-box`, `manual-reply-box`, `reply-recipients`, `reply-cc-bcc-fields`, `reply-attach-controls`.
-- **Settings:** `settings-view`, `team-view`. **Credits** (sidebar, managers): `credits-view` (one tab per provider: key + usage), `keys-view` (key panels), `keys-usage-*`, `usage-bar-chart`.
+- **Settings:** `settings-view`, `team-view` + `scope-picker` (Team permissions). **Credits** (sidebar, `credits:read`): `credits-view` (one tab per provider: key + usage), `keys-view` (key panels), `keys-usage-*`, `usage-bar-chart`.
 - **Kuber AI:** `assistant/` — `assistant-panel` (state + conversation view), tabs `assistant-home` / `assistant-messages` / `assistant-skills`, `assistant-chrome` (top bar, size controls, tab bar), `assistant-launcher` (floating pill + compact/expanded/full sizes), `kuber-ai-mark` (logo; files in `public/brand/`), `assistant-parts` (tool steps, confirm cards), `assistant-markdown`. Modelled on the Chatty widget (meta_bot/tutorials/components/widget). `keys-usage-assistant` = Credits > AI model picks + AI spend per person.
 - **Other:** `dashboard`, `model-lab-view`, `discussion-comment`, `service-health-banner`,
   `apollo-cost-note` (required wherever Apollo credits are spent), `page-skeletons`, `usage-skeletons`, `tag-input`.
 
 Data comes from `lib/api-client.ts` (fetch wrappers) and `lib/app-context.tsx`.
+Show / hide by permission with `useAccess().can("area:action")` (`lib/access-context.tsx`), never a role. The UI only hides; the API checks again.
 Big files (campaign-drawer, settings-view) — read the part you need, don't rewrite.

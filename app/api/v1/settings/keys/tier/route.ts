@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { SetLlmTierRolesSchema } from "@/lib/validators/provider-keys";
 import { DEFAULT_LLM_TIER_ORDER } from "@/lib/services/providers/registry";
@@ -13,8 +13,8 @@ export const maxDuration = 60;
 // DEFAULT_LLM_TIER_ORDER's relative order (see resolveLlmTierOrder()). This
 // only reorders the front of the list, it never drops a provider.
 export async function PUT(req: NextRequest) {
-  let caller: Awaited<ReturnType<typeof requireManager>>;
-  try { caller = await requireManager(req); } catch (r) { return r as Response; }
+  let caller: Awaited<ReturnType<typeof requireScope>>;
+  try { caller = await requireScope(req, "keys:write"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
   const parsed = SetLlmTierRolesSchema.safeParse(body);

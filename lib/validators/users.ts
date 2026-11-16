@@ -1,34 +1,40 @@
 import { z } from "zod";
 import { dbId } from "./id";
+import { isLeadOwner } from "@/lib/auth/scopes";
 
-// Territory is a list of countries the employee receives leads for — the
+// Territory is a list of countries a lead owner receives leads for — the
 // output of the same region/country picker the Apollo import uses. Names are
 // canonicalised server-side (lib/territory.ts), so the picker's "UAE" and a
 // stored "United Arab Emirates" are the same thing.
 const TerritoryCountriesSchema = z.array(z.string().min(1)).max(300);
 
-// Still REQUIRED for employees at creation (planning.md Phase 4 / Q8) —
-// an employee covering nowhere is silently skipped by territory routing.
-// Managers have none.
+// Permissions: plain strings here; the route checks them with parseScopes
+// (lib/auth/scopes.ts) and the no-escalation rule canGrant.
+const ScopesSchema = z.array(z.string()).max(100);
+
+// Territory is still REQUIRED at creation for a lead owner (leads:read without
+// leads:all — the old "employee", planning.md Phase 4 / Q8): a lead owner covering
+// nowhere is silently skipped by territory routing. Everyone else has none.
 export const CreateUserSchema = z
   .object({
     email: z.string().email(),
     password: z.string().min(8),
     full_name: z.string().min(1).max(200),
-    role: z.enum(["manager", "employee"]),
+    scopes: ScopesSchema,
     territory_countries: TerritoryCountriesSchema.optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.role === "employee" && !data.territory_countries?.length) {
+    const leadOwner = isLeadOwner({ id: "new", isOwner: false, active: true, scopes: data.scopes });
+    if (leadOwner && !data.territory_countries?.length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["territory_countries"],
-        message: "Pick at least one country — employees need a territory for lead routing",
+        message: "Pick at least one country — people who receive leads need a territory for lead routing",
       });
     }
   });
 
-// Where a departing employee's leads and campaigns go when the account is
+// Where a departing member's leads and campaigns go when the account is
 // deactivated. "manual" names one successor; "pool" hands everything back to
 // the manager pool (the only option that works when nobody else is available);
 // "round_robin" and "territory" reuse the same engines as normal assignment.
@@ -37,7 +43,7 @@ export const HandoverStrategySchema = z.enum(["manual", "pool", "round_robin", "
 export const PatchUserSchema = z
   .object({
     full_name: z.string().min(1).max(200).optional(),
-    role: z.enum(["manager", "employee"]).optional(),
+    scopes: ScopesSchema.optional(),
     territory_countries: TerritoryCountriesSchema.optional(),
     is_active: z.boolean().optional(),
     // Online/offline availability (spec §2B) — separate from is_active.
@@ -61,12 +67,12 @@ export const PatchUserSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["reassign_to"],
-        message: "Pick the employee who takes this work over",
+        message: "Pick the person who takes this work over",
       });
     }
   });
 
-// Self-service availability toggle (spec §2B) — an employee marking themselves
+// Self-service availability toggle (spec §2B) — a member marking themselves
 // available/unavailable. Own profile only; enforced in the /me/availability route.
 export const PatchMyAvailabilitySchema = z.object({
   availability_status: z.enum(["online", "offline"]),

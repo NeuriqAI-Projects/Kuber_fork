@@ -5,9 +5,13 @@ import assert from "node:assert/strict";
 process.env.INTERNAL_SECRET ||= "test-secret-for-assistant-actions";
 const { signProposal, verifyProposal, executeAction } = await import("./actions.ts");
 
-const me = { userId: "u1", role: "manager", companyId: "c1", token: "t", baseUrl: "http://x" } as never;
-const other = { userId: "u2", role: "manager", companyId: "c1", token: "t", baseUrl: "http://x" } as never;
-const otherCompany = { userId: "u1", role: "manager", companyId: "c2", token: "t", baseUrl: "http://x" } as never;
+const caller = (userId: string, companyId: string) => ({
+  userId, companyId, token: "t", baseUrl: "http://x",
+  member: { id: userId, isOwner: true, active: true, scopes: [] }, scopes: [],
+}) as never;
+const me = caller("u1", "c1");
+const other = caller("u2", "c1");
+const otherCompany = caller("u1", "c2");
 const payload = { kind: "add_note", lead_id: "l1", lead_name: "Amit", text: "hi" } as const;
 
 test("a proposal verifies for the person it was made for", async () => {

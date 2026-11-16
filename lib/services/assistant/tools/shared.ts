@@ -2,7 +2,8 @@
 // search, and paged column reads for breakdowns.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAccessibleCampaignIds } from "@/lib/auth/scope";
-import type { AssistantCaller } from "@/lib/services/assistant/context";
+import { canSeeAll, isLeadOwner } from "@/lib/auth/scopes";
+import { asAuthedUser, type AssistantCaller } from "@/lib/services/assistant/context";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isUuid = (v: string | null | undefined): boolean => !!v && UUID_RE.test(v.trim());
@@ -21,7 +22,8 @@ export function one<T>(v: T | T[] | null | undefined): T | null {
   return v ?? null;
 }
 
-export type TeamMember = { id: string; name: string; email: string | null; role: string | null; is_active: boolean | null };
+/** receives_leads = lead owner (leads:read without leads:all, the old "employee"). */
+export type TeamMember = { id: string; name: string; email: string | null; receives_leads: boolean; is_active: boolean | null };
 
 /** One read per request: several tools in the same answer all need the team. */
 const teamMemo = new WeakMap<SupabaseClient, Promise<TeamMember[]>>();
@@ -36,12 +38,12 @@ export function loadTeam(db: SupabaseClient): Promise<TeamMember[]> {
 }
 
 async function readTeam(db: SupabaseClient): Promise<TeamMember[]> {
-  const { data } = await db.from("profiles").select("id, full_name, email, role, is_active");
+  const { data } = await db.from("profiles").select("id, full_name, email, is_owner, scopes, is_active");
   return (data ?? []).map((p) => ({
     id: p.id as string,
     name: (p.full_name as string | null) || (p.email as string | null) || "Unknown",
     email: (p.email as string | null) ?? null,
-    role: (p.role as string | null) ?? null,
+    receives_leads: isLeadOwner({ id: p.id as string, isOwner: !!p.is_owner, active: p.is_active !== false, scopes: (p.scopes as string[] | null) ?? [] }),
     is_active: (p.is_active as boolean | null) ?? null,
   }));
 }
@@ -80,12 +82,10 @@ export async function resolveAssignee(
 
 export type CampaignRef = { id: string; name: string; status: string };
 
-/** Campaign ids this caller may see — null means "all" (managers). */
+/** Campaign ids this caller may see — null means "all" (members with campaigns:all). */
 export async function accessibleCampaignIds(caller: AssistantCaller): Promise<string[] | null> {
-  if (caller.role !== "employee") return null;
-  return getAccessibleCampaignIds(caller.db, {
-    id: caller.userId, role: caller.role, isSuperAdmin: false, companyId: caller.companyId,
-  });
+  if (canSeeAll(caller.member, "campaigns")) return null;
+  return getAccessibleCampaignIds(caller.db, asAuthedUser(caller));
 }
 
 /** Lowercase, punctuation-free form used to compare names a user typed with stored ones. */

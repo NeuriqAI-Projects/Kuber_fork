@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 
@@ -14,8 +14,8 @@ const PatchAssignmentSchema = z.object({
 // Phase 4.4 — previously frozen: nothing in the app could change it).
 // "manual" = off; leads wait in the manager pool.
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "settings:write"); } catch (r) { return r as Response; }
 
   const db = dbForUser(user);
   const { data, error } = await db
@@ -29,8 +29,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "settings:write"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
   const parsed = PatchAssignmentSchema.safeParse(body);

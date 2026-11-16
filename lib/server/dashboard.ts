@@ -117,7 +117,7 @@ const PENDING_SELECT = `
   reply_events:reply_event_id ( lead_email, reply_body )
 `;
 
-/** Manager dashboard: 2 requests (stats RPC + the 8 newest pending replies). */
+/** Company-wide dashboard (dashboard:all): 2 requests (stats RPC + the 8 newest pending replies). */
 export async function getDashboardAnalytics(db: SupabaseClient, companyId?: string | null): Promise<DashboardAnalytics> {
   if (!companyId) return legacyDashboardAnalytics(db);
   const bounds = monthBounds();
@@ -130,8 +130,8 @@ export async function getDashboardAnalytics(db: SupabaseClient, companyId?: stri
 }
 
 /**
- * Employee-scoped dashboard (planning.md Phase 7 / Q9): the same shape as the
- * manager view, but every number derives from what the employee can actually
+ * Own-numbers dashboard (members without dashboard:all; planning.md Phase 7 / Q9): the same shape as the
+ * company view, but every number derives from what the employee can actually
  * see — their assigned leads, plus campaigns they created or were assigned.
  * Temperature comes from the DB now, so it is no longer capped at 1,000 rows.
  */
@@ -283,8 +283,8 @@ async function legacyDashboardAnalytics(db: SupabaseClient): Promise<DashboardAn
 }
 
 /**
- * Employee-scoped dashboard (planning.md Phase 7 / Q9): the same shape as the
- * manager view, but every number derives from what the employee can actually
+ * Own-numbers dashboard (members without dashboard:all; planning.md Phase 7 / Q9): the same shape as the
+ * company view, but every number derives from what the employee can actually
  * see — their assigned leads, plus campaigns they created or were assigned.
  */
 async function legacyEmployeeDashboard(db: SupabaseClient, userId: string): Promise<DashboardAnalytics> {

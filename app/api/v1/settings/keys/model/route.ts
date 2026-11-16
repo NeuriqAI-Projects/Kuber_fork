@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { SetProviderModelSchema } from "@/lib/validators/provider-keys";
 import { PROVIDER_META } from "@/lib/services/providers/registry";
@@ -9,8 +9,8 @@ import { forgetLlmConfigMemo } from "@/lib/services/llm";
 export const maxDuration = 60;
 
 export async function PUT(req: NextRequest) {
-  let caller: Awaited<ReturnType<typeof requireManager>>;
-  try { caller = await requireManager(req); } catch (r) { return r as Response; }
+  let caller: Awaited<ReturnType<typeof requireScope>>;
+  try { caller = await requireScope(req, "keys:write"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
   const parsed = SetProviderModelSchema.safeParse(body);

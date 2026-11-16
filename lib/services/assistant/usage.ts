@@ -1,7 +1,7 @@
 // Assistant spend, one llm_usage row per answered turn, tagged with the user.
 //
 // llm_usage gained a user_id column for this (migration
-// 2026_10_19_assistant.sql) so a manager can see who used how much AI. Until
+// 2026_10_19_assistant.sql) so members with assistant:admin can see who used how much AI. Until
 // that migration is run the insert is retried without user_id — a lost
 // attribution is an accounting gap, a lost row is a hole in the bill.
 import type { SupabaseClient } from "@supabase/supabase-js";

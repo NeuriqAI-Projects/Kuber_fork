@@ -1,4 +1,4 @@
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { fail, ok } from "@/lib/api-response";
 import { ProspectSearchSchema } from "@/lib/validators/leads";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -9,8 +9,8 @@ export const maxDuration = 60;
 
 /** Company-first scored search, step 1: one Apollo Organization Search page (1 credit). */
 export const POST = withRouteTiming("prospects/search", async (req, timing) => {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "prospects:run"); } catch (r) { return r as Response; }
   timing.companyId = user.companyId;
   if (!user.companyId) return fail(400, "NO_COMPANY", "Pick a company workspace first");
 

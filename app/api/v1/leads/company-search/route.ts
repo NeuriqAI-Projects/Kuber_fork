@@ -1,4 +1,4 @@
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { fail, ok } from "@/lib/api-response";
 import { CompanySearchSchema } from "@/lib/validators/leads";
 import { searchOrganizations } from "@/lib/services/apollo";
@@ -30,8 +30,8 @@ export const maxDuration = 60;
  * row, because a lookup that produced nothing is the one a manager asks about.
  */
 export const POST = withRouteTiming("leads/company-search", async (req, timing) => {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "leads:import"); } catch (r) { return r as Response; }
   timing.companyId = user.companyId;
 
   // provider_keys are shared across tenants, so an internal-workspace search

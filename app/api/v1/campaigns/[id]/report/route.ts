@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import {
   computeCampaignStats,
@@ -9,6 +9,7 @@ import {
   type DeliveryBucket,
 } from "@/lib/campaign-status";
 import { assertCampaignAccess } from "@/lib/auth/scope";
+import { canSeeAll } from "@/lib/auth/scopes";
 import { dbForUser } from "@/lib/supabase/scoped";
 
 export const maxDuration = 60;
@@ -24,8 +25,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:read"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const db = dbForUser(user);
@@ -39,15 +40,16 @@ export async function GET(
 
   if (!campaign) return fail(404, "NOT_FOUND", "Campaign not found");
 
-  // A campaign is a shared container across employees (spec §5) — an
-  // employee's report must only reflect their own leads, never the whole
+  // A campaign is a shared container across lead owners (spec §5) — the report
+  // of a member without campaigns:all must only reflect their own leads, never the whole
   // campaign (confirmed live: an employee with 2 of a campaign's 7 leads was
   // seeing the full campaign-wide funnel/draft-generation numbers).
   let rowsQuery = db
     .from("campaign_leads")
     .select("id, crm_status, first_sent_at, draft_id, email_drafts(status), leads!lead_id!inner(assigned_to)")
     .eq("campaign_id", id);
-  if (user.role === "employee") rowsQuery = rowsQuery.eq("leads.assigned_to", user.id);
+  const seesAll = canSeeAll(user.member, "campaigns");
+  if (!seesAll) rowsQuery = rowsQuery.eq("leads.assigned_to", user.id);
   const { data: rows } = await rowsQuery;
 
   const leads = rows ?? [];
@@ -84,12 +86,12 @@ export async function GET(
 
   // One bucket per lead: a replied or bounced lead is NOT also counted as sent.
   // Both figures come from the same rows the caller can see, which is what makes
-  // this employee-scoped for free — an employee's rows were already filtered to
-  // their own leads above, a manager's were not.
+  // this own-leads-scoped for free — the rows of a member without campaigns:all
+  // were already filtered to their own leads above, others' were not.
   const scoped = computeCampaignStats(leads as CampaignStatsRow[]);
-  // The campaign-wide columns are only a safe floor for a manager; falling back
-  // to them for an employee would leak co-workers' numbers back in.
-  const outcomes = user.role === "employee"
+  // The campaign-wide columns are only a safe floor with campaigns:all; falling
+  // back to them for anyone else would leak co-workers' numbers back in.
+  const outcomes = !seesAll
     ? scoped
     : {
         ...scoped,

@@ -1,15 +1,14 @@
 // Whole-pipeline views: today's to-do list, team workload, activity, and spend.
 import { tool } from "ai";
 import { z } from "zod";
-import type { AssistantCaller } from "@/lib/services/assistant/context";
+import { lacks, type AssistantCaller } from "@/lib/services/assistant/context";
 import { getThreads, getUnreadCount } from "@/lib/services/unibox";
-import { getUniboxScope } from "@/lib/auth/scope";
+import { employeeCampaignIds } from "@/lib/auth/scope";
+import { can, canSeeAll } from "@/lib/auth/scopes";
 import { CAMPAIGN_LEAD_STATUSES, LEAD_STATUSES } from "@/lib/services/assistant/tools/lead-filter";
 import {
   accessibleCampaignIds, clip, countBy, daysAgoIso, loadTeam, one, personName, readAllPages, resolveAssignee, teamNameMap,
 } from "@/lib/services/assistant/tools/shared";
-
-const MANAGER_ONLY = { error: "Only managers can see this. Answer about the user's own work instead." };
 
 /** Call a count/aggregate function from supabase/migrations/2026_11_05_C_stats_rpcs.sql.
  *  null when it is missing or fails — each tool then runs its old queries. */
@@ -56,8 +55,10 @@ type UsageGroup = {
 };
 
 export function overviewTools(caller: AssistantCaller) {
-  const employee = caller.role === "employee";
-  const scope = getUniboxScope({ id: caller.userId, role: caller.role, isSuperAdmin: false, companyId: caller.companyId }) ?? undefined;
+  // Each tool answers for the caller's own work unless they hold that area's :all scope.
+  const ownLeads = !canSeeAll(caller.member, "leads");
+  const ownCampaigns = !canSeeAll(caller.member, "campaigns");
+  const ownReplies = !canSeeAll(caller.member, "unibox");
 
   return {
     pipeline_overview: tool({
@@ -67,27 +68,33 @@ export function overviewTools(caller: AssistantCaller) {
         "'where are leads stuck', and as the first call for broad questions.",
       inputSchema: z.object({}),
       execute: async () => {
-        const allowed = await accessibleCampaignIds(caller);
+        // Called directly by GET /assistant/overview too, so it checks for itself.
+        const denied = lacks(caller, "dashboard:read");
+        if (denied) return denied;
+        // Company-wide with dashboard:all (the dashboard's own rule), else the caller's own work.
+        const mine = !canSeeAll(caller.member, "dashboard");
+        const scope = mine ? { assigned_to: caller.userId } : undefined;
+        const allowed = mine ? await employeeCampaignIds(caller.db, caller.userId) : null;
         // Everything here is a head-only count, run in parallel: one round-trip
         // of latency however many leads the company has.
         const leadCount = (extra: (q: any) => any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
           let q = caller.db.from("leads").select("id", { count: "exact", head: true }).eq("is_deleted", false);
-          if (employee) q = q.eq("assigned_to", caller.userId);
+          if (mine) q = q.eq("assigned_to", caller.userId);
           return Promise.resolve(extra(q)).then((r: { count: number | null }) => r.count ?? 0);
         };
         const clCount = (extra: (q: any) => any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
-          let q = caller.db.from("campaign_leads").select(employee ? "id, leads!lead_id!inner(assigned_to)" : "id", { count: "exact", head: true });
-          if (employee) q = q.eq("leads.assigned_to", caller.userId);
+          let q = caller.db.from("campaign_leads").select(mine ? "id, leads!lead_id!inner(assigned_to)" : "id", { count: "exact", head: true });
+          if (mine) q = q.eq("leads.assigned_to", caller.userId);
           return Promise.resolve(extra(q)).then((r: { count: number | null }) => r.count ?? 0);
         };
         let campsQ = caller.db.from("campaigns").select("id, name, status, sent_count, replied_count").eq("is_deleted", false);
         if (allowed) campsQ = campsQ.in("id", allowed.length ? allowed : ["00000000-0000-0000-0000-000000000000"]);
         // Only awaited when assistant_overview_counts is missing (fallback).
-        let draftsQ = caller.db.from("email_drafts").select(employee ? "id, leads!inner(assigned_to)" : "id", { count: "exact", head: true }).eq("status", "draft");
-        if (employee) draftsQ = draftsQ.eq("leads.assigned_to", caller.userId);
-        let failQ = caller.db.from("lead_events").select(employee ? "id, leads!inner(assigned_to)" : "id", { count: "exact", head: true })
+        let draftsQ = caller.db.from("email_drafts").select(mine ? "id, leads!inner(assigned_to)" : "id", { count: "exact", head: true }).eq("status", "draft");
+        if (mine) draftsQ = draftsQ.eq("leads.assigned_to", caller.userId);
+        let failQ = caller.db.from("lead_events").select(mine ? "id, leads!inner(assigned_to)" : "id", { count: "exact", head: true })
           .eq("event", "enrichment_failed").gte("created_at", daysAgoIso(7));
-        if (employee) failQ = failQ.eq("leads.assigned_to", caller.userId);
+        if (mine) failQ = failQ.eq("leads.assigned_to", caller.userId);
 
         // Lead / campaign-lead / draft / failure counts: one SQL call
         // (assistant_overview_counts) instead of ~17 head counts; the old
@@ -99,7 +106,7 @@ export function overviewTools(caller: AssistantCaller) {
         };
         const since7 = daysAgoIso(7);
         const [rpcCounts, camps, needsReply, unread] = await Promise.all([
-          statsRpc<OverviewCounts>(caller, "assistant_overview_counts", { p_user: employee ? caller.userId : null, p_since: since7 }),
+          statsRpc<OverviewCounts>(caller, "assistant_overview_counts", { p_user: mine ? caller.userId : null, p_since: since7 }),
           campsQ,
           getThreads(caller.db, { read_state: "needs_reply", limit: 10, scope }),
           getUnreadCount(caller.db, scope),
@@ -126,7 +133,7 @@ export function overviewTools(caller: AssistantCaller) {
             ]);
         const nonZero = (g: Array<{ value: string; count: number }>) => g.filter((x) => x.count > 0).sort((a, b) => b.count - a.count);
         return {
-          scope: employee ? "your assigned leads only" : "whole company",
+          scope: mine ? "your assigned leads only" : "whole company",
           leads: {
             total: leadStatus.reduce((s, g) => s + g.count, 0),
             by_status: nonZero(leadStatus),
@@ -156,11 +163,12 @@ export function overviewTools(caller: AssistantCaller) {
 
     team_overview: tool({
       description:
-        "Managers only. Each teammate's workload and results: leads assigned (by status), campaigns owned, replies waiting. " +
+        "Each teammate's workload and results: leads assigned (by status), campaigns owned, replies waiting. " +
         "Use for 'who has the most leads', 'how is Ravi doing', 'unassigned leads'.",
       inputSchema: z.object({ person: z.string().optional().describe("Limit to one teammate (name or email).") }),
       execute: async ({ person }) => {
-        if (employee) return MANAGER_ONLY;
+        const denied = lacks(caller, "dashboard:all");
+        if (denied) return denied;
         let only: string | null = null;
         if (person) {
           const a = await resolveAssignee(caller, person);
@@ -189,7 +197,7 @@ export function overviewTools(caller: AssistantCaller) {
           const waiting = await getThreads(caller.db, { read_state: "needs_reply", limit: 1, scope: { assigned_to: m.id } })
             .then((r) => r.counts.total).catch(() => null);
           return {
-            name: m.name, email: m.email, role: m.role, active: m.is_active !== false,
+            name: m.name, email: m.email, receives_leads: m.receives_leads, active: m.is_active !== false,
             leads_assigned: sumCells(mine),
             leads_by_status: byStatus(mine),
             campaigns_owned: owned.length,
@@ -217,6 +225,8 @@ export function overviewTools(caller: AssistantCaller) {
         lead_id: z.string().optional(),
       }),
       execute: async ({ days = 7, event, person, lead_id }) => {
+        const denied = lacks(caller, "leads:read");
+        if (denied) return denied;
         let actor: string | null = null;
         if (person) {
           const a = await resolveAssignee(caller, person);
@@ -227,7 +237,7 @@ export function overviewTools(caller: AssistantCaller) {
           let q = caller.db.from("lead_events")
             .select(`event, detail, actor_id, created_at, lead_id, leads!inner(first_name, last_name, assigned_to)`)
             .gte("created_at", daysAgoIso(days));
-          if (employee) q = q.eq("leads.assigned_to", caller.userId);
+          if (ownLeads) q = q.eq("leads.assigned_to", caller.userId);
           if (event) q = q.eq("event", event);
           if (actor) q = q.eq("actor_id", actor);
           if (lead_id) q = q.eq("lead_id", lead_id);
@@ -239,7 +249,7 @@ export function overviewTools(caller: AssistantCaller) {
         // ~10,000 a week). Old full read stays as the fallback.
         const [groups, latestRows, team] = await Promise.all([
           statsRpc<Array<{ event: string; actor_id: string | null; n: number; latest: string }>>(caller, "lead_event_counts", {
-            p_since: daysAgoIso(days), p_user: employee ? caller.userId : null,
+            p_since: daysAgoIso(days), p_user: ownLeads ? caller.userId : null,
             p_event: event ?? null, p_actor: actor, p_lead: lead_id ?? null,
           }),
           build(0, 14),
@@ -284,21 +294,26 @@ export function overviewTools(caller: AssistantCaller) {
       description: "Email drafts and reply drafts waiting for review, per campaign. Use for 'how many drafts need approval', 'which campaign has drafts pending'.",
       inputSchema: z.object({ status: z.enum(["draft", "approved", "rejected", "sent", "failed"]).optional().describe("Default 'draft' (= waiting for review).") }),
       execute: async ({ status = "draft" }) => {
+        const denied = lacks(caller, "campaigns:read");
+        if (denied) return denied;
         const allowed = await accessibleCampaignIds(caller);
+        // Reply drafts are Unibox content: counted only with unibox:read.
+        const seesReplies = can(caller, "unibox:read");
         // Drafts per campaign grouped in SQL (email_drafts_by_campaign); the
         // row read is only the fallback.
         const [drafts, replyDrafts, camps] = await Promise.all([
           statsRpc<Array<{ campaign_id: string | null; n: number }>>(caller, "email_drafts_by_campaign", {
-            p_status: status, p_user: employee ? caller.userId : null,
+            p_status: status, p_user: ownCampaigns ? caller.userId : null,
           }).then(async (cells) => cells?.map((c) => ({ campaign_id: c.campaign_id, n: Number(c.n) }))
             ?? (await readAllPages<{ campaign_id: string | null }>((from, to) => {
-              let q = caller.db.from("email_drafts").select(employee ? "campaign_id, leads!inner(assigned_to)" : "campaign_id").eq("status", status);
-              if (employee) q = q.eq("leads.assigned_to", caller.userId);
+              let q = caller.db.from("email_drafts").select(ownCampaigns ? "campaign_id, leads!inner(assigned_to)" : "campaign_id").eq("status", status);
+              if (ownCampaigns) q = q.eq("leads.assigned_to", caller.userId);
               return q.order("id").range(from, to);
             })).rows.map((r) => ({ campaign_id: r.campaign_id, n: 1 }))),
           (() => {
-            let q = caller.db.from("reply_drafts").select(employee ? "id, campaign_leads!inner(leads!lead_id!inner(assigned_to))" : "id", { count: "exact", head: true }).eq("status", "draft");
-            if (employee) q = q.eq("campaign_leads.leads.assigned_to", caller.userId);
+            if (!seesReplies) return Promise.resolve({ count: null });
+            let q = caller.db.from("reply_drafts").select(ownReplies ? "id, campaign_leads!inner(leads!lead_id!inner(assigned_to))" : "id", { count: "exact", head: true }).eq("status", "draft");
+            if (ownReplies) q = q.eq("campaign_leads.leads.assigned_to", caller.userId);
             return q;
           })(),
           caller.db.from("campaigns").select("id, name, status").eq("is_deleted", false),
@@ -309,18 +324,19 @@ export function overviewTools(caller: AssistantCaller) {
           status,
           email_drafts: visible.reduce((s, d) => s + d.n, 0),
           by_campaign: groupCounts(visible.map((d) => ({ key: d.campaign_id ? campName.get(d.campaign_id) ?? "(deleted campaign)" : "(no campaign)", n: d.n }))).slice(0, 20),
-          reply_drafts_waiting: replyDrafts.count ?? 0,
+          reply_drafts_waiting: seesReplies ? replyDrafts.count ?? 0 : undefined,
         };
       },
     }),
 
     usage_and_credits: tool({
       description:
-        "Managers only. AI spend (tokens and $ by purpose, by model, and by person for the assistant) over the last N days, plus the last known Apollo / Firecrawl / Instantly credit balances. " +
+        "AI spend (tokens and $ by purpose, by model, and by person for the assistant) over the last N days, plus the last known Apollo / Firecrawl / Instantly credit balances. " +
         "Reads stored numbers only — never calls a paid API.",
       inputSchema: z.object({ days: z.number().int().min(1).max(365).optional().describe("Default 30.") }),
       execute: async ({ days = 30 }) => {
-        if (employee) return MANAGER_ONLY;
+        const denied = lacks(caller, "credits:read");
+        if (denied) return denied;
         const since = daysAgoIso(days);
         // Pre-summed per (purpose, model, person, day) in SQL (llm_usage_summary):
         // a few hundred groups instead of up to 50,000 `select *` rows. The
@@ -367,7 +383,8 @@ export function overviewTools(caller: AssistantCaller) {
           ai_total: sum(usageGroups),
           by_purpose: group(usageGroups, (r) => String(r.purpose ?? "other")),
           by_model: group(usageGroups, (r) => `${r.provider}/${r.model}`).slice(0, 10),
-          assistant_by_person: group(assistantRows, (r) => (r.user_id ? names.get(r.user_id) ?? "someone" : "unknown")).slice(0, 20),
+          // Spend per person only with assistant:admin (same rule as GET /assistant/usage).
+          assistant_by_person: !can(caller, "assistant:admin") ? undefined : group(assistantRows, (r) => (r.user_id ? names.get(r.user_id) ?? "someone" : "unknown")).slice(0, 20),
           last_known_credit_balances: creditRows.map((c) => {
             let parsed: { remaining?: number | null; message?: string } = {};
             try { parsed = JSON.parse(c.value as string); } catch { /* keep empty */ }

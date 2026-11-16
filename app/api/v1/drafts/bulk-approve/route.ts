@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { BulkApproveSchema } from "@/lib/validators/drafts";
 import { syncApprovedDraftToInstantly } from "@/lib/services/draft-sync";
 import { assertCampaignAccess } from "@/lib/auth/scope";
+import { canSeeAll } from "@/lib/auth/scopes";
 import { logLeadEvents } from "@/lib/services/lead-events";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { getActiveJob } from "@/lib/services/regeneration-jobs";
@@ -16,8 +17,8 @@ function chunks(ids: string[], size = 100): string[][] {
 }
 
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:send"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
   const parsed = BulkApproveSchema.safeParse(body);
@@ -55,11 +56,24 @@ export async function POST(req: NextRequest) {
   }
   const byId = new Map(drafts.map((d) => [d.id, d]));
 
+  // Same rule as the single-draft approve (assertDraftAccess): without
+  // campaigns:all, only drafts on leads assigned to the caller — campaign access
+  // alone would let them certify a teammate's draft in a shared campaign.
+  let ownLeads: Set<string> | null = null;
+  if (!canSeeAll(user.member, "campaigns")) {
+    ownLeads = new Set();
+    for (const ids of chunks([...new Set(drafts.map((d) => d.lead_id))])) {
+      const { data } = await db.from("leads").select("id").in("id", ids).eq("assigned_to", user.id);
+      for (const l of data ?? []) ownLeads.add(l.id as string);
+    }
+  }
+
   const accessByCampaign = new Map<string, boolean>();
   const eligible: Draft[] = [];
   for (const draftId of uniqueIds) {
     const draft = byId.get(draftId);
     if (!draft || draft.status !== "draft") { skipped++; continue; }
+    if (ownLeads && !ownLeads.has(draft.lead_id)) { skipped++; continue; }
     if (!accessByCampaign.has(draft.campaign_id)) {
       accessByCampaign.set(draft.campaign_id, await assertCampaignAccess(db, user, draft.campaign_id).then(() => true, () => false));
     }

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { assertCampaignAccess } from "@/lib/auth/scope";
 import { ok, fail } from "@/lib/api-response";
 import { holdSending } from "@/lib/services/campaign-lifecycle";
@@ -13,14 +13,15 @@ export const maxDuration = 60;
  * Hold sending on this campaign — stops Instantly sending anything further,
  * including queued follow-ups, until someone resumes it.
  *
- * Anyone with access to the campaign may hold: when a wrong email is going out,
- * speed matters more than permission, and the hold is recorded against the user
+ * Anyone with campaigns:send and access to the campaign may hold — even on a
+ * campaign shared with teammates (no shared-campaign rule here): when a wrong
+ * email is going out, speed matters more than permission, and the hold is recorded against the user
  * so an open hold always has a name on it. Releasing goes through the existing
  * /resume route, which clears the same stamp.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:send"); } catch (r) { return r as Response; }
   const { id } = await params;
   const db = dbForUser(user);
   try { await assertCampaignAccess(db, user, id); } catch (r) { return r as Response; }

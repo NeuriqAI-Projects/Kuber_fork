@@ -1,6 +1,6 @@
 import { NextRequest, after } from "next/server";
 import crypto from "crypto";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope, assertScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { ExcelImportSchema } from "@/lib/validators/leads";
 import { internalAppBaseUrl } from "@/lib/internal-url";
@@ -279,14 +279,20 @@ function triggerScrape(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "leads:import"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
   const parsed = ExcelImportSchema.safeParse(body);
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
 
   const db = dbForUser(user);
+
+  // Choosing who gets the leads (a person, round robin or territory) also needs
+  // leads:assign; "manual" with no person = leave in pool, no assignment.
+  if (parsed.data.mode !== "headers" && (parsed.data.assigned_to || (parsed.data.assignment_strategy && parsed.data.assignment_strategy !== "manual"))) {
+    try { assertScope(user, "leads:assign"); } catch (r) { return r as Response; }
+  }
 
   if (parsed.data.mode !== "headers" && parsed.data.assigned_to) {
     const { data: employee } = await db.from("profiles").select("id, is_active").eq("id", parsed.data.assigned_to).maybeSingle();

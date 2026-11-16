@@ -14,6 +14,8 @@ import {
 import { cn, everyWhileVisible } from "@/lib/utils";
 import { formatChatDate, startsNewChatDay } from "@/lib/chat-format";
 import { useApp } from "@/lib/app-context";
+import { useAccess } from "@/lib/access-context";
+import { activeLeadOwners } from "@/lib/lead-owners";
 import type { Lead, EnrichmentStage, LeadStatus } from "@/lib/leads";
 import { Avatar, ScoreBadge, StatusBadge } from "@/components/leads/lead-ui";
 import {
@@ -89,9 +91,11 @@ const SOURCE_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
 // Double-click swaps the static text for a bare input in place; Enter or
 // blur commits, Escape reverts — no separate "edit mode" or Save button.
 function InlineField({
-  value, placeholder, onCommit, type = "text", className, variant = "block",
+  value, placeholder, onCommit, type = "text", className, variant = "block", readOnly = false,
 }: {
   value: string;
+  /** Shown as plain text, no double-click edit (member lacks the write scope). */
+  readOnly?: boolean;
   placeholder?: string;
   onCommit: (next: string) => Promise<void>;
   type?: string;
@@ -151,10 +155,11 @@ function InlineField({
 
   return (
     <span
-      onDoubleClick={() => setEditing(true)}
-      title="Double-click to edit"
+      onDoubleClick={readOnly ? undefined : () => setEditing(true)}
+      title={readOnly ? undefined : "Double-click to edit"}
       className={cn(
-        "rounded px-1 -mx-1 cursor-text hover:bg-hover transition-colors",
+        "rounded px-1 -mx-1",
+        !readOnly && "cursor-text hover:bg-hover transition-colors",
         variant === "block" ? "block truncate" : "inline-block",
         !value && "text-muted-foreground",
         saving && "opacity-60",
@@ -170,12 +175,13 @@ function InlineField({
 // description, sells-to) — a growing textarea instead of a single-line input,
 // and Enter inserts a newline instead of committing (blur / Escape only).
 function InlineTextArea({
-  value, placeholder, onCommit, className,
+  value, placeholder, onCommit, className, readOnly = false,
 }: {
   value: string;
   placeholder?: string;
   onCommit: (next: string) => Promise<void>;
   className?: string;
+  readOnly?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft,   setDraft  ] = useState(value);
@@ -238,10 +244,11 @@ function InlineTextArea({
 
   return (
     <p
-      onDoubleClick={() => setEditing(true)}
-      title="Double-click to edit"
+      onDoubleClick={readOnly ? undefined : () => setEditing(true)}
+      title={readOnly ? undefined : "Double-click to edit"}
       className={cn(
-        "rounded-md px-2 py-1.5 -mx-2 -my-1.5 cursor-text hover:bg-hover transition-colors leading-relaxed",
+        "rounded-md px-2 py-1.5 -mx-2 -my-1.5 leading-relaxed",
+        !readOnly && "cursor-text hover:bg-hover transition-colors",
         className,
         // Last, so a caller's own text colour cannot override it: an empty field shows its
         // placeholder in gray, a filled one shows the real text in the normal colour, bolder.
@@ -595,7 +602,8 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
   onLeadUpdated?: (updated: Lead) => void;
   onOrgClick?: (orgId: string) => void;
 }) {
-  const { role, session } = useApp();
+  const { session } = useApp();
+  const { can } = useAccess();
   const router = useRouter();
   const [freshLead,   setFreshLead  ] = useState<Lead | null>(null);
   const [loadingLead, setLoadingLead] = useState(false);
@@ -610,8 +618,10 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
   const [sendingComment,  setSendingComment ] = useState(false);
   const [retrying,    setRetrying   ] = useState(false);
   // Users list is shared/cached (the Leads page loads the same one).
-  const usersQuery = useCached<Profile[]>(role === "manager" ? cacheKeys.users : null, cachedFetchers.users);
-  const employees = (usersQuery.data ?? []).filter((u) => u.role === "employee" && u.is_active);
+  // Owner select: leads:assign; the list itself needs team:read.
+  const canReassign = can("leads:assign") && can("team:read");
+  const usersQuery = useCached<Profile[]>(canReassign ? cacheKeys.users : null, cachedFetchers.users);
+  const employees = activeLeadOwners(usersQuery.data ?? []);
   const [reassigning, setReassigning] = useState(false);
   const commentsEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -876,7 +886,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
         <DetailRow icon={<Users />} label="Pipeline">
           <HorizontalStepper currentStatus={display.status} />
         </DetailRow>
-        {role === "manager" && (
+        {canReassign && (
           <DetailRow icon={<UserCog />} label="Owner">
             <Select
               value={display.assignedTo ?? "unassigned"}
@@ -901,6 +911,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
             placeholder="Not yet enriched"
             type="email"
             onCommit={(v) => v ? saveField({ email: v }, "email") : Promise.resolve()}
+            readOnly={!can("leads:write")}
           />
         </DetailRow>
         <DetailRow icon={<Phone />} label="Phone">
@@ -910,6 +921,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
             type="tel"
             className="tabular-nums"
             onCommit={(v) => saveField({ phone: v }, "phone")}
+            readOnly={!can("leads:write")}
           />
         </DetailRow>
         <DetailRow icon={<Pencil />} label="Job title">
@@ -917,6 +929,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
             value={display.jobTitle}
             placeholder="Add job title"
             onCommit={(v) => saveField({ title: v }, "job title")}
+            readOnly={!can("leads:write")}
           />
         </DetailRow>
         <DetailRow icon={<MapPin />} label="Country">
@@ -924,6 +937,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
             value={display.country}
             placeholder="Add country"
             onCommit={(v) => saveField({ country: v }, "country")}
+            readOnly={!can("leads:write")}
           />
         </DetailRow>
         <DetailRow icon={<Globe2 />} label="Source">
@@ -998,15 +1012,15 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
             <EnrichStageBadge stage={currentStage} hasData={enrichHasData} />
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            {/* Rescraping spends credits — manager-only. Employees work
-                their leads as given; enrichment is the manager's job
-                (planning.md D8 / Q6). */}
+            {/* Rescraping spends credits — organizations:write only. Lead owners
+                work their leads as given; enrichment is for whoever holds
+                organizations:write (planning.md D8 / Q6). */}
             {/* No attempts<3 gate: the 3-attempt cap is for the
                 automatic-retry loop only. A manually clicked retry
                 always gets a fresh budget server-side (see rescrape
                 route) — otherwise a permanently-failed org could
                 never be retried even after topping up credits. */}
-            {role === "manager" && (currentStage === "failed" || currentStage === "queued" || currentStage === null || (currentStage === "done" && !enrichHasData)) && (
+            {can("organizations:write") && (currentStage === "failed" || currentStage === "queued" || currentStage === null || (currentStage === "done" && !enrichHasData)) && (
               <Button
                 size="sm" variant="outline"
                 onClick={handleRetry}
@@ -1044,6 +1058,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
                   placeholder="Add a description of what this company does"
                   className="text-sm text-foreground"
                   onCommit={(v) => saveOrgField({ company_description: v }, "company description")}
+                  readOnly={!can("organizations:write")}
                 />
               </div>
               <div className="min-w-0">
@@ -1053,6 +1068,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
                   placeholder="Add who this company sells to"
                   className="text-sm text-foreground"
                   onCommit={(v) => saveOrgField({ sells_to: v }, "who they sell to")}
+                  readOnly={!can("organizations:write")}
                 />
               </div>
             </div>
@@ -1282,6 +1298,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
                       variant="inline"
                       className="text-lg font-semibold"
                       onCommit={(v) => saveField({ first_name: v }, "first name")}
+                      readOnly={!can("leads:write")}
                     />
                     <InlineField
                       value={display.lastName}
@@ -1289,6 +1306,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
                       variant="inline"
                       className="text-lg font-semibold"
                       onCommit={(v) => saveField({ last_name: v }, "last name")}
+                      readOnly={!can("leads:write")}
                     />
                   </span>
                 }

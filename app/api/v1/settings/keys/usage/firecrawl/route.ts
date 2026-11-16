@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok } from "@/lib/api-response";
 import { checkFirecrawlCredits } from "@/lib/services/provider-credits";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -38,8 +38,8 @@ const DAILY_CHART_DAYS = 14;
 const HISTORY_PAGE_SIZE = 200;
 
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "credits:read"); } catch (r) { return r as Response; }
 
   const bypassCache = new URL(req.url).searchParams.get("refresh") === "1";
   const db = dbForUser(user);

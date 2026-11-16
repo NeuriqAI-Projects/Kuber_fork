@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { fail, ok } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { parseIndustryKeywordGroups, resolveApolloKeyword } from "@/lib/constants";
@@ -89,8 +89,8 @@ const capped = <T,>(p: Promise<T>) => Promise.race([p, new Promise<null>((r) => 
  *  many leads, minus companies this workspace already has. Falls back to the
  *  people-count maths when the scan fails. */
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "prospects:run"); } catch (r) { return r as Response; }
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
   const db = dbForUser(user);

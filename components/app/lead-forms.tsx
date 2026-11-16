@@ -24,6 +24,8 @@ import { LocationsPicker } from "@/components/ui/locations-picker";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ApolloPeopleAdvanced, buildPeopleAdvanced } from "@/components/app/apollo-people-advanced";
 import { ApolloCostNote } from "@/components/app/apollo-cost-note";
+import { useAccess } from "@/lib/access-context";
+import { activeLeadOwners } from "@/lib/lead-owners";
 import { apolloPreview, importExcelDirect, createLead, patchLead, patchOrg, fetchApolloCredits, fetchSettings, addIndustryKeyword, queryCache, cacheKeys, cachedFetchers, type Profile, type PreviewLead, type DuplicateOwner } from "@/lib/api-client";
 import { ensureSplitNames } from "@/lib/utils/person-name";
 import { supabase } from "@/lib/supabase";
@@ -132,20 +134,23 @@ export function BatchNameField({
 }
 
 // ─── AssignToField ────────────────────────────────────────────────────────────
-// Shared by all three add-lead tabs (Apollo, Excel, Manual): lets the Manager
-// route the whole imported batch to one employee at creation time, instead of
-// leaving every lead in the pool for manual assignment later.
+// Shared by all the add-lead tabs (Apollo, Excel, Manual, Company, Scored): lets a
+// member with leads:assign route the whole imported batch to one lead owner at
+// creation time, instead of leaving every lead in the pool for manual assignment
+// later. Empty list (no leads:assign or no team:read) = the pickers hide themselves.
 
 export function useAssignableEmployees(enabled: boolean) {
   const [employees, setEmployees] = useState<Profile[]>([]);
+  const { can } = useAccess();
+  const allowed = enabled && can("leads:assign") && can("team:read");
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!allowed) return;
     // Shared users cache (60 s): every form open used to fetch the list again.
     queryCache.fetch<Profile[]>(cacheKeys.users, cachedFetchers.users, { maxAgeMs: 60_000 }).then((users) => {
-      setEmployees(users.filter((u) => u.role === "employee" && u.is_active));
+      setEmployees(activeLeadOwners(users));
     }).catch(() => {});
-  }, [enabled]);
+  }, [allowed]);
 
   return employees;
 }

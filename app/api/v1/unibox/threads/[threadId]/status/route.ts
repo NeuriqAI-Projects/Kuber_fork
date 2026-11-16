@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { assertThreadAccessById } from "@/lib/auth/scope";
 import { setLeadInterestStatus } from "@/lib/services/unibox";
@@ -11,11 +11,13 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ threadId: string }> },
 ) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "unibox:write"); } catch (r) { return r as Response; }
   const { threadId } = await params;
   try { await assertThreadAccessById(dbForUser(user), user, threadId); } catch (r) { return r as Response; }
-  const body = await req.json().catch(() => null) as { interest_value?: number | null; lead_email?: string } | null;
+  // lead_email is NOT taken from the body: Instantly is shared by both
+  // companies, so a client-chosen address could change any lead's status.
+  const body = await req.json().catch(() => null) as { interest_value?: number | null } | null;
   if (!body || !("interest_value" in body)) {
     return fail(400, "VALIDATION_ERROR", "interest_value required");
   }
@@ -33,7 +35,7 @@ export async function PATCH(
     .limit(1)
     .maybeSingle();
 
-  const leadEmail = body.lead_email ?? threadRow?.lead_email ?? null;
+  const leadEmail = threadRow?.lead_email ?? null;
   if (!leadEmail) return fail(400, "MISSING_LEAD", "Could not resolve lead email for thread");
 
   await setLeadInterestStatus(db, {

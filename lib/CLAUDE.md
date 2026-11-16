@@ -2,7 +2,7 @@
 
 | Folder / file | What |
 |---|---|
-| `auth/` | JWT checks, roles, access scope, rate limits |
+| `auth/` | JWT checks, scopes (permissions, `docs/scopes.md`), row access, rate limits |
 | `supabase/` | Supabase clients (scoped / admin / server / browser) |
 | `server/` | Data loaders for server components (pages) |
 | `services/` | Business logic + provider calls (biggest folder) |
@@ -10,7 +10,7 @@
 | `utils/` | domain, email-html, person-name helpers |
 | `api-client.ts` | Browser fetch wrappers for every `/api/v1` route |
 | `api-response.ts` | `ok()` / `fail()` response helpers |
-| `app-context.tsx`, `theme-context.tsx` | React contexts (session, leads cache, theme) |
+| `app-context.tsx`, `theme-context.tsx`, `access-context.tsx` | React contexts (session, leads cache, theme, `useAccess()` scopes) |
 | `mappers.ts` | DB row → frontend shape + status maps |
 | `branding.ts` | colour palettes (Attio light + dark ladders; `allPalettes()` feeds the pre-paint script) |
 | `http.ts` | retry schedule per provider (Apollo: no retries, on purpose) |

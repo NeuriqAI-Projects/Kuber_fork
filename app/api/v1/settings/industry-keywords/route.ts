@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { fail, ok } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { addKeyword } from "@/lib/services/prospects/keywords";
@@ -12,8 +12,8 @@ const Body = z.object({ group_id: z.string().min(1), label: z.string().trim().mi
 /** POST: add ONE keyword to ONE Industry Segments group, safe against a teammate adding at the same time
  *  (the whole-settings PATCH was last-write-wins). Answers the saved groups; 409 on a duplicate. */
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "knowledge:write"); } catch (r) { return r as Response; }
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
   const { group_id, label, query } = parsed.data;

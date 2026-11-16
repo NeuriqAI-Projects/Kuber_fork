@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { checkTavilyCredits } from "@/lib/services/provider-credits";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -11,8 +11,8 @@ export const maxDuration = 60;
 // recorded: LinkedIn/social pages read through Tavily (website down) and web searches used when
 // the AI was unsure. A read that came back too thin is not recorded, so this can undercount slightly.
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "credits:read"); } catch (r) { return r as Response; }
   const bypassCache = new URL(req.url).searchParams.get("refresh") === "1";
   const db = dbForUser(user);
 

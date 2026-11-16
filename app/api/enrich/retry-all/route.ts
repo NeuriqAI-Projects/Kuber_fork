@@ -1,5 +1,5 @@
 import { NextRequest, after } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { internalAppBaseUrl } from "@/lib/internal-url";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -15,11 +15,11 @@ const MAX_ENRICHMENT_ATTEMPTS = 3;
 const SCRAPE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Bulk version of the single-org rescrape/retry — requeues every failed org,
-// instead of managers clicking "retry" one company at a time (there was no
+// instead of clicking "retry" one company at a time (there was no
 // bulk path before this, and failures pile up fast on a large import).
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "organizations:write"); } catch (r) { return r as Response; }
 
   const db = dbForUser(user);
 

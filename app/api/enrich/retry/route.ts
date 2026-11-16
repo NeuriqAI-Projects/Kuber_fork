@@ -1,14 +1,16 @@
 import { NextRequest, after } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { internalAppBaseUrl } from "@/lib/internal-url";
 import { dbForUser } from "@/lib/supabase/scoped";
 
 export const maxDuration = 60;
 
+// Spends Firecrawl/LLM like /organizations/[id]/rescrape, so the same
+// organizations:write scope (it used to be open to every member).
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "organizations:write"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
   const orgId = body?.org_id;

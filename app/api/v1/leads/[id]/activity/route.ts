@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { assertLeadAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -16,12 +16,12 @@ type EventMeta = {
 // Clean, human-readable per-lead activity timeline for the drawer (Problem 8).
 // Distinct from /api/enrich/status, which is the raw org-scrape debug trail.
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "leads:read"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const db = dbForUser(user);
-  // Employees may only see their own assigned leads' activity.
+  // Without leads:all, only their own assigned leads' activity.
   try { await assertLeadAccess(db, user, id); } catch (r) { return r as Response; }
 
   const { data: events, error } = await db

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { dbId } from "@/lib/validators/id";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { runLabComparison } from "@/lib/services/model-lab";
@@ -26,9 +26,8 @@ const Schema = z.object({
  * for how the carrier campaigns keep the real generator's behaviour intact.
  */
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
-  if (user.role !== "manager") return fail(403, "FORBIDDEN", "Managers only");
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "model_lab:write"); } catch (r) { return r as Response; }
   if (!user.companyId) return fail(400, "VALIDATION_ERROR", "No company on this account");
 
   const parsed = Schema.safeParse(await req.json().catch(() => null));
@@ -65,9 +64,8 @@ export async function POST(req: NextRequest) {
  * twice.
  */
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
-  if (user.role !== "manager") return fail(403, "FORBIDDEN", "Managers only");
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "model_lab:read"); } catch (r) { return r as Response; }
 
   const url = new URL(req.url);
   const leadId = url.searchParams.get("lead_id");

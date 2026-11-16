@@ -11,7 +11,8 @@ export function callerFromRequest(req: NextRequest, user: AuthedUser): Assistant
   return {
     userId: user.id,
     email: user.email,
-    role: user.role,
+    scopes: user.scopes,
+    member: user.member,
     companyId: user.companyId,
     db: createScopedClient(user.companyId),
     token: header.startsWith("Bearer ") ? header.slice(7) : "",

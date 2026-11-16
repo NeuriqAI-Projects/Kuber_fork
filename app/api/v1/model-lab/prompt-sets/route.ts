@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { dbId } from "@/lib/validators/id";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 
@@ -18,9 +18,8 @@ const Schema = z.object({
 /** Save a wording to try, or update one. Never writes to Settings — promoting a
  *  winner is a deliberate, separate act in Settings itself. */
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
-  if (user.role !== "manager") return fail(403, "FORBIDDEN", "Managers only");
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "model_lab:write"); } catch (r) { return r as Response; }
   if (!user.companyId) return fail(400, "VALIDATION_ERROR", "No company on this account");
 
   const parsed = Schema.safeParse(await req.json().catch(() => null));
@@ -51,9 +50,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
-  if (user.role !== "manager") return fail(403, "FORBIDDEN", "Managers only");
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "model_lab:write"); } catch (r) { return r as Response; }
 
   const id = new URL(req.url).searchParams.get("id");
   if (!id) return fail(400, "VALIDATION_ERROR", "id required");

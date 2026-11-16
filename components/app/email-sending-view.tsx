@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Mail, RefreshCw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { useApp } from "@/lib/app-context";
+import { useAccess } from "@/lib/access-context";
 import { Button } from "@/components/ui/button";
 import { SettingsPageTitle, SettingsRow, SettingsSection } from "@/components/ui/settings";
 import {
@@ -22,6 +23,8 @@ import { cn } from "@/lib/utils";
 
 export function EmailSendingView() {
   const { session } = useApp();
+  // keys:read opens this view; only sending_accounts:write may change the default sender.
+  const canChange = useAccess().can("sending_accounts:write");
   const [accounts, setAccounts] = useState<InstantlySendingAccount[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<string | null>(null);
   const [draftEmail, setDraftEmail] = useState("");
@@ -122,7 +125,7 @@ export function EmailSendingView() {
             </>
           }
         >
-          <Select value={draftEmail} onValueChange={setDraftEmail}>
+          <Select value={draftEmail} onValueChange={setDraftEmail} disabled={!canChange}>
             <SelectTrigger id="sending-account">
               <SelectValue placeholder="Select an active Instantly mailbox" />
             </SelectTrigger>
@@ -146,15 +149,17 @@ export function EmailSendingView() {
               ))}
             </SelectContent>
           </Select>
-          <div className="flex justify-end">
-            <Button
-              onClick={() => void handleSave()}
-              disabled={!draftEmail || draftEmail === selectedEmail || saving}
-            >
-              {saving && <RefreshCw className="size-3.5 animate-spin" />}
-              Use account
-            </Button>
-          </div>
+          {canChange && (
+            <div className="flex justify-end">
+              <Button
+                onClick={() => void handleSave()}
+                disabled={!draftEmail || draftEmail === selectedEmail || saving}
+              >
+                {saving && <RefreshCw className="size-3.5 animate-spin" />}
+                Use account
+              </Button>
+            </div>
+          )}
         </SettingsRow>
 
         <div className={cn(

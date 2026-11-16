@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { FollowUpRegenerateSchema } from "@/lib/validators/drafts";
 import { regenerateFollowUpText } from "@/lib/services/followup-regenerate";
 import { resolveFollowupTemplate, AI_OFF_REASON } from "@/lib/services/followup-template";
 import { renderFollowupFallback } from "@/lib/services/settings";
-import { assertCampaignAccess } from "@/lib/auth/scope";
+import { assertCampaignAccess, assertCampaignLeadAccess } from "@/lib/auth/scope";
 import { logLeadEvent } from "@/lib/services/lead-events";
 import { dbForUser } from "@/lib/supabase/scoped";
 
@@ -16,8 +16,8 @@ export const maxDuration = 60;
 // regeneration only ever sees the current follow-up text + the user's
 // instruction — no lead/org context, no product library, no shared prompt.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:generate"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const body = await req.json().catch(() => null);
@@ -25,7 +25,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
 
   const db = dbForUser(user);
-  try { await assertCampaignAccess(db, user, id); } catch (r) { return r as Response; }
+  try {
+    await assertCampaignAccess(db, user, id);
+    // Per-lead action: without campaigns:all, only a lead assigned to the caller.
+    await assertCampaignLeadAccess(db, user, parsed.data.campaign_lead_id);
+  } catch (r) { return r as Response; }
 
   const { data: cl } = await db
     .from("campaign_leads")

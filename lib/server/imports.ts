@@ -14,7 +14,7 @@ export type ImportRow = {
 /**
  * Company import batches for the Leads filter dropdown.
  *
- * Managers see every batch. Employees only see batches that still contain at
+ * Members with leads:all see every batch. Others only see batches that still contain at
  * least one revealed lead assigned to them — otherwise the filter lists
  * company-wide imports they cannot open any rows for.
  *
@@ -35,7 +35,7 @@ export async function getImports(
 
   const imports = (data ?? []) as ImportRow[];
   if (!opts?.assignedTo) {
-    // Managers see every batch, with its real lead count: the stored lead_count is
+    // leads:all: every batch, with its real lead count: the stored lead_count is
     // written once at import time (0 for scored searches, whose leads come later).
     if (!opts?.companyId) return imports;
     const { data: counts, error: countsError } = await db.rpc("company_import_lead_counts", { p_company: opts.companyId });

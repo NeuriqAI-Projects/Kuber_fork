@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logLeadEvents } from "@/lib/services/lead-events";
 import { allocateByTerritory } from "@/lib/services/territory-allocator";
 import { getEligibleEmployees, getCoverage, pickRoundRobin } from "@/lib/services/assignment";
+import { isLeadOwner } from "@/lib/auth/scopes";
 
 type Db = ReturnType<typeof createAdminClient>;
 
@@ -181,11 +182,13 @@ export async function handoverEmployeeWork(
     if (manualTarget === fromUserId) throw new InvalidHandoverTargetError("Cannot hand work over to the account being deactivated.");
     const { data: target } = await db
       .from("profiles")
-      .select("id, role, is_active")
+      .select("id, is_owner, scopes, is_active")
       .eq("id", manualTarget)
       .maybeSingle();
-    if (!target || !target.is_active || target.role !== "employee") {
-      throw new InvalidHandoverTargetError("Handover target must be an active employee.");
+    // Lead owner = the old "employee" (leads:read without leads:all), see lib/auth/scopes.ts.
+    const owner = target && isLeadOwner({ id: target.id as string, isOwner: !!target.is_owner, active: !!target.is_active, scopes: (target.scopes as string[] | null) ?? [] });
+    if (!target || !target.is_active || !owner) {
+      throw new InvalidHandoverTargetError("Handover target must be an active member who receives leads.");
     }
     eligibleCount = 1;
     for (const lead of leads) leadOwner.set(lead.id, manualTarget);

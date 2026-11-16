@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { useAccess } from "@/lib/access-context";
 import {
   fetchModelLab, runModelLab, voteModelLab, clearModelLabVote, saveLabPromptSet, queryCache,
   type LabBenchLead, type LabEmail, type LabPromptSet, type LabScoreRow,
@@ -45,6 +46,8 @@ const MODEL_LAB_KEY = "/api/v1/model-lab";
 type ModelLabData = Awaited<ReturnType<typeof fetchModelLab>>;
 
 export function ModelLabView() {
+  // model_lab:read opens the page; running, voting and saving prompt sets need model_lab:write.
+  const canRun = useAccess().can("model_lab:write");
   // A revisit renders the last loaded bench/models/scoreboard at once and
   // refreshes them in the background (lib/api-client cache).
   const [cached] = useState(() => queryCache.getData<ModelLabData>(MODEL_LAB_KEY));
@@ -270,7 +273,7 @@ export function ModelLabView() {
                     </Label>
                   </div>
                 </div>
-                <Button onClick={() => void generate()} disabled={running || picked.length === 0}>
+                <Button onClick={() => void generate()} disabled={!canRun || running || picked.length === 0}>
                   {running ? <Loader2 className="size-4 animate-spin" /> : <FlaskConical className="size-4" />}
                   {running ? "Writing…" : `Generate ${picked.length} · ~${estimatedCents(picked.length)}`}
                 </Button>
@@ -322,7 +325,7 @@ export function ModelLabView() {
                       {plain ? "Formatted" : "Plain text"}
                     </Button>
                     {!revealed && (
-                      <Button size="sm" onClick={() => void revealAndSave()} disabled={!best}>
+                      <Button size="sm" onClick={() => void revealAndSave()} disabled={!canRun || !best}>
                         <Eye className="size-3.5" /> Reveal &amp; save
                       </Button>
                     )}
@@ -390,7 +393,7 @@ export function ModelLabView() {
               </p>
             </div>
 
-            <Button onClick={() => void savePromptSet()} disabled={savingSet}>
+            <Button onClick={() => void savePromptSet()} disabled={!canRun || savingSet}>
               {savingSet && <Loader2 className="size-4 animate-spin" />}
               {editingId ? "Save changes" : "Save prompt set"}
             </Button>
@@ -455,6 +458,7 @@ function EmailCard({
   onBest: () => void; onWorst: () => void; onExpand: () => void;
 }) {
   const words = email.body ? htmlToPlainText(email.body).split(/\s+/).filter(Boolean).length : 0;
+  const canVote = useAccess().can("model_lab:write");
   return (
     <div className={`flex flex-col overflow-hidden rounded-lg border bg-card ${
       isBest ? "border-primary" : isWorst ? "border-destructive" : "border-border"}`}>
@@ -493,11 +497,11 @@ function EmailCard({
 
       <div className="flex items-center gap-2 border-t border-border px-3.5 py-2.5">
         <Button size="sm" variant={isBest ? "default" : "outline"} className="flex-1"
-          onClick={onBest} disabled={!!email.error}>
+          onClick={onBest} disabled={!canVote || !!email.error}>
           <ThumbsUp className="size-3.5" /> Best
         </Button>
         <Button size="sm" variant={isWorst ? "destructive" : "outline"} className="flex-1"
-          onClick={onWorst} disabled={!!email.error}>
+          onClick={onWorst} disabled={!canVote || !!email.error}>
           <ThumbsDown className="size-3.5" /> Worst
         </Button>
         <Button size="icon-sm" variant="ghost" onClick={onExpand} aria-label="Read full email">

@@ -3,6 +3,8 @@
 // Skills tab: the jobs Kuber AI is good at, one tap away. A skill either asks a
 // ready question, or opens a new chat with a sentence to finish ("Create a
 // campaign called …") so the user only fills in the blanks.
+import { useAccess } from "@/lib/access-context";
+import type { Scope } from "@/lib/auth/scopes";
 import {
   Activity, ArrowRight, Coins, Inbox, ListChecks, MailSearch, Megaphone, MessageCircleQuestion, PauseCircle,
   Reply, Rocket, Search, StickyNote, UserCheck, UserPlus, UserRound, Users,
@@ -18,7 +20,8 @@ export type Skill = {
   /** A sentence to finish: put in the box for the user to complete. */
   template?: string;
   deep?: boolean;
-  managerOnly?: boolean;
+  /** Shown only to members holding every one of these (the AI tool re-checks). */
+  scopes?: Scope[];
   note?: string;
 };
 
@@ -30,17 +33,17 @@ const ANALYSE: Skill[] = [
   { title: "Replies to answer", description: "Who wrote in and is still waiting for us", Icon: Inbox, ask: "Which replies still need an answer from us?" },
   { title: "Pipeline health check", description: "Where leads get stuck, and what to fix first", Icon: Activity, ask: "Give me a full pipeline health check: where are leads getting stuck, and what should we fix first?", deep: true },
   { title: "What leads are asking", description: "Themes in replies, and how to answer them", Icon: MessageCircleQuestion, ask: "Read the replies we got so far. What are people asking for, and how should we answer them?", deep: true },
-  { title: "Team workload", description: "Leads, campaigns and replies per teammate", Icon: Users, ask: "How is each teammate doing, and who needs help or more leads?", managerOnly: true },
-  { title: "AI spend", description: "Cost by purpose and by person", Icon: Coins, ask: "How much have we spent on AI in the last 30 days, and on what?", managerOnly: true },
+  { title: "Team workload", description: "Leads, campaigns and replies per teammate", Icon: Users, ask: "How is each teammate doing, and who needs help or more leads?", scopes: ["dashboard:all"] },
+  { title: "AI spend", description: "Cost by purpose and by person", Icon: Coins, ask: "How much have we spent on AI in the last 30 days, and on what?", scopes: ["credits:read"] },
 ];
 
 const ACT: Skill[] = [
   { title: "Build a campaign", description: "New draft campaign from a set of leads", Icon: Rocket, template: "Create a campaign called '' with all enriched leads from " },
   { title: "Add leads to a campaign", description: "Only campaign-ready leads go in", Icon: UserPlus, template: "Add all enriched leads from  to the campaign ''" },
-  { title: "Assign leads", description: "To a teammate, or shared round-robin", Icon: UserCheck, template: "Assign all unassigned leads from  to ", managerOnly: true },
+  { title: "Assign leads", description: "To a teammate, or shared round-robin", Icon: UserCheck, template: "Assign all unassigned leads from  to ", scopes: ["leads:assign", "assistant:actions"] },
   { title: "Draft a reply", description: "AI writes it, you review and send in Unibox", Icon: Reply, template: "Draft a reply to  saying " },
   { title: "Pause or resume", description: "Stop or restart a campaign's sending", Icon: PauseCircle, template: "Pause the campaign ''" },
-  { title: "Reveal emails", description: "Find emails for Apollo leads that have none", Icon: MailSearch, template: "Reveal emails for leads without an email from ", managerOnly: true, note: "Uses Apollo credits" },
+  { title: "Reveal emails", description: "Find emails for Apollo leads that have none", Icon: MailSearch, template: "Reveal emails for leads without an email from ", scopes: ["leads:import", "assistant:actions"], note: "Uses Apollo credits" },
   { title: "Add a note", description: "Save a note on a lead", Icon: StickyNote, template: "Add a note on : " },
 ];
 
@@ -79,8 +82,9 @@ function SkillGroup({ title, hint, skills, onPick }: { title: string; hint: stri
   );
 }
 
-export function AssistantSkills({ host, role, onPick }: { host: PanelHost; role: string | null; onPick: (s: Skill) => void }) {
-  const visible = (list: Skill[]) => list.filter((s) => !s.managerOnly || role === "manager");
+export function AssistantSkills({ host, onPick }: { host: PanelHost; onPick: (s: Skill) => void }) {
+  const { can } = useAccess();
+  const visible = (list: Skill[]) => list.filter((s) => !s.scopes || can(...s.scopes));
   return (
     <>
       <TopBar title="Skills" subtitle="Things Kuber AI can do for you" host={host} />

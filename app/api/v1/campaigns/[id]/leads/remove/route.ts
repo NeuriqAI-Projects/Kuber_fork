@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { assertCampaignAccess } from "@/lib/auth/scope";
+import { canSeeAll } from "@/lib/auth/scopes";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { logLeadEvents } from "@/lib/services/lead-events";
 import { dbId } from "@/lib/validators/id";
@@ -30,11 +31,11 @@ const UNSENT = new Set(["new", "enriched", "draft", "approved", "failed"]);
  *
  * A lead that has been sent to, or handed to Instantly, is refused: removing it
  * here would not unsend anything, and its history belongs to this campaign.
- * Employees can only remove their own leads, the same rule Send follows.
+ * Members without campaigns:all can only remove their own leads, the same rule Send follows.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:write"); } catch (r) { return r as Response; }
   const { id } = await params;
   const db = dbForUser(user);
   try { await assertCampaignAccess(db, user, id); } catch (r) { return r as Response; }
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   for (const r of rows) {
     const owner = (Array.isArray(r.leads) ? r.leads[0] : r.leads) as { assigned_to?: string | null } | null;
     const unsent = UNSENT.has(r.crm_status) && !r.first_sent_at && !r.instantly_lead_id && !alreadySent.has(r.lead_id);
-    if (!unsent || (user.role === "employee" && owner?.assigned_to !== user.id)) skipped.push(r.id);
+    if (!unsent || (!canSeeAll(user.member, "campaigns") && owner?.assigned_to !== user.id)) skipped.push(r.id);
     else removable.push(r);
   }
 

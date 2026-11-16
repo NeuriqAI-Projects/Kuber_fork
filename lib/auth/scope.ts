@@ -1,13 +1,15 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fail } from "@/lib/api-response";
 import type { AuthedUser } from "@/lib/auth/api-auth";
+import { canSeeAll, isLeadOwner } from "@/lib/auth/scopes";
 
 type Db = ReturnType<typeof createAdminClient>;
 
 // Access model (spec §5 / §7 — the multi-employee campaign container):
-//   • Managers / super-admins see everything.
+//   • Members holding an area's :all reach scope (leads:all, campaigns:all,
+//     unibox:all — lib/auth/scopes.ts) see everything in their company.
 //   • A campaign is a CONTAINER that may hold leads owned by several
-//     employees. For an EMPLOYEE, access is uniformly LEAD-ASSIGNMENT based:
+//     people. WITHOUT the reach scope, access is uniformly LEAD-ASSIGNMENT based:
 //       - a lead: they see/work it only if it is assigned to them;
 //       - a campaign: they can open it if it contains ≥1 lead assigned to them
 //         (or, for back-compat, it was assigned to / created by them), but the
@@ -53,7 +55,7 @@ export async function employeeCampaignIds(db: Db, userId: string): Promise<strin
 
 /** Campaign ids an employee may access: contains a lead assigned to them, OR (back-compat) created by / assigned to them. */
 export async function getAccessibleCampaignIds(db: Db, user: AuthedUser): Promise<string[]> {
-  if (user.role !== "employee") {
+  if (canSeeAll(user.member, "campaigns")) {
     const { data } = await db.from("campaigns").select("id").eq("is_deleted", false);
     return (data ?? []).map((c) => c.id as string);
   }
@@ -72,7 +74,7 @@ export async function assertCampaignAccess(
     .eq("id", campaignId)
     .maybeSingle<Record<string, unknown>>();
   if (!data) throw fail(404, "NOT_FOUND", "Campaign not found");
-  if (user.role !== "employee") return data;
+  if (canSeeAll(user.member, "campaigns")) return data;
   if (data.created_by === user.id || data.assigned_to === user.id) return data;
 
   // Otherwise: accessible only if it holds at least one lead assigned to them.
@@ -90,13 +92,14 @@ export async function assertCampaignAccess(
 }
 
 /**
- * The employees a campaign belongs to: every employee who owns a lead in it,
- * plus its creator and its assignee when those are employees — a campaign
- * someone built but has not put leads in yet is still theirs.
+ * The lead owners a campaign belongs to (isLeadOwner: the old "employees"): every
+ * lead owner who owns a lead in it, plus its creator and its assignee when those
+ * are lead owners — a campaign someone built but has not put leads in yet is still theirs.
  *
- * Managers are deliberately NOT counted. They administer every campaign, so
- * counting them would make every manager-created container permanently
- * "multi-employee" and lock out the one employee actually working it.
+ * Members who see every lead (leads:all, the old managers) are deliberately NOT
+ * counted. They administer every campaign, so counting them would make every
+ * admin-created container permanently "multi-owner" and lock out the one person
+ * actually working it.
  *
  * Batched (a map per campaign id) because the campaigns list needs this for
  * every row it renders, not one campaign at a time.
@@ -130,12 +133,14 @@ export async function campaignEmployeeOwners(
     add(cl.campaign_id, cl.leads?.assigned_to ?? null);
   }
 
-  // Keep only the employees among the ids gathered above.
+  // Keep only the lead owners among the ids gathered above.
   const everyone = [...new Set([...owners.values()].flatMap((s) => [...s]))];
   if (everyone.length === 0) return owners;
-  const { data: employees } = await db
-    .from("profiles").select("id").eq("role", "employee").in("id", everyone);
-  const isEmployee = new Set((employees ?? []).map((p) => p.id as string));
+  const { data: profiles } = await db
+    .from("profiles").select("id, is_owner, scopes").in("id", everyone);
+  const isEmployee = new Set((profiles ?? [])
+    .filter((p) => isLeadOwner({ id: p.id as string, isOwner: !!p.is_owner, active: true, scopes: (p.scopes as string[] | null) ?? [] }))
+    .map((p) => p.id as string));
 
   for (const set of owners.values()) {
     for (const id of set) if (!isEmployee.has(id)) set.delete(id);
@@ -169,9 +174,12 @@ export async function campaignsEditableByEmployee(
  * subject/body). Both propagate live to every Instantly sub-campaign, i.e. to
  * every lead in the container.
  *
- * Managers always may. An employee may only when they are the sole employee in
- * the campaign — otherwise they'd silently change what a teammate's leads send
- * under. See docs/notes/EDGE_CASES.md §2.10.
+ * Members with campaigns:all always may. Others only when they are the sole lead
+ * owner in the campaign — otherwise they'd silently change what a teammate's
+ * leads send under. See docs/notes/EDGE_CASES.md §2.10. Since the scopes rework
+ * this guards EVERY campaign-wide change (delete, pause, resume, edit, AI drafts,
+ * default drafts, sync, regeneration cancel), not only Options/Sequences. The
+ * action's own scope (campaigns:write / :send / ...) is checked by the route.
  */
 export async function assertCampaignSettingsAccess(
   db: Db,
@@ -179,15 +187,31 @@ export async function assertCampaignSettingsAccess(
   campaignId: string,
 ): Promise<void> {
   await assertCampaignAccess(db, user, campaignId);
-  if (user.role !== "employee") return;
+  if (canSeeAll(user.member, "campaigns")) return;
 
   const editable = await campaignsEditableByEmployee(db, user.id, [campaignId]);
   if (editable.has(campaignId)) return;
   throw fail(
     403,
     "FORBIDDEN",
-    "This campaign holds another teammate's leads, so only a manager can change its settings.",
+    "This campaign holds another teammate's leads, so only someone who can see all campaigns can change it.",
   );
+}
+
+/**
+ * Throws a 404 unless the caller may act on ONE lead inside a campaign: the
+ * campaign_lead exists and (without campaigns:all) its lead is assigned to them.
+ * For per-lead actions in shared campaigns (approve, follow-up, kanban status,
+ * attachment) — campaign access alone is not enough.
+ */
+export async function assertCampaignLeadAccess(db: Db, user: AuthedUser, campaignLeadId: string): Promise<void> {
+  if (canSeeAll(user.member, "campaigns")) {
+    const { data } = await db.from("campaign_leads").select("id").eq("id", campaignLeadId).maybeSingle();
+    if (data) return;
+  } else if (await ownsCampaignLead(db, user.id, campaignLeadId)) {
+    return;
+  }
+  throw fail(404, "NOT_FOUND", "Lead not found in this campaign");
 }
 
 /** True when the underlying lead of a campaign_lead is assigned to this employee. */
@@ -211,7 +235,7 @@ async function ownsCampaignLead(db: Db, userId: string, campaignLeadId: string):
  * assigned enough leads (see UniboxScope in lib/services/unibox.ts).
  */
 export function getUniboxScope(user: AuthedUser): { assigned_to: string } | null {
-  return user.role === "employee" ? { assigned_to: user.id } : null;
+  return canSeeAll(user.member, "unibox") ? null : { assigned_to: user.id };
 }
 
 /**
@@ -224,14 +248,14 @@ export async function assertThreadAccess(
   user: AuthedUser,
   thread: { campaignId?: string | null; campaignLeadId?: string | null },
 ): Promise<void> {
-  if (user.role !== "employee") return;
+  if (canSeeAll(user.member, "unibox")) return;
   if (thread.campaignLeadId && await ownsCampaignLead(db, user.id, thread.campaignLeadId)) return;
   throw fail(404, "NOT_FOUND", "Thread not found");
 }
 
 /** assertThreadAccess, resolving the campaign_lead(s) from a unibox thread id. */
 export async function assertThreadAccessById(db: Db, user: AuthedUser, threadId: string): Promise<void> {
-  if (user.role !== "employee") return;
+  if (canSeeAll(user.member, "unibox")) return;
   const { data: rows } = await db
     .from("unibox_emails")
     .select("campaign_lead_id")
@@ -250,7 +274,7 @@ export async function assertThreadAccessById(db: Db, user: AuthedUser, threadId:
 export async function assertLeadAccess(db: Db, user: AuthedUser, leadId: string): Promise<void> {
   const { data } = await db.from("leads").select("assigned_to").eq("id", leadId).maybeSingle();
   if (!data) throw fail(404, "NOT_FOUND", "Lead not found");
-  if (user.role !== "employee") return;
+  if (canSeeAll(user.member, "leads")) return;
   if (data.assigned_to === user.id) return;
   throw fail(404, "NOT_FOUND", "Lead not found");
 }
@@ -259,7 +283,7 @@ export async function assertLeadAccess(db: Db, user: AuthedUser, leadId: string)
 export async function assertDraftAccess(db: Db, user: AuthedUser, draftId: string): Promise<void> {
   const { data } = await db.from("email_drafts").select("campaign_id, lead_id").eq("id", draftId).maybeSingle();
   if (!data) throw fail(404, "NOT_FOUND", "Draft not found");
-  if (user.role !== "employee") return;
+  if (canSeeAll(user.member, "campaigns")) return;
   const { data: lead } = await db.from("leads").select("assigned_to").eq("id", data.lead_id).maybeSingle();
   if (lead?.assigned_to === user.id) return;
   throw fail(404, "NOT_FOUND", "Draft not found");
@@ -273,7 +297,7 @@ export async function assertReplyDraftAccess(db: Db, user: AuthedUser, replyDraf
     .eq("id", replyDraftId)
     .maybeSingle();
   if (!data) throw fail(404, "NOT_FOUND", "Reply draft not found");
-  if (user.role !== "employee") return;
+  if (canSeeAll(user.member, "unibox")) return;
   if (data.campaign_lead_id && await ownsCampaignLead(db, user.id, data.campaign_lead_id)) return;
   throw fail(404, "NOT_FOUND", "Reply draft not found");
 }

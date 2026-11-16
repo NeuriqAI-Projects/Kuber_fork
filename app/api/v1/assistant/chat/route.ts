@@ -1,6 +1,6 @@
 import { NextRequest, after } from "next/server";
 import { z } from "zod";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { fail } from "@/lib/api-response";
 import { callerDisplayName, callerFromRequest } from "@/lib/services/assistant/caller";
 import { streamAssistant, type AssistantUIMessage } from "@/lib/services/assistant/agent";
@@ -16,8 +16,8 @@ const ChatSchema = z.object({
 
 /** POST /api/v1/assistant/chat — one streamed assistant turn (AI SDK UI message stream). */
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "assistant:use"); } catch (r) { return r as Response; }
 
   const parsed = ChatSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (e) {
     const msg = (e as Error).message;
-    if (/No AI provider is configured/i.test(msg)) return fail(503, "NO_AI_KEY", "No AI key is set up. A manager can add one in Credits > AI.");
+    if (/No AI provider is configured/i.test(msg)) return fail(503, "NO_AI_KEY", "No AI key is set up. Someone with the keys:write permission can add one in Credits > AI.");
     return fail(500, "INTERNAL", msg);
   }
 }

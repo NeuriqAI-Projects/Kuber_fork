@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
-import { assertCampaignAccess } from "@/lib/auth/scope";
+import { assertCampaignSettingsAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { AI_UNAVAILABLE, countPendingDrafts, fetchDraftTargets, generateOneDraft } from "@/lib/services/generate-drafts";
 
@@ -20,11 +20,12 @@ export const maxDuration = 55;
  * work (~1s a lead), so a few calls cover a large campaign.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:write"); } catch (r) { return r as Response; }
   const { id } = await params;
   const db = dbForUser(user);
-  try { await assertCampaignAccess(db, user, id); } catch (r) { return r as Response; }
+  // Writes drafts for every waiting lead in the campaign: shared-campaign rule.
+  try { await assertCampaignSettingsAccess(db, user, id); } catch (r) { return r as Response; }
 
   const { data: campaign } = await db
     .from("campaigns")

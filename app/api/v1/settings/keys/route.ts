@@ -1,6 +1,6 @@
 import { NextRequest, after } from "next/server";
 import crypto from "crypto";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { CreateProviderKeySchema } from "@/lib/validators/provider-keys";
 import { getLlmTierRoles, PROVIDER_META, resolveLlmTierOrder } from "@/lib/services/providers/registry";
@@ -22,8 +22,8 @@ type ProviderKeyRow = {
 const KEY_SELECT = "id, provider, label, secret_last4, priority, is_active, status, cooling_off_until, last_used_at, last_checked_at, last_error, last_error_at, created_at";
 
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "keys:read"); } catch (r) { return r as Response; }
 
   const db = dbForUser(user);
   const [{ data: keys }, { data: settings }, tierRoles, tierOrder] = await Promise.all([
@@ -66,8 +66,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  let caller: Awaited<ReturnType<typeof requireManager>>;
-  try { caller = await requireManager(req); } catch (r) { return r as Response; }
+  let caller: Awaited<ReturnType<typeof requireScope>>;
+  try { caller = await requireScope(req, "keys:write"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
   const parsed = CreateProviderKeySchema.safeParse(body);

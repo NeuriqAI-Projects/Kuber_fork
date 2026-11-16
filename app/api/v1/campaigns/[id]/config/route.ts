@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { PatchCampaignSchema } from "@/lib/validators/campaigns";
 import { patchInstantlyCampaignConfig } from "@/lib/services/instantly";
@@ -23,16 +23,16 @@ export const maxDuration = 120;
 // window, days) are safe to change on active campaigns.
 //
 // A campaign is a shared container (spec §5) that can hold leads owned by
-// several employees at once. These settings (sender identity, daily limit,
+// several lead owners at once. These settings (sender identity, daily limit,
 // sending window, send days) are campaign-wide, not per-lead-owner, so whoever
 // edits them changes what every lead in the container sends under.
 //
-// Managers may always edit. An employee may edit only a campaign no other
-// employee is part of — there, the only leads affected are their own. See
+// Members with campaigns:all may always edit. Others may edit only a campaign
+// no other lead owner is part of — there, the only leads affected are their own. See
 // docs/notes/EDGE_CASES.md §2.10.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:write"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const body = await req.json().catch(() => null);

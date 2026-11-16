@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AuthedUser } from "@/lib/auth/api-auth";
+import { canSeeAll } from "@/lib/auth/scopes";
 import { BULK_REGENERATABLE_STATUSES } from "@/lib/services/regenerate-draft";
 
 export type RegenerationTarget = {
@@ -75,7 +76,7 @@ export function bulkRegeneratableStatuses(stepNumber: number): readonly string[]
  * single 200-lead click, and a lead with no draft at all belongs to the
  * generate flow, not the regenerate one.
  *
- * Employees are additionally restricted to leads assigned to them, matching the
+ * Members without campaigns:all are additionally restricted to leads assigned to them, matching the
  * access model in lib/auth/scope.ts — a campaign is a shared container, so
  * "regenerate all" must never reach into a co-worker's leads. This resolution
  * runs server-side for both the preview counts and the enqueue, so ids posted
@@ -83,7 +84,7 @@ export function bulkRegeneratableStatuses(stepNumber: number): readonly string[]
  */
 export async function resolveRegenerationTargets(
   db: SupabaseClient,
-  user: AuthedUser,
+  user: Pick<AuthedUser, "id" | "member">,
   campaignId: string,
   opts: { stepNumber?: number; campaignLeadIds?: string[] } = {},
 ): Promise<RegenerationTargets> {
@@ -125,9 +126,9 @@ export async function resolveRegenerationTargets(
     const lead = unwrap(row.leads as LeadRef);
     if (!lead) continue;
 
-    // Employee scope: own assigned leads only. Applied before the requested-id
-    // filter so a hand-crafted request cannot widen it.
-    if (user.role === "employee" && lead.assigned_to !== user.id) continue;
+    // Without campaigns:all: own assigned leads only. Applied before the
+    // requested-id filter so a hand-crafted request cannot widen it.
+    if (!canSeeAll(user.member, "campaigns") && lead.assigned_to !== user.id) continue;
 
     if (requested && !requested.has(row.id)) continue;
 

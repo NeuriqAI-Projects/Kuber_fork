@@ -1,9 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { isAppUser } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { loadMemberAccess } from "@/lib/server/session";
 
 export type LoginState = { error?: string };
 
@@ -23,21 +22,12 @@ export async function loginAction(
 
   if (error) return { error: error.message };
 
-  if (!isAppUser(data.user)) {
+  // "Has access" is an active profile with a company — not a JWT claim. Auth
+  // succeeding doesn't mean the profile is still active (e.g. the account was
+  // deactivated after their last token expired) — block the login.
+  if (!await loadMemberAccess(data.user.id)) {
     await supabase.auth.signOut();
-    return { error: "This account does not have access." };
-  }
-
-  // Auth succeeding doesn't mean the profile is still active (e.g. a manager
-  // deactivated this user after their last token expired) — block the login.
-  const { data: profile } = await createAdminClient()
-    .from("profiles")
-    .select("is_active")
-    .eq("id", data.user.id)
-    .maybeSingle();
-  if (!profile?.is_active) {
-    await supabase.auth.signOut();
-    return { error: "This account has been deactivated. Contact your manager." };
+    return { error: "This account has no access or has been turned off. Contact your admin." };
   }
 
   redirect("/dashboard");

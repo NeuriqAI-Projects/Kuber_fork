@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok } from "@/lib/api-response";
 import { checkInstantlyCredits } from "@/lib/services/provider-credits";
 import {
@@ -25,8 +25,8 @@ function toDateOnly(d: Date): string {
  *  failing (e.g. analytics on a lower tier) must not blank out the accounts
  *  list next to it, so failures are caught per-call and surfaced individually. */
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "credits:read"); } catch (r) { return r as Response; }
 
   const bypassCache = new URL(req.url).searchParams.get("refresh") === "1";
   const db = dbForUser(user);

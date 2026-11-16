@@ -22,6 +22,7 @@ Rules:
 - Email structure/tone lives in `settings.system_prompt`, not in code.
 - Keys come from the DB first (`getServiceSecret(provider, companyId)`), `.env.local` is fallback.
 - Pure logic gets a `*.test.mts` next to it.
-- Assistant tools always query through the caller's scoped client and apply the employee
-  filter; action tools only PROPOSE (nothing changes until the user confirms the card).
+- Assistant tools always query through the caller's scoped client, declare their scopes in
+  `tools/index.ts` `TOOL_SCOPES`, and filter rows with `canSeeAll` (own rows without the
+  `:all` scope); action tools only PROPOSE (nothing changes until the user confirms the card).
   After changing the prompt or a tool, run `scripts/assistant-eval/run.mts`.

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { checkJevCredits } from "@/lib/services/provider-credits";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -10,8 +10,8 @@ export const maxDuration = 60;
 // Jev (TypeSafe) has no balance or usage endpoint, only a key check. So "usage" is what this
 // app recorded: every scored company stores the tokens Jev read for it.
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "credits:read"); } catch (r) { return r as Response; }
   const bypassCache = new URL(req.url).searchParams.get("refresh") === "1";
   const db = dbForUser(user);
 

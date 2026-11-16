@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { loadTeam, readAllPages } from "@/lib/services/assistant/tools/shared";
@@ -24,8 +24,8 @@ type UsageGroup = {
  * `per_person_available` is false until llm_usage has its user_id column.
  */
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "assistant:admin"); } catch (r) { return r as Response; }
   if (!user.companyId) return fail(403, "FORBIDDEN", "Company users only");
   const days = Math.min(365, Math.max(1, Number(req.nextUrl.searchParams.get("days") ?? 30) || 30));
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
@@ -121,7 +121,6 @@ export async function GET(req: NextRequest) {
       user_id: id === "unknown" ? null : id,
       name: id === "unknown" ? "Before tracking" : names.get(id)?.name ?? "Former teammate",
       email: names.get(id)?.email ?? null,
-      role: names.get(id)?.role ?? null,
       ...finish(a),
     })).sort((a, b) => b.cost_usd - a.cost_usd),
     by_model: [...byModel.entries()].map(([model, a]) => ({ model, ...finish(a) })).sort((a, b) => b.cost_usd - a.cost_usd).slice(0, 12),

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { getThreadCore } from "@/lib/services/unibox";
 import { assertThreadAccess } from "@/lib/auth/scope";
@@ -27,10 +27,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ threadId: string }> },
 ) {
-  // Creating leads is a manager action everywhere else in the app; this is not
-  // the place to invent a second rule for it.
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  // Creating leads is leads:import everywhere else in the app (manual add,
+  // Excel, Apollo); this is not the place to invent a second rule for it.
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "leads:import"); } catch (r) { return r as Response; }
 
   const { threadId } = await params;
   const body = await req.json().catch(() => null) as {
@@ -58,7 +58,7 @@ export async function POST(
   }
 
   // Trust boundary. Without this check the endpoint is "create a lead with any
-  // address at all", bypassing the validation and manager rules that guard
+  // address at all", bypassing the validation and leads:import rules that guard
   // POST /api/v1/leads. The address must genuinely be on this conversation.
   const ourEmails = ourAddresses(thread.messages, [thread.eaccount]);
   const participants = threadParticipants(thread.messages, {

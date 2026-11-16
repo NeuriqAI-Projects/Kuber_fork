@@ -1,12 +1,13 @@
 import { tool } from "ai";
 import { z } from "zod";
-import type { AssistantCaller } from "@/lib/services/assistant/context";
 import { getThreadMessages, getThreads, type UniboxReadState } from "@/lib/services/unibox";
 import { clip, personName, resolveCampaign } from "@/lib/services/assistant/tools/shared";
 import { getUniboxScope } from "@/lib/auth/scope";
+import { canSeeAll } from "@/lib/auth/scopes";
+import { asAuthedUser, lacks, type AssistantCaller } from "@/lib/services/assistant/context";
 
 function scopeFor(caller: AssistantCaller) {
-  return getUniboxScope({ id: caller.userId, role: caller.role, isSuperAdmin: false, companyId: caller.companyId }) ?? undefined;
+  return getUniboxScope(asAuthedUser(caller)) ?? undefined;
 }
 
 /** Inbound mail is untrusted text from outside the company. It is fenced so the
@@ -32,6 +33,8 @@ export function inboxTools(caller: AssistantCaller) {
         limit: z.number().int().min(1).max(40).optional().describe("Default 15."),
       }),
       execute: async ({ state = "all", interested, campaign, text, since_days, limit = 15 }) => {
+        const denied = lacks(caller, "unibox:read");
+        if (denied) return denied;
         let campaignId: string | undefined;
         if (campaign) {
           const ref = await resolveCampaign(caller, campaign);
@@ -89,6 +92,8 @@ export function inboxTools(caller: AssistantCaller) {
         lead: z.string().optional().describe("Or a lead email/name — the latest thread with them is used."),
       }),
       execute: async ({ thread_id, lead }) => {
+        const denied = lacks(caller, "unibox:read");
+        if (denied) return denied;
         let id = thread_id;
         if (!id && lead) {
           const res = await getThreads(caller.db, { q: lead, limit: 5, include_unreplied: true, scope: scopeFor(caller) });
@@ -98,7 +103,7 @@ export function inboxTools(caller: AssistantCaller) {
         if (!id) return { error: "Give a thread_id or a lead." };
         const t = await getThreadMessages(caller.db, id);
         if (!t.messages.length) return { error: "Conversation not found." };
-        if (caller.role === "employee") {
+        if (!canSeeAll(caller.member, "unibox")) {
           // getThreadMessages is not scope-aware; confirm the lead is theirs.
           const leadId = (t.lead as { id?: string } | null)?.id;
           if (!leadId) return { error: "Conversation not found." };

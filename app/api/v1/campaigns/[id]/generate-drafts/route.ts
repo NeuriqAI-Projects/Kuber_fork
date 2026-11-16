@@ -1,8 +1,8 @@
 import { NextRequest, after } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { internalAppBaseUrl } from "@/lib/internal-url";
-import { assertCampaignAccess } from "@/lib/auth/scope";
+import { assertCampaignSettingsAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { isMockCampaign } from "@/lib/services/llm-mock";
 
@@ -12,12 +12,13 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:generate"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const db = dbForUser(user);
-  try { await assertCampaignAccess(db, user, id); } catch (r) { return r as Response; }
+  // Drafts every lead in the campaign: shared-campaign rule.
+  try { await assertCampaignSettingsAccess(db, user, id); } catch (r) { return r as Response; }
 
   const { data: campaign } = await db
     .from("campaigns")

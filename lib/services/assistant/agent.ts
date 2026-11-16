@@ -90,7 +90,7 @@ export async function streamAssistant(opts: {
       // Fixed text first and marked for caching (Anthropic; other providers cache
       // automatically or ignore the hint). The per-request block comes after it.
       { role: "system", content: ASSISTANT_STATIC_PROMPT, providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } },
-      { role: "system", content: [assistantDynamicPrompt({ mode, userName: opts.userName, role: caller.role }), actionOutcomes(opts.messages)].filter(Boolean).join("\n\n") },
+      { role: "system", content: [assistantDynamicPrompt({ mode, userName: opts.userName, member: caller.member }), actionOutcomes(opts.messages)].filter(Boolean).join("\n\n") },
     ],
     messages: await convertToModelMessages(opts.messages, { tools, ignoreIncompleteToolCalls: true }),
     tools,
@@ -138,7 +138,7 @@ export async function streamAssistant(opts: {
     },
     onError: (error) => {
       const msg = (error as Error)?.message ?? String(error);
-      if (/No AI provider is configured/i.test(msg)) return "No AI key is set up. A manager can add one in Credits > AI.";
+      if (/No AI provider is configured/i.test(msg)) return "No AI key is set up. Someone with the keys:write permission can add one in Credits > AI.";
       if (/Every AI provider failed/i.test(msg)) return "The AI provider is not answering right now. Please try again in a minute.";
       return "Something went wrong while answering. Please try again.";
     },

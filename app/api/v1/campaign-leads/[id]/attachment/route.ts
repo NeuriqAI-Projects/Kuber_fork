@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
-import { assertCampaignAccess } from "@/lib/auth/scope";
+import { assertCampaignAccess, assertCampaignLeadAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 import {
   AttachmentFinishSchema, AttachmentStartSchema, checkAttachment, finishAttachmentUpload,
@@ -17,14 +17,18 @@ export const maxDuration = 30;
  *  2. { finish: true, path, name }  -> saves the override on the campaign lead
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:write"); } catch (r) { return r as Response; }
   const { id } = await params;
   const db = dbForUser(user);
 
   const { data: cl } = await db.from("campaign_leads").select("campaign_id").eq("id", id).maybeSingle();
   if (!cl) return fail(404, "NOT_FOUND", "Campaign lead not found");
-  try { await assertCampaignAccess(db, user, cl.campaign_id); } catch (r) { return r as Response; }
+  try {
+    await assertCampaignAccess(db, user, cl.campaign_id);
+    // Per-lead action: without campaigns:all, only a lead assigned to the caller.
+    await assertCampaignLeadAccess(db, user, id);
+  } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
   const finish = AttachmentFinishSchema.safeParse(body);
@@ -60,8 +64,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
 /** DELETE = clear the per-lead override → fall back to the campaign default */
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:write"); } catch (r) { return r as Response; }
   const { id } = await params;
   const db = dbForUser(user);
 
@@ -69,7 +73,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { data: row } = await db.from("campaign_leads")
     .select("attachment_path, campaign_id").eq("id", id).maybeSingle();
   if (!row) return fail(404, "NOT_FOUND", "Campaign lead not found");
-  try { await assertCampaignAccess(db, user, row.campaign_id); } catch (r) { return r as Response; }
+  try {
+    await assertCampaignAccess(db, user, row.campaign_id);
+    await assertCampaignLeadAccess(db, user, id);
+  } catch (r) { return r as Response; }
   if (row?.attachment_path) {
     await db.storage.from("campaign-attachments").remove([row.attachment_path]).catch(() => {});
   }

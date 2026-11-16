@@ -1,33 +1,36 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
-import { isAppUser } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createScopedClient } from "@/lib/supabase/scoped";
+import { memberScopes, type Member, type Scope } from "@/lib/auth/scopes";
 
-/** Cookie session validated via getUser — redirects if not a provisioned manager/employee. */
-export async function requireAppSession(): Promise<Session> {
-  const supabase = await createClient();
-  const { data: { user }, error } = await supabase.auth.getUser();
+/** What the browser gets to decide what to show (AccessProvider). Never read from the JWT. */
+export type MemberAccess = { id: string; isOwner: boolean; active: boolean; scopes: Scope[]; companyId: string };
 
-  if (error || !user || !isAppUser(user)) {
-    redirect("/");
-  }
-
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) redirect("/");
-
-  return session;
+/**
+ * The caller's profile as a Member, or null when they are not a provisioned,
+ * active member of a company. "Provisioned" is the profile row — not the JWT.
+ */
+export async function loadMemberAccess(userId: string): Promise<MemberAccess | null> {
+  const { data: profile } = await createAdminClient()
+    .from("profiles")
+    .select("is_active, is_owner, scopes, company_id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!profile || !profile.is_active || !profile.company_id) return null;
+  const member: Member = { id: userId, isOwner: !!profile.is_owner, active: true, scopes: (profile.scopes as string[] | null) ?? [] };
+  return { id: userId, isOwner: member.isOwner, active: true, scopes: memberScopes(member), companyId: profile.company_id as string };
 }
 
 /**
- * Session, role and a COMPANY-SCOPED client for server components.
+ * Session, access and a COMPANY-SCOPED client for server components.
  *
  * Server components fetch their own data and never pass through the API layer's
  * requireAuth, so without this they would run on the unscoped admin client and
  * render every tenant's rows. Anything a page renders should come from the `db`
- * returned here.
+ * returned here. Redirects to the login page unless the caller is an active member.
  */
 // Wrapped in React cache(): the (app) layout and the page both call this in the
 // same request, and each call is a getUser + getSession + profiles round trip.
@@ -35,43 +38,34 @@ export async function requireAppSession(): Promise<Session> {
 export const requireAppSessionContext = cache(async function requireAppSessionContext(): Promise<{
   session: Session;
   userId: string;
-  role: "manager" | "employee";
+  access: MemberAccess;
+  member: Member;
   companyId: string;
   db: SupabaseClient;
 }> {
-  const session = await requireAppSession();
-  const { data: profile } = await createAdminClient()
-    .from("profiles")
-    .select("role, is_active, company_id")
-    .eq("id", session.user.id)
-    .maybeSingle();
+  const supabase = await createClient();
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) redirect("/");
 
-  if (!profile || !profile.is_active || !profile.company_id) redirect("/");
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) redirect("/");
+
+  const access = await loadMemberAccess(user.id);
+  if (!access) redirect("/");
 
   return {
     session,
-    userId: session.user.id,
-    role: profile.role as "manager" | "employee",
-    companyId: profile.company_id as string,
-    db: createScopedClient(profile.company_id as string),
+    userId: user.id,
+    access,
+    member: { id: user.id, isOwner: access.isOwner, active: true, scopes: access.scopes },
+    companyId: access.companyId,
+    db: createScopedClient(access.companyId),
   };
 });
 
-/**
- * Server guard for manager-only pages. Resolves the role from `profiles`
- * (the same authoritative source as the API's requireAuth), so a demoted user
- * loses access immediately. Redirects employees to /dashboard.
- */
-export async function requireManagerSession(): Promise<Session> {
-  const session = await requireAppSession();
-  const db = createAdminClient();
-  const { data: profile } = await db
-    .from("profiles")
-    .select("role, is_active")
-    .eq("id", session.user.id)
-    .maybeSingle();
-  if (!profile || !profile.is_active || profile.role !== "manager") {
-    redirect("/dashboard");
-  }
-  return session;
+/** Server page guard: redirects to /settings (open to every member, so no redirect loop) unless the caller holds `scope`. */
+export async function requirePageScope(scope: Scope) {
+  const ctx = await requireAppSessionContext();
+  if (!ctx.access.scopes.includes(scope)) redirect("/settings");
+  return ctx;
 }

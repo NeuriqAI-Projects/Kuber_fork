@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok } from "@/lib/api-response";
 import { assertThreadAccessById } from "@/lib/auth/scope";
 import { markThreadRead } from "@/lib/services/unibox";
@@ -11,8 +11,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ threadId: string }> },
 ) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  // scopes: read-only POST (UI state)
+  try { user = await requireScope(req, "unibox:read"); } catch (r) { return r as Response; }
   const { threadId } = await params;
   const db = dbForUser(user);
   try { await assertThreadAccessById(db, user, threadId); } catch (r) { return r as Response; }

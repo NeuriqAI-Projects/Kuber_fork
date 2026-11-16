@@ -8,3 +8,5 @@
 - Old pre-June schema / migrations: `docs/legacy/`.
 - `.temp/` is Supabase CLI cache — ignore.
 - Free plan, no backups: write migrations that are safe to re-run (`if not exists`).
+- **Adding a scope?** Re-create `public.kuber_scopes_valid` with the full list in `SCOPES` order
+  (`lib/auth/scopes.ts`) and have the user run it BEFORE the code deploys. `scopes-sql.test.mts` checks it.

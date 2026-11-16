@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
+import { canSeeAll } from "@/lib/auth/scopes";
 import { ok, fail } from "@/lib/api-response";
 import { sendCampaign } from "@/lib/services/campaign-fanout";
 import { SendCampaignSchema } from "@/lib/validators/campaigns";
@@ -17,8 +18,8 @@ import { dbForUser } from "@/lib/supabase/scoped";
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:send"); } catch (r) { return r as Response; }
   const { id } = await params;
   try { await assertCampaignAccess(dbForUser(user), user, id); } catch (r) { return r as Response; }
 
@@ -29,11 +30,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const result = await sendCampaign(id, user.id, {
       campaignLeadIds: parsed.data.campaign_lead_ids,
-      // A shared campaign can hold leads from several employees (spec §5);
-      // an employee triggering Send must only ever push their own, never a
-      // co-worker's, even though assertCampaignAccess above already let
-      // them into this campaign. Managers see the whole campaign, as before.
-      restrictToLeadOwnerId: user.role === "employee" ? user.id : null,
+      // A shared campaign can hold leads from several lead owners (spec §5);
+      // a member without campaigns:all triggering Send must only ever push their
+      // own, never a co-worker's, even though assertCampaignAccess above already
+      // let them into this campaign. Members with campaigns:all send the whole campaign.
+      restrictToLeadOwnerId: canSeeAll(user.member, "campaigns") ? null : user.id,
     });
     return ok(result);
   } catch (err) {

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { checkApolloCredits } from "@/lib/services/provider-credits";
 import { getApiUsageStats, getCreditUsageStats, type ApolloEndpointUsage, type ApolloCreditUsageResponse } from "@/lib/services/apollo";
@@ -77,8 +77,8 @@ const DAILY_CHART_DAYS = 14;
 const HISTORY_PAGE_SIZE = 200;
 
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "credits:read"); } catch (r) { return r as Response; }
 
   const bypassCache = new URL(req.url).searchParams.get("refresh") === "1";
   const db = dbForUser(user);
@@ -187,8 +187,8 @@ export async function GET(req: NextRequest) {
  *  Apollo's API has no balance endpoint. Shared across companies, same as the
  *  credit-check cache: the Apollo key behind it is one workspace-wide key. */
 export async function PATCH(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "keys:write"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null) as { allowanceMonthly?: number | null } | null;
   if (!body || !("allowanceMonthly" in body)) return fail(400, "VALIDATION_ERROR", "allowanceMonthly is required (number or null)");

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { dbId } from "@/lib/validators/id";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { removeLeadsFromOutreach } from "@/lib/services/lead-removal";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -13,8 +13,8 @@ const BulkDeleteSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "leads:delete"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
   const parsed = BulkDeleteSchema.safeParse(body);

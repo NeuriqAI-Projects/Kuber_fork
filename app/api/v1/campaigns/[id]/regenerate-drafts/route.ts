@@ -1,5 +1,5 @@
 import { NextRequest, after } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { BulkRegenerateSchema } from "@/lib/validators/drafts";
 import { assertCampaignAccess } from "@/lib/auth/scope";
@@ -15,8 +15,8 @@ export const maxDuration = 60;
  *
  * Body: { campaign_lead_ids?, custom_instruction?, step_number? }. Omitting the
  * ids means "all eligible" — the same code path either way, because the target
- * list is always resolved server-side under the caller's scope (an employee
- * only ever reaches their own assigned leads).
+ * list is always resolved server-side under the caller's scope (a member
+ * without campaigns:all only ever reaches their own assigned leads).
  *
  * Returns immediately: the actual work happens in /api/enrich/regenerate-drafts,
  * which processes small batches and self-chains until the job is done.
@@ -25,8 +25,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:generate"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
@@ -39,6 +39,8 @@ export async function POST(
   const stepNumber = parsed.data.step_number;
 
   // Preview by POST: a big selection's ids are too long for a GET query string.
+  // Still guarded by campaigns:generate (the route's scope): only the people who
+  // can run a regeneration open its confirm modal.
   if (parsed.data.preview) return previewResponse(db, user, id, parsed.data.campaign_lead_ids, stepNumber);
 
   const existing = await getActiveJob(db, id, stepNumber);
@@ -154,8 +156,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:read"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const db = dbForUser(user);
@@ -174,7 +176,7 @@ export async function GET(
 
 async function previewResponse(
   db: ReturnType<typeof dbForUser>,
-  user: Awaited<ReturnType<typeof requireAuth>>,
+  user: Awaited<ReturnType<typeof requireScope>>,
   id: string,
   campaignLeadIds: string[] | undefined,
   stepNumber: number,

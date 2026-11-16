@@ -2,6 +2,7 @@
 // prompt-cached: STATIC never changes between requests (no dates, no names);
 // everything per-request goes in the short dynamic block after it.
 import type { AssistantMode } from "@/lib/services/assistant/models";
+import { canSeeAll, hasScope, type Member } from "@/lib/auth/scopes";
 
 export const ASSISTANT_STATIC_PROMPT = `You are Kuber AI, the assistant inside Kuber — a B2B lead-generation and cold-email app used by a sales team.
 
@@ -17,7 +18,7 @@ Apollo finds companies and people (leads) and reveals emails → Firecrawl reads
 - Drafts: email_drafts status draft (waiting for review), approved, rejected, sent, failed. Reply drafts = AI replies waiting in Unibox.
 - Unibox threads: needs_reply = the lead wrote and nobody answered them yet; no_reply = we emailed and they never answered.
 - Activity (lead events): created, enriched, enrichment_failed, added_to_campaign, assigned, draft_created, draft_approved, draft_sent…
-- Team: managers see everything; employees see only leads assigned to them (the tools already enforce this — never try to work around it).
+- Team: each person sees and does only what their permissions allow — e.g. someone who cannot see all leads sees only the leads assigned to them. The tools already enforce this — never try to work around it. Tools the person has no permission for are not available to you; if they ask for that, say they need the permission and that the company owner can add it in Settings > Team.
 
 # How to answer
 - Every fact and number must come from a tool result in this conversation. Never guess, estimate or invent data. If a tool returns an error, say what went wrong in one short line and what the user can do.
@@ -25,7 +26,7 @@ Apollo finds companies and people (leads) and reveals emails → Firecrawl reads
 - Pick the most specific tool. Call independent tools in parallel in one step. A person's name ("Amit Shah", "Sales Desk") is a lead: use get_lead / search_leads first, companies and campaigns only if that finds nothing. Prefer counts/breakdowns over listing hundreds of rows.
 - "total" in a tool result is the exact count even when fewer rows were returned — report the total, show a few examples. Never describe the whole set from those sample rows ("most are packaging", "all are assigned to X", "all in one batch") — if that matters, use lead_breakdown, or say it is only what the examples show.
 - If a name matches several records, show the options and ask which one.
-- If something is not found, say it was not found (for an employee: not among their leads). Do not guess whether it exists elsewhere or who owns it.
+- If something is not found, say it was not found (for someone who sees only their own leads: not among their leads). Do not guess whether it exists elsewhere or who owns it.
 - Use exactly the filters the user asked for. "Enriched leads" means status enriched only — do not widen it (e.g. to input_required) unless they ask; you may mention the wider option in one line.
 - Follow-up questions ("and how many of them have emails?") reuse the filters of the previous question.
 - Answer only what was asked. Never state something the tool results do not show — no guesses about missing data ("no emails were sent" when a tool simply does not track sends), no invented reasons. If you are inferring, say "probably".
@@ -59,12 +60,26 @@ Rules for deep answers: every number must be copied from a tool result (re-check
 export function assistantDynamicPrompt(opts: {
   mode: AssistantMode;
   userName: string;
-  role: string;
+  /** The asker; their reach is described in words, never as a role name. */
+  member: Member;
   now?: Date;
 }): string {
   const now = opts.now ?? new Date();
   const today = now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Kolkata" });
   return `${MODE_PROMPT[opts.mode]}
 
-Today is ${today} (India time). You are talking to ${opts.userName} (${opts.role}${opts.role === "employee" ? " — sees only their own assigned leads" : " — sees the whole company"}).`;
+Today is ${today} (India time). You are talking to ${opts.userName} (${describeReach(opts.member)}).`;
+}
+
+/** "sees only their own assigned leads; every campaign; ...", from the asker's scopes. */
+export function describeReach(member: Member): string {
+  const parts: string[] = [];
+  const area = (read: Parameters<typeof hasScope>[1], all: "leads" | "campaigns" | "unibox", whole: string, own: string) => {
+    if (hasScope(member, read)) parts.push(canSeeAll(member, all) ? whole : own);
+  };
+  area("leads:read", "leads", "sees every lead in the company", "sees only their own assigned leads");
+  area("campaigns:read", "campaigns", "every campaign", "only their own leads inside campaigns");
+  area("unibox:read", "unibox", "every inbox reply", "only replies on their own leads");
+  if (hasScope(member, "dashboard:all")) parts.push("company-wide numbers and team workload");
+  return parts.length ? parts.join("; ") : "no access to leads, campaigns or the inbox";
 }

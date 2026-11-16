@@ -5,6 +5,8 @@ import {
   applyLeadFilter, campaignJoinMode, describeLeadFilter, leadSelect, type LeadFilter,
 } from "./tools/lead-filter.ts";
 import type { AssistantCaller } from "./context.ts";
+import { SCOPE_TEMPLATES } from "../../auth/scope-areas.ts";
+import { memberScopes, type Member } from "../../auth/scopes.ts";
 
 /** Records every builder call so the query a filter produces can be asserted. */
 function recorder() {
@@ -16,16 +18,20 @@ function recorder() {
   return { q, calls };
 }
 
-const manager = { userId: "m1", role: "manager", companyId: "c1" } as unknown as AssistantCaller;
-const employee = { userId: "e1", role: "employee", companyId: "c1" } as unknown as AssistantCaller;
+function callerWith(id: string, template: "manager" | "employee"): AssistantCaller {
+  const member: Member = { id, isOwner: false, active: true, scopes: SCOPE_TEMPLATES.find((t) => t.id === template)!.scopes };
+  return { userId: id, companyId: "c1", member, scopes: memberScopes(member) } as unknown as AssistantCaller;
+}
+const manager = callerWith("m1", "manager");
+const employee = callerWith("e1", "employee");
 
-test("employees are always limited to their own leads", () => {
+test("members without leads:all are always limited to their own leads", () => {
   const { q, calls } = recorder();
   applyLeadFilter(q, employee, {}, {});
   assert.deepEqual(calls.find((c) => c[0] === "eq" && c[1] === "assigned_to"), ["eq", "assigned_to", "e1"]);
 });
 
-test("managers are not limited unless they ask", () => {
+test("members with leads:all are not limited unless they ask", () => {
   const { q, calls } = recorder();
   applyLeadFilter(q, manager, {}, {});
   assert.equal(calls.some((c) => c[1] === "assigned_to"), false);
@@ -82,4 +88,18 @@ test("description reads like the filter", () => {
     describeLeadFilter({ status: ["enriched"], country: "India", in_campaign: "none" }, {}),
     "status enriched, in India, not in any campaign",
   );
+});
+
+test("Kuber AI tools are cut to the caller's scopes, in a fixed order", async () => {
+  const { buildAssistantTools } = await import("./tools/index.ts");
+  const names = (c: AssistantCaller) => Object.keys(buildAssistantTools({ ...c, db: {} } as AssistantCaller));
+  const m = names(manager);
+  const e = names(employee);
+  assert.ok(m.includes("team_overview") && m.includes("propose_assign_leads") && m.includes("propose_reveal_emails"));
+  for (const t of ["team_overview", "usage_and_credits", "propose_assign_leads", "propose_reveal_emails"]) assert.ok(!e.includes(t), t);
+  assert.ok(e.includes("search_leads") && e.includes("propose_campaign_state") && e.includes("propose_reply_draft"));
+  // Filter, never reorder (prompt cache): the employee list is the manager list minus some.
+  assert.deepEqual(e, m.filter((n) => e.includes(n)));
+  const bare = { ...employee, scopes: ["assistant:use"] } as unknown as AssistantCaller;
+  assert.deepEqual(names(bare), []);
 });

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { normalizeReplyBodyHtml } from "@/lib/reply-body-html";
 import { assertReplyDraftAccess } from "@/lib/auth/scope";
@@ -16,8 +16,8 @@ const PatchSchema = z.object({
 });
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "unibox:read"); } catch (r) { return r as Response; }
   const { id } = await params;
   const db = dbForUser(user);
   try { await assertReplyDraftAccess(db, user, id); } catch (r) { return r as Response; }
@@ -27,8 +27,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "unibox:reply"); } catch (r) { return r as Response; }
   const { id } = await params;
   const parsed = PatchSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());

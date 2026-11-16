@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -29,8 +29,8 @@ async function inChunks<T>(ids: string[], fn: (chunk: string[]) => PromiseLike<T
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "credits:read"); } catch (r) { return r as Response; }
   const { id } = await params;
   const db = dbForUser(user);
   try { await assertCampaignAccess(db, user, id); } catch (r) { return r as Response; }

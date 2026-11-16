@@ -1,6 +1,7 @@
 import { NextRequest, after } from "next/server";
 import crypto from "crypto";
-import { requireAuth, requireManager } from "@/lib/auth/api-auth";
+import { requireScope, assertScope } from "@/lib/auth/api-auth";
+import { canSeeAll } from "@/lib/auth/scopes";
 import { ok, fail } from "@/lib/api-response";
 import { CreateLeadSchema, LeadListQuerySchema } from "@/lib/validators/leads";
 import { internalAppBaseUrl } from "@/lib/internal-url";
@@ -87,8 +88,9 @@ async function upsertOrg(
 }
 
 export async function GET(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "leads:read"); } catch (r) { return r as Response; }
+  const seesAll = canSeeAll(user.member, "leads");
 
   const sp = Object.fromEntries(req.nextUrl.searchParams.entries());
   const parsed = LeadListQuerySchema.safeParse(sp);
@@ -104,7 +106,7 @@ export async function GET(req: NextRequest) {
   if (req.nextUrl.searchParams.get("stamp") === "1") {
     const newest = (col: "updated_at" | "created_at") => {
       let s = db.from("leads").select(col);
-      if (user.role === "employee") s = s.eq("assigned_to", user.id);
+      if (!seesAll) s = s.eq("assigned_to", user.id);
       return s.not(col, "is", null).order(col, { ascending: false }).limit(1);
     };
     const [u, c] = await Promise.all([newest("updated_at"), newest("created_at")]);
@@ -128,10 +130,10 @@ export async function GET(req: NextRequest) {
       .eq("is_deleted", false)
   );
 
-  if (user.role === "employee") {
-    // Employees see ONLY their own assigned leads (spec §5). Unibox threads and
-    // drafts are likewise scoped to their assigned leads, so the whole
-    // employee surface is consistently lead-assignment based — no seeing a
+  if (!seesAll) {
+    // Members without leads:all see ONLY their own assigned leads (spec §5). Unibox
+    // threads and drafts are likewise scoped to their assigned leads, so the whole
+    // lead-owner surface is consistently lead-assignment based — no seeing a
     // co-worker's leads just because they share a campaign.
     q = q.eq("assigned_to", user.id);
   } else if (assigned_to) {
@@ -202,12 +204,12 @@ export async function GET(req: NextRequest) {
   return ok({ leads, total: countMode === "exact" ? count : null, page, limit });
 }
 
-// Manual lead-add is a manager/super-admin action, same as every other
-// lead-add path (Apollo search, Excel import, bulk-assign) — employees are
-// execution-only and cannot add leads (spec §1).
+// Manual lead-add needs leads:import, same as every other lead-add path (Apollo
+// search, Excel import) — it fires scrape-orgs, so it spends Firecrawl/LLM.
+// Members without it are execution-only and cannot add leads (spec §1).
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "leads:import"); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => null);
   const parsed = CreateLeadSchema.safeParse(body);
@@ -216,8 +218,11 @@ export async function POST(req: NextRequest) {
   const { organization_name, organization_domain, organization_industry, organization_country, email, batch_name, color, import_id: providedImportId, assigned_to: requestedAssignedTo, ...leadFields } = parsed.data;
   const assigned_to = requestedAssignedTo ?? null;
   const db = dbForUser(user);
+  if (assigned_to) {
+    try { assertScope(user, "leads:assign"); } catch (r) { return r as Response; }
+  }
 
-  // A manager-supplied assignee must be a real, active user — same check the
+  // A supplied assignee must be a real, active user — same check the
   // Apollo/Excel import paths perform.
   if (assigned_to) {
     const { data: assignee } = await db

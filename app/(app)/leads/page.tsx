@@ -25,6 +25,8 @@ import {
   type EnrichmentStage,
 } from "@/lib/leads";
 import { useApp } from "@/lib/app-context";
+import { useAccess } from "@/lib/access-context";
+import { activeLeadOwners } from "@/lib/lead-owners";
 import { Avatar, StatusBadge } from "@/components/leads/lead-ui";
 import { KanbanBoard } from "@/components/app/kanban-board";
 import {
@@ -501,7 +503,6 @@ export default function LeadsPage() {
   const {
     leads,
     session,
-    role,
     loadLeads,
     loadingLeads,
     leadsLoaded,
@@ -521,6 +522,8 @@ export default function LeadsPage() {
     setShowAddLeads,
   } = useApp();
 
+  const { can, seesAll } = useAccess();
+  const canProspects = can("prospects:read");
   const router      = useRouter();
   const pathname    = usePathname();
   const searchParams = useSearchParams();
@@ -579,16 +582,15 @@ export default function LeadsPage() {
   const [assignTarget,     setAssignTarget    ] = useState<string>("unassigned");
   const [assignOverwriteConfirmed, setAssignOverwriteConfirmed] = useState(false);
   const [assignSkipAssigned, setAssignSkipAssigned] = useState(false);
+  // The users list needs team:read; only loaded for who assigns or filters by owner.
+  const loadUsers = can("team:read") && (can("leads:assign") || seesAll("leads"));
   const usersQuery = useCached<Profile[]>(
-    role === "manager" && session ? cacheKeys.users : null,
+    loadUsers && session ? cacheKeys.users : null,
     cachedFetchers.users,
   );
-  const employees = useMemo(
-    () => (usersQuery.data ?? []).filter((u) => u.role === "employee" && u.is_active),
-    [usersQuery.data],
-  );
-  // Non-managers never load users; the flag stays "loading" for them as before.
-  const employeesLoading = role !== "manager" || usersQuery.isLoading;
+  const employees = useMemo(() => activeLeadOwners(usersQuery.data ?? []), [usersQuery.data]);
+  // Without the list the flag stays "loading", as before for non-managers.
+  const employeesLoading = !loadUsers || usersQuery.isLoading;
   const [retryingAll,      setRetryingAll     ] = useState(false);
 
   async function handleRetryAllFailed() {
@@ -635,10 +637,11 @@ export default function LeadsPage() {
     return () => clearTimeout(handle);
   }, [searchQuery, leadsSort, leadsViewMode, leadsEntityMode, filters, scoredFilter, pathname, router]);
 
-  const scoredView = leadsEntityMode === "orgs" && (leadsViewMode === "kanban" || scoredFilterActive(scoredFilter));
+  // Scored companies (views, filters, running searches) need prospects:read.
+  const scoredView = canProspects && leadsEntityMode === "orgs" && (leadsViewMode === "kanban" || scoredFilterActive(scoredFilter));
   // The plain Organization list only needs the scored companies that already have an organization
   // (plus name-search hits): a far smaller answer than every company of every search.
-  const scored = useScoredOrgs(scoredFilter, searchQuery, leadsEntityMode === "orgs", { orgsOnly: !scoredView });
+  const scored = useScoredOrgs(scoredFilter, searchQuery, canProspects && leadsEntityMode === "orgs", { orgsOnly: !scoredView });
   // Status of each organization that came from a scored search, for the classic list's Status column.
   const orgFitStatus = useMemo(() => {
     const m = new Map<string, ScoredCompany>();
@@ -975,7 +978,7 @@ export default function LeadsPage() {
         title="Leads"
         actions={
           <>
-            {leadsEntityMode === "orgs" && <RunningSearchesPill data={scored.data} onOpen={openScoredBatch} />}
+            {leadsEntityMode === "orgs" && canProspects && <RunningSearchesPill data={scored.data} onOpen={openScoredBatch} />}
             <Tip text="Reload the latest data.">
               <Button
                 variant="ghost" size="icon-sm" aria-label="Refresh"
@@ -989,7 +992,7 @@ export default function LeadsPage() {
                 <RefreshCw className={cn("size-3.5", loadingLeads && "animate-spin")} />
               </Button>
             </Tip>
-            {role === "manager" && (
+            {can("leads:assign") && (
               <Tip text={checkedIds.size === 0 ? "Select leads first, then give them to a team member." : "Give the selected leads to a team member."}>
                 <Button
                   size="sm" variant="outline"
@@ -1000,17 +1003,19 @@ export default function LeadsPage() {
                 </Button>
               </Tip>
             )}
+            {can("campaigns:write") && (
             <Tip text={!canCreateCampaign ? "Only enriched leads with a domain can be added to campaigns. Select some first." : "Start a campaign from the selected leads."}>
               <Button
                 size="sm"
-                variant={role === "manager" ? "outline" : "default"}
+                variant={can("leads:import") ? "outline" : "default"}
                 disabled={!canCreateCampaign}
                 onClick={() => { setShowCreateCampaign(true); }}
               >
                 <Megaphone className="size-3.5" /> Create campaign{eligibleCheckedCount > 0 ? ` (${eligibleCheckedCount})` : ""}
               </Button>
             </Tip>
-            {role === "manager" && (
+            )}
+            {can("leads:import") && (
               <Tip text="Import leads from Apollo, Excel or add one manually.">
                 <Button size="sm" onClick={() => setShowAddLeads(true)}>
                   <Plus className="size-3.5" /> Add leads
@@ -1070,7 +1075,7 @@ export default function LeadsPage() {
               {leadFiltersOn && <FilterCount n={activeFilterCount(filters)} />}
             </Button>
           </Tip>
-        ) : (
+        ) : canProspects && (
           <Tip text="Filter companies by stage and batch.">
             <Button
               type="button" variant="outline" size="sm"
@@ -1117,7 +1122,7 @@ export default function LeadsPage() {
             <Button type="button" variant="ghost" size="sm" onClick={() => setCheckedIds(new Set())} className="text-muted-foreground">
               Clear
             </Button>
-            {leadsEntityMode === "individual" && role === "manager" && (
+            {leadsEntityMode === "individual" && can("leads:delete") && (
               <Button
                 type="button" variant="ghost" size="sm"
                 className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-500/10 dark:hover:text-red-300"
@@ -1150,7 +1155,7 @@ export default function LeadsPage() {
       <div className="px-4 pt-3 empty:hidden">
         <ServiceHealthBanner />
       </div>
-      {leadsEntityMode === "orgs" && (
+      {leadsEntityMode === "orgs" && canProspects && (
         <div className="px-4 pt-3 empty:hidden">
           <RunningSearchesBar data={scored.data} onOpen={openScoredBatch} onShowWaiting={() => { setLeadsViewMode("list"); setScoredFilter({ ...EMPTY_SCORED_FILTER, waiting: true }); }} />
         </div>
@@ -1287,7 +1292,7 @@ export default function LeadsPage() {
               leads={displayLeads}
               columnTotals={searchResults ? undefined : kanbanTotals}
               onCardClick={(lead) => setSelectedLead(lead)}
-              onRetryAllFailed={role === "manager" ? handleRetryAllFailed : undefined}
+              onRetryAllFailed={can("organizations:write") ? handleRetryAllFailed : undefined}
               retryingAll={retryingAll}
             />
             {leadsTotal !== null && leads.length < leadsTotal && (

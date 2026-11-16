@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
-import { assertCampaignAccess } from "@/lib/auth/scope";
+import { requireScope } from "@/lib/auth/api-auth";
+import { assertCampaignSettingsAccess } from "@/lib/auth/scope";
 import { ok, fail } from "@/lib/api-response";
 import { pauseCampaign } from "@/lib/services/campaign-lifecycle";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -9,11 +9,12 @@ export const maxDuration = 60;
 
 /** Pause a live campaign — actually stops Instantly from sending (and its follow-ups). */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:send"); } catch (r) { return r as Response; }
   const { id } = await params;
   const db = dbForUser(user);
-  try { await assertCampaignAccess(db, user, id); } catch (r) { return r as Response; }
+  // Every lead's sending (resume also releases a hold someone else placed): shared-campaign rule.
+  try { await assertCampaignSettingsAccess(db, user, id); } catch (r) { return r as Response; }
 
   try {
     const result = await pauseCampaign(db, id);

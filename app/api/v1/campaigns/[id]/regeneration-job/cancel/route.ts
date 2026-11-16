@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
-import { assertCampaignAccess } from "@/lib/auth/scope";
+import { assertCampaignSettingsAccess } from "@/lib/auth/scope";
 import { getActiveJob } from "@/lib/services/regeneration-jobs";
 import { dbForUser } from "@/lib/supabase/scoped";
 
@@ -19,12 +19,13 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "campaigns:generate"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const db = dbForUser(user);
-  try { await assertCampaignAccess(db, user, id); } catch (r) { return r as Response; }
+  // Stops a campaign-wide job someone else may have started: shared-campaign rule.
+  try { await assertCampaignSettingsAccess(db, user, id); } catch (r) { return r as Response; }
 
   const body = await req.json().catch(() => ({})) as { step_number?: number };
   const stepNumber = body.step_number ?? 1;

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { requireAuth } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { callerFromRequest } from "@/lib/services/assistant/caller";
 import { executeAction } from "@/lib/services/assistant/actions";
@@ -11,8 +11,8 @@ const ExecuteSchema = z.object({ token: z.string().min(20).max(60_000) });
 
 /** POST /api/v1/assistant/actions — run an action the user just confirmed on an assistant card. */
 export async function POST(req: NextRequest) {
-  let user: Awaited<ReturnType<typeof requireAuth>>;
-  try { user = await requireAuth(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "assistant:actions"); } catch (r) { return r as Response; }
 
   const parsed = ExecuteSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());

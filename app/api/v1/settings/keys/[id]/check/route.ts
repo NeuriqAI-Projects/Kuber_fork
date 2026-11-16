@@ -1,5 +1,5 @@
 import { NextRequest, after } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireScope } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { checkApolloCredits, checkSpecificKey } from "@/lib/services/provider-credits";
 import { PROVIDER_META } from "@/lib/services/providers/registry";
@@ -14,8 +14,8 @@ export const maxDuration = 60;
 // active key" resolution and the 5-minute cache entirely (the whole point of
 // the Re-check button is to test this exact key immediately).
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireScope>>;
+  try { user = await requireScope(req, "keys:write"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const db = dbForUser(user);

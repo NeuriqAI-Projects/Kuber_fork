@@ -8,7 +8,7 @@ import { CompanyLookupForm } from "@/components/app/company-lookup-form";
 import { ProspectFinderForm } from "@/components/app/prospect-finder-form";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useApp } from "@/lib/app-context";
+import { useAccess } from "@/lib/access-context";
 
 interface AddLeadsDrawerProps {
   open: boolean;
@@ -45,19 +45,19 @@ export function AddLeadsDrawer({
   defaultTab = "apollo",
   prefillOrg, prefillLeads, editMode,
 }: AddLeadsDrawerProps) {
-  const { role } = useApp();
-  // Only managers can pull from Apollo or bulk-import via Excel — employees
-  // are restricted to adding leads by hand, matching the old dedicated
-  // /leads/add page's role gate.
-  const isManager = role === "manager";
-  const [section, setSection] = useState<SectionKey>(prefillOrg ? "manual" : (isManager ? defaultTab : "manual"));
+  const { can } = useAccess();
+  // Each source spends credits: Apollo / Company / Excel / Manual need leads:import,
+  // Scored companies needs prospects:run. Every opener is gated on leads:import.
+  const allowed = SECTIONS.filter((s) => (s.value === "scored" ? can("prospects:run") : can("leads:import")));
+  const pick = (k: SectionKey): SectionKey => (allowed.some((s) => s.value === k) ? k : allowed[0]?.value ?? "manual");
+  const [section, setSection] = useState<SectionKey>(prefillOrg ? "manual" : pick(defaultTab));
 
   // Re-sync the active section whenever the dialog is (re)opened — mirrors the
   // previous implementation's `key={initialTab + prefillOrg?.id}` reset trick.
   useEffect(() => {
-    if (open) setSection(prefillOrg ? "manual" : (isManager ? lastSection(defaultTab) : "manual"));
+    if (open) setSection(prefillOrg ? "manual" : pick(lastSection(defaultTab)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, prefillOrg?.id, defaultTab, isManager]);
+  }, [open, prefillOrg?.id, defaultTab]);
 
   function handleImport(count: number) {
     onImport(count);
@@ -67,9 +67,9 @@ export function AddLeadsDrawer({
   // Editing an existing org, or a manual-entry prefill, is a single focused
   // task — there's nothing else to switch between, so the source rail (which
   // only makes sense when choosing *how* to source new leads) is hidden and
-  // the Manual form gets the full width instead. Non-managers never see the
-  // rail either, since they only have the Manual source available to them.
-  const singleSection = editMode || !!prefillOrg || !isManager;
+  // the Manual form gets the full width instead. One allowed source = no rail either.
+  const singleSection = editMode || !!prefillOrg;
+  const hideRail = singleSection || allowed.length <= 1;
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
@@ -85,9 +85,9 @@ export function AddLeadsDrawer({
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background md:flex-row">
-          {!singleSection && (
+          {!hideRail && (
             <nav className="flex max-h-40 w-full shrink-0 flex-col gap-0.5 overflow-y-auto border-b border-border bg-sidebar p-2 md:max-h-none md:w-64 md:border-b-0 md:border-r">
-              {SECTIONS.map((s) => {
+              {allowed.map((s) => {
                 const Icon = s.icon;
                 const active = section === s.value;
                 return (
