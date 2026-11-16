@@ -1,6 +1,6 @@
 const TIMEOUTS: Record<string, number> = {
   apollo: 30_000,
-  firecrawl: 60_000,
+  firecrawl: 45_000,
   llm: 90_000,
 };
 
@@ -37,6 +37,16 @@ const MAX_RETRY_AFTER_MS = 5_000;
  *  in flight is never cut short (it may be about to deliver a paid answer). */
 const LLM_RETRY_WINDOW_MS = 40_000;
 
+/** Firecrawl starts no new attempt once one full timeout has passed: a site
+ *  that hung for 45 s will hang again. Fast 429/5xx answers still retry.
+ *  Before this, a dead site took 60 s x 4 tries = ~253 s, every scrape batch
+ *  of 15 waited on it, and long batches hit Vercel's 300 s kill, which also
+ *  broke the self-chain until the 10-minute watchdog (logs, Nov 2026). */
+const deadlineFor = (service: string, timeout: number) =>
+  service === "llm" ? Date.now() + LLM_RETRY_WINDOW_MS
+  : service === "firecrawl" ? Date.now() + timeout
+  : Infinity;
+
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
 const NON_RETRYABLE = new Set([400, 401, 402, 403, 404, 422]);
 
@@ -50,7 +60,7 @@ export async function fetchWithRetry(
 ): Promise<Response> {
   const timeout = opts?.timeoutMs ?? TIMEOUTS[service];
   const retryDelays = opts?.retryDelays ?? RETRY_DELAYS_BY_SERVICE[service] ?? RETRY_DELAYS;
-  const deadline = opts?.deadline ?? (service === "llm" ? Date.now() + LLM_RETRY_WINDOW_MS : Infinity);
+  const deadline = opts?.deadline ?? deadlineFor(service, timeout);
 
   for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
     const controller = new AbortController();

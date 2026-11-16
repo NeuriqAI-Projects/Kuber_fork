@@ -45,6 +45,28 @@ test("retries still run inside the deadline", async () => {
   assert.equal(calls(), 2);
 });
 
+test("firecrawl: a hung site is not retried after its timeout", async () => {
+  let calls = 0;
+  globalThis.fetch = ((_u: unknown, init?: RequestInit) => {
+    calls++;
+    return new Promise((_, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+  }) as typeof fetch;
+  const t0 = Date.now();
+  await assert.rejects(fetchWithRetry("firecrawl", "http://x", {}, { timeoutMs: 200 }), /aborted/);
+  assert.equal(calls, 1);
+  assert.ok(Date.now() - t0 < 1_000);
+});
+
+test("firecrawl: a fast 429 is still retried", async () => {
+  const calls = fakeFetch([
+    () => new Response("", { status: 429 }),
+    () => new Response("ok", { status: 200 }),
+  ]);
+  const res = await fetchWithRetry("firecrawl", "http://x", {}, { timeoutMs: 5_000 });
+  assert.equal(res.status, 200);
+  assert.equal(calls(), 2);
+});
+
 test("apollo still never retries", async () => {
   const calls = fakeFetch([() => new Response("", { status: 429, headers: { "Retry-After": "1" } })]);
   const res = await fetchWithRetry("apollo", "http://x", {});
