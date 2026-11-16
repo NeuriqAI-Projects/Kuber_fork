@@ -6,7 +6,8 @@ Permissions are **scopes** (`docs/scopes.md`). No roles anywhere.
   deactivated = none, unknown values ignored), `hasScope`, `can`, `canSeeAll` (reach:
   `leads:all` / `campaigns:all` / `unibox:all` / `dashboard:all`), `isLeadOwner` (who receives
   leads), `canManage` + `canGrant` (no escalation: a non-owner with `team:write` edits only members
-  without `team:write`, may only add/remove scopes they hold, may not give `team:write`; nobody
+  without `team:write` and without any scope they lack, may only add/remove scopes they hold,
+  may not give `team:write`; nobody
   edits the owner or their own scopes). Tests: `scopes.test.mts`.
 - `scope-areas.ts` — `SCOPE_AREAS` picker labels, `scopeLabel`, `SCOPE_TEMPLATES`
   (Manager / Employee = the old roles exactly; `scopes-parity.test.mts`), `templateName`.

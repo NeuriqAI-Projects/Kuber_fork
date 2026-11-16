@@ -98,8 +98,9 @@ type Verdict = { ok: true } | { ok: false; error: string };
 /**
  * May `granter` edit `target` at all (name, password, territory, mailbox,
  * availability, active)? Scopes themselves go through canGrant.
- * Owner: anyone. Others need team:write and may edit themselves and members
- * who do not manage the team (a manager edits employees, never a peer manager).
+ * Owner: anyone. Others need team:write and may edit themselves and members who
+ * do not manage the team AND hold no scope the editor lacks (a manager edits
+ * employees, never a peer manager or someone with more access).
  */
 export function canManage(granter: Member, target: Member): Verdict {
   if (!granter.active) return { ok: false, error: "Your access is off." };
@@ -109,8 +110,16 @@ export function canManage(granter: Member, target: Member): Verdict {
     return { ok: false, error: "You need the team:write permission for this. Ask the owner to add it." };
   }
   if (granter.id === target.id) return { ok: true };
-  if (storedScopes(target).includes("team:write")) {
+  const targetScopes = storedScopes(target);
+  if (targetScopes.includes("team:write")) {
     return { ok: false, error: "Only the owner can change a member who manages the team." };
+  }
+  // A password reset or reactivation is a takeover of that account, so you may only
+  // touch people who hold nothing you don't (security review 16 Nov 2026).
+  const held = new Set(memberScopes(granter));
+  const beyond = targetScopes.filter((s) => !held.has(s));
+  if (beyond.length) {
+    return { ok: false, error: `Only the owner can change a member who has permissions you don't (${beyond.join(", ")}).` };
   }
   return { ok: true };
 }

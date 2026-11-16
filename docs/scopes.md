@@ -47,9 +47,12 @@ for everyone with Send (it is the emergency brake).
 ## Who can change permissions
 
 - The **owner** can change anyone except themselves.
-- A member with **Team · Manage** can only change members who do **not** have Team · Manage.
+- A member with **Team · Manage** can only change members who do **not** have Team · Manage and
+  who have no box they lack themselves (so they can never reset the password of someone with more access).
   They can only tick or untick boxes **they have themselves**, and they cannot give Team · Manage.
 - Nobody can change their own boxes or turn themselves off.
+- Turning someone off and giving their leads to other people needs Leads · Assign (and Campaigns ·
+  Assign if they own campaigns). Releasing their leads to the pool needs only Team · Manage.
 - A change reaches every server within 30 seconds. The person sees the new menu after a page reload.
 
 ## For developers

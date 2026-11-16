@@ -254,20 +254,40 @@ test("rule 5: non-owner may only add or remove scopes they hold", () => {
   // add an unheld scope: refused
   no(canGrant(mgr, emp, [...SPEC_EMPLOYEE, "sending_accounts:write"].filter(isScope)), "add unheld");
 
-  // narrow granter: team:write + leads:read only
-  const g = member(["team:write", "leads:read"]);
-  const t = member(["leads:read", "leads:write"]);
-  no(canGrant(g, t, ["leads:read"]), "remove unheld (leads:write)");
-  no(canGrant(g, t, ["leads:read", "leads:write", "leads:delete"]), "add unheld (leads:delete)");
-  ok(canGrant(g, t, ["leads:write"]), "remove held leads:read, unheld leads:write left as is");
-  ok(canGrant(g, t, ["leads:read", "leads:write"]), "unchanged set");
-  ok(canGrant(g, member(["leads:write"]), ["leads:read", "leads:write"]), "add held while unheld stays");
+  // narrow granter: team:write + leads:read + leads:write
+  const g = member(["team:write", "leads:read", "leads:write"]);
+  const t = member(["leads:read"]);
+  ok(canGrant(g, t, ["leads:read", "leads:write"]), "add held");
+  ok(canGrant(g, t, []), "remove held");
+  ok(canGrant(g, t, ["leads:read"]), "unchanged set");
+  no(canGrant(g, t, ["leads:read", "leads:delete"]), "add unheld (leads:delete)");
+  // target holding a scope the granter lacks is refused outright (rule 4 subset, 16 Nov security review)
+  const over = member(["leads:read", "leads:delete"]);
+  no(canGrant(g, over, ["leads:read"]), "remove unheld (leads:delete)");
+  no(canGrant(g, over, ["leads:delete"]), "remove held, unheld left as is: now refused");
+  no(canGrant(g, over, ["leads:read", "leads:delete"]), "unchanged set: now refused");
+  no(canGrant(g, over, ["leads:read", "leads:write", "leads:delete"]), "add held while unheld stays: now refused");
 });
 
-test("rule 5 diff uses only real scopes: stored junk on the target is not a change", () => {
-  const g = member(["team:write", "leads:read"]);
-  const t = member(["leads:write", "legacy:thing"]);
-  ok(canGrant(g, t, ["leads:read", "leads:write"]), "adding held leads:read; junk dropped is not an unheld removal");
+test("rule 4 subset: a non-owner manages only members whose stored scopes they all hold", () => {
+  const g = member(["team:write", "leads:read", "leads:write"]);
+  no(canManage(g, member(["leads:read", "leads:delete"])), "target holds leads:delete, granter lacks it");
+  no(canManage(member(SPEC_MANAGER), member(["sending_accounts:write"])), "manager vs target with sending_accounts:write");
+  no(canManage(member(["team:write"]), member(["team:read"])), "team:read is not held by granter");
+  ok(canManage(g, member(["leads:read", "leads:write"])), "target equal to granter's non-team scopes");
+  ok(canManage(g, member(["leads:read"])), "target strict subset");
+  ok(canManage(g, member([])), "empty target");
+  ok(canManage(member(SPEC_MANAGER), member(SPEC_EMPLOYEE)), "manager vs employee");
+  ok(canManage(g, g), "self is still ok (non-scope fields)");
+  ok(canManage(owner(), member([...SCOPES].filter((s) => s !== "team:write"))), "owner manages anyone non-owner");
+  ok(canManage(owner(), member([...SCOPES])), "owner manages a full member");
+});
+
+test("rule 4 subset ignores unknown stored values on the target", () => {
+  const g = member(["team:write", "leads:read", "leads:write"]);
+  const t = member(["leads:read", "legacy:thing"]);
+  ok(canManage(g, t));
+  ok(canGrant(g, t, ["leads:read", "leads:write"]), "add held; junk dropped is not a change");
 });
 
 test("deactivated granter can do nothing, even the owner flag", () => {

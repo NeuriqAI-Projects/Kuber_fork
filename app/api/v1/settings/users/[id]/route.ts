@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireScope, forgetProfile } from "@/lib/auth/api-auth";
+import { requireScope, assertScope, forgetProfile } from "@/lib/auth/api-auth";
 import { canGrant, canManage, isLeadOwner, parseScopes, SCOPES, type Member, type Scope } from "@/lib/auth/scopes";
 import { ok, fail } from "@/lib/api-response";
 import { PatchUserSchema } from "@/lib/validators/users";
@@ -107,6 +107,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           "This user still holds leads/campaigns. Choose where that work goes before deactivating.",
           { held_campaigns: heldCampaigns ?? 0, held_leads: heldLeads ?? 0 },
         );
+      }
+
+      // Handing work to people is an assignment (security review 16 Nov 2026): it
+      // needs the same scopes as bulk-assign / campaign assign. Releasing it to
+      // the pool assigns nobody, so team:write alone may do that.
+      if (strategy !== "pool") {
+        try {
+          if ((heldLeads ?? 0) > 0) assertScope(caller, "leads:assign");
+          if ((heldCampaigns ?? 0) > 0) assertScope(caller, "campaigns:assign");
+        } catch (r) { return r as Response; }
       }
 
       try {

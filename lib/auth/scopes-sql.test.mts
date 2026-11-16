@@ -38,21 +38,36 @@ test("kuber_scopes_valid lists exactly SCOPES, same order", () => {
   assert.deepEqual(names(fn[1]), [...SCOPES]);
 });
 
-// The backfill ran once (migration A). A later migration may add scopes to a template; compare
-// against the template cut down to the scopes that existed in that same migration file.
-const sqlFiles = fs.readdirSync(DIR).filter((f) => f.endsWith(".sql")).sort();
-const backfillFile = sqlFiles.filter((f) => /where role = 'employee'/i.test(fs.readFileSync(path.join(DIR, f), "utf8")) &&
-  /set scopes = array\[/i.test(fs.readFileSync(path.join(DIR, f), "utf8"))).pop();
+// The backfill ran once (migration A): one `update ... set scopes = case p.role when ... end`.
+// A later migration may add scopes to a template; compare against the template cut down to the
+// scopes that existed in that same migration file.
+const BACKFILL = /update public\.profiles\s+\w*\s*set scopes = case\s+\w*\.?role\b([\s\S]*?)\bend\b([\s\S]*?);/i;
+const backfillFile = fs.readdirSync(DIR).filter((f) => f.endsWith(".sql")).sort()
+  .filter((f) => BACKFILL.test(fs.readFileSync(path.join(DIR, f), "utf8"))).pop();
 const backfillSql = backfillFile ? fs.readFileSync(path.join(DIR, backfillFile), "utf8") : "";
-const knownThen = names(/function public\.kuber_scopes_valid[\s\S]*?array\[([\s\S]*?)\]::text\[\]/i.exec(backfillSql)?.[1] ?? "");
+const backfill = BACKFILL.exec(backfillSql);
+const knownThen = names(/function public\.kuber_scopes_valid[\s\S]*?array\[([^\]]*)\]::text\[\]/i.exec(backfillSql)?.[1] ?? "");
+
+test("a migration backfills scopes from the old role", () => {
+  assert.ok(backfill, "no `update public.profiles ... set scopes = case ... role ... end` in any migration");
+});
 
 for (const role of ["manager", "employee"] as const) {
-  test(`backfill for role = '${role}' equals the ${role} template, same order`, () => {
-    const m = new RegExp(`set scopes = array\\[([^\\]]*)\\]::text\\[\\]\\s*where role = '${role}'`, "i").exec(backfillSql);
-    assert.ok(m, `no backfill "where role = '${role}'" in any migration`);
+  test(`backfill branch '${role}' equals the ${role} template, same order`, () => {
+    const m = new RegExp(String.raw`when '${role}' then array\[([^\]]*)\]::text\[\]`, "i").exec(backfill?.[1] ?? "");
+    assert.ok(m, `no "when '${role}' then array[...]::text[]" in the backfill (${backfillFile})`);
     const template = SCOPE_TEMPLATES.find((t) => t.id === role);
     assert.ok(template);
     const expected = knownThen.length ? template.scopes.filter((s) => knownThen.includes(s)) : template.scopes;
     assert.deepEqual(names(m[1]), expected);
   });
 }
+
+// One-time on purpose: re-running the file must never give template boxes back to someone the
+// owner deliberately emptied, so it only runs in a company where nobody has scopes yet.
+test("backfill only runs in a company where nobody has scopes yet", () => {
+  const where = backfill?.[2] ?? "";
+  assert.match(where, /not exists\s*\([\s\S]*scopes\s*<>\s*'\{\}'[\s\S]*\)/i, "backfill lacks the one-time `not exists (... scopes <> '{}')` guard");
+  assert.match(where, /\bscopes\s*=\s*'\{\}'/i, "backfill must only fill members with no scopes");
+  assert.match(where, /not\s+\w*\.?is_owner/i, "backfill must skip the owner");
+});

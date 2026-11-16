@@ -59,6 +59,7 @@ export function overviewTools(caller: AssistantCaller) {
   const ownLeads = !canSeeAll(caller.member, "leads");
   const ownCampaigns = !canSeeAll(caller.member, "campaigns");
   const ownReplies = !canSeeAll(caller.member, "unibox");
+  const seesInbox = can(caller, "unibox:read");
 
   return {
     pipeline_overview: tool({
@@ -73,7 +74,8 @@ export function overviewTools(caller: AssistantCaller) {
         if (denied) return denied;
         // Company-wide with dashboard:all (the dashboard's own rule), else the caller's own work.
         const mine = !canSeeAll(caller.member, "dashboard");
-        const scope = mine ? { assigned_to: caller.userId } : undefined;
+        // Inbox rows follow Unibox reach as well: dashboard:all alone never shows teammates' threads.
+        const scope = mine || ownReplies ? { assigned_to: caller.userId } : undefined;
         const allowed = mine ? await employeeCampaignIds(caller.db, caller.userId) : null;
         // Everything here is a head-only count, run in parallel: one round-trip
         // of latency however many leads the company has.
@@ -150,10 +152,11 @@ export function overviewTools(caller: AssistantCaller) {
             by_status: countBy(camps.data ?? [], (c) => c.status as string),
           },
           to_do: {
-            replies_needing_answer: needsReply.counts.total,
+            // Reply rows are Unibox content: only with unibox:read (security review 16 Nov).
+            replies_needing_answer: seesInbox ? needsReply.counts.total : undefined,
             // getThreads is newest first; reversed so the longest-waiting comes first.
-            longest_waiting_first: needsReply.threads.slice(-3).reverse().map((t) => ({ lead: t.lead ? personName(t.lead.first_name, t.lead.last_name) : t.lead_email, last_message_at: t.latest_at, thread_id: t.thread_id })),
-            unread_emails: unread,
+            longest_waiting_first: !seesInbox ? undefined : needsReply.threads.slice(-3).reverse().map((t) => ({ lead: t.lead ? personName(t.lead.first_name, t.lead.last_name) : t.lead_email, last_message_at: t.latest_at, thread_id: t.thread_id })),
+            unread_emails: seesInbox ? unread : undefined,
             drafts_waiting_review: draftCount,
             enrichment_failures_last_7_days: failedCount,
           },

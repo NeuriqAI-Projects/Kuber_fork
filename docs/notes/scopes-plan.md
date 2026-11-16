@@ -84,7 +84,8 @@ Full audit tables (one row per handler, page, nav item, settings section, button
   1. Owner may do anything to any non-owner member.
   2. A non-owner needs `team:write`.
   3. Nobody edits the owner. Nobody changes their own scopes or deactivates themselves.
-  4. A non-owner may only edit members who **do not hold `team:write`** (today: managers edit employees only, never peer managers).
+  4. A non-owner may only edit members who **do not hold `team:write`** and **hold no scope the editor lacks** (today: managers edit employees only, never peer managers; a password reset is an account takeover — security review 16 Nov).
+  7. A handover on deactivate that gives work to people needs `leads:assign` (and `campaigns:assign` if they hold campaigns); releasing to the pool needs only `team:write`.
   5. A non-owner may only **add or remove** scopes they hold: `(old △ new) ⊆ granter's scopes` (so they can't strip a peer's scope they can't grant either).
   6. Only the owner may grant `team:write` (today only the super admin creates managers).
 - **Refusals**: 403 `You need the <scope> permission for this. Ask the owner to add it.` / `Only the owner can do this.`

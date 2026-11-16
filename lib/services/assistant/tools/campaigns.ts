@@ -128,7 +128,8 @@ export function campaignTools(caller: AssistantCaller) {
           draft_breakdown: countBy(drafts.rows, (r) => `step ${r.step_number ?? 1}: ${r.status}`),
           // Reply text is Unibox content: only with unibox:read.
           latest_replies: !seesReplies ? undefined : (replies.data ?? [])
-            .filter((r) => !ownOnly || one(r.leads as unknown as { assigned_to: string | null } | null)?.assigned_to === caller.userId)
+            // Reply reach is Unibox reach (unibox:all), not campaigns:all.
+            .filter((r) => (!ownOnly && canSeeAll(caller.member, "unibox")) || one(r.leads as unknown as { assigned_to: string | null } | null)?.assigned_to === caller.userId)
             .map((r) => {
               const l = one(r.leads as unknown as { id: string; first_name: string | null; last_name: string | null; email: string | null } | null);
               return { lead: l ? personName(l.first_name, l.last_name) : null, lead_id: l?.id ?? null, email: l?.email ?? null, at: r.last_reply_at, temperature: r.lead_temperature, reply: clip(r.last_reply_body as string | null, 300) };

@@ -51,20 +51,28 @@ grant execute on function public.kuber_is_lead_owner(boolean, text[]) to service
 
 -- ── Backfill (idempotent) ───────────────────────────────────────────────────
 -- Owners. Dev company had two super admins; decided 16 Nov 2026: Lakshit is the Dev owner.
--- Every other company: its single super admin.
+-- Every other company: one super admin (the oldest, if there were ever two).
 update public.profiles set is_owner = true
- where company_id = '00000000-0000-0000-0000-00000000000a' and email = 'lakshit@gmail.com' and not is_owner;
+ where company_id = '00000000-0000-0000-0000-00000000000a' and lower(email) = 'lakshit@gmail.com' and not is_owner
+   and not exists (select 1 from public.profiles o where o.company_id = '00000000-0000-0000-0000-00000000000a' and o.is_owner);
 update public.profiles p set is_owner = true
- where p.is_super_admin and not p.is_owner
-   and p.company_id <> '00000000-0000-0000-0000-00000000000a'
+ from (
+   select distinct on (company_id) id from public.profiles
+    where is_super_admin and company_id <> '00000000-0000-0000-0000-00000000000a'
+    order by company_id, created_at
+ ) pick
+ where p.id = pick.id and not p.is_owner
    and not exists (select 1 from public.profiles o where o.company_id = p.company_id and o.is_owner);
 
 create unique index if not exists profiles_one_owner_per_company
   on public.profiles (company_id) where is_owner;
 
--- Managers / employees → their template (lib/auth/scope-areas.ts SCOPE_TEMPLATES), only
--- where nothing is ticked yet. The other Dev super admin becomes a Manager-template member.
-update public.profiles set scopes = array[
+-- Managers / employees → their template (lib/auth/scope-areas.ts SCOPE_TEMPLATES).
+-- ONE-TIME: only in a company where nobody has any scopes yet, so re-running this file
+-- never gives template boxes back to someone the owner deliberately emptied
+-- (security review 16 Nov 2026). The other Dev super admin becomes a Manager-template member.
+update public.profiles p set scopes = case p.role
+  when 'manager' then array[
   'dashboard:read', 'dashboard:all',
   'leads:read', 'leads:all', 'leads:write', 'leads:assign', 'leads:delete', 'leads:import',
   'organizations:read', 'organizations:write',
@@ -79,9 +87,7 @@ update public.profiles set scopes = array[
   'keys:read', 'keys:write',
   'team:read', 'team:write'
 ]::text[]
- where role = 'manager' and scopes = '{}' and not is_owner;
-
-update public.profiles set scopes = array[
+  when 'employee' then array[
   'dashboard:read',
   'leads:read', 'leads:write',
   'campaigns:read', 'campaigns:write', 'campaigns:generate', 'campaigns:send', 'campaigns:delete',
@@ -89,7 +95,9 @@ update public.profiles set scopes = array[
   'assistant:use', 'assistant:actions',
   'knowledge:write'
 ]::text[]
- where role = 'employee' and scopes = '{}' and not is_owner;
+  end
+ where p.role in ('manager', 'employee') and p.scopes = '{}' and not p.is_owner
+   and not exists (select 1 from public.profiles x where x.company_id = p.company_id and x.scopes <> '{}');
 
 -- ── DB functions that read role = 'employee' → lead-owner rule ─────────────
 create or replace function public.team_oversight_counts(p_company uuid)

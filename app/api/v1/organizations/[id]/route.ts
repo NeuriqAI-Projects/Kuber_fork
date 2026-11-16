@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireScope } from "@/lib/auth/api-auth";
+import { canSeeAll } from "@/lib/auth/scopes";
 import { ok, fail } from "@/lib/api-response";
 import { PatchOrgSchema } from "@/lib/validators/organizations";
 import { normalizeDomain } from "@/lib/utils/domain";
@@ -44,13 +45,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (error) return fail(500, "INTERNAL", error.message);
   if (!org) return fail(404, "NOT_FOUND", "Organization not found");
 
-  // Without organizations:read, only their own leads under the org — never a
+  // Without leads:all, only their own leads under the org — never a
   // co-worker's names/emails (same rule as leads/[id]'s counts-only org_shared).
   let lq = db
     .from("leads")
     .select("id, apollo_id, first_name, last_name, email, email_status, title, lead_source, created_at")
     .eq("organization_id", id);
-  if (!seesAllOrgs) lq = lq.eq("assigned_to", user.id);
+  if (!canSeeAll(user.member, "leads")) lq = lq.eq("assigned_to", user.id);
   const { data: leads } = await lq.order("created_at", { ascending: false });
 
   // The scored-search row that found this company, if any (fit, why, status,
