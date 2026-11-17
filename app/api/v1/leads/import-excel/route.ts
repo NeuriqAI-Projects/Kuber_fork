@@ -9,6 +9,7 @@ import { internalAppBaseUrl } from "@/lib/internal-url";
 import { normalizeDomain } from "@/lib/utils/domain";
 import { ensureSplitNames } from "@/lib/utils/person-name";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { hideOwners, type OwnerCount } from "@/lib/import-duplicates";
 
 export const maxDuration = 300;
 
@@ -317,9 +318,12 @@ export async function POST(req: NextRequest) {
     Object.assign(parsed.data, { assigned_to: a.assigned_to ?? undefined, assignment_strategy: a.assignment_strategy ?? undefined });
     ownImport = a.self;
   }
-  // Who owns a duplicate is other people's data: only with leads:all.
-  const shown = <T extends { duplicate_owners?: unknown[] }>(r: T): T =>
-    canSeeAll(user.member, "leads") ? r : { ...r, duplicate_owners: [], duplicate_owner_counts: [] };
+  // Who owns a duplicate is other people's data: only with leads:all. Without
+  // it the counts stay, but owners collapse to "self" / "other" / unassigned,
+  // so the importer still learns "already assigned to another team member".
+  const shown = <T extends { duplicate_owners?: unknown[]; duplicate_owner_counts?: OwnerCount[] }>(r: T): T =>
+    canSeeAll(user.member, "leads") ? r
+      : { ...r, duplicate_owners: [], duplicate_owner_counts: hideOwners(r.duplicate_owner_counts ?? [], user.id) };
 
   if (parsed.data.mode !== "headers" && parsed.data.assigned_to) {
     const { data: employee } = await db.from("profiles").select("id, is_active").eq("id", parsed.data.assigned_to).maybeSingle();

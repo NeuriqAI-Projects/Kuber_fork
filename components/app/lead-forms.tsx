@@ -291,6 +291,9 @@ export function AssignStrategyPicker({
 // (review §3.3). Shown as a toast right after import completes.
 function ownerName(id: string | null, employees: Profile[]) {
   if (!id) return "the pool (unassigned)";
+  // Sentinels from import-excel for members who can't see others' leads.
+  if (id === "self") return "you";
+  if (id === "other") return "another team member";
   return employees.find((e) => e.id === id)?.full_name
     || employees.find((e) => e.id === id)?.email
     || "another user";
@@ -1296,7 +1299,13 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
       setShowConfirm(false);
       setResult(res);
       setStage("result");
+      // 0 saved: keep the drawer open on the result screen so the "already in
+      // Kuber" message is seen. onImport closes the drawer, which used to make
+      // an all-duplicates import look like nothing happened (17 Nov).
+      if (res.inserted === 0) return;
       notifyDuplicateOwners(res.duplicate_owners, employees);
+      const dupes = res.skipped_duplicate_in_db + res.skipped_duplicate_in_file;
+      toast.success(`${res.inserted} lead${res.inserted === 1 ? "" : "s"} imported${dupes ? ` · ${dupes} already in Kuber, skipped` : ""}`);
       onImport(res.inserted);
     } catch (e) {
       setShowConfirm(false);
@@ -1332,7 +1341,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
     const dupes = result.skipped_duplicate_in_db;
     const owners = [...(result.duplicate_owner_counts ?? [])]
       .sort((a, b) => b.count - a.count)
-      .map((o) => `${o.count} owned by ${ownerName(o.assigned_to, employees)}`)
+      .map((o) => `${o.count} assigned to ${ownerName(o.assigned_to, employees)}`)
       .join(", ");
     return (
       <div className="space-y-4">
@@ -1343,7 +1352,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
             {dupes > 0 ? (
               <p className="text-xs text-muted-foreground">
                 All <span className="tabular-nums">{dupes}</span> leads in this file are already in Kuber{owners ? ` (${owners})` : ""}.
-                No batch was created. To work on them, ask a manager to reassign them to you.
+                No batch was created. If they are assigned to someone else, please contact your manager to get them assigned to you.
               </p>
             ) : (
               <p className="text-xs text-muted-foreground">
