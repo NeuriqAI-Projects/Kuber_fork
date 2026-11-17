@@ -126,9 +126,13 @@ async function processRows(
 
   const DUPLICATE_SAMPLE_CAP = 50;
   const duplicateOwners: Array<{ email: string; assigned_to: string | null }> = [];
+  // Uncapped "who owns how many" so the result screen can say "22 owned by Ankit".
+  const ownerCounts = new Map<string | null, number>();
   const toInsert = validRows.filter((r) => {
     if (existingOwners.has(r.email)) {
       skippedDuplicateInDb++;
+      const owner = existingOwners.get(r.email) ?? null;
+      ownerCounts.set(owner, (ownerCounts.get(owner) ?? 0) + 1);
       if (duplicateOwners.length < DUPLICATE_SAMPLE_CAP) {
         duplicateOwners.push({ email: r.email, assigned_to: existingOwners.get(r.email) ?? null });
       }
@@ -136,11 +140,12 @@ async function processRows(
     }
     return true;
   });
+  const duplicateOwnerCounts = [...ownerCounts].map(([assigned_to, count]) => ({ assigned_to, count }));
   if (toInsert.length === 0) {
     return {
       inserted: 0, skipped_blank_email: skippedBlankEmail, skipped_invalid_email: skippedInvalidEmail,
       skipped_duplicate_in_file: skippedDuplicateInFile, skipped_duplicate_in_db: skippedDuplicateInDb,
-      duplicate_owners: duplicateOwners,
+      duplicate_owners: duplicateOwners, duplicate_owner_counts: duplicateOwnerCounts,
     };
   }
 
@@ -261,8 +266,16 @@ async function processRows(
   return {
     inserted: insertedCount, skipped_blank_email: skippedBlankEmail, skipped_invalid_email: skippedInvalidEmail,
     skipped_duplicate_in_file: skippedDuplicateInFile, skipped_duplicate_in_db: skippedDuplicateInDb,
-    assignment_skipped: 0, duplicate_owners: duplicateOwners,
+    assignment_skipped: 0, duplicate_owners: duplicateOwners, duplicate_owner_counts: duplicateOwnerCounts,
   };
+}
+
+/** Keep the batch only when it got leads. A file of all duplicates used to
+ *  leave an empty batch behind on every try (3 x "Kazakhstan-2024", 17 Nov). */
+async function finishImport(db: ReturnType<typeof dbForUser>, importId: string | null, inserted: number) {
+  if (!importId) return;
+  if (inserted > 0) await db.from("imports").update({ lead_count: inserted }).eq("id", importId);
+  else await db.from("imports").delete().eq("id", importId);
 }
 
 /** import-time assignment choice → columns stored on the import row (deferred). */
@@ -306,7 +319,7 @@ export async function POST(req: NextRequest) {
   }
   // Who owns a duplicate is other people's data: only with leads:all.
   const shown = <T extends { duplicate_owners?: unknown[] }>(r: T): T =>
-    canSeeAll(user.member, "leads") ? r : { ...r, duplicate_owners: [] };
+    canSeeAll(user.member, "leads") ? r : { ...r, duplicate_owners: [], duplicate_owner_counts: [] };
 
   if (parsed.data.mode !== "headers" && parsed.data.assigned_to) {
     const { data: employee } = await db.from("profiles").select("id, is_active").eq("id", parsed.data.assigned_to).maybeSingle();
@@ -322,9 +335,7 @@ export async function POST(req: NextRequest) {
       .select("id").single();
     const importId = importRow?.id ?? null;
     const result = await processRows(rows, mapping, user.id, db, importId, assigned_to, assignment_strategy, ownImport);
-    if (importId && result.inserted > 0) {
-      await db.from("imports").update({ lead_count: result.inserted }).eq("id", importId);
-    }
+    await finishImport(db, importId, result.inserted);
     if (result.inserted > 0) triggerScrape(req);
     return ok(shown(result));
   }
@@ -356,9 +367,7 @@ export async function POST(req: NextRequest) {
     .select("id").single();
   const importId2 = importRow2?.id ?? null;
   const result = await processRows(parsed_excel.rows, mapping, user.id, db, importId2, importAssignedTo, importStrategy, ownImport);
-  if (importId2 && result.inserted > 0) {
-    await db.from("imports").update({ lead_count: result.inserted }).eq("id", importId2);
-  }
+  await finishImport(db, importId2, result.inserted);
   if (result.inserted > 0) triggerScrape(req);
   return ok(shown(result));
 }

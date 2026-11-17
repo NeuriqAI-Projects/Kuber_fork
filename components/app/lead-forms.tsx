@@ -289,17 +289,18 @@ export function AssignStrategyPicker({
 // Surfaces WHO already owns a skipped duplicate — previously the importer was
 // just told "N skipped" with no idea the lead already belongs to someone else
 // (review §3.3). Shown as a toast right after import completes.
+function ownerName(id: string | null, employees: Profile[]) {
+  if (!id) return "the pool (unassigned)";
+  return employees.find((e) => e.id === id)?.full_name
+    || employees.find((e) => e.id === id)?.email
+    || "another user";
+}
+
 function notifyDuplicateOwners(duplicates: DuplicateOwner[] | undefined, employees: Profile[]) {
   if (!duplicates || duplicates.length === 0) return;
-  const ownerName = (id: string | null) => {
-    if (!id) return "the pool (unassigned)";
-    return employees.find((e) => e.id === id)?.full_name
-      || employees.find((e) => e.id === id)?.email
-      || "another user";
-  };
   const sample = duplicates.slice(0, 3).map((d) => {
     const who = d.email ?? d.name ?? "a lead";
-    return `${who} (owned by ${ownerName(d.assigned_to)})`;
+    return `${who} (owned by ${ownerName(d.assigned_to, employees)})`;
   }).join(", ");
   const more = duplicates.length > 3 ? ` and ${duplicates.length - 3} more` : "";
   toast.warning(`${duplicates.length} lead${duplicates.length === 1 ? "" : "s"} already exist${duplicates.length === 1 ? "s" : ""} — skipped: ${sample}${more}.`, { duration: 8000 });
@@ -1184,6 +1185,7 @@ type ParseResult = {
   skipped_invalid_email: number;
   skipped_duplicate_in_file: number;
   skipped_duplicate_in_db: number;
+  duplicate_owner_counts?: Array<{ assigned_to: string | null; count: number }>;
 };
 
 const EXCEL_STEPS = ["Upload file", "Map columns", "Batch", "Assign", "Review & import"];
@@ -1324,6 +1326,36 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
       jobTitle:  mapping.title                ? String(row[mapping.title]                ?? "") : "",
     };
   });
+
+  if (stage === "result" && result?.inserted === 0) {
+    // Nothing saved: say why in plain words. The server keeps no empty batch.
+    const dupes = result.skipped_duplicate_in_db;
+    const owners = [...(result.duplicate_owner_counts ?? [])]
+      .sort((a, b) => b.count - a.count)
+      .map((o) => `${o.count} owned by ${ownerName(o.assigned_to, employees)}`)
+      .join(", ");
+    return (
+      <div className="space-y-4">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3 dark:border-amber-500/25 dark:bg-amber-500/10">
+          <AlertCircle className="size-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">No new leads in <span>{fileName}</span></p>
+            {dupes > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                All <span className="tabular-nums">{dupes}</span> leads in this file are already in Kuber{owners ? ` (${owners})` : ""}.
+                No batch was created. To work on them, ask a manager to reassign them to you.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                No row had a usable email. Check that the Email column is mapped to the right column. No batch was created.
+              </p>
+            )}
+          </div>
+        </div>
+        <Button variant="outline" onClick={reset}>Upload another file</Button>
+      </div>
+    );
+  }
 
   if (stage === "result") {
     return (

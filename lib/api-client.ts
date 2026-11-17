@@ -923,6 +923,7 @@ export async function importExcelDirect(
   inserted: number; skipped_blank_email: number; skipped_invalid_email: number;
   skipped_duplicate_in_file: number; skipped_duplicate_in_db: number;
   assignment_skipped?: number; duplicate_owners?: DuplicateOwner[];
+  duplicate_owner_counts?: Array<{ assigned_to: string | null; count: number }>;
 }> {
   return apiFetch("/api/v1/leads/import-excel", {
     method: "POST",
