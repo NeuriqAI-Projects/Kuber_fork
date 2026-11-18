@@ -234,10 +234,13 @@ export function ApolloUsageView() {
       {!key.ok && <UsageNotice tone="error">{key.message}</UsageNotice>}
 
       {creditUsageError ? (
-        <UsageNotice tone="warning">
-          Could not read live team credits ({creditUsageError}) — this endpoint requires a Master API key. Falling back to
-          this app&apos;s own ledger below.
-        </UsageNotice>
+        // Key already invalid -> red notice above says it; raw Apollo error goes to console only.
+        key.ok && (
+          <UsageNotice tone="warning">
+            Live Apollo credits are unavailable right now. Showing this app&apos;s own usage below. A Master API key is
+            needed to see live credits.
+          </UsageNotice>
+        )
       ) : creditUsage && creditCycle ? (
         <div className="space-y-4">
           <div>

@@ -18,6 +18,7 @@ import { ServiceHealthBanner } from "@/components/app/service-health-banner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatTile } from "@/components/ui/stat-tile";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Pill } from "@/components/ui/pill";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
@@ -46,7 +47,7 @@ function BatchRow({ b, onSelect }: { b: ImportBatch; onSelect: () => void }) {
     <div className="group flex h-11 w-full items-center gap-3 px-4 transition-colors hover:bg-hover">
       <span className={cn("size-2 shrink-0 rounded-full", bc.bg)} />
       {editing ? (
-        <input
+        <Input
           autoFocus
           aria-label="Batch name"
           value={name}
@@ -58,7 +59,7 @@ function BatchRow({ b, onSelect }: { b: ImportBatch; onSelect: () => void }) {
             if (e.key === "Enter") e.currentTarget.blur();
             if (e.key === "Escape") { setName(b.label); setEditing(false); }
           }}
-          className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 text-[13px] font-medium outline-none focus:border-ring"
+          className="h-7 min-w-0 flex-1 text-[13px] font-medium"
         />
       ) : (
         <button type="button" onClick={onSelect} className="min-w-0 flex-1 truncate text-left text-[13px] font-medium">
