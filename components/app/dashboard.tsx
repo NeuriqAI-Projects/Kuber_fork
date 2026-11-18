@@ -6,12 +6,14 @@ import {
 } from "recharts";
 import {
   Activity, ArrowRight, LayoutDashboard, Mail,
-  Megaphone, Tags, TrendingUp, Users, Zap, Flame,
+  Megaphone, Tags, TrendingUp, Users, Zap, Flame, Pencil,
 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getBatchColor, type BatchColorName } from "@/lib/constants";
 import type { Campaign } from "@/components/app/create-campaign-modal";
-import type { ImportBatch } from "@/lib/api-client";
+import { renameImport, getAccessToken, type ImportBatch } from "@/lib/api-client";
 import { ServiceHealthBanner } from "@/components/app/service-health-banner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatTile } from "@/components/ui/stat-tile";
@@ -19,6 +21,67 @@ import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
+
+// One row of the Batches card. The pencil renames the batch (Enter saves, Esc cancels).
+function BatchRow({ b, onSelect }: { b: ImportBatch; onSelect: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(b.label);
+  const [saving, setSaving] = useState(false);
+  const bc = getBatchColor(b.color);
+
+  async function save() {
+    const label = name.trim();
+    if (!label || label === b.label) { setName(b.label); setEditing(false); return; }
+    setSaving(true);
+    try {
+      await renameImport(await getAccessToken(), b.id, label); // cache refreshes the lists
+      toast.success("Batch renamed");
+      setEditing(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not rename the batch");
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="group flex h-11 w-full items-center gap-3 px-4 transition-colors hover:bg-hover">
+      <span className={cn("size-2 shrink-0 rounded-full", bc.bg)} />
+      {editing ? (
+        <input
+          autoFocus
+          aria-label="Batch name"
+          value={name}
+          maxLength={80}
+          disabled={saving}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={save}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+            if (e.key === "Escape") { setName(b.label); setEditing(false); }
+          }}
+          className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 text-[13px] font-medium outline-none focus:border-ring"
+        />
+      ) : (
+        <button type="button" onClick={onSelect} className="min-w-0 flex-1 truncate text-left text-[13px] font-medium">
+          {b.label}
+        </button>
+      )}
+      {!editing && (
+        <button
+          type="button"
+          aria-label={`Rename ${b.label}`}
+          onClick={() => { setName(b.label); setEditing(true); }}
+          className="shrink-0 rounded p-1 text-muted-foreground opacity-60 hover:bg-muted hover:text-foreground group-hover:opacity-100"
+        >
+          <Pencil className="size-3.5" />
+        </button>
+      )}
+      <span className="hidden shrink-0 text-xs capitalize text-muted-foreground sm:inline">{b.source}</span>
+      <Pill color={b.color as BatchColorName} className="shrink-0 tabular-nums">
+        {b.lead_count} lead{b.lead_count !== 1 ? "s" : ""}
+      </Pill>
+    </div>
+  );
+}
 
 // ─── Chart helpers ────────────────────────────────────────────────────────────
 
@@ -338,24 +401,9 @@ export function DashboardView({
                 />
               ) : (
                 <div className="max-h-[440px] divide-y divide-border overflow-y-auto">
-                  {imports.map((b) => {
-                    const bc = getBatchColor(b.color);
-                    return (
-                      <button
-                        key={b.id}
-                        type="button"
-                        onClick={() => onSelectBatch(b.label)}
-                        className="flex h-11 w-full items-center gap-3 px-4 text-left transition-colors hover:bg-hover"
-                      >
-                        <span className={cn("size-2 shrink-0 rounded-full", bc.bg)} />
-                        <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{b.label}</span>
-                        <span className="hidden shrink-0 text-xs capitalize text-muted-foreground sm:inline">{b.source}</span>
-                        <Pill color={b.color as BatchColorName} className="shrink-0 tabular-nums">
-                          {b.lead_count} lead{b.lead_count !== 1 ? "s" : ""}
-                        </Pill>
-                      </button>
-                    );
-                  })}
+                  {imports.map((b) => (
+                    <BatchRow key={b.id} b={b} onSelect={() => onSelectBatch(b.label)} />
+                  ))}
                 </div>
               )}
             </Panel>

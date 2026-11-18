@@ -1644,6 +1644,10 @@ export async function fetchImports(token: string): Promise<{ imports: ImportBatc
   return apiFetch("/api/v1/imports", {}, token);
 }
 
+export async function renameImport(token: string, id: string, label: string): Promise<{ id: string; label: string }> {
+  return apiFetch(`/api/v1/imports/${id}`, { method: "PATCH", body: JSON.stringify({ label }) }, token);
+}
+
 // ─── Per-admin Signature ──────────────────────────────────────────────────────
 
 export async function fetchMySignature(token: string): Promise<{ full_name: string; title: string; contact: string; email: string }> {
