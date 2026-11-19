@@ -88,13 +88,19 @@ export async function startAttachmentUpload(
 ): Promise<{ path: string; token: string | null; exists: boolean }> {
   const path = `${uploadPrefix(companyId)}${start.sha256 ?? crypto.randomUUID()}/${safeFileName(start.name)}`;
   const bucket = db.storage.from(ATTACHMENT_BUCKET);
+  let upsert = false;
   if (start.sha256) {
     const { data: info } = await bucket.info(path);
-    // ponytail: a reused copy keeps its old created_at, so if nothing else uses it the 03:15 UTC
-    // cleanup could remove it while a Create Campaign modal is open. Touch the object here if that ever bites.
-    if (info) return { path, token: null, exists: true };
+    if (info) {
+      // The cleanup keeps anything written in the last day. A copy older than
+      // half a day is uploaded again over itself (upsert -> fresh updated_at),
+      // so it can't be cleaned away while a modal that just picked it is open.
+      const touched = Date.parse(String((info as { updatedAt?: string }).updatedAt ?? info.createdAt ?? ""));
+      if (Date.now() - touched < 12 * 3600_000) return { path, token: null, exists: true };
+      upsert = true;
+    }
   }
-  const { data, error } = await bucket.createSignedUploadUrl(path);
+  const { data, error } = await bucket.createSignedUploadUrl(path, { upsert });
   if (error || !data) throw new Error(error?.message ?? "Could not start the upload");
   return { path: data.path, token: data.token, exists: false };
 }
@@ -104,8 +110,19 @@ export function isOwnUploadPath(path: string, companyId: string | null) {
   return path.startsWith(uploadPrefix(companyId)) && !path.includes("..");
 }
 
+/**
+ * 1-year download link (it sits in sent emails; Instantly has no attachment API).
+ * `download` makes the browser save it under the real name ("Plant photo.png"),
+ * not the storage key ("Plant_photo.png").
+ */
+export async function signFileLink(db: SupabaseClient, f: { path: string; name: string }): Promise<string | null> {
+  const { data } = await db.storage.from(ATTACHMENT_BUCKET)
+    .createSignedUrl(f.path, 60 * 60 * 24 * 365, { download: f.name });
+  return data?.signedUrl ?? null;
+}
+
 /** After the browser uploaded: read the real size/type from Storage (never trust the client) and sign a 1-year link. */
-export async function finishAttachmentUpload(db: SupabaseClient, path: string) {
+export async function finishAttachmentUpload(db: SupabaseClient, path: string, name: string) {
   const bucket = db.storage.from(ATTACHMENT_BUCKET);
   const { data: info, error } = await bucket.info(path);
   if (error || !info) throw new Error("Uploaded file not found");
@@ -116,8 +133,74 @@ export async function finishAttachmentUpload(db: SupabaseClient, path: string) {
     await bucket.remove([path]).catch(() => {});
     throw new Error(bad);
   }
-  // 1 year: the link is embedded in sent emails (Instantly has no attachment
-  // API), so recipients must be able to open it long after send.
-  const { data: signed } = await bucket.createSignedUrl(path, 60 * 60 * 24 * 365);
-  return { mime, size, url: signed?.signedUrl ?? null };
+  return { mime, size, url: await signFileLink(db, { path, name }) };
+}
+
+const FILES_BLOCK_RE = new RegExp(`<p[^>]*>\\s*${FILES_BLOCK_LABEL}[\\s\\S]*?</p>`);
+
+/** Swap the "Attached files:" paragraph for `block` (append it when there is none; `block` "" removes it). */
+export function replaceFilesBlock(body: string, block: string): string {
+  return FILES_BLOCK_RE.test(body) ? body.replace(FILES_BLOCK_RE, block) : body + block;
+}
+
+/**
+ * After a campaign's or a lead's files change: rewrite the file links in opening
+ * drafts that Instantly does not have yet (no AI, no credits). Drafts already
+ * handed to Instantly are left alone. With `campaignLeadId` only that lead;
+ * otherwise every lead that uses the campaign's files (no files of its own).
+ * The AI wording ("our brochure") is not rewritten; regenerate for that.
+ */
+export async function refreshDraftFileLinks(
+  db: SupabaseClient,
+  campaignId: string,
+  campaignLeadId?: string,
+): Promise<number> {
+  const { data: campaign } = await db.from("campaigns").select("attachments").eq("id", campaignId).maybeSingle();
+  let q = db.from("campaign_leads")
+    .select("id, attachments, draft_id")
+    .eq("campaign_id", campaignId)
+    .in("crm_status", ["new", "enriched", "draft", "approved"])
+    .is("instantly_lead_id", null)
+    .not("draft_id", "is", null);
+  if (campaignLeadId) q = q.eq("id", campaignLeadId);
+  const { data: rows } = await q;
+
+  const campaignFiles = (campaign?.attachments ?? []) as StoredAttachment[];
+  const filesByDraft = new Map<string, StoredAttachment[]>();
+  for (const r of rows ?? []) {
+    const own = (r.attachments ?? []) as StoredAttachment[];
+    if (!campaignLeadId && own.length) continue; // the lead's own files win
+    filesByDraft.set(r.draft_id as string, own.length ? own : campaignFiles);
+  }
+  if (filesByDraft.size === 0) return 0;
+
+  const urls = new Map<string, string | null>();
+  const blockFor = async (files: StoredAttachment[]) => {
+    const linked: { name: string; size: number; url: string }[] = [];
+    for (const f of files) {
+      if (!urls.has(f.path)) urls.set(f.path, await signFileLink(db, f));
+      const url = urls.get(f.path);
+      if (url) linked.push({ name: f.name, size: f.size, url });
+    }
+    return filesBlockHtml(linked);
+  };
+
+  let updated = 0;
+  const ids = [...filesByDraft.keys()];
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data: drafts } = await db.from("email_drafts")
+      .select("id, body")
+      .in("id", ids.slice(i, i + 200))
+      .eq("step_number", 1)
+      .in("status", ["draft", "approved"]);
+    const work = (drafts ?? []).map(async (d) => {
+      const body = replaceFilesBlock((d.body as string | null) ?? "", await blockFor(filesByDraft.get(d.id as string) ?? []));
+      if (body === d.body) return;
+      const { error } = await db.from("email_drafts").update({ body, updated_at: new Date().toISOString() }).eq("id", d.id);
+      if (!error) updated++;
+    });
+    // ponytail: 20 updates at a time; a 1000-lead campaign takes a few seconds.
+    for (let j = 0; j < work.length; j += 20) await Promise.all(work.slice(j, j + 20));
+  }
+  return updated;
 }

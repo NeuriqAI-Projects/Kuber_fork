@@ -42,6 +42,11 @@ export const PatchCampaignSchema = z.object({
   ai_prompt_context: z.string().optional(),
 });
 
+/** PUT /api/v1/campaigns/[id]/attachments: the whole new list. */
+export const CampaignAttachmentsSchema = z.object({
+  attachments: z.array(StoredAttachmentSchema).max(ATTACHMENT_MAX_FILES),
+});
+
 export const AddLeadsToCampaignSchema = z.object({
   lead_ids: z.array(dbId).min(1),
 });

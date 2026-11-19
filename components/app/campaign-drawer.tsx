@@ -135,6 +135,7 @@ import {
 import { cumulativeDays, dayLabel, MAX_FOLLOWUP_STEPS } from "@/lib/followup-schedule-preview";
 import { TEMPERATURE_BADGE } from "@/lib/temperature-badge";
 import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_FILES } from "@/lib/services/attachment-upload";
+import { CampaignAttachments } from "@/components/app/campaign-attachments";
 import { delayInDays, writeByAt } from "@/lib/services/followup-schedule";
 import { extractFollowupWaitsFromSteps, rebuildStepsWithFollowupWaits } from "@/lib/constants";
 
@@ -1804,7 +1805,7 @@ export function CampaignDetail({
           toast.error(`${file.name}: ${(e as Error).message}`);
         }
       }
-      if (added) toast.success(`${added} file${added === 1 ? "" : "s"} added for this lead. Regenerate the draft to include the links`);
+      if (added) toast.success(`${added} file${added === 1 ? "" : "s"} added for this lead. Links in its unsent first email are updated`);
       await loadData();
     } finally {
       setAttaching(false);
@@ -6172,7 +6173,7 @@ export function CampaignDetail({
 
       {/* ── Options ───────────────────────────────────────────────────────── */}
       {viewTab === "options" && (
-        <div className="flex-1 overflow-y-auto px-6 py-6">
+        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
           <EditCampaignForm
             variant="page"
             campaign={campaign}
@@ -6181,6 +6182,7 @@ export function CampaignDetail({
               if (appSession?.access_token) void loadCampaigns(appSession.access_token);
             }}
           />
+          <CampaignAttachments campaignId={campaign.id} readOnly={!canEditSettings} />
         </div>
       )}
 

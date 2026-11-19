@@ -30,3 +30,16 @@ test("upload paths stay inside the caller's company folder", async () => {
   assert.ok(!isOwnUploadPath(`uploads/${co}/../other/B.pdf`, co));
   assert.ok(!isOwnUploadPath(`branding/${co}/logo.png`, co));
 });
+
+test("replaceFilesBlock swaps, appends, removes, and survives editor re-serialising", async () => {
+  const { replaceFilesBlock, filesBlockHtml } = await import("./attachment-upload.ts");
+  const a = filesBlockHtml([{ name: "A.pdf", size: 1024, url: "https://x/a" }]);
+  const b = filesBlockHtml([{ name: "B.pdf", size: 2048, url: "https://x/b" }]);
+  const body = "<p>Dear Ravi,<br><br>Hello.</p><p>Best regards,<br>Pushkar</p>";
+  assert.equal(replaceFilesBlock(body, a), body + a);                 // none yet -> append
+  assert.equal(replaceFilesBlock(body + a, b), body + b);             // swap
+  assert.equal(replaceFilesBlock(body + a, ""), body);                // remove
+  const edited = body + '<p class="x">Attached files:<br><a target="_blank" rel="noopener noreferrer nofollow" href="https://x/a">A.pdf</a> (1 KB)</p>';
+  assert.equal(replaceFilesBlock(edited, b), body + b);               // TipTap-style markup
+  assert.equal((replaceFilesBlock(body + a, b).match(/Attached files:/g) ?? []).length, 1);
+});

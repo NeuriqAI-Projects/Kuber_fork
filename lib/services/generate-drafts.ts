@@ -19,7 +19,7 @@ import { splitInstruction, customerProducts } from "@/lib/services/revision-inpu
 import { PROVIDER_UNAVAILABLE, isProviderOutage } from "@/lib/services/provider-errors";
 import { classifyRevisionIntent, revisionRulesFor } from "@/lib/services/revision-intent";
 import { resolveFollowupTemplate, fillFollowupTemplate } from "@/lib/services/followup-template";
-import { FILES_BLOCK_LABEL, filesBlockHtml, type StoredAttachment } from "@/lib/services/attachment-upload";
+import { FILES_BLOCK_LABEL, filesBlockHtml, signFileLink, type StoredAttachment } from "@/lib/services/attachment-upload";
 
 /** Activity-timeline wording for a finished draft. */
 function draftCreatedDetail(stepNumber: number, status: string): string {
@@ -863,10 +863,8 @@ export async function generateOneDraft(
   // A fresh 1-year signed link per file, cached per run (shared by every lead of the campaign).
   const linkedFiles: { name: string; size: number; url: string }[] = [];
   for (const f of effectiveFiles) {
-    const { data: signed } = await once(ctx, `signedUrl:${f.path}`, () => db.storage
-      .from("campaign-attachments")
-      .createSignedUrl(f.path, 60 * 60 * 24 * 365));
-    if (signed?.signedUrl) linkedFiles.push({ name: f.name, size: f.size, url: signed.signedUrl });
+    const url = await once(ctx, `signedUrl:${f.path}:${f.name}`, () => signFileLink(db, f));
+    if (url) linkedFiles.push({ name: f.name, size: f.size, url });
   }
 
   // --- Draft row (insert or reuse) ---

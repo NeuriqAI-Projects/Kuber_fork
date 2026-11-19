@@ -5,7 +5,7 @@ import { assertCampaignAccess, assertCampaignLeadAccess } from "@/lib/auth/scope
 import { dbForUser } from "@/lib/supabase/scoped";
 import {
   ATTACHMENT_MAX_FILES, AttachmentFinishSchema, AttachmentStartSchema, checkAttachment, finishAttachmentUpload,
-  isOwnUploadPath, startAttachmentUpload, type StoredAttachment,
+  isOwnUploadPath, refreshDraftFileLinks, startAttachmentUpload, type StoredAttachment,
 } from "@/lib/services/attachment-upload";
 
 export const maxDuration = 30;
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!isOwnUploadPath(path, user.companyId)) return fail(400, "VALIDATION_ERROR", "Bad upload path");
     if (files.some((x) => x.path === path)) return fail(400, "VALIDATION_ERROR", "This file is already attached to this lead");
     let f: Awaited<ReturnType<typeof finishAttachmentUpload>>;
-    try { f = await finishAttachmentUpload(db, path); } catch (e) { return fail(400, "VALIDATION_ERROR", (e as Error).message); }
+    try { f = await finishAttachmentUpload(db, path, name); } catch (e) { return fail(400, "VALIDATION_ERROR", (e as Error).message); }
 
     if (files.length >= ATTACHMENT_MAX_FILES) {
       return fail(400, "VALIDATION_ERROR", `Up to ${ATTACHMENT_MAX_FILES} files per lead`);
@@ -51,7 +51,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }).eq("id", id);
     if (updErr) return fail(500, "INTERNAL", updErr.message);
 
-    return ok({ attachment_name: name, attachment_size: f.size, attachment_mime: f.mime, attachment_url: f.url });
+    const drafts_updated = await refreshDraftFileLinks(db, cl.campaign_id, id);
+    return ok({ attachment_name: name, attachment_size: f.size, attachment_mime: f.mime, attachment_url: f.url, drafts_updated });
   }
 
   const start = AttachmentStartSchema.safeParse(body);
@@ -91,5 +92,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   }).eq("id", id);
   if (error) return fail(500, "INTERNAL", error.message);
 
-  return ok({ cleared: true });
+  // Back on the campaign's files (or one fewer of its own): fix the unsent draft's links.
+  const drafts_updated = await refreshDraftFileLinks(db, row.campaign_id, id);
+  return ok({ cleared: true, drafts_updated });
 }

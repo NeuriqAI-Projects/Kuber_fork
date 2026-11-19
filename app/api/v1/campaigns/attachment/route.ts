@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     const { path, name } = finish.data;
     if (!isOwnUploadPath(path, user.companyId)) return fail(400, "VALIDATION_ERROR", "Bad upload path");
     try {
-      const f = await finishAttachmentUpload(db, path);
+      const f = await finishAttachmentUpload(db, path, name);
       return ok({ attachment_path: path, attachment_name: name, attachment_mime: f.mime, attachment_size: f.size, attachment_url: f.url });
     } catch (e) {
       return fail(400, "VALIDATION_ERROR", (e as Error).message);

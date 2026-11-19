@@ -1662,6 +1662,17 @@ export async function saveMySignature(token: string, sig: { full_name: string; t
   return apiFetch("/api/v1/settings/signature", { method: "PUT", body: JSON.stringify(sig) }, token);
 }
 
+export type CampaignFile = { path: string; name: string; mime: string; size: number };
+
+export async function fetchCampaignAttachments(token: string, campaignId: string): Promise<{ attachments: CampaignFile[] }> {
+  return apiFetch(`/api/v1/campaigns/${campaignId}/attachments`, {}, token);
+}
+
+/** Replace the campaign's files; unsent opening drafts get the new links. */
+export async function saveCampaignAttachments(token: string, campaignId: string, attachments: CampaignFile[]): Promise<{ attachments: CampaignFile[]; drafts_updated: number }> {
+  return apiFetch(`/api/v1/campaigns/${campaignId}/attachments`, { method: "PUT", body: JSON.stringify({ attachments }) }, token);
+}
+
 // ─── Per-lead Attachment Override ──────────────────────────────────────────────
 
 export async function uploadCampaignLeadAttachment(
