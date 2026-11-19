@@ -236,7 +236,9 @@ export function RichTextEditor({
   // Sync disabled prop
   useEffect(() => {
     if (!editor) return;
-    editor.setEditable(!disabled);
+    // false = no update event: otherwise onChange fires while a draft loads and
+    // the drawer shows a false "You have unsaved edits" prompt.
+    editor.setEditable(!disabled, false);
   }, [editor, disabled]);
 
   function addLink() {

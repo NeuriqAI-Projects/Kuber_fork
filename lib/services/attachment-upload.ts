@@ -90,6 +90,8 @@ export async function startAttachmentUpload(
   const bucket = db.storage.from(ATTACHMENT_BUCKET);
   if (start.sha256) {
     const { data: info } = await bucket.info(path);
+    // ponytail: a reused copy keeps its old created_at, so if nothing else uses it the 03:15 UTC
+    // cleanup could remove it while a Create Campaign modal is open. Touch the object here if that ever bites.
     if (info) return { path, token: null, exists: true };
   }
   const { data, error } = await bucket.createSignedUploadUrl(path);

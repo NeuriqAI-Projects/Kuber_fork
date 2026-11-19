@@ -1784,7 +1784,10 @@ export function CampaignDetail({
   async function handleLeadAttachmentUpload(list: FileList | null) {
     if (!selected) return;
     const own = selected.attachment?.source === "lead" ? selected.attachment.files.length : 0;
-    const picked = Array.from(list ?? []);
+    const all = Array.from(list ?? []);
+    // Oversize files first, so one can't take a slot from a good file.
+    for (const f of all) if (f.size > ATTACHMENT_MAX_BYTES) toast.error(`${f.name} is over 25 MB`);
+    const picked = all.filter((f) => f.size <= ATTACHMENT_MAX_BYTES);
     const room = ATTACHMENT_MAX_FILES - own;
     if (picked.length > room) toast.error(`Up to ${ATTACHMENT_MAX_FILES} files per lead; extra files were skipped`);
     setAttaching(true);
@@ -1794,7 +1797,6 @@ export function CampaignDetail({
       if (!session) return;
       // One at a time: the route appends to the lead's list.
       for (const file of picked.slice(0, Math.max(0, room))) {
-        if (file.size > ATTACHMENT_MAX_BYTES) { toast.error(`${file.name} is over 25 MB`); continue; }
         try {
           await uploadCampaignLeadAttachment(session.access_token, selected.id, file);
           added++;

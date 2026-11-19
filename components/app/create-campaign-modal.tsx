@@ -179,10 +179,12 @@ export function CreateCampaignModal({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const picked = Array.from(e.target.files ?? []);
-    if (picked.length === 0) return;
+    const all = Array.from(e.target.files ?? []);
+    if (all.length === 0) return;
+    // Oversize files first, so one can't take a slot from a good file.
+    const errors = all.filter((f) => f.size > ATTACHMENT_MAX_BYTES).map((f) => `${f.name} is over 25 MB.`);
+    const picked = all.filter((f) => f.size <= ATTACHMENT_MAX_BYTES);
     const room = ATTACHMENT_MAX_FILES - attachments.length;
-    const errors: string[] = [];
     if (picked.length > room) errors.push(`Only ${ATTACHMENT_MAX_FILES} files per campaign; extra files were skipped.`);
     setUploading(true);
     try {
@@ -190,7 +192,6 @@ export function CreateCampaignModal({
       const token = session?.access_token ?? "";
       // One at a time: each is a browser -> Storage upload of up to 25 MB.
       for (const file of picked.slice(0, Math.max(0, room))) {
-        if (file.size > ATTACHMENT_MAX_BYTES) { errors.push(`${file.name} is over 25 MB`); continue; }
         try {
           const r = await uploadCampaignAttachment(token, file);
           // The same file picked twice resolves to the same stored path: keep one.
