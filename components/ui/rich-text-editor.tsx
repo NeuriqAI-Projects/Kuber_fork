@@ -430,7 +430,7 @@ export function RichTextEditor({
               const file = e.target.files?.[0];
               e.target.value = "";
               if (!file) return;
-              if (file.size > REPLY_ATTACH_MAX_BYTES) { toast.error("File is over 10 MB"); return; }
+              if (file.size > REPLY_ATTACH_MAX_BYTES) { toast.error("File is over 25 MB"); return; }
               setAttaching(true);
               try {
                 const { data: { session } } = await supabase.auth.getSession();

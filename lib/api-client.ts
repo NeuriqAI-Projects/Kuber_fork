@@ -1557,9 +1557,7 @@ export async function createCampaign(token: string, body: {
   send_mode?: "now" | "scheduled"; schedule_start_at?: string;
   ai_prompt_context?: string; sender_name?: string;
   followup_steps?: { delay: number; delay_unit: "minutes" | "hours" | "days" }[];
-  attachment_path?: string; attachment_name?: string;
-  attachment_mime?: string; attachment_size?: number;
-  attachment_url?: string | null;
+  attachments?: { path: string; name: string; mime: string; size: number }[];
 }): Promise<DbCampaign> {
   return apiFetch<DbCampaign>("/api/v1/campaigns", { method: "POST", body: JSON.stringify(body) }, token);
 }
@@ -1567,14 +1565,20 @@ export async function createCampaign(token: string, body: {
 // The file goes browser -> Supabase Storage on a signed upload URL our route hands out,
 // then the route checks it and signs the link. Through our API it broke above 4.5 MB
 // (Vercel's request body cap).
+// The SHA-256 lets the server reuse a copy it already holds (exists: true -> no upload).
 async function uploadAttachmentFile<T>(token: string, route: string, file: File): Promise<T> {
-  const { path, token: uploadToken } = await apiFetch<{ path: string; token: string }>(route, {
-    method: "POST", body: JSON.stringify({ name: file.name, type: file.type, size: file.size }),
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  const sha256 = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+  const { path, token: uploadToken, exists } = await apiFetch<{ path: string; token: string | null; exists: boolean }>(route, {
+    method: "POST", body: JSON.stringify({ name: file.name, type: file.type, size: file.size, sha256 }),
   }, token);
-  const { supabase } = await import("@/lib/supabase");
-  const { error } = await supabase.storage.from("campaign-attachments")
-    .uploadToSignedUrl(path, uploadToken, file, { contentType: file.type });
-  if (error) throw new Error(`Upload failed: ${error.message}`);
+  if (!exists && uploadToken) {
+    const { supabase } = await import("@/lib/supabase");
+    const { error } = await supabase.storage.from("campaign-attachments")
+      .uploadToSignedUrl(path, uploadToken, file, { contentType: file.type });
+    // Same file uploaded by someone else a moment ago: the copy is there, carry on.
+    if (error && !/exists|duplicate/i.test(error.message)) throw new Error(`Upload failed: ${error.message}`);
+  }
   return apiFetch<T>(route, { method: "POST", body: JSON.stringify({ finish: true, path, name: file.name }) }, token);
 }
 
@@ -1668,11 +1672,13 @@ export async function uploadCampaignLeadAttachment(
   return uploadAttachmentFile(token, `/api/v1/campaign-leads/${campaignLeadId}/attachment`, file);
 }
 
+/** Removes one of the lead's own files (by storage path). */
 export async function removeCampaignLeadAttachment(
   token: string,
   campaignLeadId: string,
+  path: string,
 ): Promise<{ cleared: boolean }> {
-  return apiFetch(`/api/v1/campaign-leads/${campaignLeadId}/attachment`, { method: "DELETE" }, token);
+  return apiFetch(`/api/v1/campaign-leads/${campaignLeadId}/attachment?path=${encodeURIComponent(path)}`, { method: "DELETE" }, token);
 }
 
 // ─── Reply drafts ────────────────────────────────────────────────────────────

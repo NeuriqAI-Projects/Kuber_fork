@@ -102,7 +102,7 @@ export async function regenerateOneDraft(
     .from("campaign_leads")
     .select(`
       id, lead_id, instantly_lead_id,
-      attachment_path, attachment_name, attachment_mime, attachment_size, attachment_url,
+      attachments,
       leads!lead_id(
         id, first_name, last_name, email, title, headline, seniority, city, country, assigned_to,
         organizations(name, domain, website, industry, employees, city, country, company_description, sells_to, keywords)

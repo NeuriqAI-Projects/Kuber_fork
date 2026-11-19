@@ -13,6 +13,7 @@ GitHub workflow files are manual-only now.
 | `auto-retry-failed-orgs` | retry failed company scrapes |
 | `check-sequence-drift` | compare our sequences with Instantly's |
 | `reconcile-counters` | nightly campaign counter fix |
+| `cleanup-attachments` | daily: delete attachment files nothing uses (rule in SQL `attachment_cleanup_candidates`); `?dry=1` lists only |
 
 Rules: check the secret first; cross-company is allowed here (admin client) but carry
 `company_id` from each row; finish inside 60 s and let the next tick continue.

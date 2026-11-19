@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { dbId } from "./id";
 import { MAX_FOLLOWUP_STEPS } from "@/lib/followup-schedule-preview";
+import { ATTACHMENT_MAX_FILES, StoredAttachmentSchema } from "@/lib/services/attachment-upload";
 
 export const CreateCampaignSchema = z.object({
   name: z.string().min(1),
@@ -21,12 +22,8 @@ export const CreateCampaignSchema = z.object({
     delay_unit: z.enum(["minutes", "hours", "days"]).default("days"),
   })).max(MAX_FOLLOWUP_STEPS).optional(),
 
-  // Campaign attachment fields (set by upload endpoint)
-  attachment_path: z.string().optional(),
-  attachment_name: z.string().optional(),
-  attachment_mime: z.string().optional(),
-  attachment_size: z.number().int().optional(),
-  attachment_url:  z.string().optional().nullable(),
+  // Files from /api/v1/campaigns/attachment; the route checks each path is the caller's company's.
+  attachments: z.array(StoredAttachmentSchema).max(ATTACHMENT_MAX_FILES).optional(),
   // Per-admin signature
   signature_user_id: dbId.optional(),
 });

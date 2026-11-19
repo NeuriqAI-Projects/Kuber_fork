@@ -19,6 +19,7 @@ import { splitInstruction, customerProducts } from "@/lib/services/revision-inpu
 import { PROVIDER_UNAVAILABLE, isProviderOutage } from "@/lib/services/provider-errors";
 import { classifyRevisionIntent, revisionRulesFor } from "@/lib/services/revision-intent";
 import { resolveFollowupTemplate, fillFollowupTemplate } from "@/lib/services/followup-template";
+import { FILES_BLOCK_LABEL, filesBlockHtml, type StoredAttachment } from "@/lib/services/attachment-upload";
 
 /** Activity-timeline wording for a finished draft. */
 function draftCreatedDetail(stepNumber: number, status: string): string {
@@ -170,9 +171,8 @@ type LeadRow = {
 export type CampaignLeadTarget = {
   id: string;
   lead_id: string;
-  attachment_name?: string | null;
-  attachment_path?: string | null;
-  attachment_url?: string | null;
+  /** Per-lead files; when non-empty they replace the campaign's files. */
+  attachments?: StoredAttachment[] | null;
   leads: LeadRow | LeadRow[] | null;
 };
 
@@ -405,9 +405,10 @@ export type PreviousDraftContent = {
 };
 
 
-function attachmentNote(name?: string | null): string {
-  return name
-    ? `a brochure file "${name}" is included with this email, so mention "brochure" once in the closing`
+/** `names` = the attached file names, already quoted and comma-joined. */
+function attachmentNote(names?: string | null): string {
+  return names
+    ? `these files are shared with this email as download links placed below it: ${names}. Mention them once in the closing by what they are (e.g. "our brochure"); never write a link or URL`
     : "No attachment, so do NOT mention any attachment or brochure anywhere in the body";
 }
 
@@ -834,7 +835,7 @@ export async function generateOneDraft(
   // --- Fetch full campaign for attachment + owner resolution ---
   const { data: campaign } = await once(ctx, `campaign:${campaignId}`, async () => db
     .from("campaigns")
-    .select("id, created_by, signature_override, attachment_name, attachment_path, attachment_url, ai_prompt_context")
+    .select("id, created_by, signature_override, attachments, ai_prompt_context")
     .eq("id", campaignId)
     .maybeSingle());
 
@@ -851,20 +852,21 @@ export async function generateOneDraft(
     () => resolveCampaignSignature(db, { ...campaign, created_by: promptOwnerId }));
   const allowHtml = await once(ctx, `allowHtml:${companyId}`, () => getAllowHtmlEmails(db));
 
-  // Per-lead attachment overrides campaign default. Instantly's API cannot send
-  // real file attachments, so an "attachment" is delivered as a hosted download
-  // link embedded in the body — and if there is none, the LLM is told so.
-  const effectiveAttachmentName = target.attachment_name ?? campaign?.attachment_name ?? null;
-  const effectiveAttachmentPath =
-    (target.attachment_name ? target.attachment_path : campaign?.attachment_path) ?? null;
-  let effectiveAttachmentUrl =
-    (target.attachment_name ? target.attachment_url : campaign?.attachment_url) ?? null;
-  if (effectiveAttachmentPath) {
-    // Regenerate a long-lived signed URL — the one stored at upload time expires in 7 days.
-    const { data: signed } = await once(ctx, `signedUrl:${effectiveAttachmentPath}`, () => db.storage
+  // Per-lead files replace the campaign's files. Instantly's API cannot send
+  // real file attachments, so each file is a hosted download link at the end of
+  // the opening email — and if there is none, the LLM is told so.
+  const campaignFiles = (campaign?.attachments ?? []) as StoredAttachment[];
+  const effectiveFiles = target.attachments?.length ? target.attachments : campaignFiles;
+  const effectiveAttachmentName = effectiveFiles.length
+    ? effectiveFiles.map((f) => `"${f.name}"`).join(", ")
+    : null;
+  // A fresh 1-year signed link per file, cached per run (shared by every lead of the campaign).
+  const linkedFiles: { name: string; size: number; url: string }[] = [];
+  for (const f of effectiveFiles) {
+    const { data: signed } = await once(ctx, `signedUrl:${f.path}`, () => db.storage
       .from("campaign-attachments")
-      .createSignedUrl(effectiveAttachmentPath, 60 * 60 * 24 * 365));
-    if (signed?.signedUrl) effectiveAttachmentUrl = signed.signedUrl;
+      .createSignedUrl(f.path, 60 * 60 * 24 * 365));
+    if (signed?.signedUrl) linkedFiles.push({ name: f.name, size: f.size, url: signed.signedUrl });
   }
 
   // --- Draft row (insert or reuse) ---
@@ -930,7 +932,12 @@ export async function generateOneDraft(
   const hasOrgData = !!org?.company_description?.trim();
   const revisionInstruction = customInstruction?.trim() || "";
   const previousPlainBody = previousDraft?.body
-    ? stripTrailingSignature(htmlToPlainText(previousDraft.body, { keepTables: allowHtml }), signatureBlock)
+    // The files block sits after the signature; drop it first so the AI never
+    // rewrites it and the signature is found at the end again.
+    ? stripTrailingSignature(
+        htmlToPlainText(previousDraft.body, { keepTables: allowHtml })
+          .replace(new RegExp(`\\s*${FILES_BLOCK_LABEL}[\\s\\S]*$`), ""),
+        signatureBlock)
     : "";
   /** Rewriting an existing draft with nothing said about what to change.
    *
@@ -1008,25 +1015,14 @@ export async function generateOneDraft(
           .trim();
       }
 
-      // Tokenise the brochure mention in the BODY text before assembly so the
-      // download link can never land inside the signature (planning.md 6.6).
-      const BROCHURE_TOKEN = "XBROCHURELINKX";
-      const linkBrochure = stepNumber === 1 && !!effectiveAttachmentName && !!effectiveAttachmentUrl && /brochure/i.test(genericBody);
-      if (linkBrochure) genericBody = genericBody.replace(/brochure/i, BROCHURE_TOKEN);
-
       // Same rule the AI path applies below: a follow-up threads as a reply, so
       // the signature is already sitting in the message directly above it. This
       // branch appended it regardless, so a TEMPLATE follow-up carried a full
       // signature block while an AI one correctly did not - on a ~90 character
       // nudge that is more footer than email.
       const templateSignature = stepNumber > 1 ? "" : signatureBlock;
-      let finalBody = plainToHtml([greeting, genericBody, templateSignature].filter(Boolean).join("\n\n"));
-      if (linkBrochure) {
-        finalBody = finalBody.replace(
-          BROCHURE_TOKEN,
-          `<a href="${effectiveAttachmentUrl}" target="_blank" rel="noopener">brochure</a>`,
-        );
-      }
+      const finalBody = plainToHtml([greeting, genericBody, templateSignature].filter(Boolean).join("\n\n"))
+        + (stepNumber === 1 ? filesBlockHtml(linkedFiles) : "");
       const finalSubject = stepNumber > 1 ? "" : fillTemplate(template.subject, vars);
 
       // A default email standing in for an AI one always waits to be
@@ -1319,20 +1315,10 @@ export async function generateOneDraft(
       aiBody = ensureProductEmphasis(aiBody, validated.data.product_match);
     }
 
-    // Instantly cannot send real attachments, so deliver the brochure as a
-    // link — tokenised in the AI body BEFORE assembly so the anchor can never
-    // land inside the signature block (planning.md 6.6).
-    const BROCHURE_TOKEN = "XBROCHURELINKX";
-    const linkBrochure = stepNumber === 1 && !!effectiveAttachmentName && !!effectiveAttachmentUrl && /brochure/i.test(aiBody);
-    if (linkBrochure) aiBody = aiBody.replace(/brochure/i, BROCHURE_TOKEN);
-
-    let finalBody = (allowHtml ? plainToHtmlWithTables : plainToHtml)([aiBody, effectiveSignature].filter(Boolean).join("\n\n"));
-    if (linkBrochure) {
-      finalBody = finalBody.replace(
-        BROCHURE_TOKEN,
-        `<a href="${effectiveAttachmentUrl}" target="_blank" rel="noopener">brochure</a>`,
-      );
-    }
+    // Instantly cannot send real attachments: the files go as download links
+    // after the signature, opening email only.
+    const finalBody = (allowHtml ? plainToHtmlWithTables : plainToHtml)([aiBody, effectiveSignature].filter(Boolean).join("\n\n"))
+      + (stepNumber === 1 ? filesBlockHtml(linkedFiles) : "");
 
     // Follow-ups must thread as a reply in the original conversation, which
     // Instantly does by leaving the subject empty — a hard rule, not left to
@@ -1457,7 +1443,7 @@ export async function fetchDraftTargets(
       .from("campaign_leads")
       .select(`
         id, lead_id,
-        attachment_path, attachment_name, attachment_mime, attachment_size, attachment_url,
+        attachments,
         leads!lead_id!inner(
           id, first_name, last_name, email, title, headline, seniority, city, country, assigned_to,
           organizations(name, domain, website, industry, employees, city, country, company_description, sells_to, keywords)
@@ -1489,7 +1475,7 @@ export async function fetchDraftTargets(
     .from("campaign_leads")
     .select(`
       id, lead_id,
-      attachment_path, attachment_name, attachment_mime, attachment_size, attachment_url,
+      attachments,
       leads!lead_id!inner(
         id, first_name, last_name, email, title, headline, seniority, city, country, assigned_to,
         organizations(name, domain, website, industry, employees, city, country, company_description, sells_to, keywords)

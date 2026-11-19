@@ -45,7 +45,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const db = dbForUser(user);
   // The campaign's attachment rides on the access check (this is polled every 3 s while drafting).
   let campaignRow: Row;
-  try { campaignRow = await assertCampaignAccess(db, user, id, "attachment_name, attachment_size, attachment_mime, attachment_url"); } catch (r) { return r as Response; }
+  try { campaignRow = await assertCampaignAccess(db, user, id, "attachments"); } catch (r) { return r as Response; }
 
   const sp = Object.fromEntries(req.nextUrl.searchParams.entries());
   const parsed = CampaignLeadsQuerySchema.safeParse(sp);
@@ -387,19 +387,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       const row = Array.isArray(u) ? u[0] : u;
       return row?.full_name ?? null;
     })(),
-    attachment: {
-      perLead: cl.attachment_name
-        ? { name: cl.attachment_name, size: cl.attachment_size, mime: cl.attachment_mime }
-        : null,
-      campaignDefault: campaign?.attachment_name
-        ? { name: campaign.attachment_name, size: campaign.attachment_size, mime: campaign.attachment_mime }
-        : null,
-      effective: cl.attachment_name
-        ? { name: cl.attachment_name, size: cl.attachment_size, url: cl.attachment_url ?? null, source: "lead" as const }
-        : campaign?.attachment_name
-        ? { name: campaign.attachment_name, size: campaign.attachment_size, url: campaign.attachment_url ?? null, source: "campaign" as const }
-        : null,
-    },
+    // The lead's own files replace the campaign's while it has any.
+    attachment: (() => {
+      const own = (cl.attachments ?? []) as { path: string; name: string; size: number }[];
+      const fromCampaign = (campaign?.attachments ?? []) as { path: string; name: string; size: number }[];
+      const files = own.length ? own : fromCampaign;
+      return {
+        files: files.map((f) => ({ path: f.path, name: f.name, size: f.size })),
+        source: own.length ? ("lead" as const) : fromCampaign.length ? ("campaign" as const) : null,
+      };
+    })(),
   }));
 
   return ok({

@@ -76,7 +76,7 @@ export interface DbCampaign {
   send_days: Record<string, boolean> | null;
   ai_prompt_context: string | null;
   sender_name: string | null;
-  attachment_name: string | null;
+  attachments?: { name: string }[] | null;
   hot_count: number;
   cold_count: number;
   created_by: string;
@@ -150,7 +150,7 @@ export function mapDbCampaign(c: DbCampaign): Campaign {
     sendDays: c.send_days ?? {},
     aiPromptContext: c.ai_prompt_context ?? undefined,
     senderName: c.sender_name ?? undefined,
-    attachmentName: c.attachment_name ?? undefined,
+    attachmentName: c.attachments?.length ? c.attachments.map((f) => f.name).join(", ") : undefined,
     hot: c.hot_count ?? 0,
     cold: c.cold_count ?? 0,
     createdBy: c.created_by,

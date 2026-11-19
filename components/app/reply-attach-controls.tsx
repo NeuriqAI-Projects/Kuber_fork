@@ -44,7 +44,7 @@ export function ReplyAttachButton({
     try {
       for (const file of picked) {
         if (file.size > REPLY_ATTACH_MAX_BYTES) {
-          toast.error(`${file.name} exceeds 10MB`);
+          toast.error(`${file.name} is over 25 MB`);
           continue;
         }
         const up = await uploadCampaignAttachment(token, file);

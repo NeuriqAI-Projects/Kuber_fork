@@ -18,6 +18,7 @@ import { Stepper } from "@/components/ui/stepper";
 import type { Lead } from "@/lib/leads";
 import { isCampaignEligible, CAMPAIGN_ACTION_HELP, getMostCommonCountry } from "@/lib/leads";
 import { COUNTRY_TO_TIMEZONE } from "@/lib/constants";
+import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_FILES, formatBytes } from "@/lib/services/attachment-upload";
 import { createCampaign, addLeadsToCampaign, triggerDraftGeneration, checkAiReadiness, applyDefaultDrafts, mapDbCampaign, fetchMySettings, uploadCampaignAttachment, assignCampaign, queryCache, cacheKeys, cachedFetchers, type Profile } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
 import { useAccess } from "@/lib/access-context";
@@ -172,40 +173,42 @@ export function CreateCampaignModal({
   const distinctOwners = new Set(leads.map((l) => l.assignedTo).filter((id): id is string => !!id));
   const multipleOwners = distinctOwners.size > 1;
 
-  const [attachment, setAttachment] = useState<{
-    attachment_path: string;
-    attachment_name: string;
-    attachment_mime: string;
-    attachment_size: number;
-    attachment_url: string | null;
-  } | null>(null);
+  const [attachments, setAttachments] = useState<{ path: string; name: string; mime: string; size: number }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadError("");
-    if (file.size > 10 * 1024 * 1024) {
-      setUploadError("File exceeds 10MB"); return;
-    }
+    const picked = Array.from(e.target.files ?? []);
+    if (picked.length === 0) return;
+    const room = ATTACHMENT_MAX_FILES - attachments.length;
+    const errors: string[] = [];
+    if (picked.length > room) errors.push(`Only ${ATTACHMENT_MAX_FILES} files per campaign; extra files were skipped.`);
     setUploading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token ?? "";
-      const result = await uploadCampaignAttachment(token, file);
-      setAttachment(result);
-    } catch (err) {
-      setUploadError((err as Error).message);
+      // One at a time: each is a browser -> Storage upload of up to 25 MB.
+      for (const file of picked.slice(0, Math.max(0, room))) {
+        if (file.size > ATTACHMENT_MAX_BYTES) { errors.push(`${file.name} is over 25 MB`); continue; }
+        try {
+          const r = await uploadCampaignAttachment(token, file);
+          // The same file picked twice resolves to the same stored path: keep one.
+          setAttachments((prev) => prev.some((f) => f.path === r.attachment_path) ? prev
+            : [...prev, { path: r.attachment_path, name: r.attachment_name, mime: r.attachment_mime, size: r.attachment_size }]);
+        } catch (err) {
+          errors.push(`${file.name}: ${(err as Error).message}`);
+        }
+      }
     } finally {
+      setUploadError(errors.join(" "));
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
-  function removeAttachment() {
-    setAttachment(null);
+  function removeAttachment(path: string) {
+    setAttachments((prev) => prev.filter((f) => f.path !== path));
     setUploadError("");
   }
 
@@ -243,7 +246,7 @@ export function CreateCampaignModal({
     setFollowupSteps([{ delay: 30, delay_unit: "days" }, { delay: 90, delay_unit: "days" }]);
     setCreating(false); setError("");
     setAiDownModel(null); setAiChoice("wait");
-    setAttachment(null); setUploading(false); setUploadError("");
+    setAttachments([]); setUploading(false); setUploadError("");
     setAssignTo("");
     setStep(0);
   }
@@ -294,13 +297,7 @@ export function CreateCampaignModal({
             9, 0, 0,
           ).toISOString(),
         } : { send_mode: "now" as const }),
-        ...(attachment ? {
-          attachment_path: attachment.attachment_path,
-          attachment_name: attachment.attachment_name,
-          attachment_mime: attachment.attachment_mime,
-          attachment_size: attachment.attachment_size,
-          attachment_url: attachment.attachment_url,
-        } : {}),
+        ...(attachments.length ? { attachments } : {}),
       });
 
       const addResult = await addLeadsToCampaign(token, dbCampaign.id, eligibleLeads.map((l) => l.id));
@@ -618,18 +615,41 @@ export function CreateCampaignModal({
             <div className="flex items-start gap-2">
               <Paperclip className="size-4 text-muted-foreground mt-0.5" />
               <div>
-                <p className="font-medium text-[13px]">Attachment (optional)</p>
+                <p className="font-medium text-[13px]">Attachments (optional)</p>
                 <p className="text-xs text-muted-foreground">
-                  Sent with every email in this campaign. PDF, DOC, XLS, PNG, JPG — max 10MB.
+                  Up to {ATTACHMENT_MAX_FILES} files, 25 MB each. PDF, DOC, XLS, PNG, JPG. Sent as download links at the end of
+                  the first email. Use clear file names (e.g. &quot;Brochure.pdf&quot;): the AI reads them.
                 </p>
               </div>
             </div>
 
-            {!attachment ? (
+            {attachments.length > 0 && (
+              <div className="space-y-2">
+                {attachments.map((f) => (
+                  <div key={f.path} className="flex items-center justify-between rounded-lg border border-border bg-secondary p-2.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="size-4 text-muted-foreground shrink-0" />
+                      <span className="text-sm truncate">{f.name}</span>
+                      <span className="text-xs text-muted-foreground shrink-0 tabular-nums">({formatBytes(f.size)})</span>
+                    </div>
+                    <Button type="button" variant="ghost" size="icon-sm" onClick={() => removeAttachment(f.path)}
+                            aria-label={`Remove ${f.name}`}
+                            className="text-muted-foreground hover:text-foreground">
+                      <X />
+                    </Button>
+                  </div>
+                ))}
+                <p className="text-xs text-green-700 dark:text-green-400 flex items-center gap-1">
+                  <Check className="size-3" /> The AI will mention these files in the first email.
+                </p>
+              </div>
+            )}
+
+            {attachments.length < ATTACHMENT_MAX_FILES && (
               <>
                 {/* eslint-disable-next-line no-restricted-syntax -- hidden file picker; the visible control is the Button beside it */}
                 <input
-                  ref={fileInputRef} type="file" className="hidden"
+                  ref={fileInputRef} type="file" className="hidden" multiple
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
                   onChange={handleFileSelect}
                 />
@@ -639,31 +659,9 @@ export function CreateCampaignModal({
                   onClick={() => fileInputRef.current?.click()}
                 >
                   {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-                  {uploading ? "Uploading…" : "Choose file"}
+                  {uploading ? "Uploading…" : attachments.length ? "Add more files" : "Choose files"}
                 </Button>
               </>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between rounded-lg border border-border bg-secondary p-2.5">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <FileText className="size-4 text-muted-foreground shrink-0" />
-                    <span className="text-sm truncate">{attachment.attachment_name}</span>
-                    <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
-                      ({attachment.attachment_size >= 1024 * 1024
-        ? (attachment.attachment_size / 1024 / 1024).toFixed(1) + " MB"
-        : Math.round(attachment.attachment_size / 1024) + " KB"})
-                    </span>
-                  </div>
-                  <Button type="button" variant="ghost" size="icon-sm" onClick={removeAttachment}
-                          aria-label="Remove attachment"
-                          className="text-muted-foreground hover:text-foreground">
-                    <X />
-                  </Button>
-                </div>
-                <p className="text-xs text-green-700 dark:text-green-400 flex items-center gap-1">
-                  <Check className="size-3" /> The AI will mention the attachment in each email.
-                </p>
-              </div>
             )}
 
             {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}

@@ -6,6 +6,7 @@ import { buildDefaultCampaignSteps } from "@/lib/constants";
 import { getAccessibleCampaignIds, campaignsEditableByEmployee } from "@/lib/auth/scope";
 import { computeCampaignStats, type CampaignStatsRow } from "@/lib/campaign-status";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { isOwnUploadPath } from "@/lib/services/attachment-upload";
 import { canSeeAll } from "@/lib/auth/scopes";
 
 export const maxDuration = 60;
@@ -142,6 +143,9 @@ export async function POST(req: NextRequest) {
   const parsed = CreateCampaignSchema.safeParse(body);
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
 
+  if (parsed.data.attachments?.some((f) => !isOwnUploadPath(f.path, user.companyId))) {
+    return fail(400, "VALIDATION_ERROR", "Bad attachment path");
+  }
   const db = dbForUser(user);
 
   const { data, error } = await db
@@ -160,11 +164,7 @@ export async function POST(req: NextRequest) {
       sender_name: parsed.data.sender_name,
       // followup_day_2 / followup_day_3 DB columns are left nullable going forward;
       // actual step delays are now stored in campaign_steps rows built below.
-      attachment_path: parsed.data.attachment_path,
-      attachment_name: parsed.data.attachment_name,
-      attachment_mime: parsed.data.attachment_mime,
-      attachment_size: parsed.data.attachment_size,
-      attachment_url: parsed.data.attachment_url,
+      attachments: parsed.data.attachments ?? [],
       // follow_up_pattern REMOVED — column dropped
       status: "draft",
       created_by: user.id,

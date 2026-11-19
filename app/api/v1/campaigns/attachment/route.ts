@@ -4,14 +4,15 @@ import { ok, fail } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
 import {
   AttachmentFinishSchema, AttachmentStartSchema, checkAttachment, finishAttachmentUpload,
-  safeFileName, signAttachmentUpload,
+  isOwnUploadPath, startAttachmentUpload,
 } from "@/lib/services/attachment-upload";
 
 export const maxDuration = 30;
 
 /**
  * Two calls, the file itself never passes through here (Vercel caps bodies at 4.5 MB):
- *  1. { name, type, size }            -> { path, token } signed upload URL; the browser uploads to Storage
+ *  1. { name, type, size, sha256 }    -> { path, token, exists } signed upload URL; the browser uploads to Storage
+ *                                        (exists = this file is already stored, skip the upload)
  *  2. { finish: true, path, name }    -> attachment fields + 1-year signed link
  */
 export async function POST(req: NextRequest) {
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
   const finish = AttachmentFinishSchema.safeParse(body);
   if (finish.success) {
     const { path, name } = finish.data;
-    if (!path.startsWith("uploads/") || path.includes("..")) return fail(400, "VALIDATION_ERROR", "Bad upload path");
+    if (!isOwnUploadPath(path, user.companyId)) return fail(400, "VALIDATION_ERROR", "Bad upload path");
     try {
       const f = await finishAttachmentUpload(db, path);
       return ok({ attachment_path: path, attachment_name: name, attachment_mime: f.mime, attachment_size: f.size, attachment_url: f.url });
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
   const bad = checkAttachment(start.data.type, start.data.size);
   if (bad) return fail(400, "VALIDATION_ERROR", bad);
   try {
-    return ok(await signAttachmentUpload(db, `uploads/${crypto.randomUUID()}/${safeFileName(start.data.name)}`));
+    return ok(await startAttachmentUpload(db, user.companyId, start.data));
   } catch (e) {
     return fail(500, "INTERNAL", (e as Error).message);
   }

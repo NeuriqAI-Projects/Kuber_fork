@@ -157,7 +157,7 @@ async function writeOne(
     .from("campaign_leads")
     .select(`
       id, lead_id,
-      attachment_path, attachment_name, attachment_mime, attachment_size, attachment_url,
+      attachments,
       leads!lead_id!inner(
         id, first_name, last_name, email, title, headline, seniority, city, country, assigned_to,
         organizations(name, domain, website, industry, employees, city, country, company_description, sells_to, keywords)
@@ -473,7 +473,7 @@ export async function upgradeTemplateFollowups(
       const instruction = await resolveStandingFollowupInstruction(cdb, t.campaign_id as string, t.step_number as number);
       const { data: target } = await cdb.from("campaign_leads").select(`
           id, lead_id,
-          attachment_path, attachment_name, attachment_mime, attachment_size, attachment_url,
+          attachments,
           leads!lead_id!inner(
             id, first_name, last_name, email, title, headline, seniority, city, country, assigned_to,
             organizations(name, domain, website, industry, employees, city, country, company_description, sells_to, keywords)

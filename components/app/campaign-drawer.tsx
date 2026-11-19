@@ -134,6 +134,7 @@ import {
 } from "@/lib/campaign-status";
 import { cumulativeDays, dayLabel, MAX_FOLLOWUP_STEPS } from "@/lib/followup-schedule-preview";
 import { TEMPERATURE_BADGE } from "@/lib/temperature-badge";
+import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_FILES } from "@/lib/services/attachment-upload";
 import { delayInDays, writeByAt } from "@/lib/services/followup-schedule";
 import { extractFollowupWaitsFromSteps, rebuildStepsWithFollowupWaits } from "@/lib/constants";
 
@@ -228,10 +229,10 @@ const DRAFT_STATUS_COLOR: Record<string, PillColor> = {
   rejected:   "neutral",
 };
 
+/** The files this lead's opening email links to: its own, else the campaign's. */
 type AttachmentInfo = {
-  perLead: { name: string; size: number; mime: string } | null;
-  campaignDefault: { name: string; size: number; mime: string } | null;
-  effective: { name: string; size: number; url: string | null; source: "lead" | "campaign" } | null;
+  files: { path: string; name: string; size: number }[];
+  source: "lead" | "campaign" | null;
 };
 
 type CampaignLead = {
@@ -1780,31 +1781,43 @@ export function CampaignDetail({
   const [attaching, setAttaching] = useState(false);
   const attachInputRef = useRef<HTMLInputElement>(null);
 
-  async function handleLeadAttachmentUpload(file: File) {
+  async function handleLeadAttachmentUpload(list: FileList | null) {
     if (!selected) return;
+    const own = selected.attachment?.source === "lead" ? selected.attachment.files.length : 0;
+    const picked = Array.from(list ?? []);
+    const room = ATTACHMENT_MAX_FILES - own;
+    if (picked.length > room) toast.error(`Up to ${ATTACHMENT_MAX_FILES} files per lead; extra files were skipped`);
     setAttaching(true);
+    let added = 0;
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
-      await uploadCampaignLeadAttachment(session.access_token, selected.id, file);
-      toast.success(`${file.name} set for this lead — regenerate the draft to include the download link`);
+      // One at a time: the route appends to the lead's list.
+      for (const file of picked.slice(0, Math.max(0, room))) {
+        if (file.size > ATTACHMENT_MAX_BYTES) { toast.error(`${file.name} is over 25 MB`); continue; }
+        try {
+          await uploadCampaignLeadAttachment(session.access_token, selected.id, file);
+          added++;
+        } catch (e) {
+          toast.error(`${file.name}: ${(e as Error).message}`);
+        }
+      }
+      if (added) toast.success(`${added} file${added === 1 ? "" : "s"} added for this lead. Regenerate the draft to include the links`);
       await loadData();
-    } catch (e) {
-      toast.error((e as Error).message);
     } finally {
       setAttaching(false);
       if (attachInputRef.current) attachInputRef.current.value = "";
     }
   }
 
-  async function handleLeadAttachmentRemove() {
+  async function handleLeadAttachmentRemove(path: string) {
     if (!selected) return;
     setAttaching(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
-      await removeCampaignLeadAttachment(session.access_token, selected.id);
-      toast.success("Per-lead attachment removed");
+      await removeCampaignLeadAttachment(session.access_token, selected.id, path);
+      toast.success("File removed for this lead");
       await loadData();
     } catch (e) {
       toast.error((e as Error).message);
@@ -4965,51 +4978,49 @@ export function CampaignDetail({
                         ref={attachInputRef}
                         type="file"
                         className="hidden"
+                        multiple
                         accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-                        onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleLeadAttachmentUpload(f); }}
+                        onChange={(e) => void handleLeadAttachmentUpload(e.target.files)}
                       />
-                      {selected.attachment?.effective ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border border-border bg-secondary text-foreground max-w-full">
-                          <Paperclip className="size-3 shrink-0" />
-                          {selected.attachment.effective.url ? (
-                            <a href={selected.attachment.effective.url} target="_blank" rel="noopener" className="truncate underline underline-offset-2 hover:text-primary">
-                              {selected.attachment.effective.name}
-                            </a>
-                          ) : (
-                            <span className="truncate">{selected.attachment.effective.name}</span>
-                          )}
-                          <span className="text-muted-foreground">
-                            ({selected.attachment.effective.source === "lead" ? "this lead" : "campaign default"} · sent as link)
+                      {selected.attachment?.files.length ? (
+                        selected.attachment.files.map((f) => (
+                          <span key={f.path} className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border border-border bg-secondary text-foreground max-w-full">
+                            <Paperclip className="size-3 shrink-0" />
+                            <span className="truncate">{f.name}</span>
+                            <span className="text-muted-foreground">
+                              ({selected.attachment!.source === "lead" ? "this lead" : "campaign"} · sent as link)
+                            </span>
+                            {canWrite && selected.attachment!.source === "lead" && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                disabled={attaching}
+                                onClick={() => void handleLeadAttachmentRemove(f.path)}
+                                className="size-5 text-muted-foreground hover:text-destructive"
+                                title={`Remove ${f.name} for this lead`}
+                              >
+                                <X className="size-3" />
+                              </Button>
+                            )}
                           </span>
-                          {canWrite && selected.attachment.effective.source === "lead" && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              disabled={attaching}
-                              onClick={() => void handleLeadAttachmentRemove()}
-                              className="size-5 text-muted-foreground hover:text-destructive"
-                              title="Remove per-lead attachment"
-                            >
-                              <X className="size-3" />
-                            </Button>
-                          )}
-                        </span>
+                        ))
                       ) : (
                         <span className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
-                          <Paperclip className="size-3" /> No attachment — the email will not mention a brochure
+                          <Paperclip className="size-3" /> No attachment. The email will not mention a brochure
                         </span>
                       )}
-                      {canWrite && (
+                      {canWrite && !(selected.attachment?.source === "lead" && selected.attachment.files.length >= ATTACHMENT_MAX_FILES) && (
                         <Button
                           size="sm"
                           variant="ghost"
                           disabled={attaching}
                           onClick={() => attachInputRef.current?.click()}
                           className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground [&_svg]:size-3"
+                          title={selected.attachment?.source === "campaign" ? "This lead's own files replace the campaign's files" : undefined}
                         >
                           {attaching ? <Loader2 className="size-3 animate-spin" /> : <Paperclip className="size-3" />}
-                          {selected.attachment?.effective ? "Replace for this lead" : "Add for this lead"}
+                          {selected.attachment?.source === "lead" ? "Add more for this lead" : selected.attachment?.source === "campaign" ? "Use other files for this lead" : "Add for this lead"}
                         </Button>
                       )}
                     </div>

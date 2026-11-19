@@ -8,7 +8,7 @@ export type ReplyAttachment = {
 };
 
 export const REPLY_ATTACH_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg";
-export const REPLY_ATTACH_MAX_BYTES = 10 * 1024 * 1024;
+export const REPLY_ATTACH_MAX_BYTES = 25 * 1024 * 1024;
 export const REPLY_ATTACH_MAX_FILES = 5;
 
 function escapeAttr(s: string): string {
