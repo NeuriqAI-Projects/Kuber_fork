@@ -50,5 +50,18 @@ test("filesBlockText ignores link tokens, sees name/size changes", async () => {
   assert.equal(filesBlockText(one("https://x/a?token=1")), filesBlockText(one("https://x/a?token=2")));
   assert.notEqual(filesBlockText(one("https://x/a")), filesBlockText(one("https://x/a", "C.pdf")));
   assert.equal(filesBlockText("<p>No files here</p>"), "");
-  assert.equal(filesBlockText(one("u")), "Attached files: A b.pdf (2 KB)");
+  assert.equal(filesBlockText(one("https://x/a?t=1")), "Attached files: https://x/a A b.pdf (2 KB)");
+  // Same name + size, different stored file -> a change.
+  assert.notEqual(filesBlockText(one("https://x/v1/A.pdf?t=1")), filesBlockText(one("https://x/v2/A.pdf?t=1")));
+});
+
+test("replaceFilesBlock keeps text typed after the last link", async () => {
+  const { replaceFilesBlock, filesBlockHtml } = await import("./attachment-upload.ts");
+  const a = filesBlockHtml([{ name: "A.pdf", size: 1024, url: "https://x/a" }]);
+  const b = filesBlockHtml([{ name: "B.pdf", size: 2048, url: "https://x/b" }]);
+  const typed = "<p>Hi</p>" + a.replace(/<\/p>$/, " PS-AT-END</p>");
+  assert.equal(replaceFilesBlock(typed, b), "<p>Hi</p>" + b + "<p>PS-AT-END</p>");
+  assert.equal(replaceFilesBlock(typed, ""), "<p>Hi</p><p>PS-AT-END</p>");
+  const typedBr = "<p>Hi</p>" + a.replace(/<\/p>$/, "<br>Thanks again</p>");
+  assert.equal(replaceFilesBlock(typedBr, b), "<p>Hi</p>" + b + "<p>Thanks again</p>");
 });

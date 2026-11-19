@@ -145,13 +145,24 @@ const FILES_BLOCK_RE = new RegExp(`<p[^>]*>\\s*${FILES_BLOCK_LABEL}[\\s\\S]*?</p
 
 /** Swap the "Attached files:" paragraph for `block` (append it when there is none; `block` "" removes it). */
 export function replaceFilesBlock(body: string, block: string): string {
-  return FILES_BLOCK_RE.test(body) ? body.replace(FILES_BLOCK_RE, block) : body + block;
+  if (!FILES_BLOCK_RE.test(body)) return body + block;
+  return body.replace(FILES_BLOCK_RE, (old) => {
+    // Text typed at the very end of the email lands inside this paragraph
+    // (after the last "</a> (size)"); keep it as its own paragraph.
+    if (!/<\/a>/.test(old)) return block;
+    const tail = (old.replace(/<\/p>$/, "").split(/<\/a>\s*\([^)]*\)/).pop() ?? "")
+      .replace(/^(\s|<br\s*\/?>)+/, "").trim();
+    return block + (tail ? `<p>${tail}</p>` : "");
+  });
 }
 
 /** The files block as plain text ("Attached files: A.pdf (1 KB) …"): links carry a fresh
  *  token on every signing, so compare names + sizes, not HTML. */
 export function filesBlockText(body: string): string {
-  return (body.match(FILES_BLOCK_RE)?.[0] ?? "").replace(/<br\s*\/?>/g, " ").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+  return (body.match(FILES_BLOCK_RE)?.[0] ?? "")
+    // Keep each link's file address (minus the ?token=): a new file with the same name and size still counts as a change.
+    .replace(/<a [^>]*href="([^"?]+)[^"]*"[^>]*>/g, " $1 ")
+    .replace(/<br\s*\/?>/g, " ").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
 }
 
 /**
