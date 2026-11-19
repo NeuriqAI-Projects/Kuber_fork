@@ -5,7 +5,7 @@ import { assertCampaignAccess, assertCampaignSettingsAccess } from "@/lib/auth/s
 import { dbForUser } from "@/lib/supabase/scoped";
 import { CampaignAttachmentsSchema } from "@/lib/validators/campaigns";
 import {
-  ATTACHMENT_BUCKET, checkAttachment, isOwnUploadPath, refreshDraftFileLinks, type StoredAttachment,
+  ATTACHMENT_BUCKET, ATTACHMENT_MAX_FILES, checkAttachment, isOwnUploadPath, refreshDraftFileLinks, type StoredAttachment,
 } from "@/lib/services/attachment-upload";
 
 export const maxDuration = 60;
@@ -43,6 +43,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const next: StoredAttachment[] = [];
   for (const f of parsed.data.attachments) {
     if (next.some((x) => x.path === f.path)) continue;
+    if (next.length >= ATTACHMENT_MAX_FILES) return fail(400, "VALIDATION_ERROR", `Up to ${ATTACHMENT_MAX_FILES} files per campaign`);
     const kept = current.get(f.path);
     if (kept) { next.push(kept); continue; } // older files may sit outside the company folder
     if (!isOwnUploadPath(f.path, user.companyId)) return fail(400, "VALIDATION_ERROR", "Bad attachment path");

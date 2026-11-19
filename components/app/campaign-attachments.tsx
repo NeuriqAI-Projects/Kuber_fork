@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabase";
 import {
   fetchCampaignAttachments, saveCampaignAttachments, uploadCampaignAttachment, type CampaignFile,
 } from "@/lib/api-client";
-import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_FILES, formatBytes } from "@/lib/services/attachment-upload";
+import { ATTACHMENT_ALLOWED, ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_FILES, formatBytes } from "@/lib/services/attachment-upload";
 
 /**
  * Options tab: the campaign's files (N / 5). Every add or remove saves at once,
@@ -48,15 +48,19 @@ export function CampaignAttachments({ campaignId, readOnly }: { campaignId: stri
   async function add(list: FileList | null) {
     const all = Array.from(list ?? []);
     if (!files || all.length === 0) return;
-    for (const f of all) if (f.size > ATTACHMENT_MAX_BYTES) toast.error(`${f.name} is over 25 MB`);
-    const room = ATTACHMENT_MAX_FILES - files.length;
-    const picked = all.filter((f) => f.size <= ATTACHMENT_MAX_BYTES);
-    if (picked.length > room) toast.error(`Up to ${ATTACHMENT_MAX_FILES} files per campaign; extra files were skipped`);
+    const picked = all.filter((f) => {
+      const why = f.size > ATTACHMENT_MAX_BYTES ? "is over 25 MB" : !ATTACHMENT_ALLOWED.has(f.type) ? "is not a PDF, Word, Excel, PNG or JPG file" : "";
+      if (why) toast.error(`${f.name} ${why}`);
+      return !why;
+    });
     setBusy(true);
     try {
       const t = await token();
       const next = [...files];
-      for (const file of picked.slice(0, Math.max(0, room))) {
+      let skipped = 0;
+      // Fill until 5 really are listed: a file that turns out to be listed already doesn't use a slot.
+      for (const file of picked) {
+        if (next.length >= ATTACHMENT_MAX_FILES) { skipped++; continue; }
         try {
           const r = await uploadCampaignAttachment(t, file);
           if (!next.some((f) => f.path === r.attachment_path)) {
@@ -66,6 +70,7 @@ export function CampaignAttachments({ campaignId, readOnly }: { campaignId: stri
           toast.error(`${file.name}: ${(e as Error).message}`);
         }
       }
+      if (skipped) toast.error(`Up to ${ATTACHMENT_MAX_FILES} files per campaign; ${skipped} skipped`);
       if (next.length !== files.length) await save(next, `${next.length - files.length} file${next.length - files.length === 1 ? "" : "s"} added`);
     } catch (e) {
       toast.error((e as Error).message);
@@ -96,12 +101,13 @@ export function CampaignAttachments({ campaignId, readOnly }: { campaignId: stri
           <div>
             <p className="text-[13px] font-medium leading-none">Attachments</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Sent as download links at the end of the first email. 25 MB each. Use clear file names: the AI reads them.
+              Saved as soon as you add or remove a file. Sent as download links at the end of the first email. 25 MB each.
+              Use clear file names: the AI reads them.
             </p>
           </div>
         </div>
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums" aria-label="Files used">
-          {count} / {ATTACHMENT_MAX_FILES} files
+          {files === null ? "–" : count} / {ATTACHMENT_MAX_FILES} files
         </span>
       </div>
 

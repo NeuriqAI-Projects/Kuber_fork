@@ -89,18 +89,23 @@ export async function startAttachmentUpload(
   const path = `${uploadPrefix(companyId)}${start.sha256 ?? crypto.randomUUID()}/${safeFileName(start.name)}`;
   const bucket = db.storage.from(ATTACHMENT_BUCKET);
   let upsert = false;
+  let target = path;
   if (start.sha256) {
     const { data: info } = await bucket.info(path);
-    if (info) {
+    if (info && info.size !== start.size) {
+      // Same claimed hash, different size: the hash is wrong. Don't reuse or
+      // overwrite that object (sent emails may link to it); store this one apart.
+      target = `${uploadPrefix(companyId)}${crypto.randomUUID()}/${safeFileName(start.name)}`;
+    } else if (info) {
       // The cleanup keeps anything written in the last day. A copy older than
-      // half a day is uploaded again over itself (upsert -> fresh updated_at),
+      // half a day is uploaded again over itself (upsert -> fresh lastModified),
       // so it can't be cleaned away while a modal that just picked it is open.
-      const touched = Date.parse(String((info as { updatedAt?: string }).updatedAt ?? info.createdAt ?? ""));
+      const touched = Date.parse(String(info.lastModified ?? info.createdAt ?? ""));
       if (Date.now() - touched < 12 * 3600_000) return { path, token: null, exists: true };
       upsert = true;
     }
   }
-  const { data, error } = await bucket.createSignedUploadUrl(path, { upsert });
+  const { data, error } = await bucket.createSignedUploadUrl(target, { upsert });
   if (error || !data) throw new Error(error?.message ?? "Could not start the upload");
   return { path: data.path, token: data.token, exists: false };
 }
@@ -141,6 +146,12 @@ const FILES_BLOCK_RE = new RegExp(`<p[^>]*>\\s*${FILES_BLOCK_LABEL}[\\s\\S]*?</p
 /** Swap the "Attached files:" paragraph for `block` (append it when there is none; `block` "" removes it). */
 export function replaceFilesBlock(body: string, block: string): string {
   return FILES_BLOCK_RE.test(body) ? body.replace(FILES_BLOCK_RE, block) : body + block;
+}
+
+/** The files block as plain text ("Attached files: A.pdf (1 KB) …"): links carry a fresh
+ *  token on every signing, so compare names + sizes, not HTML. */
+export function filesBlockText(body: string): string {
+  return (body.match(FILES_BLOCK_RE)?.[0] ?? "").replace(/<br\s*\/?>/g, " ").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -194,8 +205,10 @@ export async function refreshDraftFileLinks(
       .eq("step_number", 1)
       .in("status", ["draft", "approved"]);
     const work = (drafts ?? []).map(async (d) => {
-      const body = replaceFilesBlock((d.body as string | null) ?? "", await blockFor(filesByDraft.get(d.id as string) ?? []));
-      if (body === d.body) return;
+      const old = (d.body as string | null) ?? "";
+      const block = await blockFor(filesByDraft.get(d.id as string) ?? []);
+      if (filesBlockText(old) === filesBlockText(block)) return; // same files already listed
+      const body = replaceFilesBlock(old, block);
       const { error } = await db.from("email_drafts").update({ body, updated_at: new Date().toISOString() }).eq("id", d.id);
       if (!error) updated++;
     });

@@ -134,7 +134,7 @@ import {
 } from "@/lib/campaign-status";
 import { cumulativeDays, dayLabel, MAX_FOLLOWUP_STEPS } from "@/lib/followup-schedule-preview";
 import { TEMPERATURE_BADGE } from "@/lib/temperature-badge";
-import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_FILES } from "@/lib/services/attachment-upload";
+import { ATTACHMENT_ALLOWED, ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_FILES } from "@/lib/services/attachment-upload";
 import { CampaignAttachments } from "@/components/app/campaign-attachments";
 import { delayInDays, writeByAt } from "@/lib/services/followup-schedule";
 import { extractFollowupWaitsFromSteps, rebuildStepsWithFollowupWaits } from "@/lib/constants";
@@ -1782,29 +1782,42 @@ export function CampaignDetail({
   const [attaching, setAttaching] = useState(false);
   const attachInputRef = useRef<HTMLInputElement>(null);
 
+  // A file change rewrites this lead's unsent draft and reloads it, which would
+  // wipe text typed in the editor, so ask for a save first.
+  function blockedByUnsavedEdits() {
+    if (!hasUnsavedEdits) return false;
+    toast.error("Save or discard your edits to this email first");
+    return true;
+  }
+
   async function handleLeadAttachmentUpload(list: FileList | null) {
     if (!selected) return;
-    const own = selected.attachment?.source === "lead" ? selected.attachment.files.length : 0;
-    const all = Array.from(list ?? []);
-    // Oversize files first, so one can't take a slot from a good file.
-    for (const f of all) if (f.size > ATTACHMENT_MAX_BYTES) toast.error(`${f.name} is over 25 MB`);
-    const picked = all.filter((f) => f.size <= ATTACHMENT_MAX_BYTES);
-    const room = ATTACHMENT_MAX_FILES - own;
-    if (picked.length > room) toast.error(`Up to ${ATTACHMENT_MAX_FILES} files per lead; extra files were skipped`);
+    if (blockedByUnsavedEdits()) { if (attachInputRef.current) attachInputRef.current.value = ""; return; }
+    let own = selected.attachment?.source === "lead" ? selected.attachment.files.length : 0;
+    // Bad files out first, so one can't take a slot from a good file.
+    const picked = Array.from(list ?? []).filter((f) => {
+      const why = f.size > ATTACHMENT_MAX_BYTES ? "is over 25 MB" : !ATTACHMENT_ALLOWED.has(f.type) ? "is not a PDF, Word, Excel, PNG or JPG file" : "";
+      if (why) toast.error(`${f.name} ${why}`);
+      return !why;
+    });
     setAttaching(true);
     let added = 0;
+    let skipped = 0;
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
       // One at a time: the route appends to the lead's list.
-      for (const file of picked.slice(0, Math.max(0, room))) {
+      for (const file of picked) {
+        if (own >= ATTACHMENT_MAX_FILES) { skipped++; continue; }
         try {
           await uploadCampaignLeadAttachment(session.access_token, selected.id, file);
           added++;
+          own++;
         } catch (e) {
           toast.error(`${file.name}: ${(e as Error).message}`);
         }
       }
+      if (skipped) toast.error(`Up to ${ATTACHMENT_MAX_FILES} files per lead; ${skipped} skipped`);
       if (added) toast.success(`${added} file${added === 1 ? "" : "s"} added for this lead. Links in its unsent first email are updated`);
       await loadData();
     } finally {
@@ -1814,7 +1827,7 @@ export function CampaignDetail({
   }
 
   async function handleLeadAttachmentRemove(path: string) {
-    if (!selected) return;
+    if (!selected || blockedByUnsavedEdits()) return;
     setAttaching(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -6183,6 +6196,8 @@ export function CampaignDetail({
             }}
           />
           <CampaignAttachments campaignId={campaign.id} readOnly={!canEditSettings} />
+          {/* Room so the floating Kuber AI button never covers the last row. */}
+          <div className="h-16" aria-hidden />
         </div>
       )}
 

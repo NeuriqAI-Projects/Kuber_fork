@@ -9,7 +9,7 @@ export const maxDuration = 60;
 /**
  * Daily (pg_cron 'attachment-cleanup'): delete attachment files nothing uses any
  * more. The keep/delete rule is SQL, public.attachment_cleanup_candidates()
- * (supabase/migrations/2026_11_19_B_attachment_cleanup.sql). Cross-company by
+ * (supabase/migrations/2026_11_19_C_attachment_cleanup_touch.sql). Cross-company by
  * design: it only removes files no row of any company points at.
  * ?dry=1 lists without deleting.
  */

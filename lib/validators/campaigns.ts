@@ -42,9 +42,9 @@ export const PatchCampaignSchema = z.object({
   ai_prompt_context: z.string().optional(),
 });
 
-/** PUT /api/v1/campaigns/[id]/attachments: the whole new list. */
+/** PUT /api/v1/campaigns/[id]/attachments: the whole new list (the route caps it at 5 after merging duplicates). */
 export const CampaignAttachmentsSchema = z.object({
-  attachments: z.array(StoredAttachmentSchema).max(ATTACHMENT_MAX_FILES),
+  attachments: z.array(StoredAttachmentSchema).max(ATTACHMENT_MAX_FILES * 4),
 });
 
 export const AddLeadsToCampaignSchema = z.object({

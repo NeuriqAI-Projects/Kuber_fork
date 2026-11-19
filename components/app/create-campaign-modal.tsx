@@ -18,7 +18,7 @@ import { Stepper } from "@/components/ui/stepper";
 import type { Lead } from "@/lib/leads";
 import { isCampaignEligible, CAMPAIGN_ACTION_HELP, getMostCommonCountry } from "@/lib/leads";
 import { COUNTRY_TO_TIMEZONE } from "@/lib/constants";
-import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_FILES, formatBytes } from "@/lib/services/attachment-upload";
+import { ATTACHMENT_ALLOWED, ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_FILES, formatBytes } from "@/lib/services/attachment-upload";
 import { createCampaign, addLeadsToCampaign, triggerDraftGeneration, checkAiReadiness, applyDefaultDrafts, mapDbCampaign, fetchMySettings, uploadCampaignAttachment, assignCampaign, queryCache, cacheKeys, cachedFetchers, type Profile } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
 import { useAccess } from "@/lib/access-context";
@@ -181,19 +181,26 @@ export function CreateCampaignModal({
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const all = Array.from(e.target.files ?? []);
     if (all.length === 0) return;
-    // Oversize files first, so one can't take a slot from a good file.
-    const errors = all.filter((f) => f.size > ATTACHMENT_MAX_BYTES).map((f) => `${f.name} is over 25 MB.`);
-    const picked = all.filter((f) => f.size <= ATTACHMENT_MAX_BYTES);
-    const room = ATTACHMENT_MAX_FILES - attachments.length;
-    if (picked.length > room) errors.push(`Only ${ATTACHMENT_MAX_FILES} files per campaign; extra files were skipped.`);
+    // Bad files out first, so one can't take a slot from a good file.
+    const errors: string[] = [];
+    const picked = all.filter((f) => {
+      const why = f.size > ATTACHMENT_MAX_BYTES ? "is over 25 MB" : !ATTACHMENT_ALLOWED.has(f.type) ? "is not a PDF, Word, Excel, PNG or JPG file" : "";
+      if (why) errors.push(`${f.name} ${why}.`);
+      return !why;
+    });
+    const paths = new Set(attachments.map((f) => f.path));
+    let skipped = 0;
     setUploading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token ?? "";
       // One at a time: each is a browser -> Storage upload of up to 25 MB.
-      for (const file of picked.slice(0, Math.max(0, room))) {
+      // Fill until 5 really are listed: a file listed already doesn't use a slot.
+      for (const file of picked) {
+        if (paths.size >= ATTACHMENT_MAX_FILES) { skipped++; continue; }
         try {
           const r = await uploadCampaignAttachment(token, file);
+          paths.add(r.attachment_path);
           // The same file picked twice resolves to the same stored path: keep one.
           setAttachments((prev) => prev.some((f) => f.path === r.attachment_path) ? prev
             : [...prev, { path: r.attachment_path, name: r.attachment_name, mime: r.attachment_mime, size: r.attachment_size }]);
@@ -202,6 +209,7 @@ export function CreateCampaignModal({
         }
       }
     } finally {
+      if (skipped) errors.push(`Only ${ATTACHMENT_MAX_FILES} files per campaign; ${skipped} skipped.`);
       setUploadError(errors.join(" "));
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

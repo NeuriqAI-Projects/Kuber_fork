@@ -43,3 +43,12 @@ test("replaceFilesBlock swaps, appends, removes, and survives editor re-serialis
   assert.equal(replaceFilesBlock(edited, b), body + b);               // TipTap-style markup
   assert.equal((replaceFilesBlock(body + a, b).match(/Attached files:/g) ?? []).length, 1);
 });
+
+test("filesBlockText ignores link tokens, sees name/size changes", async () => {
+  const { filesBlockText, filesBlockHtml } = await import("./attachment-upload.ts");
+  const one = (url: string, name = "A b.pdf") => "<p>Hi</p>" + filesBlockHtml([{ name, size: 2048, url }]);
+  assert.equal(filesBlockText(one("https://x/a?token=1")), filesBlockText(one("https://x/a?token=2")));
+  assert.notEqual(filesBlockText(one("https://x/a")), filesBlockText(one("https://x/a", "C.pdf")));
+  assert.equal(filesBlockText("<p>No files here</p>"), "");
+  assert.equal(filesBlockText(one("u")), "Attached files: A b.pdf (2 KB)");
+});

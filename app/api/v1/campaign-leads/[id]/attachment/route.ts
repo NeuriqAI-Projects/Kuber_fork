@@ -84,6 +84,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   } catch (r) { return r as Response; }
   const one = req.nextUrl.searchParams.get("path");
   const files = (row.attachments ?? []) as StoredAttachment[];
+  if (one && !files.some((f) => f.path === one)) return ok({ cleared: false, drafts_updated: 0 });
   // Only the row changes: the stored file may be shared with other campaigns or
   // linked from sent mail. The daily cleanup deletes it once nothing uses it.
   const { error } = await db.from("campaign_leads").update({
